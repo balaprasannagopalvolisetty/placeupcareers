@@ -1,6 +1,7 @@
 param(
   [Parameter(Mandatory=$true)][string]$ProjectId,
-  [string]$Region = "us-central1"
+  [string]$Region = "us-central1",
+  [string]$TimeZone = "America/Chicago"
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,7 +13,7 @@ $SchedulerSa = "placeup-scheduler-sa@$ProjectId.iam.gserviceaccount.com"
 gcloud.cmd scheduler jobs create http placeup-job-scraper-6h `
   --location $Region `
   --schedule "0 */6 * * *" `
-  --time-zone "America/Toronto" `
+  --time-zone $TimeZone `
   --uri "$JobRunBase/placeup-job-scraper-6h:run" `
   --http-method POST `
   --oauth-service-account-email $SchedulerSa 2>$null
@@ -20,7 +21,7 @@ gcloud.cmd scheduler jobs create http placeup-job-scraper-6h `
 gcloud.cmd scheduler jobs create http placeup-external-api-12h `
   --location $Region `
   --schedule "30 */12 * * *" `
-  --time-zone "America/Toronto" `
+  --time-zone $TimeZone `
   --uri "$JobRunBase/placeup-external-api-12h:run" `
   --http-method POST `
   --oauth-service-account-email $SchedulerSa 2>$null

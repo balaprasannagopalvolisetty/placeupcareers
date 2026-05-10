@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     gcp_project_id: Optional[str] = Field(default=None)
 
     # --- Scraping Config ---
-    scrape_interval_hours: int = Field(default=8)
+    scrape_interval_hours: int = Field(default=6)
     scrape_max_concurrency: int = Field(default=28, ge=4, le=200)
     job_inactive_after_days: int = Field(default=12, description="Mark active jobs as inactive after N days without re-scrape")
     proxy_url: Optional[str] = Field(default=None)
@@ -72,7 +72,7 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins(self) -> list[str]:
-        origins = [self.frontend_url]
+        origins = [origin.strip() for origin in self.frontend_url.split(",") if origin.strip()]
         if self.is_development:
             origins.extend([
                 "http://localhost:5173",
@@ -81,6 +81,16 @@ class Settings(BaseSettings):
                 "http://127.0.0.1:8000",
             ])
         return list(set(origins))
+
+    def validate_production(self) -> None:
+        if not self.is_production:
+            return
+        if not self.jwt_secret or self.jwt_secret == "dev-only-change-me-jwt-secret-key-32-chars-min":
+            raise RuntimeError("JWT_SECRET must be set to a production secret.")
+        if len(self.jwt_secret) < 32:
+            raise RuntimeError("JWT_SECRET must be at least 32 characters.")
+        if self.database_backend == "sqlite":
+            raise RuntimeError("DATABASE_BACKEND=sqlite is not allowed in production.")
 
     model_config = {
         "env_file": ".env",

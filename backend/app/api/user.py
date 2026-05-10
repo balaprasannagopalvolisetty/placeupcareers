@@ -94,7 +94,40 @@ def _to_prefs(raw: dict) -> UserPreferences:
         notification_marketing_emails=bool(raw.get("notification_marketing_emails", False)),
         visa_status=raw.get("visa_status"),
         experience_level=raw.get("experience_level"),
+        target_roles=list(raw.get("target_roles") or [])[:5],
+        target_locations=list(raw.get("target_locations") or []),
     )
+
+
+def _build_resume_quick_wins(text: str, skills: list[str], keywords: list[str], target_roles: list[str]) -> list[dict]:
+    lower_text = text.lower()
+    lower_skills = {s.lower() for s in skills}
+    wins: list[dict] = []
+
+    if "react" in lower_skills and "react 18" not in lower_text:
+        wins.append({"kw": "React 18", "tip": "Specify your React version if you used React 18.", "impact": "High"})
+    if "certification" not in lower_text and "certifications" not in lower_text:
+        wins.append({"kw": "Certifications", "tip": "Add a certifications section if you hold relevant credentials.", "impact": "Medium"})
+    if "github.com" not in lower_text and "github" not in lower_text:
+        wins.append({"kw": "GitHub", "tip": "Add a GitHub profile link so hiring teams can review your work.", "impact": "Medium"})
+    if " ai " in f" {lower_text} " and "artificial intelligence" not in lower_text:
+        wins.append({"kw": "Artificial Intelligence", "tip": "Spell out acronyms at first mention, for example AI to Artificial Intelligence.", "impact": "Medium"})
+
+    try:
+        from app.job_taxonomy import CATEGORIES
+        selected = {role.lower() for role in target_roles}
+        wanted: set[str] = set()
+        for cat in CATEGORIES:
+            for role in cat.roles:
+                if role.name.lower() in selected:
+                    wanted.update(s.lower() for s in role.synonyms if len(s) > 3)
+        have = lower_skills | {k.lower() for k in keywords}
+        for kw in sorted(wanted - have)[:5]:
+            wins.append({"kw": kw, "tip": f"Add '{kw}' where it honestly matches your experience.", "impact": "Medium"})
+    except Exception:
+        pass
+
+    return wins[:8]
 
 
 @router.get("/profile", response_model=UserProfile)
@@ -201,14 +234,15 @@ async def upload_user_resume(
         score = 0
 
     existing = user_store.list_resumes(user_id)
-    make_active = not any(r.get("active") for r in existing)
+    for resume in existing:
+        user_store.delete_resume(user_id, resume["id"])
 
     row = user_store.create_resume(
         user_id,
         name=filename,
         score=score,
         size_bytes=len(content),
-        active=make_active,
+        active=True,
         storage_path=str(storage_path) if storage_path else None,
     )
     return _to_resume_meta(row)
@@ -228,3 +262,41 @@ async def delete_user_resume(resume_id: str, user_id: str = Depends(current_user
     if deleted == 0:
         raise HTTPException(status_code=404, detail="Resume not found")
     return {"deleted": resume_id}
+
+
+@router.get("/resume/parsed")
+async def get_parsed_active_resume(user_id: str = Depends(current_user_id)):
+    """Return the parsed active resume — skills, experience, education,
+    keywords. Powers the Profile page Skills strip and the dynamic
+    Resume Quick Wins panel."""
+    resumes = user_store.list_resumes(user_id)
+    active = next((r for r in resumes if r.get("active")), None) or (resumes[0] if resumes else None)
+    if not active or not active.get("storage_path"):
+        return {"has_resume": False, "skills": [], "keywords": [], "missing_keywords": []}
+
+    try:
+        from app.services.resume_parser import parse_resume_file
+        from app.utils.text_processing import extract_keywords, extract_skills_from_text
+        with open(active["storage_path"], "rb") as fh:
+            content = fh.read()
+        parsed = await parse_resume_file(content, active.get("name") or "resume.pdf")
+        text = parsed.get("text") or ""
+        skills = extract_skills_from_text(text)
+        keywords = extract_keywords(text, top_n=40)
+    except Exception as e:
+        return {"has_resume": True, "error": str(e), "skills": [], "keywords": []}
+
+    # Diff against the user's target roles → suggest "Quick Wins".
+    prefs = user_store.get_preferences(user_id)
+    target_roles = prefs.get("target_roles") or []
+    suggestions = _build_resume_quick_wins(text, skills, keywords, target_roles)
+
+    return {
+        "has_resume": True,
+        "name": active.get("name"),
+        "score": active.get("score"),
+        "skills": sorted(set(skills)),
+        "keywords": keywords[:30],
+        "quick_wins": suggestions,
+        "target_roles": target_roles,
+    }

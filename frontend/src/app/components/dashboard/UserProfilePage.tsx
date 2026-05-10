@@ -10,16 +10,19 @@ const T = {
   grad: "linear-gradient(135deg, #8C3A27, #A6372D, #401212)", red: "#A6372D", burnt: "#8C3A27",
 };
 
-const FALLBACK_SKILLS = ["React", "TypeScript", "Node.js", "AWS", "System Design", "REST APIs", "Python", "Docker", "CI/CD"];
-
 export function UserProfilePage() {
   const [profile, setProfile] = useState<api.UserProfile | null>(null);
   const [resumes, setResumes] = useState<api.ResumeMetadata[]>([]);
+  const [resumeSkills, setResumeSkills] = useState<string[]>([]);
 
   useEffect(() => {
     let active = true;
-    Promise.all([api.getProfile(), api.getResumeList().catch(() => [])])
-      .then(([p, rs]) => { if (active) { setProfile(p); setResumes(rs); } })
+    Promise.all([
+      api.getProfile(),
+      api.getResumeList().catch(() => []),
+      api.getParsedActiveResume().catch(() => ({ skills: [] })),
+    ])
+      .then(([p, rs, parsed]) => { if (active) { setProfile(p); setResumes(rs); setResumeSkills(parsed.skills || []); } })
       .catch(() => {});
     return () => { active = false; };
   }, []);
@@ -99,7 +102,10 @@ export function UserProfilePage() {
         <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: 24 }}>
           <div style={{ fontFamily: F.sans, fontSize: 14, fontWeight: 600, color: T.text, marginBottom: 14 }}>Skills</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {FALLBACK_SKILLS.map((s) => (
+            {resumeSkills.length === 0 && (
+              <span style={{ fontSize: 12, color: T.t3, fontFamily: F.sans }}>Upload a resume with a skills section to populate profile skills.</span>
+            )}
+            {resumeSkills.map((s) => (
               <span key={s} style={{ fontSize: 12, padding: "5px 12px", borderRadius: 8, background: "rgba(166,55,45,0.1)", color: T.red, border: "1px solid rgba(166,55,45,0.2)", fontFamily: F.sans }}>{s}</span>
             ))}
           </div>

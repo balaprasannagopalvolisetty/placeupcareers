@@ -7,11 +7,17 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+if ($DbPassword -eq "CHANGE_ME_STRONG_PASSWORD") {
+  throw "Provide a real database password with -DbPassword before running production setup."
+}
+
 gcloud.cmd config set project $ProjectId
 
 gcloud.cmd services enable `
   run.googleapis.com `
+  cloudfunctions.googleapis.com `
   sqladmin.googleapis.com `
+  firestore.googleapis.com `
   artifactregistry.googleapis.com `
   cloudbuild.googleapis.com `
   cloudscheduler.googleapis.com `
@@ -36,7 +42,9 @@ gcloud.cmd sql users create placeup --instance=$DbInstance --password=$DbPasswor
 
 $databaseUrl = "postgresql+psycopg://placeup:$DbPassword@/placeup?host=/cloudsql/$ProjectId`:$Region`:$DbInstance"
 $databaseUrl | gcloud.cmd secrets create DATABASE_URL --data-file=- 2>$null
-"dev-only-change-me-before-production" | gcloud.cmd secrets create JWT_SECRET --data-file=- 2>$null
+$jwtBytes = [System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
+$jwtSecret = [Convert]::ToHexString($jwtBytes).ToLowerInvariant()
+$jwtSecret | gcloud.cmd secrets create JWT_SECRET --data-file=- 2>$null
 
 gcloud.cmd iam service-accounts create placeup-api-sa --display-name="PlaceUp API" 2>$null
 gcloud.cmd iam service-accounts create placeup-etl-sa --display-name="PlaceUp ETL Jobs" 2>$null
@@ -50,6 +58,10 @@ foreach ($sa in @("placeup-api-sa", "placeup-etl-sa")) {
     --member="serviceAccount:$sa@$ProjectId.iam.gserviceaccount.com" `
     --role="roles/secretmanager.secretAccessor"
 }
+
+gcloud.cmd projects add-iam-policy-binding $ProjectId `
+  --member="serviceAccount:placeup-etl-sa@$ProjectId.iam.gserviceaccount.com" `
+  --role="roles/datastore.user"
 
 gcloud.cmd projects add-iam-policy-binding $ProjectId `
   --member="serviceAccount:placeup-scheduler-sa@$ProjectId.iam.gserviceaccount.com" `

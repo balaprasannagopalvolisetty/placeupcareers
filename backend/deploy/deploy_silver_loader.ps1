@@ -1,0 +1,31 @@
+param(
+  [Parameter(Mandatory=$true)][string]$ProjectId,
+  [string]$Region = "us-east1",
+  [string]$DbInstance = "placeup-backend",
+  [string]$DbName = "jobssilverdb",
+  [string]$DbUser = "postgres",
+  [string]$DbPassSecret = "SILVER_DB_PASS",
+  [string]$FirestoreDatabase = "ra-jobs",
+  [string]$FirestoreCollection = "jobs"
+)
+
+$ErrorActionPreference = "Stop"
+
+gcloud.cmd config set project $ProjectId
+
+gcloud.cmd functions deploy clean-and-load-jobs `
+  --gen2 `
+  --runtime python312 `
+  --region $Region `
+  --source ".\cloudrun_silver_loader" `
+  --entry-point clean_and_load_jobs `
+  --trigger-http `
+  --no-allow-unauthenticated `
+  --service-account "placeup-etl-sa@$ProjectId.iam.gserviceaccount.com" `
+  --set-env-vars "FIRESTORE_DATABASE=$FirestoreDatabase,FIRESTORE_COLLECTION=$FirestoreCollection,DB_NAME=$DbName,DB_USER=$DbUser,DB_HOST=/cloudsql/$ProjectId`:$Region`:$DbInstance" `
+  --set-secrets "DB_PASS=$DbPassSecret`:latest" `
+  --add-cloudsql-instances "$ProjectId`:$Region`:$DbInstance" `
+  --timeout 3600s `
+  --memory 1Gi
+
+Write-Host "Silver loader function deployed. Next: run .\deploy\schedule_silver_loader.ps1"

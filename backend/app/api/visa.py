@@ -66,10 +66,15 @@ async def get_visa_dashboard(db=Depends(get_db)):
     except Exception:
         all_count = len(sponsors)
 
+    try:
+        visa_jobs = await db.count_jobs({"visa_only": True})
+    except Exception:
+        visa_jobs = 0
+
     return {
         "stats": {
             "h1b_sponsors": f"{all_count:,}+",
-            "opt_roles": "15K+",
+            "opt_roles": f"{visa_jobs:,}",
             "avg_approval_rate": f"{avg_rate}%",
             "petitions_last_year": f"{total_approvals + total_denials:,}+",
         },

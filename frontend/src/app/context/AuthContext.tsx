@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { getProfile, signin, signup, clearStoredToken } from "../lib/api";
+import { getProfile, signin, signup, clearStoredToken, type SignupPayload } from "../lib/api";
 
 interface AuthUser {
   id?: string;
@@ -14,7 +14,7 @@ interface AuthContextValue {
   loading: boolean;
   isAuthenticated: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (payload: { first_name: string; last_name: string; email: string; password: string; visa_status?: string; experience_level?: string; targets?: string[] }) => Promise<void>;
+  signUp: (payload: SignupPayload) => Promise<void>;
   signOut: () => void;
 }
 
@@ -60,7 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const signUp = async (payload: { first_name: string; last_name: string; email: string; password: string; visa_status?: string; experience_level?: string; targets?: string[] }) => {
+  const signUp = async (payload: SignupPayload) => {
     setLoading(true);
     try {
       const data = await signup(payload);

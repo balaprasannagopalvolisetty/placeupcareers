@@ -118,7 +118,7 @@ def get_user_by_email(email: str) -> Optional[dict]:
 def update_user_profile(user_id: str, fields: dict[str, Any]) -> Optional[dict]:
     allowed = {
         "first_name", "last_name", "phone", "location", "visa_status",
-        "experience_years", "current_role", "summary",
+        "experience_years", "current_role", "current_company", "summary",
         "linkedin_url", "github_url", "portfolio_url", "plan",
     }
     sets = {k: v for k, v in fields.items() if k in allowed}
@@ -170,12 +170,26 @@ def get_preferences(user_id: str) -> dict:
                 "SELECT * FROM user_preferences WHERE user_id = ?",
                 (user_id,),
             ).fetchone()
-        return _row_to_dict(row) or {}
+        d = _row_to_dict(row) or {}
+        # Hydrate JSON list columns back into Python lists.
+        import json as _json
+        for src, dest in (
+            ("target_roles_json", "target_roles"),
+            ("target_locations_json", "target_locations"),
+        ):
+            raw = d.pop(src, "[]") or "[]"
+            try:
+                d[dest] = _json.loads(raw)
+            except Exception:
+                d[dest] = []
+        return d
     finally:
         conn.close()
 
 
 def update_preferences(user_id: str, fields: dict[str, Any]) -> dict:
+    import json as _json
+
     allowed = {
         "job_preferences",
         "notification_new_jobs", "notification_daily_digest",
@@ -184,6 +198,13 @@ def update_preferences(user_id: str, fields: dict[str, Any]) -> dict:
         "visa_status", "experience_level",
     }
     sets = {k: v for k, v in fields.items() if k in allowed}
+    # Translate list fields → JSON columns. Cap target_roles at 5.
+    if "target_roles" in fields:
+        roles = list(fields.get("target_roles") or [])[:5]
+        sets["target_roles_json"] = _json.dumps(roles)
+    if "target_locations" in fields:
+        locs = list(fields.get("target_locations") or [])
+        sets["target_locations_json"] = _json.dumps(locs)
     sets["updated_at"] = _now_iso()
     # Coerce booleans into INTEGER.
     for key in (

@@ -82,20 +82,6 @@ def _ensure_demo_user() -> dict:
             "notification_ats_updates": True,
         },
     )
-    user_store.create_alert(user["id"], {
-        "title": "Senior Frontend Engineer", "company": "Stripe",
-        "location": "San Francisco, CA", "salary": "$180K+",
-        "match": 96, "visa": "H-1B",
-    })
-    user_store.create_alert(user["id"], {
-        "title": "Full Stack Developer", "company": "Vercel",
-        "location": "Remote", "salary": "$160K+",
-        "match": 92, "visa": "H-1B",
-    })
-    user_store.create_resume(
-        user["id"], name="Demo_Candidate_Resume.pdf",
-        score=87, size_bytes=145_000, active=True,
-    )
     logger.info(f"Demo user seeded: {DEMO_EMAIL}")
     return user_store.get_user_by_email(DEMO_EMAIL)
 
@@ -138,6 +124,7 @@ async def signin(payload: AuthRequest):
 async def signup(payload: SignupRequest):
     if user_store.get_user_by_email(str(payload.email)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+
     user = user_store.create_user(
         email=str(payload.email),
         password_hash=hash_password(payload.password),
@@ -146,4 +133,32 @@ async def signup(payload: SignupRequest):
         visa_status=payload.visa_status,
         experience_years=payload.experience_level,
     )
+
+    # Persist the richer profile fields collected during signup.
+    profile_updates = {
+        k: v for k, v in {
+            "current_role": payload.current_role,
+            "current_company": payload.current_company,
+            "location": payload.location,
+            "linkedin_url": payload.linkedin_url,
+        }.items() if v
+    }
+    if profile_updates:
+        user_store.update_user_profile(user["id"], profile_updates)
+        user = user_store.get_user_by_id(user["id"]) or user
+
+    # Persist preferences (top-5 target roles + target locations).
+    target_roles = list(payload.target_roles or payload.targets or [])[:5]
+    pref_updates: dict = {}
+    if target_roles:
+        pref_updates["target_roles"] = target_roles
+    if payload.target_locations:
+        pref_updates["target_locations"] = list(payload.target_locations)
+    if payload.visa_status:
+        pref_updates["visa_status"] = payload.visa_status
+    if payload.experience_level:
+        pref_updates["experience_level"] = payload.experience_level
+    if pref_updates:
+        user_store.update_preferences(user["id"], pref_updates)
+
     return _build_auth_response(user)

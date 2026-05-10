@@ -51,18 +51,19 @@ export function ResumePage() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [quickWins, setQuickWins] = useState<Array<{ kw: string; tip: string; impact: string }>>([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  const refresh = () =>
-    api.getResumeList().then(setResumes).catch((err) => {
-      setUploadError((err as Error).message);
-    });
+  const refreshQuickWins = () =>
+    api.getParsedActiveResume()
+      .then((parsed) => setQuickWins(parsed.quick_wins || []))
+      .catch(() => setQuickWins([]));
 
   useEffect(() => {
     let active = true;
     setLoading(true);
     api.getResumeList()
-      .then((list) => { if (active) setResumes(list); })
+      .then((list) => { if (active) { setResumes(list); refreshQuickWins(); } })
       .catch((err) => { if (active) setUploadError((err as Error).message); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -74,7 +75,8 @@ export function ResumePage() {
     setUploading(true);
     try {
       const uploaded = await api.uploadResume(files[0]);
-      setResumes((prev) => [uploaded, ...prev.filter((r) => r.id !== uploaded.id)]);
+      setResumes([uploaded]);
+      refreshQuickWins();
     } catch (error) {
       setUploadError((error as Error).message || "Failed to upload resume.");
     } finally {
@@ -87,6 +89,7 @@ export function ResumePage() {
     try {
       const updated = await api.setActiveResume(id);
       setResumes((rs) => rs.map((r) => ({ ...r, active: r.id === updated.id })));
+      refreshQuickWins();
     } catch (e) {
       setUploadError((e as Error).message);
     }
@@ -97,6 +100,7 @@ export function ResumePage() {
     setResumes((rs) => rs.filter((r) => r.id !== id));
     try {
       await api.deleteResume(id);
+      setQuickWins([]);
     } catch (e) {
       setUploadError((e as Error).message);
       setResumes(previous);
@@ -159,8 +163,8 @@ export function ResumePage() {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         {[
-          { icon: TrendingUp, title: "Increase Your Score", tips: ["Add quantified achievements (%, $, numbers)", "Include job-specific keywords", "Use standard section headers", "Keep to 1 page for < 5 years experience"] },
-          { icon: Zap, title: "Quick Wins", tips: ["Add 'React 18' instead of just 'React'", "Include certifications section", "Add GitHub profile link", "Spell out acronyms (AI → Artificial Intelligence)"] },
+          { icon: TrendingUp, title: "Increase Your Score", tips: ["Add quantified achievements with numbers", "Include keywords from your selected job preferences", "Use standard section headers", "Keep content focused on the target role"] },
+          { icon: Zap, title: "Quick Wins", tips: quickWins.map((win) => win.tip) },
         ].map((card) => (
           <div key={card.title} style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: 22 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
@@ -170,6 +174,11 @@ export function ResumePage() {
               <span style={{ fontFamily: F.sans, fontSize: 14, fontWeight: 600, color: T.text }}>{card.title}</span>
             </div>
             <ul style={{ display: "flex", flexDirection: "column", gap: 8, listStyle: "none", padding: 0, margin: 0 }}>
+              {card.tips.length === 0 && (
+                <li style={{ fontSize: 13, color: T.t3, fontFamily: F.sans, lineHeight: 1.5 }}>
+                  Upload a resume and choose job preferences to generate personalized quick wins.
+                </li>
+              )}
               {card.tips.map((t) => (
                 <li key={t} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13, color: T.t2, fontFamily: F.sans, lineHeight: 1.5 }}>
                   <Check size={12} color={T.red} style={{ marginTop: 2, flexShrink: 0 }} /> {t}
@@ -182,3 +191,4 @@ export function ResumePage() {
     </div>
   );
 }
+

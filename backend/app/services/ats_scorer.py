@@ -137,9 +137,24 @@ def _fallback_score(resume_text: str, job_description: str) -> ATSResult:
     """
     keyword_analysis = _enhance_keyword_analysis(resume_text, job_description)
     density = keyword_analysis.keyword_density_score
+    jd_skills = extract_skills_from_text(job_description)
+    resume_skills = extract_skills_from_text(resume_text)
+    matched_skills, missing_skills, skill_pct = compute_keyword_overlap(resume_skills, jd_skills)
 
-    # Simple score based on keyword density
-    overall = min(density * 1.2, 100)
+    resume_words = len(clean_text(resume_text).split())
+    sections = 0
+    for section in ("experience", "education", "skills", "projects", "certifications", "summary"):
+        if re.search(rf"\b{re.escape(section)}\b", resume_text.lower()):
+            sections += 1
+    completeness_pct = min(100.0, sections * 16.7)
+    length_pct = 100.0 if 350 <= resume_words <= 1200 else max(30.0, min(100.0, resume_words / 350 * 100))
+
+    overall = (
+        density * 0.45
+        + skill_pct * 0.35
+        + completeness_pct * 0.12
+        + length_pct * 0.08
+    )
 
     recommendation = "Strong Match" if overall >= 80 else \
                      "Potential Match" if overall >= 60 else \
@@ -149,15 +164,15 @@ def _fallback_score(resume_text: str, job_description: str) -> ATSResult:
         overall_score=round(overall, 1),
         recommendation=recommendation,
         skill_match=SkillMatch(
-            matched_skills=keyword_analysis.strong_keywords,
-            missing_skills=[kw.keyword for kw in keyword_analysis.missing_keywords],
-            match_percentage=density,
+            matched_skills=matched_skills or keyword_analysis.strong_keywords,
+            missing_skills=missing_skills or [kw.keyword for kw in keyword_analysis.missing_keywords],
+            match_percentage=round(skill_pct or density, 1),
         ),
-        experience_score=50.0,  # Default when LLM unavailable
-        education_score=50.0,
-        projects_score=50.0,
-        certifications_score=50.0,
-        cultural_fit_score=50.0,
+        experience_score=round(min(100.0, completeness_pct + 20), 1),
+        education_score=100.0 if re.search(r"\beducation\b", resume_text.lower()) else 45.0,
+        projects_score=100.0 if re.search(r"\b(project|projects)\b", resume_text.lower()) else 45.0,
+        certifications_score=100.0 if re.search(r"\b(certification|certifications)\b", resume_text.lower()) else 45.0,
+        cultural_fit_score=round(min(100.0, (density + skill_pct) / 2), 1),
         keyword_analysis=keyword_analysis,
         strengths=["Keyword-only analysis (LLM unavailable)"],
         concerns=["Full AI analysis could not be performed"],

@@ -256,8 +256,35 @@ export interface SignupPayload {
   password: string;
   visa_status?: string;
   experience_level?: string;
+  current_role?: string;
+  current_company?: string;
+  location?: string;
+  linkedin_url?: string;
+  target_roles?: string[];
+  target_locations?: string[];
   targets?: string[];
 }
+
+export const VISA_STATUS_OPTIONS = [
+  "F1",
+  "F1-OPT",
+  "F1-STEM OPT",
+  "H-1B",
+  "O-1",
+  "H-4 EAD",
+  "Green Card",
+  "US Citizen",
+  "Other",
+] as const;
+
+export const YEARS_OPTIONS = [
+  "0-1 years",
+  "1-3 years",
+  "3-5 years",
+  "5-7 years",
+  "7-10 years",
+  "10+ years",
+] as const;
 
 // ─── Auth ───
 
@@ -448,4 +475,21 @@ export async function enrichContacts(payload: Record<string, unknown>) {
 
 export async function draftContactEmail(payload: Record<string, unknown>) {
   return request<Record<string, unknown>>("/api/contacts/draft-email", { method: "POST", body: JSON.stringify(payload) });
+}
+
+// ─── Resume parsing (Profile Skills + Resume Quick Wins) ─────────────────
+
+export interface ParsedResume {
+  has_resume: boolean;
+  name?: string;
+  score?: number;
+  skills?: string[];
+  keywords?: string[];
+  quick_wins?: { kw: string; tip: string; impact: string }[];
+  target_roles?: string[];
+  error?: string;
+}
+
+export async function getParsedActiveResume() {
+  return request<ParsedResume>("/api/user/resume/parsed");
 }

@@ -55,28 +55,6 @@ function formatSalary(salary: unknown): string {
   return "Not specified";
 }
 
-const JOBS: Record<number, {
-  id: number; title: string; company: string; location: string; salary: string;
-  match: number; visa: string[]; posted: string; status: string;
-  responsibilities: string[]; requirements: string[]; niceToHave: string[];
-  strongKeywords: string[]; missingKeywords: { kw: string; impact: "High" | "Medium" }[];
-  benefits: string[]; approvalRate: number; petitions: number;
-  hiringManager: { name: string; title: string; email: string; linkedin: string } | null;
-}> = {
-  1: {
-    id: 1, title: "Senior Frontend Engineer", company: "Stripe", location: "San Francisco, CA",
-    salary: "$180K–$220K", match: 96, visa: ["H-1B", "F1-OPT"], posted: "2h ago", status: "New",
-    responsibilities: ["Build and own core payment UI components used by millions daily", "Lead technical design for new product initiatives", "Mentor junior engineers and drive team processes", "Collaborate with design to implement pixel-perfect interfaces"],
-    requirements: ["5+ years React/TypeScript experience", "Deep understanding of browser performance", "Experience with testing frameworks (Jest, Cypress)", "Track record of shipping production features"],
-    niceToHave: ["Experience with financial products", "Knowledge of accessibility standards", "Open source contributions", "GraphQL experience"],
-    strongKeywords: ["React", "TypeScript", "Node.js", "REST APIs", "Jest", "Performance optimization"],
-    missingKeywords: [{ kw: "GraphQL", impact: "High" }, { kw: "Terraform", impact: "Medium" }, { kw: "Kubernetes", impact: "Medium" }],
-    benefits: ["Health, Dental, Vision", "Equity package", "401(k) matching", "Remote flexibility", "Learning budget $5K/yr", "Home office stipend"],
-    approvalRate: 98, petitions: 1283,
-    hiringManager: { name: "Jordan Lee", title: "Engineering Manager, Payments", email: "jordan.lee@stripe.com", linkedin: "linkedin.com/in/jordanlee" },
-  },
-};
-
 function ATSRingLarge({ score }: { score: number }) {
   const r = 52, circ = 2 * Math.PI * r, offset = circ * (1 - score / 100);
   const color = score >= 80 ? T.red : score >= 60 ? T.burnt : T.dark;
@@ -106,7 +84,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
   const [tab, setTab] = useState<"responsibilities" | "requirements" | "niceToHave">("responsibilities");
   const [showApplyModal, setShowApplyModal] = useState(false);
   const [applied, setApplied] = useState(false);
-  const isPro = true; // simulate pro plan
+  const isPro = false;
 
   useEffect(() => {
     let active = true;
@@ -129,24 +107,25 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
     return () => { active = false; };
   }, [jobId]);
 
-  const fallbackJob = JOBS[Number(jobId)] ?? JOBS[1];
   const currentJob = {
-    ...fallbackJob,
-    ...job,
-    salary: formatSalary(job?.salary ?? fallbackJob.salary),
-    match: job?.match_score ?? job?.match ?? fallbackJob.match,
-    visa: normalizeVisa(job?.visa ?? fallbackJob.visa),
-    posted: job?.posted_at ?? job?.posted ?? fallbackJob.posted,
-    status: job?.status ?? fallbackJob.status,
-    responsibilities: job?.responsibilities ?? fallbackJob.responsibilities,
-    requirements: job?.requirements ?? fallbackJob.requirements,
-    niceToHave: job?.niceToHave ?? fallbackJob.niceToHave,
-    strongKeywords: job?.strongKeywords ?? fallbackJob.strongKeywords,
-    missingKeywords: Array.isArray(job?.missingKeywords) ? (job?.missingKeywords as any) : fallbackJob.missingKeywords,
-    benefits: job?.benefits ?? fallbackJob.benefits,
-    approvalRate: job?.approvalRate ?? fallbackJob.approvalRate,
-    petitions: job?.petitions ?? fallbackJob.petitions,
-    hiringManager: fallbackJob.hiringManager,
+    ...(job || {}),
+    title: job?.title ?? "Untitled role",
+    company: job?.company ?? "Unknown",
+    location: job?.location ?? "Remote",
+    salary: formatSalary(job?.salary),
+    match: job?.match_score ?? job?.match ?? 0,
+    visa: normalizeVisa(job?.visa),
+    posted: job?.posted_at ?? job?.posted ?? "Recently",
+    status: job?.status ?? "active",
+    responsibilities: job?.responsibilities ?? [],
+    requirements: job?.requirements ?? [],
+    niceToHave: job?.niceToHave ?? [],
+    strongKeywords: job?.strongKeywords ?? [],
+    missingKeywords: Array.isArray(job?.missingKeywords) ? (job?.missingKeywords as any) : [],
+    benefits: job?.benefits ?? [],
+    approvalRate: job?.approvalRate ?? 0,
+    petitions: job?.petitions ?? 0,
+    hiringManager: null,
   };
 
   if (loading) {
@@ -178,7 +157,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
         <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: 24 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
             <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-              <div style={{ width: 60, height: 60, borderRadius: "50%", background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700, color: "#fff", fontFamily: F.sans, boxShadow: "0 0 16px rgba(166,55,45,0.35)" }}>{currentJob.company[0]}</div>
+              <div style={{ width: 60, height: 60, borderRadius: "50%", background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700, color: "#fff", fontFamily: F.sans, boxShadow: "0 0 16px rgba(166,55,45,0.35)" }}>{currentJob.company[0] || "?"}</div>
               <div>
                 <h2 style={{ fontFamily: F.sans, fontSize: 22, fontWeight: 700, color: T.text, marginBottom: 4, lineHeight: 1.2 }}>{currentJob.title}</h2>
                 <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
@@ -384,9 +363,4 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
     </div>
   );
 }
-   </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
+

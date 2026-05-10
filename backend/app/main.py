@@ -26,6 +26,7 @@ async def lifespan(app: FastAPI):
     logger.info("PlaceUp Career Backend starting up...")
     logger.info(f"   Environment: {settings.app_env}")
     logger.info(f"   Database: {settings.database_backend}")
+    settings.validate_production()
 
     if settings.database_backend == "postgres":
         try:
@@ -102,18 +103,6 @@ def _seed_demo_user():
         "notification_daily_digest": True,
         "notification_ats_updates": True,
     })
-    user_store.create_alert(user["id"], {
-        "title": "Senior Frontend Engineer", "company": "Stripe",
-        "location": "San Francisco, CA", "salary": "$180K+",
-        "match": 96, "visa": "H-1B",
-    })
-    user_store.create_alert(user["id"], {
-        "title": "Full Stack Developer", "company": "Vercel",
-        "location": "Remote", "salary": "$160K+",
-        "match": 92, "visa": "H-1B",
-    })
-    user_store.create_resume(user["id"], name="Demo_Candidate_Resume.pdf",
-                             score=87, size_bytes=145000, active=True)
     logger.info(f"Seeded demo user: {email} (password: Password123!)")
 
 
@@ -169,7 +158,7 @@ def _start_scheduler():
         # ago than the configured interval.
         from pathlib import Path as _Path
         marker_path = _Path("data") / ".last_scrape_at"
-        next_run = datetime.now()
+        next_run = datetime.now() + timedelta(hours=settings.scrape_interval_hours)
         try:
             if marker_path.exists():
                 last_run = datetime.fromisoformat(marker_path.read_text().strip())
@@ -180,6 +169,8 @@ def _start_scheduler():
                     logger.info(
                         f"Last scrape was {age_hours:.1f}h ago; next run in {remaining:.1f}h"
                     )
+                else:
+                    next_run = datetime.now()
         except Exception as e:
             logger.debug(f"Last-scrape marker unreadable: {e}")
 

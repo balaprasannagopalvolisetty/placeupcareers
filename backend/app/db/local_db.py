@@ -188,6 +188,7 @@ class SQLiteClient:
                     visa_status TEXT,
                     experience_years TEXT,
                     current_role TEXT,
+                    current_company TEXT,
                     summary TEXT,
                     linkedin_url TEXT,
                     github_url TEXT,
@@ -208,6 +209,8 @@ class SQLiteClient:
                     notification_marketing_emails INTEGER DEFAULT 0,
                     visa_status TEXT,
                     experience_level TEXT,
+                    target_roles_json TEXT DEFAULT '[]',
+                    target_locations_json TEXT DEFAULT '[]',
                     updated_at TEXT NOT NULL,
                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
                 );
@@ -266,6 +269,16 @@ class SQLiteClient:
 
                 CREATE INDEX IF NOT EXISTS idx_user_apps_user ON user_applications(user_id);
             """)
+            # Idempotent migrations for existing DBs that pre-date the new columns.
+            for table, column, ddl in (
+                ("users",            "current_company",       "TEXT"),
+                ("user_preferences", "target_roles_json",     "TEXT DEFAULT '[]'"),
+                ("user_preferences", "target_locations_json", "TEXT DEFAULT '[]'"),
+            ):
+                try:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+                except Exception:
+                    pass  # column already exists
             conn.commit()
             logger.info(f"SQLite database initialized at {self.db_path}")
         finally:

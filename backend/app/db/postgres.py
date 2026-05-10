@@ -8,12 +8,12 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import Optional
 
-from sqlalchemy import create_engine, func, or_, select, text
+from sqlalchemy import create_engine, func, inspect, or_, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
-from app.db.schema import Company, Contact, H1BSponsor, Job, StagingRecord
+from app.db.schema import Company, Contact, H1BSponsor, Job, MasterJob, StagingRecord
 
 
 def json_default(value):
@@ -37,6 +37,7 @@ class PostgresClient:
     def __init__(self, database_url: Optional[str] = None):
         self.engine = create_engine(database_url or settings.database_url, pool_pre_ping=True)
         self.SessionLocal = sessionmaker(bind=self.engine, autoflush=False, expire_on_commit=False)
+        self._has_master_jobs: Optional[bool] = None
 
     @contextmanager
     def session(self):
@@ -51,6 +52,13 @@ class PostgresClient:
             db.close()
 
     async def get_jobs(self, filters: dict = None, limit: int = 20, offset: int = 0) -> list[dict]:
+        if self._master_jobs_available():
+            with self.session() as db:
+                stmt = select(MasterJob)
+                stmt = self._apply_master_job_filters(stmt, filters)
+                stmt = stmt.order_by(MasterJob.last_seen_at.desc()).limit(limit).offset(offset)
+                rows = db.execute(stmt).scalars().all()
+                return [self._master_job_to_dict(job) for job in rows]
         with self.session() as db:
             stmt = select(Job, Company).join(Company, Job.company_id == Company.id, isouter=True)
             stmt = self._apply_job_filters(stmt, filters)
@@ -59,6 +67,10 @@ class PostgresClient:
             return [self._job_to_dict(job, company) for job, company in rows]
 
     async def get_job(self, job_id: str) -> Optional[dict]:
+        if self._master_jobs_available():
+            with self.session() as db:
+                row = db.execute(select(MasterJob).where(MasterJob.id == job_id)).scalar_one_or_none()
+                return self._master_job_to_dict(row) if row else None
         with self.session() as db:
             row = db.execute(
                 select(Job, Company)
@@ -84,6 +96,11 @@ class PostgresClient:
             return set(db.execute(select(Job.content_hash)).scalars().all())
 
     async def count_jobs(self, filters: dict = None) -> int:
+        if self._master_jobs_available():
+            with self.session() as db:
+                stmt = select(func.count()).select_from(MasterJob)
+                stmt = self._apply_master_job_filters(stmt, filters)
+                return int(db.execute(stmt).scalar() or 0)
         with self.session() as db:
             stmt = select(func.count()).select_from(Job).join(Company, Job.company_id == Company.id, isouter=True)
             stmt = self._apply_job_filters(stmt, filters)
@@ -211,6 +228,59 @@ class PostgresClient:
         if filters.get("visa_only"):
             stmt = stmt.where(Job.visa_score >= 30)
         return stmt
+
+    def _master_jobs_available(self) -> bool:
+        if self._has_master_jobs is None:
+            self._has_master_jobs = inspect(self.engine).has_table("master_jobs")
+        return bool(self._has_master_jobs)
+
+    def _apply_master_job_filters(self, stmt, filters: dict | None):
+        filters = filters or {}
+        if filters.get("category"):
+            # Master rows keep category in extra_metadata; taxonomy filtering is still post-fetch.
+            pass
+        if filters.get("source"):
+            stmt = stmt.where(MasterJob.source_name == filters["source"])
+        if filters.get("location"):
+            stmt = stmt.where(MasterJob.location.ilike(f"%{filters['location']}%"))
+        if filters.get("search"):
+            q = f"%{filters['search']}%"
+            stmt = stmt.where(or_(MasterJob.title.ilike(q), MasterJob.company.ilike(q), MasterJob.description.ilike(q)))
+        if filters.get("visa_only"):
+            stmt = stmt.where(MasterJob.visa_score >= 30)
+        return stmt
+
+    def _master_job_to_dict(self, job: MasterJob) -> dict:
+        meta = job.extra_metadata or {}
+        return {
+            "id": job.id,
+            "title": job.title,
+            "company": job.company or "",
+            "location": job.location or "",
+            "description": job.description or "",
+            "job_url": job.source_url or "",
+            "category": meta.get("category") or "Other",
+            "job_type": job.employment_type or "",
+            "salary": {
+                "min_salary": float(job.salary_min) if job.salary_min is not None else None,
+                "max_salary": float(job.salary_max) if job.salary_max is not None else None,
+                "currency": job.currency or "USD",
+            },
+            "visa": {
+                "visa_opt": job.visa_opt,
+                "visa_stem_opt": job.visa_stem_opt,
+                "visa_h1b": job.visa_h1b,
+                "h1b_verified": job.h1b_verified,
+                "visa_score": job.visa_score,
+            },
+            "source": job.source_name,
+            "source_job_id": job.source_job_id or "",
+            "posted_at": job.posted_at,
+            "scraped_at": job.last_seen_at,
+            "status": job.status,
+            "content_hash": job.canonical_key,
+            "extra_metadata": meta | {"merged_sources": job.merged_sources or []},
+        }
 
     def _job_to_dict(self, job: Job, company: Company | None) -> dict:
         return {

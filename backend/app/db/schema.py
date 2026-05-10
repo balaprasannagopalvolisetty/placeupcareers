@@ -120,6 +120,45 @@ class Job(Base):
     company: Mapped[Company | None] = relationship(back_populates="jobs")
 
 
+class MasterJob(Base):
+    __tablename__ = "master_jobs"
+    __table_args__ = (
+        UniqueConstraint("canonical_key", name="uq_master_jobs_canonical_key"),
+        Index("ix_master_jobs_status_seen", "status", "last_seen_at"),
+        Index("ix_master_jobs_company", "company"),
+        Index("ix_master_jobs_source", "source_name"),
+        Index("ix_master_jobs_visa", "visa_score"),
+    )
+
+    id: Mapped[str] = mapped_column(String(120), primary_key=True)
+    canonical_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    company: Mapped[str] = mapped_column(String(300), nullable=False, default="")
+    location: Mapped[str | None] = mapped_column(String(300))
+    country: Mapped[str | None] = mapped_column(String(80))
+    source_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    source_job_id: Mapped[str | None] = mapped_column(String(240))
+    source_url: Mapped[str | None] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text)
+    employment_type: Mapped[str | None] = mapped_column(String(120))
+    remote_type: Mapped[str | None] = mapped_column(String(120))
+    salary_min: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    salary_max: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    currency: Mapped[str | None] = mapped_column(String(12))
+    visa_opt: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    visa_stem_opt: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    visa_h1b: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    h1b_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    visa_score: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="active", nullable=False)
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    source_priority: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
+    merged_sources: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    extra_metadata: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
+
 class Contact(Base):
     __tablename__ = "contacts"
     __table_args__ = (

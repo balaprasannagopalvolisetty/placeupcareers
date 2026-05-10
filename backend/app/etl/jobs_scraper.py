@@ -122,6 +122,11 @@ async def run(args: argparse.Namespace) -> int:
                 raise RuntimeError(f"Ingest run disappeared: {run_id}")
             staged = client.stage_records(db, run_id, "job_scraper", staging_records)
             loaded = load_normalized_jobs(db, normalized)
+            try:
+                from app.etl.master_jobs import rebuild_master_jobs
+                rebuild_master_jobs(client)
+            except Exception as sync_exc:
+                logger.warning("Master jobs sync failed after scraper load: %s", sync_exc)
             finish_ingest_run(
                 db,
                 run_row,

@@ -261,6 +261,12 @@ async def trigger_scrape(
             job_dicts = [job.model_dump(mode="json") for job in jobs]
             stored = await db.upsert_jobs_batch(job_dicts)
             logger.info(f"Stored {stored} new jobs in database")
+            if db.__class__.__name__ == "PostgresClient":
+                try:
+                    from app.etl.master_jobs import rebuild_master_jobs
+                    rebuild_master_jobs(db)
+                except Exception as sync_exc:
+                    logger.warning("Master jobs sync failed after manual scrape: %s", sync_exc)
 
             artifacts = export_jobs(job_dicts)
             if artifacts:
@@ -285,15 +291,6 @@ async def export_all_jobs(db=Depends(get_db)):
     except Exception as e:
         logger.error(f"Job export failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/{job_id}")
-async def get_job(job_id: str, db=Depends(get_db)):
-    """Get a single job posting by ID."""
-    job = await db.get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    return job
 
 
 @router.get("/detail/{job_id}")
@@ -325,3 +322,12 @@ async def get_job_detail(
         contacts = []
     payload["contacts"] = contacts
     return payload
+
+
+@router.get("/{job_id}")
+async def get_job(job_id: str, db=Depends(get_db)):
+    """Get a single job posting by ID."""
+    job = await db.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job

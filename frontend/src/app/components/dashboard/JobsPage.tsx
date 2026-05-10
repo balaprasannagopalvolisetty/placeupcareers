@@ -90,7 +90,6 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data?.categories)) setTaxonomy(data.categories);
-        if (data?.categories?.[0]) setActiveCategory(data.categories[0].name);
       })
       .catch(() => {});
   }, []);
@@ -239,7 +238,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
           {!loading && filtered.length === 0 && (
             <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: 40, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 16, color: T.t2, fontFamily: F.sans }}>
               <div style={{ fontSize: 14, marginBottom: 6 }}>No jobs found yet for this filter.</div>
-              <div style={{ fontSize: 12, color: T.t3 }}>The scraper runs every {((8))}h — check back soon, or trigger a fresh scrape from the admin endpoint.</div>
+              <div style={{ fontSize: 12, color: T.t3 }}>The scraper runs every 6h. Clear filters or trigger a fresh scrape from the admin endpoint.</div>
             </div>
           )}
           {filtered.map((job, i) => {
@@ -299,3 +298,4 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
     </div>
   );
 }
+

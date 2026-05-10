@@ -5,7 +5,6 @@ Endpoints for resume parsing and ATS scoring.
 
 import logging
 import time
-from datetime import datetime
 from fastapi import APIRouter, File, Form, UploadFile, HTTPException
 from typing import Optional
 
@@ -13,14 +12,6 @@ from app.models.resume import ResumeParseResponse, ResumeScoreResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/resume", tags=["Resume & ATS"])
-
-# Simple resume metadata store for UI list/display support.
-RESUME_STORE = [
-    {"id": "r1", "name": "Alex_Chen_Resume_v3.pdf", "uploaded_at": "2026-05-04T08:15:00Z", "score": 87, "size_bytes": 145000, "active": True},
-    {"id": "r2", "name": "Alex_Chen_Resume_v2.pdf", "uploaded_at": "2026-04-27T12:30:00Z", "score": 74, "size_bytes": 139000, "active": False},
-    {"id": "r3", "name": "Alex_Chen_Resume_v1.pdf", "uploaded_at": "2026-04-10T09:05:00Z", "score": 62, "size_bytes": 130000, "active": False},
-]
-
 
 @router.post("/parse", response_model=ResumeParseResponse)
 async def parse_resume(
@@ -87,25 +78,14 @@ async def parse_resume(
 
 @router.get("/list")
 async def list_resumes():
-    """Return a list of uploaded resumes for the current user."""
-    return RESUME_STORE
+    """Legacy unauthenticated endpoint kept for compatibility."""
+    return []
 
 
 @router.post("/upload")
 async def upload_resume(file: UploadFile = File(..., description="Resume file (PDF or DOCX)")):
-    """Stub upload endpoint for resume listing and version tracking."""
-    filename = file.filename or f"resume_{len(RESUME_STORE) + 1}.pdf"
-    content = await file.read()
-    resume = {
-        "id": f"r{len(RESUME_STORE) + 1}",
-        "name": filename,
-        "uploaded_at": datetime.utcnow().isoformat() + "Z",
-        "score": 0,
-        "size_bytes": len(content),
-        "active": False,
-    }
-    RESUME_STORE.insert(0, resume)
-    return resume
+    """Legacy unauthenticated endpoint kept for compatibility."""
+    raise HTTPException(status_code=410, detail="Use /api/user/resumes/upload")
 
 
 @router.post("/score", response_model=ResumeScoreResponse)

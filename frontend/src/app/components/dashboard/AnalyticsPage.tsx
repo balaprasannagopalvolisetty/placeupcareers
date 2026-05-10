@@ -22,26 +22,6 @@ interface MetricCard {
 interface TimePoint { month: string; apps: number; interviews: number; matches: number }
 interface ScorePoint { version: string; score: number }
 
-const FALLBACK_METRICS: MetricCard[] = [
-  { icon: TrendingUp, label: "Applications", value: "24", trend: "+8 this month", color: T.red },
-  { icon: Eye, label: "Profile Views", value: "312", trend: "+42 this week", color: T.burnt },
-  { icon: FileText, label: "Resume Downloads", value: "28", trend: "+6 this week", color: T.red },
-  { icon: Award, label: "Top Match", value: "96%", trend: "Stripe SFE", color: T.burnt },
-];
-const FALLBACK_TIME: TimePoint[] = [
-  { month: "Oct", apps: 4, interviews: 1, matches: 32 },
-  { month: "Nov", apps: 7, interviews: 2, matches: 45 },
-  { month: "Dec", apps: 5, interviews: 1, matches: 38 },
-  { month: "Jan", apps: 11, interviews: 3, matches: 58 },
-  { month: "Feb", apps: 18, interviews: 5, matches: 74 },
-  { month: "Mar", apps: 24, interviews: 8, matches: 91 },
-];
-const FALLBACK_SCORES: ScorePoint[] = [
-  { version: "v1", score: 62 },
-  { version: "v2", score: 74 },
-  { version: "v3", score: 87 },
-];
-
 const ICON_BY_LABEL: Record<string, typeof TrendingUp> = {
   applications: TrendingUp,
   "profile views": Eye,
@@ -50,14 +30,16 @@ const ICON_BY_LABEL: Record<string, typeof TrendingUp> = {
 };
 
 export function AnalyticsPage() {
-  const [metrics, setMetrics] = useState<MetricCard[]>(FALLBACK_METRICS);
-  const [timeSeries, setTimeSeries] = useState<TimePoint[]>(FALLBACK_TIME);
-  const [scoreData, setScoreData] = useState<ScorePoint[]>(FALLBACK_SCORES);
+  const [metrics, setMetrics] = useState<MetricCard[]>([]);
+  const [timeSeries, setTimeSeries] = useState<TimePoint[]>([]);
+  const [scoreData, setScoreData] = useState<ScorePoint[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setError(null);
 
     api
       .getAnalyticsDashboard()
@@ -68,7 +50,7 @@ export function AnalyticsPage() {
           setMetrics(
             data.metrics.map((m, i) => {
               const key = (m.label || "").toLowerCase();
-              const Icon = ICON_BY_LABEL[key] ?? FALLBACK_METRICS[i % FALLBACK_METRICS.length].icon;
+              const Icon = ICON_BY_LABEL[key] ?? TrendingUp;
               const color = i % 2 === 0 ? T.red : T.burnt;
               return { icon: Icon, label: m.label, value: m.value, trend: m.trend, color };
             }),
@@ -82,8 +64,7 @@ export function AnalyticsPage() {
         if (Array.isArray(scores) && scores.length) setScoreData(scores as ScorePoint[]);
       })
       .catch((err) => {
-        // Fall through to defaults so the page still renders.
-        console.warn("Analytics dashboard fetch failed; using defaults.", err);
+        if (active) setError((err as Error).message || "Could not load analytics.");
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -100,8 +81,14 @@ export function AnalyticsPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      {error && <div style={{ color: T.red, fontFamily: F.sans, fontSize: 13 }}>Error: {error}</div>}
       {/* Metric cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+        {metrics.length === 0 && (
+          <div style={{ gridColumn: "1 / -1", padding: 30, textAlign: "center", color: T.t3, fontFamily: F.sans, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 16 }}>
+            No analytics yet. Upload a resume and start tracking applications to populate this page.
+          </div>
+        )}
         {metrics.map((m, i) => (
           <motion.div key={m.label} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}
             style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 16, padding: "20px" }}>
@@ -119,6 +106,9 @@ export function AnalyticsPage() {
       <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 16 }}>
         <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: 24 }}>
           <div style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 600, color: T.text, marginBottom: 20 }}>Applications Over Time</div>
+          {timeSeries.length === 0 ? (
+            <div style={{ height: 200, display: "flex", alignItems: "center", justifyContent: "center", color: T.t3, fontFamily: F.sans, fontSize: 13 }}>No application timeline yet.</div>
+          ) : (
           <ResponsiveContainer width="100%" height={200}>
             <AreaChart data={timeSeries} margin={{ top: 5, right: 10, bottom: 0, left: -20 }}>
               <defs>
@@ -134,6 +124,7 @@ export function AnalyticsPage() {
               <Area type="monotone" dataKey="interviews" stroke="#8C3A27" strokeWidth={2} fill="none" strokeDasharray="4 2" />
             </AreaChart>
           </ResponsiveContainer>
+          )}
           <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
             {[{ color: T.red, label: "Applications" }, { color: T.burnt, label: "Interviews" }].map((l) => (
               <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -146,6 +137,9 @@ export function AnalyticsPage() {
 
         <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: 24 }}>
           <div style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 600, color: T.text, marginBottom: 20 }}>ATS Score History</div>
+          {scoreData.length === 0 ? (
+            <div style={{ height: 200, display: "flex", alignItems: "center", justifyContent: "center", color: T.t3, fontFamily: F.sans, fontSize: 13 }}>Upload a resume to see score history.</div>
+          ) : (
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={scoreData} margin={{ top: 5, right: 10, bottom: 0, left: -20 }}>
               <XAxis dataKey="version" tick={{ fill: T.t3, fontSize: 11, fontFamily: F.sans }} axisLine={false} tickLine={false} />
@@ -158,6 +152,7 @@ export function AnalyticsPage() {
               </Bar>
             </BarChart>
           </ResponsiveContainer>
+          )}
         </div>
       </div>
     </div>

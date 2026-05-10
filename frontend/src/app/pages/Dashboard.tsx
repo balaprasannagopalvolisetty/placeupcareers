@@ -73,12 +73,6 @@ function formatSalary(salary: unknown): string {
 }
 
 // ─── Defaults (only used while loading or if API fails) ───
-const DEFAULT_USER = { name: "Career Seeker", role: "Software Engineer", avatar: "PU", plan: "Pro" };
-
-const DEFAULT_NOTIFICATIONS = [
-  { id: 1, text: "Sign in to see your notifications", time: "just now", unread: false },
-];
-
 const NAV_ITEMS = [
   { icon: Home,     label: "Overview", to: "/dashboard" },
   { icon: FileText, label: "Resumes", to: "/dashboard/resumes" },
@@ -255,9 +249,6 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
             <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(166,55,45,0.1)", border: "1px solid rgba(166,55,45,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Briefcase size={16} color={T.red} />
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#22c55e", fontFamily: F.sans, fontWeight: 600 }}>
-              <ArrowUpRight size={12} /> +3
-            </div>
           </div>
           <div style={{ fontFamily: F.sans, fontSize: 38, fontWeight: 800, color: T.text, lineHeight: 1, marginBottom: 4 }}><SpringCounter target={totalJobs} /></div>
           <div style={{ fontSize: 13, color: T.t2, fontFamily: F.sans }}>Scraped jobs</div>
@@ -376,7 +367,7 @@ export default function Dashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [notifications, setNotifications] = useState(DEFAULT_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<Array<{ id: string | number; text: string; time: string; unread: boolean }>>([]);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -389,13 +380,13 @@ export default function Dashboard() {
     api.getNotifications().then((data) => {
       setNotifications(data.map((item) => ({ ...item, unread: Boolean((item as any).unread) })));
     }).catch(() => {
-      setNotifications(DEFAULT_NOTIFICATIONS);
+      setNotifications([]);
     });
   }, [isAuthenticated]);
 
-  const displayName = user ? `${user.first_name} ${user.last_name}` : DEFAULT_USER.name;
-  const displayPlan = user?.plan || DEFAULT_USER.plan;
-  const displayAvatar = user ? `${user.first_name?.[0] ?? "P"}${user.last_name?.[0] ?? "U"}` : DEFAULT_USER.avatar;
+  const displayName = user ? `${user.first_name} ${user.last_name}` : "Loading...";
+  const displayPlan = user?.plan || "";
+  const displayAvatar = user ? `${user.first_name?.[0] ?? "P"}${user.last_name?.[0] ?? "U"}` : "PU";
 
   const routeLabel = location.pathname.startsWith("/dashboard/jobs/") ? "Job Detail" :
     location.pathname.startsWith("/dashboard/profile") ? "Profile" :

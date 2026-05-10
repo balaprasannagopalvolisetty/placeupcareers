@@ -1,0 +1,23 @@
+.env
+.env.*
+!.env.example
+service-account.json
+firebase-credentials.json
+*.pem
+*.key
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+env/
+data/
+downloads/
+dist/
+build/
+*.log
+logs/
+.git/
+.gitignore
+H1b_US_DataLIst.xlsx
+sample user.csv
