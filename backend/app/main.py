@@ -27,7 +27,14 @@ async def lifespan(app: FastAPI):
     logger.info(f"   Environment: {settings.app_env}")
     logger.info(f"   Database: {settings.database_backend}")
 
-    if settings.database_backend == "sqlite":
+    if settings.database_backend == "postgres":
+        try:
+            from app.db.postgres import PostgresClient
+            PostgresClient()
+            logger.info("PostgreSQL database configured")
+        except Exception as e:
+            logger.warning(f"PostgreSQL configuration failed: {e}")
+    elif settings.database_backend == "sqlite":
         from app.db.local_db import SQLiteClient
         SQLiteClient()
         logger.info("SQLite database initialized")
@@ -44,12 +51,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Demo seed skipped: {e}")
 
-    try:
-        from app.db.local_db import SQLiteClient
-        from app.services.h1b_excel_importer import import_h1b_excel
-        await import_h1b_excel(SQLiteClient(), force=False)
-    except Exception as e:
-        logger.warning(f"H1B Excel import skipped: {e}")
+    if settings.database_backend == "sqlite":
+        try:
+            from app.db.local_db import SQLiteClient
+            from app.services.h1b_excel_importer import import_h1b_excel
+            await import_h1b_excel(SQLiteClient(), force=False)
+        except Exception as e:
+            logger.warning(f"H1B Excel import skipped: {e}")
 
     try:
         _start_scheduler()
@@ -110,7 +118,7 @@ def _seed_demo_user():
 
 
 def _start_scheduler():
-    if not settings.is_development:
+    if not settings.is_development or settings.database_backend != "sqlite":
         return
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler

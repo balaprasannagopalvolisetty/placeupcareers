@@ -19,7 +19,10 @@ def get_db():
     Yields the appropriate database client (SQLite or Firestore)
     based on the DATABASE_BACKEND environment variable.
     """
-    if settings.database_backend == "firestore":
+    if settings.database_backend == "postgres":
+        from app.db.postgres import PostgresClient
+        client = PostgresClient()
+    elif settings.database_backend == "firestore":
         from app.db.firebase import FirestoreClient
         client = FirestoreClient()
     else:

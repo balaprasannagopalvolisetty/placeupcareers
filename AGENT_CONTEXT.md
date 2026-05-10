@@ -43,9 +43,9 @@ The end-state user flow:
 
 ```
 ┌─────────────────────────────────────────┐                ┌───────────────────────────────────────┐
-│ Frontend — React 18 + Vite + Tailwind   │ HTTP/JSON     │ Backend — FastAPI (uvicorn) :8000     │
-│ /src/app/...                            │ ─────────────►│   /api/auth, /api/user, /api/jobs,   │
-│ Bearer token in localStorage            │ ◄─────────────│   /api/visa, /api/alerts, /api/...   │
+│ Frontend — React 18 + Vite + Tailwind   │ HTTP/JSON      │ Backend — FastAPI (uvicorn) :8000     │
+│ /src/app/...                            │ ─────────────► │   /api/auth, /api/user, /api/jobs,    │
+│ Bearer token in localStorage            │ ◄───────────── │   /api/visa, /api/alerts, /api/...    │
 │ Vite dev proxy: /api/* → :8000          │                │                                       │
 └─────────────────────────────────────────┘                └───────────────────────────────────────┘
                                                                      │

@@ -44,8 +44,12 @@ class Settings(BaseSettings):
     google_cse_id: str = Field(default="", description="Google Programmable Search Engine ID (cx)")
     finalscout_api_key: str = Field(default="", description="FinalScout API key")
 
-    # --- Firebase / GCP ---
+    # --- Database / Firebase / GCP ---
     database_backend: str = Field(default="sqlite")
+    database_url: str = Field(
+        default="postgresql+psycopg://placeup:placeup_dev@localhost:5432/placeup",
+        description="SQLAlchemy URL used when DATABASE_BACKEND=postgres.",
+    )
     firebase_credentials_path: str = Field(default="./service-account.json")
     gcp_project_id: Optional[str] = Field(default=None)
 
