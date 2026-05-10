@@ -1,0 +1,81 @@
+# ─── Secrets ─────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+service-account.json
+
+# ─── Python ──────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.venv/
+venv/
+env/
+ENV/
+.python-version
+.ipynb_checkpoints/
+
+# ─── Node / Vite ─────────────────────────────────────────────
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+.npm/
+.yarn-integrity
+
+# ─── Data & generated artifacts (keep code, not data) ────────
+backend/data/placeup.db
+backend/data/placeup.db-journal
+backend/data/placeup.db-wal
+backend/data/placeup.db-shm
+backend/data/.last_scrape_at
+backend/data/exports/
+backend/data/resumes/
+backend/data/h1b/
+
+# Keep the bundled H1B Excel — that's source data, not generated.
+!backend/H1b_US_DataLIst.xlsx
+
+# Sample CSV is keepable (it's the import template, not real data).
+!backend/sample user.csv
+
+# ─── Editor / OS ─────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.history/
+
+# ─── Logs ────────────────────────────────────────────────────
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ─── User personal files (don't commit personal data) ────────
+Bala_Volisetty_Resume.pdf
+*_Resume.pdf
+*_resume.pdf
+
+# ─── API info files (often contain keys, careful) ────────────
+ApifyAPI_info.txt
+JSearch_API_info.txt
+USAJobAPI_info.txt
+
+# Scheduler last-run marker (regenerated)
+backend/data/
+!backend/data/.gitkeep

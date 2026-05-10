@@ -1,0 +1,67 @@
+# ====================================================================
+# PlaceUp Backend — gitignore
+# CRITICAL: keeps secrets and local data out of source control.
+# ====================================================================
+
+# ── Secrets ────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+service-account.json
+firebase-credentials.json
+
+# ── Python ─────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ── Testing / linting ──────────────────────────────────────
+.pytest_cache/
+.coverage
+.tox/
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# ── Local data ─────────────────────────────────────────────
+data/placeup.db
+data/*.sqlite
+data/*.sqlite3
+data/exports/
+data/dol_lca/*.csv
+data/dol_lca/*.zip
+data/uscis/*.csv
+data/h1b/*.csv
+
+# ── IDE ────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# ── Logs ───────────────────────────────────────────────────
+*.log
+logs/

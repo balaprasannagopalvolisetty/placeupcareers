@@ -1,0 +1,197 @@
+"""
+PlaceUp Career — Text Processing Utilities
+Text cleaning, keyword extraction, and NLP utilities for resume/job analysis.
+"""
+
+import re
+from collections import Counter
+from typing import Optional
+
+
+# Common English stop words to exclude from keyword extraction
+STOP_WORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from",
+    "has", "he", "in", "is", "it", "its", "of", "on", "or", "she",
+    "that", "the", "to", "was", "were", "will", "with", "you", "your",
+    "this", "they", "but", "have", "had", "not", "what", "all", "can",
+    "her", "who", "did", "do", "does", "done", "been", "being", "which",
+    "their", "there", "than", "then", "them", "these", "those", "our",
+    "we", "us", "would", "could", "should", "shall", "may", "might",
+    "must", "about", "above", "after", "again", "also", "any", "because",
+    "before", "between", "both", "each", "few", "how", "into", "just",
+    "more", "most", "no", "nor", "only", "other", "own", "same", "so",
+    "some", "such", "too", "very", "when", "where", "while", "why",
+    # Job description filler words
+    "experience", "work", "working", "team", "role", "position",
+    "ability", "skills", "required", "requirements", "preferred",
+    "including", "strong", "excellent", "responsible", "responsibilities",
+    "opportunity", "looking", "join", "company", "within", "across",
+    "etc", "using", "used", "well", "new", "help", "make", "ensure",
+}
+
+# Technical skills dictionary for enhanced extraction
+TECH_SKILLS = {
+    "python", "javascript", "typescript", "java", "c++", "c#", "go", "rust",
+    "ruby", "php", "swift", "kotlin", "scala", "r", "matlab", "sql",
+    "react", "angular", "vue", "svelte", "next.js", "nuxt", "fastapi",
+    "django", "flask", "express", "spring", "node.js", "rails",
+    "aws", "azure", "gcp", "docker", "kubernetes", "terraform",
+    "mongodb", "postgresql", "mysql", "redis", "elasticsearch",
+    "graphql", "rest", "grpc", "microservices", "ci/cd", "devops",
+    "machine learning", "deep learning", "nlp", "computer vision",
+    "tensorflow", "pytorch", "pandas", "numpy", "scikit-learn",
+    "agile", "scrum", "jira", "git", "linux", "bash",
+    "html", "css", "tailwind", "sass", "webpack", "vite",
+    "figma", "sketch", "adobe", "photoshop", "illustrator",
+    "tableau", "power bi", "looker", "databricks", "spark",
+    "kafka", "rabbitmq", "celery", "airflow",
+    "oauth", "jwt", "ssl", "encryption", "cybersecurity",
+}
+
+
+def clean_text(text: str) -> str:
+    """Clean and normalize text for processing.
+
+    Removes HTML tags, excess whitespace, special characters,
+    and normalizes unicode. Preserves meaningful punctuation.
+
+    Args:
+        text: Raw text string (potentially from PDF/HTML)
+
+    Returns:
+        Cleaned text string
+    """
+    # Remove HTML tags
+    text = re.sub(r"<[^>]+>", " ", text)
+
+    # Remove URLs
+    text = re.sub(r"https?://\S+", " ", text)
+
+    # Remove email addresses
+    text = re.sub(r"\S+@\S+\.\S+", " ", text)
+
+    # Replace multiple whitespace with single space
+    text = re.sub(r"\s+", " ", text)
+
+    # Remove leading/trailing whitespace
+    text = text.strip()
+
+    return text
+
+
+def extract_keywords(
+    text: str,
+    top_n: int = 30,
+    min_word_length: int = 2,
+    include_tech: bool = True,
+) -> list[str]:
+    """Extract top keywords from text, excluding stop words.
+
+    Uses frequency counting with optional technical skill boosting.
+    Returns keywords ordered by relevance (frequency * boost).
+
+    Args:
+        text: Input text to extract keywords from
+        top_n: Maximum number of keywords to return
+        min_word_length: Minimum word length to consider
+        include_tech: Whether to boost known technical skills
+
+    Returns:
+        List of keywords ordered by relevance
+    """
+    # Normalize
+    text_lower = text.lower()
+    words = re.findall(r"\b[a-z][a-z0-9+#./-]*\b", text_lower)
+
+    # Filter stop words and short words
+    filtered = [w for w in words if w not in STOP_WORDS and len(w) >= min_word_length]
+
+    # Count frequencies
+    counter = Counter(filtered)
+
+    # Boost technical skills
+    if include_tech:
+        # Check for multi-word tech terms
+        for skill in TECH_SKILLS:
+            if " " in skill and skill in text_lower:
+                counter[skill] = counter.get(skill, 0) + 5
+            elif skill in counter:
+                counter[skill] = counter[skill] * 2  # Double weight for tech skills
+
+    return [kw for kw, _ in counter.most_common(top_n)]
+
+
+def extract_skills_from_text(text: str) -> list[str]:
+    """Extract recognized technical skills from text.
+
+    Matches against the TECH_SKILLS dictionary using exact
+    and fuzzy matching. Handles multi-word skills.
+
+    Args:
+        text: Input text to scan for skills
+
+    Returns:
+        List of matched technical skills
+    """
+    text_lower = text.lower()
+    found_skills = []
+
+    for skill in TECH_SKILLS:
+        # Use word boundary matching for single words
+        if " " in skill:
+            if skill in text_lower:
+                found_skills.append(skill)
+        else:
+            pattern = r"\b" + re.escape(skill) + r"\b"
+            if re.search(pattern, text_lower):
+                found_skills.append(skill)
+
+    return sorted(set(found_skills))
+
+
+def compute_keyword_overlap(
+    keywords1: list[str],
+    keywords2: list[str],
+) -> tuple[list[str], list[str], float]:
+    """Compute keyword overlap between two keyword lists.
+
+    Args:
+        keywords1: Keywords from document 1 (e.g., resume)
+        keywords2: Keywords from document 2 (e.g., job description)
+
+    Returns:
+        Tuple of (matched_keywords, missing_keywords, overlap_percentage)
+    """
+    set1 = set(k.lower() for k in keywords1)
+    set2 = set(k.lower() for k in keywords2)
+
+    matched = sorted(set1 & set2)
+    missing = sorted(set2 - set1)
+
+    overlap_pct = (len(matched) / len(set2) * 100) if set2 else 0.0
+
+    return matched, missing, round(overlap_pct, 1)
+
+
+def truncate_text(text: str, max_chars: int = 4000) -> str:
+    """Truncate text to fit within LLM context window limits.
+
+    Preserves complete sentences where possible.
+
+    Args:
+        text: Text to truncate
+        max_chars: Maximum character count
+
+    Returns:
+        Truncated text
+    """
+    if len(text) <= max_chars:
+        return text
+
+    # Try to break at last sentence boundary before limit
+    truncated = text[:max_chars]
+    last_period = truncated.rfind(".")
+    if last_period > max_chars * 0.7:
+        return truncated[:last_period + 1]
+
+    return truncated + "..."
