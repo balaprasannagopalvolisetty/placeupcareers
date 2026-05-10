@@ -589,3 +589,125 @@ curl.exe "http://localhost:8000/api/contacts/debug/finalscout?linkedin_url=https
 - **component-registry.md** — component props/state catalog
 - **guidelines.md** — design system + dev guidelines
 - **skills.md** — copy-paste component patterns
+
+---
+
+## 15. Production data path (Postgres + ETL + GCP) — added 2026-05-10
+
+The repo now contains a **dual-backend** data architecture: SQLite stays
+the local dev fallback (zero setup, works offline), while a parallel
+PostgreSQL + ETL pipeline is the production target.
+
+### What's new on disk
+
+```
+backend/
+├── alembic.ini                      # Alembic config (sqlalchemy.url points at local Postgres)
+├── docker-compose.yml               # `docker compose up -d postgres` → local DB
+├── migrations/                      # Alembic migration scripts
+│   ├── env.py
+│   ├── script.py.mako
+│   └── versions/                    # auto-generated migrations live here
+├── ETL_BACKEND.md                   # production-shape doc
+├── deploy/                          # GCP deployment scripts (PowerShell)
+│   ├── setup_gcp.ps1                # provision Cloud SQL + Artifact Registry + secrets
+│   ├── deploy_backend.ps1           # build + push + deploy Cloud Run service
+│   ├── run_migrations.ps1           # alembic upgrade head against Cloud SQL
+│   ├── schedule_jobs.ps1            # Cloud Scheduler → Cloud Run jobs (6h scrape, 12h external API)
+│   └── cloudrun-api.yaml            # Cloud Run service manifest
+└── app/etl/                         # ETL pipeline (NEW — replaces direct DB writes from scrapers)
+    ├── run_manager.py               # writes ingest_runs metrics
+    ├── jobs_scraper.py              # CLI: python -m app.etl.jobs_scraper --queries "..."
+    ├── external_api_ingest.py       # CLI: external API → staging → normalize → upsert
+    ├── sources/                     # provider clients (one per board / API)
+    ├── normalizers/                 # raw payload → canonical job/contact/company shape
+    │   └── jobs.py
+    └── loaders/                     # canonical → final tables (idempotent upsert)
+        └── jobs.py
+```
+
+### How data flows in production
+
+```
+provider (LinkedIn, Indeed, USAJobs, Greenhouse, Apollo, …)
+  → app/etl/sources/<provider>.py        (fetch raw)
+  → staging_records                       (raw provider payload, full fidelity)
+  → app/etl/normalizers/<entity>.py       (normalize to canonical shape)
+  → normalized_payload                    (canonical job/contact/company)
+  → app/etl/loaders/<entity>.py           (idempotent upsert to final tables)
+  → companies / jobs / contacts           (final, deduplicated)
+  → app/etl/run_manager.py                (write metrics to ingest_runs)
+```
+
+The contract is strict: **scrapers never write directly to final tables.**
+Every record passes through `staging_records` first so we have full
+provenance (which provider, when, raw payload) and can replay normalization
+without re-fetching.
+
+### Running the ETL locally
+
+```powershell
+cd backend
+docker compose up -d postgres                     # spin up local Postgres
+$env:DATABASE_BACKEND="postgres"
+$env:DATABASE_URL="postgresql+psycopg://placeup:placeup_dev@localhost:5432/placeup"
+alembic upgrade head                              # apply migrations
+python -m app.etl.jobs_scraper --dry-run --queries "software engineer" --max-per-source 10
+python -m app.etl.jobs_scraper --queries "software engineer" --max-per-source 10
+uvicorn app.main:app --reload --port 8000
+```
+
+When `DATABASE_BACKEND=postgres` is unset (or `=sqlite`), the existing
+SQLite path under `backend/data/placeup.db` keeps working — useful for
+quick local dev without Docker.
+
+### Deploying to GCP
+
+```powershell
+cd backend
+.\deploy\setup_gcp.ps1     -ProjectId YOUR_PROJECT_ID -DbPassword "STRONG_PASSWORD"
+.\deploy\deploy_backend.ps1 -ProjectId YOUR_PROJECT_ID
+.\deploy\run_migrations.ps1 -ProjectId YOUR_PROJECT_ID
+.\deploy\schedule_jobs.ps1  -ProjectId YOUR_PROJECT_ID
+```
+
+`setup_gcp.ps1` creates:
+- Cloud SQL Postgres instance + database + user
+- Artifact Registry repo for the container image
+- Service accounts with least-privilege IAM
+- Secret Manager entries for `JWT_SECRET`, `DATABASE_URL`
+
+Provider API keys (FinalScout, Hunter, Apollo, Groq, etc.) are added
+to Secret Manager **after** initial setup — see `ETL_BACKEND.md`.
+
+`schedule_jobs.ps1` wires Cloud Scheduler to two Cloud Run *jobs* (not
+the API service):
+- `placeup-job-scraper-6h` — every 6h, runs `app.etl.jobs_scraper`
+- `placeup-external-api-12h` — every 12h, runs `app.etl.external_api_ingest`
+
+The API service stays up continuously and serves requests. Heavy ETL
+runs in batch jobs so the API never slows down during a scrape.
+
+### Adding a new ETL source — recipe
+
+1. Create `backend/app/etl/sources/<provider>.py` with an async
+   `fetch(query, max_results) -> list[dict]` that returns raw provider
+   payloads.
+2. Create or extend a normalizer in
+   `backend/app/etl/normalizers/<entity>.py` to shape the payload into
+   the canonical format used by `loaders/`.
+3. Create or extend a loader in `backend/app/etl/loaders/<entity>.py`
+   for the upsert logic against the final table.
+4. Wire a CLI entry point in `app/etl/jobs_scraper.py` or
+   `app/etl/external_api_ingest.py` so Cloud Scheduler can trigger it.
+5. If the source needs an API key, add it to `app/config.py` and to
+   the GCP `secrets create` block in `deploy/setup_gcp.ps1`.
+
+### What's still SQLite-only
+
+The user-facing tables (`users`, `user_resumes`, `user_alerts`,
+`user_preferences`, `user_alert_settings`, `user_applications`) currently
+live in `local_db.py`'s SQLite schema. To go full-Postgres, port these
+into Alembic migrations and into the SQLAlchemy session under
+`backend/app/db/postgres.py` (not yet created — see `ETL_BACKEND.md` for
+the planned shape).

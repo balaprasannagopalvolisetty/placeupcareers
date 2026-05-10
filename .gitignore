@@ -79,3 +79,24 @@ USAJobAPI_info.txt
 # Scheduler last-run marker (regenerated)
 backend/data/
 !backend/data/.gitkeep
+
+# ─── Postgres / Docker dev volumes ───────────────────────────
+backend/postgres-data/
+postgres-data/
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+
+# Local Docker overrides (compose override files)
+docker-compose.override.yml
+docker-compose.override.yaml
+
+# ─── Alembic local artifacts ─────────────────────────────────
+backend/migrations/versions/__pycache__/
+
+# ─── GCP / deploy artifacts (don't commit credentials) ───────
+*-service-account.json
+gcp-key.json
+.gcloud/
+backend/deploy/*.local.ps1
