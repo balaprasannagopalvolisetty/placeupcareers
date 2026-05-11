@@ -136,13 +136,19 @@ class PostgresClient:
                     "id": contact.get("id") or stable_hash(contact),
                     "company_id": company.id if company else None,
                     "full_name": contact.get("full_name"),
+                    "first_name": contact.get("first_name"),
+                    "last_name": contact.get("last_name"),
                     "title": contact.get("title"),
+                    "role": contact.get("role") or "other",
+                    "company_domain": contact.get("company_domain"),
                     "email": (contact.get("email") or "").lower() or None,
                     "linkedin_url": contact.get("linkedin_url"),
+                    "linkedin_search_url": contact.get("linkedin_search_url"),
                     "source_name": contact.get("source") or "unknown",
                     "confidence": contact.get("confidence"),
                     "related_job_id": contact.get("related_job_id"),
                     "last_verified_at": contact.get("last_verified_at"),
+                    "source_payload": contact.get("source_payload") or {},
                 }
                 if not values["email"] and not values["linkedin_url"]:
                     continue
@@ -317,15 +323,21 @@ class PostgresClient:
         return {
             "id": contact.id,
             "full_name": contact.full_name,
+            "first_name": contact.first_name,
+            "last_name": contact.last_name,
             "title": contact.title,
+            "role": contact.role or "other",
             "company": company.name if company else "",
+            "company_domain": contact.company_domain,
             "email": contact.email,
             "linkedin_url": contact.linkedin_url,
+            "linkedin_search_url": contact.linkedin_search_url,
             "source": contact.source_name,
             "confidence": contact.confidence,
             "related_job_id": contact.related_job_id,
             "discovered_at": contact.first_seen_at,
             "last_verified_at": contact.last_verified_at,
+            "source_payload": contact.source_payload or {},
         }
 
 

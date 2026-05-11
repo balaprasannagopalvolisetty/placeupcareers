@@ -16,48 +16,50 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "silver_posts",
-        sa.Column("job_id", sa.BigInteger(), primary_key=True),
-        sa.Column("title", sa.Text(), nullable=False),
-        sa.Column("organization", sa.Text()),
-        sa.Column("organization_url", sa.Text()),
-        sa.Column("job_url", sa.Text()),
-        sa.Column("source_type", sa.Text()),
-        sa.Column("source", sa.Text()),
-        sa.Column("source_domain", sa.Text()),
-        sa.Column("employer_domain", sa.Text()),
-        sa.Column("date_posted", sa.DateTime(timezone=True)),
-        sa.Column("date_created", sa.DateTime(timezone=True)),
-        sa.Column("date_valid_through", sa.DateTime(timezone=True)),
-        sa.Column("location_type", sa.Text()),
-        sa.Column("employment_type", postgresql.ARRAY(sa.Text())),
-        sa.Column("remote_flag", sa.Boolean(), nullable=False, server_default=sa.false()),
-        sa.Column("city", sa.Text()),
-        sa.Column("county", sa.Text()),
-        sa.Column("region", sa.Text()),
-        sa.Column("country", sa.Text()),
-        sa.Column("full_location", sa.Text()),
-        sa.Column("timezone", sa.Text()),
-        sa.Column("latitude", sa.Float()),
-        sa.Column("longitude", sa.Float()),
-        sa.Column("street_address", sa.Text()),
-        sa.Column("postal_code", sa.Text()),
-        sa.Column("address_locality", sa.Text()),
-        sa.Column("address_region", sa.Text()),
-        sa.Column("address_country", sa.Text()),
-        sa.Column("description_text", sa.Text()),
-        sa.Column("locations_raw", postgresql.JSONB()),
-        sa.Column("salary_raw", postgresql.JSONB()),
-        sa.Column("record_source", sa.Text()),
-        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true()),
-        sa.Column("silver_created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.Column("silver_updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-    )
-    op.create_index("ix_silver_posts_active_posted", "silver_posts", ["is_active", "date_posted"])
-    op.create_index("ix_silver_posts_location", "silver_posts", ["country", "region", "city"])
-    op.create_index("ix_silver_posts_organization", "silver_posts", ["organization"])
-    op.create_index("ix_silver_posts_source", "silver_posts", ["source"])
+    bind = op.get_bind()
+    if not sa.inspect(bind).has_table("silver_posts"):
+        op.create_table(
+            "silver_posts",
+            sa.Column("job_id", sa.BigInteger(), primary_key=True),
+            sa.Column("title", sa.Text(), nullable=False),
+            sa.Column("organization", sa.Text()),
+            sa.Column("organization_url", sa.Text()),
+            sa.Column("job_url", sa.Text()),
+            sa.Column("source_type", sa.Text()),
+            sa.Column("source", sa.Text()),
+            sa.Column("source_domain", sa.Text()),
+            sa.Column("employer_domain", sa.Text()),
+            sa.Column("date_posted", sa.DateTime(timezone=True)),
+            sa.Column("date_created", sa.DateTime(timezone=True)),
+            sa.Column("date_valid_through", sa.DateTime(timezone=True)),
+            sa.Column("location_type", sa.Text()),
+            sa.Column("employment_type", postgresql.ARRAY(sa.Text())),
+            sa.Column("remote_flag", sa.Boolean(), nullable=False, server_default=sa.false()),
+            sa.Column("city", sa.Text()),
+            sa.Column("county", sa.Text()),
+            sa.Column("region", sa.Text()),
+            sa.Column("country", sa.Text()),
+            sa.Column("full_location", sa.Text()),
+            sa.Column("timezone", sa.Text()),
+            sa.Column("latitude", sa.Float()),
+            sa.Column("longitude", sa.Float()),
+            sa.Column("street_address", sa.Text()),
+            sa.Column("postal_code", sa.Text()),
+            sa.Column("address_locality", sa.Text()),
+            sa.Column("address_region", sa.Text()),
+            sa.Column("address_country", sa.Text()),
+            sa.Column("description_text", sa.Text()),
+            sa.Column("locations_raw", postgresql.JSONB()),
+            sa.Column("salary_raw", postgresql.JSONB()),
+            sa.Column("record_source", sa.Text()),
+            sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true()),
+            sa.Column("silver_created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+            sa.Column("silver_updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        )
+    op.execute("CREATE INDEX IF NOT EXISTS ix_silver_posts_active_posted ON silver_posts (is_active, date_posted)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_silver_posts_location ON silver_posts (country, region, city)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_silver_posts_organization ON silver_posts (organization)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_silver_posts_source ON silver_posts (source)")
 
 
 def downgrade() -> None:

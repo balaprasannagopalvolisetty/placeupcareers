@@ -15,9 +15,12 @@ import csv
 import hashlib
 import logging
 import re
+import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Optional
+
+from app.services.finalscout_enrichment import normalize_linkedin_url
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +32,8 @@ def _clean_last_name(raw: Optional[str]) -> Optional[str]:
     raw = raw.strip().strip('"').strip("-")
     if not raw or raw == "-":
         return None
+    if len(raw.split()) > 4:
+        return None
     # Take everything up to the first comma, then the first word.
     head = raw.split(",", 1)[0].strip()
     first_word = head.split()[0] if head.split() else None
@@ -38,14 +43,14 @@ def _clean_last_name(raw: Optional[str]) -> Optional[str]:
 
 
 def _slugify_url(url: Optional[str]) -> Optional[str]:
-    if not url:
+    return normalize_linkedin_url(url)
+
+
+def _clean_dash(raw: Optional[str]) -> Optional[str]:
+    if not raw:
         return None
-    url = url.strip()
-    if not url or url == "-":
-        return None
-    if not url.startswith(("http://", "https://")):
-        url = "https://" + url
-    return url
+    value = raw.strip().strip('"').strip()
+    return value if value and value != "-" else None
 
 
 def _looks_recruiter(title: str) -> bool:
@@ -62,10 +67,10 @@ def _row_to_contact(row: dict) -> Optional[dict]:
     """Map a CSV row to a contact dict suitable for `db.upsert_contacts`."""
     first = (row.get("First Name") or "").strip().strip('"')
     last  = _clean_last_name(row.get("Last Name"))
-    title = (row.get("Title") or "").strip().strip('"').strip("-").strip() or None
-    company = (row.get("Company") or "").strip().strip('"').strip("-").strip() or None
-    email = (row.get("Email") or "").strip().strip('"').strip("-").strip().lower() or None
-    phone = (row.get("Phone") or "").strip().strip('"').strip("-").strip() or None
+    title = _clean_dash(row.get("Title"))
+    company = _clean_dash(row.get("Company"))
+    email = (_clean_dash(row.get("Email")) or "").lower() or None
+    phone = _clean_dash(row.get("Phone"))
     profile = _slugify_url(row.get("Profile URL"))
 
     if not (first or last or profile or email):
@@ -143,7 +148,7 @@ async def import_csv(db, file_path: Path, *, max_rows: Optional[int] = None) -> 
     }
 
 
-async def enrich_missing_emails(db, *, limit: int = 200) -> dict:
+async def _enrich_missing_emails_legacy(db, *, limit: int = 200) -> dict:
     """For contacts that have a LinkedIn URL but no email, try the
     configured enrichment providers in order: FinalScout → Hunter.
 
@@ -214,4 +219,113 @@ async def enrich_missing_emails(db, *, limit: int = 200) -> dict:
         "candidates_checked": len(candidates),
         "finalscout_credits_used": fs_calls,
         "hunter_credits_used": hu_calls,
+    }
+
+
+def _enum_value(value):
+    return getattr(value, "value", value)
+
+
+def _merge_enriched_contact(original: dict, enriched) -> dict:
+    """Keep the original row id and add fields returned by FinalScout/Hunter."""
+    merged = dict(original)
+    if not enriched:
+        return merged
+
+    for key in (
+        "full_name", "first_name", "last_name", "title", "role", "company",
+        "company_domain", "email", "linkedin_url", "linkedin_search_url",
+        "source", "confidence", "related_job_id", "last_verified_at",
+    ):
+        value = getattr(enriched, key, None)
+        if value not in (None, "", "-"):
+            merged[key] = _enum_value(value)
+
+    payload = dict(original.get("source_payload") or {})
+    enriched_payload = getattr(enriched, "source_payload", None) or {}
+    payload["enrichment"] = {
+        "source": _enum_value(getattr(enriched, "source", None)),
+        "payload": enriched_payload,
+        "enriched_at": datetime.now(timezone.utc).isoformat(),
+    }
+    merged["source_payload"] = payload
+    if merged.get("email"):
+        merged["email"] = str(merged["email"]).lower()
+        merged["confidence"] = merged.get("confidence") or "verified"
+        merged["last_verified_at"] = merged.get("last_verified_at") or datetime.now(timezone.utc).isoformat()
+    return merged
+
+
+async def enrich_missing_emails(db, *, limit: int = 200, byok_finalscout_key: Optional[str] = None) -> dict:
+    """Enrich contacts that have a LinkedIn URL but no email."""
+    from app.config import settings
+
+    finalscout_key = (byok_finalscout_key or settings.finalscout_api_key or "").strip()
+    have_finalscout = bool(finalscout_key)
+    have_hunter = bool((settings.hunter_api_key or "").strip())
+    if not (have_finalscout or have_hunter):
+        logger.info("Email enrichment skipped: no API keys configured")
+        return {"enriched": 0, "note": "no API keys configured"}
+
+    rows = await db.get_contacts(limit=10000)
+    candidates = [r for r in rows if r.get("linkedin_url") and not r.get("email")][:limit]
+    if not candidates:
+        return {"enriched": 0, "candidates_checked": 0, "note": "no candidates"}
+
+    enriched = 0
+    fs_calls = fs_found = fs_errors = 0
+    hu_calls = hu_found = hu_errors = 0
+
+    for c in candidates:
+        enriched_contact = None
+
+        if have_finalscout:
+            try:
+                from app.services.finalscout_enrichment import find_by_linkedin
+                enriched_contact = await find_by_linkedin(
+                    c["linkedin_url"],
+                    enable_personal_email=False,
+                    enable_generic_email=False,
+                    byok_api_key=finalscout_key,
+                )
+                fs_calls += 1
+                if enriched_contact and enriched_contact.email:
+                    fs_found += 1
+            except Exception as exc:
+                fs_errors += 1
+                logger.debug(f"FinalScout lookup failed: {exc}")
+            await asyncio.sleep(0.22)
+
+        if not (enriched_contact and enriched_contact.email) and have_hunter:
+            domain = (c.get("company_domain") or "").strip()
+            first = (c.get("first_name") or "").strip()
+            last = (c.get("last_name") or "").strip()
+            if domain and first and last:
+                try:
+                    from app.services.hunter_enrichment import email_finder
+                    contact_obj = await email_finder(
+                        domain=domain, first_name=first, last_name=last,
+                        company=c.get("company"),
+                    )
+                    hu_calls += 1
+                    if contact_obj and contact_obj.email:
+                        enriched_contact = contact_obj
+                        hu_found += 1
+                except Exception as exc:
+                    hu_errors += 1
+                    logger.debug(f"Hunter lookup failed: {exc}")
+
+        if enriched_contact and enriched_contact.email:
+            await db.upsert_contacts([_merge_enriched_contact(c, enriched_contact)])
+            enriched += 1
+
+    return {
+        "enriched": enriched,
+        "candidates_checked": len(candidates),
+        "finalscout_credits_used": fs_calls,
+        "finalscout_found": fs_found,
+        "finalscout_errors": fs_errors,
+        "hunter_credits_used": hu_calls,
+        "hunter_found": hu_found,
+        "hunter_errors": hu_errors,
     }

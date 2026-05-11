@@ -170,14 +170,20 @@ class Contact(Base):
     id: Mapped[str] = mapped_column(String(80), primary_key=True)
     company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id"))
     full_name: Mapped[str | None] = mapped_column(String(300))
+    first_name: Mapped[str | None] = mapped_column(String(150))
+    last_name: Mapped[str | None] = mapped_column(String(150))
     title: Mapped[str | None] = mapped_column(String(300))
+    role: Mapped[str | None] = mapped_column(String(80))
+    company_domain: Mapped[str | None] = mapped_column(String(255))
     email: Mapped[str | None] = mapped_column(String(320))
     linkedin_url: Mapped[str | None] = mapped_column(Text)
+    linkedin_search_url: Mapped[str | None] = mapped_column(Text)
     source_name: Mapped[str | None] = mapped_column(String(120))
     confidence: Mapped[str | None] = mapped_column(String(80))
     related_job_id: Mapped[str | None] = mapped_column(String(80), ForeignKey("jobs.id"))
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    source_payload: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
 
 class H1BSponsor(Base):

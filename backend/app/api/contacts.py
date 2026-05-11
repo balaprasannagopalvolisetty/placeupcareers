@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from pathlib import Path
 
 from app.dependencies import get_db
+from fastapi.responses import PlainTextResponse
 from app.models.contact import (
     Contact, ContactContribution, ContactSearchRequest,
     ContactSource, EnrichmentResult,
@@ -54,13 +55,29 @@ async def import_recruiter_csv(
 @router.post("/enrich-emails")
 async def enrich_recruiter_emails(
     limit: int = Query(default=200, ge=1, le=2000),
+    x_finalscout_key: Optional[str] = Header(default=None, alias="X-FinalScout-Key"),
     db=Depends(get_db),
 ):
     """For contacts that have a LinkedIn URL but no email, run them through
     FinalScout → Apollo → Hunter to fill the gap. Returns counts."""
     from app.services.contact_csv_importer import enrich_missing_emails
 
-    return await enrich_missing_emails(db, limit=limit)
+    return await enrich_missing_emails(db, limit=limit, byok_finalscout_key=x_finalscout_key)
+
+
+@router.post("/import-sample-and-enrich")
+async def import_sample_and_enrich(
+    limit: int = Query(default=20, ge=1, le=2000),
+    x_finalscout_key: Optional[str] = Header(default=None, alias="X-FinalScout-Key"),
+    db=Depends(get_db),
+):
+    """Import backend/sample user.csv, then run LinkedIn email enrichment."""
+    from app.services.contact_csv_importer import enrich_missing_emails, import_csv
+
+    backend_root = Path(__file__).resolve().parent.parent.parent
+    csv_result = await import_csv(db, backend_root / "sample user.csv")
+    enrich_result = await enrich_missing_emails(db, limit=limit, byok_finalscout_key=x_finalscout_key)
+    return {"csv_import": csv_result, "email_enrichment": enrich_result}
 
 
 @router.get("/debug/finalscout")
@@ -276,9 +293,11 @@ async def list_contacts(
     limit: int = Query(50, ge=1, le=500),
     db=Depends(get_db),
 ):
-    rows = await db.get_contacts(company=company, job_id=job_id, limit=limit)
+    fetch_limit = 10000 if source else limit
+    rows = await db.get_contacts(company=company, job_id=job_id, limit=fetch_limit)
     if source:
         rows = [r for r in rows if (r.get("source") or "").lower() == source.lower()]
+        rows = rows[:limit]
     contacts: list[Contact] = []
     for r in rows:
         try:
@@ -286,6 +305,78 @@ async def list_contacts(
         except Exception:
             pass
     return contacts
+
+
+def _cell(value, width: int) -> str:
+    text = str(value or "").replace("\r", " ").replace("\n", " ").strip()
+    if len(text) > width:
+        text = text[: max(0, width - 1)] + "…"
+    return text.ljust(width)
+
+
+def _contacts_table(rows: list[dict]) -> str:
+    columns = [
+        ("Name", 24, lambda r: r.get("full_name")),
+        ("Email", 34, lambda r: r.get("email")),
+        ("Company", 24, lambda r: r.get("company")),
+        ("Title", 34, lambda r: r.get("title")),
+        ("Source", 16, lambda r: r.get("source")),
+        ("Confidence", 10, lambda r: r.get("confidence")),
+        ("LinkedIn", 44, lambda r: r.get("linkedin_url") or r.get("linkedin_search_url")),
+    ]
+    header = " | ".join(_cell(label, width) for label, width, _ in columns)
+    divider = "-+-".join("-" * width for _, width, _ in columns)
+    body = [
+        " | ".join(_cell(accessor(row), width) for _, width, accessor in columns)
+        for row in rows
+    ]
+    if not body:
+        body = ["No contacts found."]
+    return "\n".join([header, divider, *body])
+
+
+@router.get("/table", response_class=PlainTextResponse)
+async def list_contacts_table(
+    company: Optional[str] = Query(None),
+    job_id: Optional[str] = Query(None),
+    source: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=500),
+    db=Depends(get_db),
+):
+    """Human-readable contacts table for CLI use."""
+    fetch_limit = 10000 if source else limit
+    rows = await db.get_contacts(company=company, job_id=job_id, limit=fetch_limit)
+    if source:
+        rows = [r for r in rows if (r.get("source") or "").lower() == source.lower()]
+    return _contacts_table(rows[:limit])
+
+
+@router.post("/export-job-emails")
+async def export_job_emails(
+    contacts_per_job: int = Query(default=5, ge=1, le=5),
+    min_contacts_per_job: int = Query(default=3, ge=0, le=5),
+    job_limit: int = Query(default=1000, ge=1, le=10000),
+    output_file: Optional[str] = Query(
+        default=None,
+        description="Optional filename inside backend/data/exports, e.g. job_contact_emails.csv.",
+    ),
+    db=Depends(get_db),
+):
+    """Export open jobs matched with 3-5 best available contact emails per company."""
+    from app.services.job_contact_exporter import export_job_contact_matches
+
+    output_path = None
+    if output_file:
+        backend_root = Path(__file__).resolve().parent.parent.parent
+        output_path = backend_root / "data" / "exports" / Path(output_file).name
+
+    return await export_job_contact_matches(
+        db,
+        contacts_per_job=contacts_per_job,
+        min_contacts_per_job=min_contacts_per_job,
+        job_limit=job_limit,
+        output_path=output_path,
+    )
 
 
 @router.get("/stats")
@@ -313,7 +404,7 @@ async def contact_stats(db=Depends(get_db)):
         "with_linkedin": with_linkedin,
         "free_source_share": {s: by_source.get(s, 0) for s in
             ("ats_metadata", "dol_lca", "team_page", "github", "crowdsourced", "linkedin_search_url")},
-        "paid_source_share": {s: by_source.get(s, 0) for s in ("apollo", "hunter", "google_xray")},
+        "paid_source_share": {s: by_source.get(s, 0) for s in ("apollo", "hunter", "finalscout", "google_xray")},
         "by_confidence": by_confidence,
         "top_companies": [{"company": c, "contacts": n} for c, n in top_companies],
     }
