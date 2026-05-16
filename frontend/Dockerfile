@@ -2,7 +2,7 @@ FROM node:22-alpine AS build
 
 WORKDIR /app
 
-ARG VITE_API_BASE=""
+ARG VITE_API_BASE="https://placeup-api-rui2a74muq-ue.a.run.app"
 ENV VITE_API_BASE=$VITE_API_BASE
 
 COPY package.json package-lock.json ./

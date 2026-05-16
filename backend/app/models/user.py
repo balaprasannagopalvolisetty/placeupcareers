@@ -85,6 +85,27 @@ class NotificationItem(BaseModel):
     unread: bool = True
 
 
+class DashboardSummaryAlert(BaseModel):
+    id: str
+    title: str
+    company: str = ""
+    match_score: int = 0
+    message: Optional[str] = None
+    time: str
+    unread: bool = True
+
+
+class DashboardSummary(BaseModel):
+    resume_score: int = 0
+    has_resume: bool = False
+    active_resume_name: Optional[str] = None
+    total_resumes: int = 0
+    total_jobs: int = 0
+    total_applications: int = 0
+    recent_alerts: list[DashboardSummaryAlert] = Field(default_factory=list)
+    featured_jobs: list[dict] = Field(default_factory=list)
+
+
 class ResumeMetadata(BaseModel):
     id: str
     name: str
@@ -92,3 +113,18 @@ class ResumeMetadata(BaseModel):
     score: int
     size_bytes: int
     active: bool = False
+
+
+class UserApplication(BaseModel):
+    job_id: str
+    title: str = ""
+    company: str = ""
+    location: str = ""
+    job_url: str = ""
+    match_score: int = 0
+    status: str = "applied"
+    not_applied_reason: Optional[str] = None
+    heard_back: Optional[bool] = None
+    position_open: Optional[bool] = None
+    salary_offered: Optional[str] = None
+    notes: Optional[str] = None

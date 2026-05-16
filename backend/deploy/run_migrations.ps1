@@ -12,8 +12,8 @@ gcloud.cmd run jobs deploy placeup-db-migrate `
   --region $Region `
   --service-account "placeup-etl-sa@$ProjectId.iam.gserviceaccount.com" `
   --command alembic `
-  --args "upgrade,head" `
-  --add-cloudsql-instances "$ProjectId`:$Region`:$DbInstance" `
+  --args="upgrade,head" `
+  --set-cloudsql-instances "$ProjectId`:$Region`:$DbInstance" `
   --set-env-vars "APP_ENV=production,DATABASE_BACKEND=postgres" `
   --set-secrets "DATABASE_URL=DATABASE_URL:latest"
 

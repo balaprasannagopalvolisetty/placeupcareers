@@ -14,13 +14,18 @@ interface SponsorRow {
   employer: string;
   city?: string;
   state?: string;
+  location?: string;
   type: string;
   fiscal_year?: number;
+  fy?: number;
   approvals: number;
+  approval?: number;
   new_approvals?: number;
   continuing_approvals?: number;
   denials: number;
+  denial?: number;
   rate: number;
+  approval_rate?: number;
   status: string;
   total_petitions?: number;
 }
@@ -58,9 +63,9 @@ export function VisaTrackerPage() {
 
   // Headline stats — once.
   useEffect(() => {
-    fetch("/api/visa/dashboard")
-      .then((r) => r.json() as Promise<DashboardResponse>)
-      .then((data) => { if (data?.stats) setStats({ ...stats, ...data.stats }); })
+    api.getVisaDashboard()
+      .then((data) => data as DashboardResponse)
+      .then((data) => { if (data?.stats) setStats((prev) => ({ ...prev, ...data.stats })); })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -76,11 +81,19 @@ export function VisaTrackerPage() {
       if (stateFilter.trim()) params.set("state", stateFilter.trim());
       params.set("page", String(page));
       params.set("page_size", String(pageSize));
-      fetch(`/api/visa/sponsors?${params.toString()}`)
-        .then((r) => r.json() as Promise<SponsorListResponse>)
+      api.getVisaSponsors(Object.fromEntries(params.entries()))
+        .then((data) => data as SponsorListResponse)
         .then((data) => {
           if (!active) return;
-          setSponsors(data?.sponsors || []);
+          setSponsors((data?.sponsors || []).map((row) => ({
+            ...row,
+            city: row.city || row.location || "Multiple",
+            fiscal_year: row.fiscal_year || row.fy || 0,
+            approvals: row.approvals ?? row.approval ?? 0,
+            denials: row.denials ?? row.denial ?? 0,
+            rate: row.rate ?? row.approval_rate ?? 0,
+            status: row.status || "Active",
+          })));
           setTotal(data?.total || 0);
         })
         .catch((err) => { if (active) setError((err as Error).message); })
@@ -137,15 +150,31 @@ export function VisaTrackerPage() {
         </span>
       </div>
 
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, color: T.t3, fontFamily: F.sans, fontSize: 12 }}>
+        <span>Verified sponsor records with location, fiscal year, petition counts, approval rate, and status.</span>
+        <span style={{ color: T.t2 }}>{total ? `${((page - 1) * pageSize + 1).toLocaleString()}-${Math.min(page * pageSize, total).toLocaleString()} of ${total.toLocaleString()}` : "0 records"}</span>
+      </div>
+
       {/* Sponsor table */}
       <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 16, overflow: "hidden" }}>
         {error && <div style={{ padding: 16, color: T.red, fontFamily: F.sans, fontSize: 13 }}>Error: {error}</div>}
         <div style={{ overflowX: "auto", maxHeight: "60vh", overflowY: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead style={{ position: "sticky", top: 0, background: "rgba(8,14,32,0.95)", backdropFilter: "blur(20px)" }}>
+          {/* Explicit minWidth + colgroup keeps every column visible even on narrow viewports; horizontal scroll kicks in instead of columns collapsing. */}
+          <table style={{ width: "100%", minWidth: 980, borderCollapse: "collapse", tableLayout: "fixed" }}>
+            <colgroup>
+              <col style={{ width: "22%" }} />
+              <col style={{ width: "16%" }} />
+              <col style={{ width: "8%" }} />
+              <col style={{ width: "7%" }} />
+              <col style={{ width: "11%" }} />
+              <col style={{ width: "9%" }} />
+              <col style={{ width: "16%" }} />
+              <col style={{ width: "11%" }} />
+            </colgroup>
+            <thead style={{ position: "sticky", top: 0, background: "rgba(8,14,32,0.95)", backdropFilter: "blur(20px)", zIndex: 1 }}>
               <tr>
                 {["Employer", "Location", "Type", "FY", "Approvals", "Denials", "Approval Rate", "Status"].map((h) => (
-                  <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: T.t3, fontFamily: F.sans, borderBottom: `1px solid ${T.border}` }}>{h}</th>
+                  <th key={h} style={{ padding: "12px 14px", textAlign: "left", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: T.t2, fontFamily: F.sans, borderBottom: `1px solid ${T.border}`, whiteSpace: "nowrap" }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -156,29 +185,37 @@ export function VisaTrackerPage() {
               {!loading && sponsors.length === 0 && (
                 <tr><td colSpan={8} style={{ padding: 30, textAlign: "center", color: T.t3, fontFamily: F.sans, fontSize: 13 }}>No matching sponsors found.</td></tr>
               )}
-              {sponsors.map((row, i) => (
-                <motion.tr key={`${row.employer}-${i}-${row.city}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.02 * i }} style={{ borderBottom: `1px solid ${T.border}` }}>
-                  <td style={{ padding: "11px 16px", fontSize: 12.5, fontWeight: 600, color: T.text, fontFamily: F.sans }}>{row.employer}</td>
-                  <td style={{ padding: "11px 16px", fontSize: 12, color: T.t2, fontFamily: F.sans }}>{[row.city, row.state].filter(Boolean).join(", ") || "—"}</td>
-                  <td style={{ padding: "11px 16px" }}>
-                    <span style={{ fontSize: 9, fontWeight: 700, padding: "3px 7px", borderRadius: 3, background: "rgba(140,58,39,0.15)", color: T.burnt, border: "1px solid rgba(140,58,39,0.3)", fontFamily: F.sans }}>{row.type}</span>
-                  </td>
-                  <td style={{ padding: "11px 16px", fontSize: 11, color: T.t3, fontFamily: F.mono }}>{row.fiscal_year || "—"}</td>
-                  <td style={{ padding: "11px 16px", fontSize: 12, fontFamily: F.mono, fontWeight: 500, color: T.red }}>{row.approvals.toLocaleString()}</td>
-                  <td style={{ padding: "11px 16px", fontSize: 12, fontFamily: F.mono, color: "rgba(242,100,100,0.8)" }}>{row.denials}</td>
-                  <td style={{ padding: "11px 16px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <div style={{ width: 56, height: 4, borderRadius: 2, background: "rgba(242,238,179,0.06)", overflow: "hidden" }}>
-                        <motion.div initial={{ width: 0 }} animate={{ width: `${row.rate}%` }} transition={{ duration: 0.7 }} style={{ height: "100%", background: T.grad }} />
+              {sponsors.map((row, i) => {
+                const location = [row.city, row.state].filter((part) => part && part !== "Multiple").join(", ") || row.city || row.location || "Multiple";
+                const fy = row.fiscal_year || row.fy || 0;
+                const approvals = Number(row.approvals ?? row.approval ?? 0);
+                const denials = Number(row.denials ?? row.denial ?? 0);
+                const rate = Number(row.rate ?? row.approval_rate ?? 0);
+                const status = row.status || "Active";
+                return (
+                  <motion.tr key={`${row.employer}-${i}-${row.city ?? ""}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.02 * i }} style={{ borderBottom: `1px solid ${T.border}` }}>
+                    <td style={{ padding: "11px 14px", fontSize: 12.5, fontWeight: 600, color: T.text, fontFamily: F.sans, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={row.employer}>{row.employer}</td>
+                    <td style={{ padding: "11px 14px", fontSize: 12, color: T.t2, fontFamily: F.sans, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={location}>{location}</td>
+                    <td style={{ padding: "11px 14px", whiteSpace: "nowrap" }}>
+                      <span style={{ fontSize: 9, fontWeight: 700, padding: "3px 7px", borderRadius: 3, background: "rgba(140,58,39,0.15)", color: T.burnt, border: "1px solid rgba(140,58,39,0.3)", fontFamily: F.sans }}>{row.type || "H-1B"}</span>
+                    </td>
+                    <td style={{ padding: "11px 14px", fontSize: 11, color: T.t2, fontFamily: F.mono, whiteSpace: "nowrap" }}>{fy || "All"}</td>
+                    <td style={{ padding: "11px 14px", fontSize: 12, fontFamily: F.mono, fontWeight: 600, color: "#22c55e", whiteSpace: "nowrap" }}>{approvals.toLocaleString()}</td>
+                    <td style={{ padding: "11px 14px", fontSize: 12, fontFamily: F.mono, fontWeight: 600, color: "#ef4444", whiteSpace: "nowrap" }}>{denials.toLocaleString()}</td>
+                    <td style={{ padding: "11px 14px", whiteSpace: "nowrap" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <div style={{ width: 56, height: 4, borderRadius: 2, background: "rgba(242,238,179,0.10)", overflow: "hidden", flexShrink: 0 }}>
+                          <motion.div initial={{ width: 0 }} animate={{ width: `${Math.max(0, Math.min(100, rate))}%` }} transition={{ duration: 0.7 }} style={{ height: "100%", background: T.grad }} />
+                        </div>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: T.text, fontFamily: F.mono }}>{rate}%</span>
                       </div>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: T.red, fontFamily: F.mono }}>{row.rate}%</span>
-                    </div>
-                  </td>
-                  <td style={{ padding: "11px 16px" }}>
-                    <span style={{ fontSize: 9, padding: "3px 7px", borderRadius: 3, background: row.status === "Active" ? "rgba(34,197,94,0.08)" : "rgba(242,238,179,0.05)", color: row.status === "Active" ? "#22c55e" : T.t3, border: `1px solid ${row.status === "Active" ? "rgba(34,197,94,0.2)" : T.border}`, fontFamily: F.sans, fontWeight: 600 }}>{row.status}</span>
-                  </td>
-                </motion.tr>
-              ))}
+                    </td>
+                    <td style={{ padding: "11px 14px", whiteSpace: "nowrap" }}>
+                      <span style={{ fontSize: 9, padding: "3px 7px", borderRadius: 3, background: status === "Active" ? "rgba(34,197,94,0.10)" : "rgba(242,238,179,0.06)", color: status === "Active" ? "#22c55e" : T.t2, border: `1px solid ${status === "Active" ? "rgba(34,197,94,0.25)" : T.border}`, fontFamily: F.sans, fontWeight: 700 }}>{status}</span>
+                    </td>
+                  </motion.tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

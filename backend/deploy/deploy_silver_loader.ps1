@@ -24,8 +24,12 @@ gcloud.cmd functions deploy clean-and-load-jobs `
   --service-account "placeup-etl-sa@$ProjectId.iam.gserviceaccount.com" `
   --set-env-vars "FIRESTORE_DATABASE=$FirestoreDatabase,FIRESTORE_COLLECTION=$FirestoreCollection,DB_NAME=$DbName,DB_USER=$DbUser,DB_HOST=/cloudsql/$ProjectId`:$Region`:$DbInstance" `
   --set-secrets "DB_PASS=$DbPassSecret`:latest" `
-  --add-cloudsql-instances "$ProjectId`:$Region`:$DbInstance" `
   --timeout 3600s `
   --memory 1Gi
+
+gcloud.cmd run services update clean-and-load-jobs `
+  --project $ProjectId `
+  --region $Region `
+  --set-cloudsql-instances "$ProjectId`:$Region`:$DbInstance"
 
 Write-Host "Silver loader function deployed. Next: run .\deploy\schedule_silver_loader.ps1"

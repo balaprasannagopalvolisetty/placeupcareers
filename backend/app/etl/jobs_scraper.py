@@ -13,6 +13,7 @@ import argparse
 import asyncio
 import logging
 import sys
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -30,6 +31,15 @@ from app.scrape_constants import DEFAULT_SCRAPE_SEARCH_TERMS
 logger = logging.getLogger("placeup.etl.jobs_scraper")
 
 
+def split_cli_list(value: str | None, *, decode_underscores: bool = False) -> list[str]:
+    if not value:
+        return []
+    items = [item.strip() for item in re.split(r"[,|~]", value) if item.strip()]
+    if decode_underscores:
+        return [item.replace("_", " ") for item in items]
+    return items
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the PlaceUp staging-first job scraper ETL.")
     parser.add_argument("--queries", default=None, help="Comma-separated search terms.")
@@ -44,15 +54,11 @@ def parse_args() -> argparse.Namespace:
 
 
 def build_request(args: argparse.Namespace) -> ScrapeRequest:
-    queries = (
-        [q.strip() for q in args.queries.split(",") if q.strip()]
-        if args.queries
-        else list(DEFAULT_SCRAPE_SEARCH_TERMS)
-    )
-    locations = [loc.strip() for loc in args.locations.split(",") if loc.strip()] or ["United States"]
-    tiers = [tier.strip() for tier in args.tiers.split(",") if tier.strip()] or ["T1", "T2"]
+    queries = split_cli_list(args.queries, decode_underscores=True) or list(DEFAULT_SCRAPE_SEARCH_TERMS)
+    locations = split_cli_list(args.locations, decode_underscores=True) or ["United States"]
+    tiers = split_cli_list(args.tiers) or ["T1", "T2"]
     if args.sources:
-        sources = [JobSource(src.strip()) for src in args.sources.split(",") if src.strip()]
+        sources = [JobSource(src.strip()) for src in split_cli_list(args.sources)]
     else:
         sources = [
             JobSource.LINKEDIN,
@@ -122,10 +128,12 @@ async def run(args: argparse.Namespace) -> int:
                 raise RuntimeError(f"Ingest run disappeared: {run_id}")
             staged = client.stage_records(db, run_id, "job_scraper", staging_records)
             loaded = load_normalized_jobs(db, normalized)
+            db.commit()
             try:
                 from app.etl.master_jobs import rebuild_master_jobs
-                rebuild_master_jobs(client)
+                rebuild_master_jobs(db=db)
             except Exception as sync_exc:
+                db.rollback()
                 logger.warning("Master jobs sync failed after scraper load: %s", sync_exc)
             finish_ingest_run(
                 db,

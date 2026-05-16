@@ -40,6 +40,19 @@ const T = {
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 
 // ─── Helpers ───
+function useViewportFlags() {
+  const getWidth = () => (typeof window === "undefined" ? 1280 : window.innerWidth);
+  const [width, setWidth] = useState(getWidth);
+
+  useEffect(() => {
+    const onResize = () => setWidth(getWidth());
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  return { width, isMobile: width < 640, isTablet: width < 1024 };
+}
+
 function normalizeVisa(visa: unknown): string[] {
   if (Array.isArray(visa)) return visa.filter((v): v is string => typeof v === "string");
   if (visa && typeof visa === "object") {
@@ -152,10 +165,13 @@ function GlowCard({ children, style = {}, hoverY = -6, onClick }: {
 export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number) => void }) {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { isMobile, isTablet } = useViewportFlags();
   type FeaturedJob = { id: string | number; title: string; company: string; location: string; salary: string; match: number; visa: string[]; posted: string };
   const [featuredJobs, setFeaturedJobs] = useState<FeaturedJob[]>([]);
   const [totalJobs, setTotalJobs] = useState(0);
   const [resumeScore, setResumeScore] = useState(0);
+  const [hasResume, setHasResume] = useState(false);
+  const [activeResumeName, setActiveResumeName] = useState("");
   const [totalApplications, setTotalApplications] = useState(0);
   const [totalResumes, setTotalResumes] = useState(0);
   type ActivityItem = { icon: typeof Zap; label: string; sub: string; time: string; color: string };
@@ -173,13 +189,13 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const displayFirstName = user?.first_name || "there";
 
-  // Fetch featured jobs
+  // Fetch top resume matches for featured jobs.
   useEffect(() => {
     let active = true;
-    api.getJobs({ page: 1, page_size: 3 })
+    api.getTopMatches({ limit: 3 })
       .then((response) => {
         if (!active) return;
-        setTotalJobs(response.total);
+        if (response.total) setTotalJobs(response.total);
         setFeaturedJobs(response.jobs.map((job) => ({
           id: job.id ?? "",
           title: job.title ?? "Untitled role",
@@ -193,7 +209,7 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
       })
       .catch(() => {});
     return () => { active = false; };
-  }, []);
+  }, [resumeScore]);
 
   // Fetch dashboard summary (resume score, applications, activity)
   useEffect(() => {
@@ -202,6 +218,8 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
       .then((summary) => {
         if (!active) return;
         setResumeScore(summary.resume_score);
+        setHasResume(Boolean(summary.has_resume || summary.active_resume_name || summary.total_resumes > 0));
+        setActiveResumeName(summary.active_resume_name || "");
         setTotalApplications(summary.total_applications);
         setTotalResumes(summary.total_resumes);
         if (summary.total_jobs > 0) setTotalJobs(summary.total_jobs);
@@ -225,7 +243,7 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
   const visibleJobs = featuredJobs;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 16 : 22, width: "100%", minWidth: 0 }}>
       {/* Welcome */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
         <h2 style={{ fontFamily: F.sans, fontSize: 22, fontWeight: 700, color: T.text, marginBottom: 4 }}>{greeting}, {displayFirstName}! 👋</h2>
@@ -235,12 +253,19 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
       </motion.div>
 
       {/* 4-stat row */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : isTablet ? "repeat(2, minmax(0, 1fr))" : "repeat(4, 1fr)", gap: 14 }}>
         {/* ATS Score */}
         <GlowCard style={{ padding: 20, gridColumn: "span 1" }}>
           <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: T.t3, fontFamily: F.sans, marginBottom: 12 }}>Resume Score</div>
           <div style={{ display: "flex", justifyContent: "center" }}><ATSRing score={resumeScore} /></div>
-          <div style={{ fontSize: 12, color: T.t3, fontFamily: F.sans, textAlign: "center", marginTop: 8 }}>Your Resume Score</div>
+          <div style={{ fontSize: 12, color: resumeScore > 0 ? T.t2 : T.t3, fontFamily: F.sans, textAlign: "center", marginTop: 8 }}>
+            {resumeScore > 0 ? "Active Resume ATS Score" : hasResume ? "Scoring..." : "Upload a resume to show score"}
+          </div>
+          {activeResumeName && (
+            <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, textAlign: "center", marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {activeResumeName}
+            </div>
+          )}
         </GlowCard>
 
         {/* Applications */}
@@ -250,7 +275,7 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
               <Briefcase size={16} color={T.red} />
             </div>
           </div>
-          <div style={{ fontFamily: F.sans, fontSize: 38, fontWeight: 800, color: T.text, lineHeight: 1, marginBottom: 4 }}><SpringCounter target={totalJobs} /></div>
+          <div style={{ fontFamily: F.sans, fontSize: isMobile ? 30 : 38, fontWeight: 800, color: T.text, lineHeight: 1, marginBottom: 4 }}><SpringCounter target={totalJobs} /></div>
           <div style={{ fontSize: 13, color: T.t2, fontFamily: F.sans }}>Scraped jobs</div>
           <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, marginTop: 2 }}>In database</div>
         </GlowCard>
@@ -267,7 +292,7 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
             </div>
             )}
           </div>
-          <div style={{ fontFamily: F.sans, fontSize: 38, fontWeight: 800, color: T.text, lineHeight: 1, marginBottom: 4 }}><SpringCounter target={totalApplications} /></div>
+          <div style={{ fontFamily: F.sans, fontSize: isMobile ? 30 : 38, fontWeight: 800, color: T.text, lineHeight: 1, marginBottom: 4 }}><SpringCounter target={totalApplications} /></div>
           <div style={{ fontSize: 13, color: T.t2, fontFamily: F.sans }}>Applications</div>
           <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, marginTop: 2 }}>Tracked submissions</div>
         </GlowCard>
@@ -278,13 +303,13 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
             <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(64,18,18,0.2)", border: "1px solid rgba(64,18,18,0.4)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <FileCheck size={16} color={T.text} />
             </div>
-            {resumeScore > 0 && (
+            {hasResume && (
               <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 9999, background: "rgba(166,55,45,0.12)", color: T.red, border: "1px solid rgba(166,55,45,0.25)", fontFamily: F.sans }}>Active</span>
             )}
           </div>
-          <div style={{ fontFamily: F.sans, fontSize: 38, fontWeight: 800, color: T.text, lineHeight: 1, marginBottom: 4 }}><SpringCounter target={totalResumes} /></div>
+          <div style={{ fontFamily: F.sans, fontSize: isMobile ? 30 : 38, fontWeight: 800, color: T.text, lineHeight: 1, marginBottom: 4 }}><SpringCounter target={totalResumes} /></div>
           <div style={{ fontSize: 13, color: T.t2, fontFamily: F.sans }}>Resumes</div>
-          <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, marginTop: 2 }}>Uploaded files</div>
+          <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{activeResumeName || "Uploaded files"}</div>
         </GlowCard>
       </div>
 
@@ -296,7 +321,7 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
             View All <ChevronRight size={13} />
           </button>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : isTablet ? "repeat(2, minmax(0, 1fr))" : "repeat(3, 1fr)", gap: 14 }}>
           {visibleJobs.map((job, i) => (
             <motion.div key={job.id} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 + i * 0.08 }}>
               <GlowCard style={{ padding: 20 }} onClick={() => handleJobClick(job.id)}>
@@ -364,6 +389,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, loading: authLoading, isAuthenticated, signOut } = useAuth();
+  const { isMobile } = useViewportFlags();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -395,7 +421,7 @@ export default function Dashboard() {
   const unread = notifications.filter((n) => n.unread).length;
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: T.bg, position: "relative", fontFamily: F.sans }}>
+    <div style={{ display: "flex", minHeight: "100vh", background: T.bg, position: "relative", fontFamily: F.sans, overflowX: "hidden" }}>
       {/* Ambient orbs */}
       <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 0, overflow: "hidden" }}>
         <div style={{ position: "absolute", top: "-8%", left: "-4%", width: 500, height: 500, borderRadius: "50%", filter: "blur(120px)", background: "rgba(140,58,39,0.12)" }} />
@@ -506,9 +532,9 @@ export default function Dashboard() {
       </AnimatePresence>
 
       {/* ── Main Content ── */}
-      <main style={{ flex: 1, overflow: "auto", position: "relative", zIndex: 1 }}>
+      <main style={{ flex: 1, minWidth: 0, overflow: "auto", position: "relative", zIndex: 1 }}>
         {/* Topbar */}
-        <div style={{ position: "sticky", top: 0, zIndex: 40, height: 64, background: "rgba(1,17,38,0.85)", backdropFilter: "blur(24px)", borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 24px" }}>
+        <div style={{ position: "sticky", top: 0, zIndex: 40, height: 64, background: "rgba(1,17,38,0.85)", backdropFilter: "blur(24px)", borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", padding: isMobile ? "0 12px" : "0 24px", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <button className="lg:hidden" onClick={() => setSidebarOpen(true)} style={{ background: "rgba(242,238,179,0.05)", border: "none", cursor: "pointer", color: T.text, padding: 8, borderRadius: 8 }}>
               <Menu size={18} />
@@ -518,7 +544,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 6 : 8 }}>
             {/* Search */}
             <div className="hidden sm:flex items-center gap-2" style={{ height: 38, padding: "0 12px", borderRadius: 10, background: "rgba(242,238,179,0.04)", border: `1px solid ${T.border}` }}>
               <Search size={14} color={T.t3} />
@@ -540,7 +566,7 @@ export default function Dashboard() {
               <AnimatePresence>
                 {notifOpen && (
                   <motion.div initial={{ opacity: 0, y: 6, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 6, scale: 0.97 }} transition={{ duration: 0.16 }}
-                    style={{ position: "absolute", right: 0, top: "calc(100% + 8px)", width: 320, borderRadius: 16, background: "rgba(8,14,32,0.97)", backdropFilter: "blur(24px)", border: `1px solid ${T.border}`, boxShadow: "0 20px 40px rgba(1,17,38,0.5)", overflow: "hidden" }}>
+                    style={{ position: "absolute", right: isMobile ? -52 : 0, top: "calc(100% + 8px)", width: isMobile ? "calc(100vw - 24px)" : 320, maxWidth: 320, borderRadius: 16, background: "rgba(8,14,32,0.97)", backdropFilter: "blur(24px)", border: `1px solid ${T.border}`, boxShadow: "0 20px 40px rgba(1,17,38,0.5)", overflow: "hidden" }}>
                     <div style={{ padding: "14px 20px", borderBottom: `1px solid ${T.border}`, display: "flex", justifyContent: "space-between" }}>
                       <span style={{ fontFamily: F.sans, fontSize: 14, fontWeight: 700, color: T.text }}>Notifications</span>
                       <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 9999, background: "rgba(166,55,45,0.15)", color: T.red, fontFamily: F.sans }}>{unread} new</span>
@@ -596,7 +622,7 @@ export default function Dashboard() {
         </div>
 
         {/* Page content */}
-        <div style={{ padding: "28px 28px 48px", maxWidth: 1280, margin: "0 auto" }}>
+        <div style={{ padding: isMobile ? "16px 12px 32px" : "28px 28px 48px", maxWidth: 1280, width: "100%", boxSizing: "border-box", margin: "0 auto" }}>
           <AnimatePresence mode="wait">
             <motion.div key={location.pathname} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.22 }}>
               <Outlet />

@@ -1,22 +1,17 @@
 """Free-only contact pipeline smoke test (no Apollo/Hunter/SerpAPI keys)."""
 from __future__ import annotations
-import asyncio, sys, tempfile
+import asyncio, sys
 from pathlib import Path
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import app.db.local_db as _ldb
-_TMP_DB = Path(tempfile.gettempdir()) / "placeup_smoke_free.db"
-if _TMP_DB.exists(): _TMP_DB.unlink()
-_ldb.DB_PATH = _TMP_DB
-
 from app.models.contact import Contact, ContactSource, ContactConfidence, ContactRole, ContactContribution
 from app.services.contact_finder import find_contacts, CACHE_TTL
 from app.api.contacts import router
 from app.main import app
-from app.db.local_db import SQLiteClient
+from app.db.postgres import PostgresClient
 from app.models.job import JobPost, JobSource
 
 
@@ -64,7 +59,7 @@ async def main():
     print("=== Cache TTL config ===")
     print(f"CACHE_TTL = {CACHE_TTL.days} days (global, shared across all users)")
 
-    db = SQLiteClient()
+    db = PostgresClient()
 
     # Contribute one crowdsourced contact first
     print("\n=== Crowdsourced contribution ===")

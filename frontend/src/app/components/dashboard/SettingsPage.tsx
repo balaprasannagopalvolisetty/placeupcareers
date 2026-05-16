@@ -11,6 +11,19 @@ const T = {
   input: "rgba(242,238,179,0.05)",
 };
 
+const JOB_PREFERENCE_SUGGESTIONS = [
+  "Software Engineer",
+  "Frontend Engineer",
+  "Backend Engineer",
+  "Full Stack Engineer",
+  "Data Engineer",
+  "Machine Learning Engineer",
+  "Data Scientist",
+  "DevOps / Cloud Engineer",
+  "Product Manager",
+  "Business Analyst",
+];
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, overflow: "hidden" }}>
@@ -77,6 +90,15 @@ export function SettingsPage() {
 
   const update = (k: keyof api.UserProfile, v: string) => setProfile((p) => p ? ({ ...p, [k]: v }) : p);
   const updatePref = (k: keyof api.UserPreferences, v: any) => setPrefs((pr) => pr ? ({ ...pr, [k]: v }) : pr);
+  const addJobPreference = (suggestion: string) => {
+    setPrefs((pr) => {
+      if (!pr) return pr;
+      const current = pr.job_preferences || "";
+      const parts = current.split(",").map((item) => item.trim()).filter(Boolean);
+      if (parts.some((item) => item.toLowerCase() === suggestion.toLowerCase())) return pr;
+      return { ...pr, job_preferences: [...parts, suggestion].join(", ") };
+    });
+  };
 
   const handleSave = async () => {
     if (!profile || !prefs) return;
@@ -127,6 +149,19 @@ export function SettingsPage() {
             value={prefs.job_preferences || ""}
             onChange={(e) => updatePref("job_preferences", e.target.value)}
             style={{ width: "100%", height: 80, padding: "10px 14px", borderRadius: 10, border: `1px solid ${T.border}`, background: T.input, color: T.text, fontSize: 13, fontFamily: F.sans, resize: "none", outline: "none", boxSizing: "border-box" }} />
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+            {JOB_PREFERENCE_SUGGESTIONS.map((suggestion) => {
+              const selected = (prefs.job_preferences || "").toLowerCase().includes(suggestion.toLowerCase());
+              return (
+                <button key={suggestion} type="button" onClick={() => addJobPreference(suggestion)}
+                  style={{ fontSize: 11, fontWeight: 600, padding: "5px 9px", borderRadius: 6, fontFamily: F.sans,
+                    cursor: selected ? "default" : "pointer", background: selected ? "rgba(166,55,45,0.16)" : "rgba(242,238,179,0.05)",
+                    color: selected ? T.red : T.t2, border: selected ? "1px solid rgba(166,55,45,0.28)" : `1px solid ${T.border}` }}>
+                  {suggestion}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </Section>
 

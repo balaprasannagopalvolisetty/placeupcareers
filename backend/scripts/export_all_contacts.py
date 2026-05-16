@@ -49,7 +49,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from app.config import settings
-from app.db.local_db import SQLiteClient
+from app.db.postgres import PostgresClient
 from app.services.contact_finder import find_contacts
 
 logging.basicConfig(
@@ -256,7 +256,7 @@ async def main() -> int:
         print(f"  Hunter quota cap: {args.max_hunter_calls} calls (free tier: 25/month)")
     print()
 
-    db = SQLiteClient()
+    db = PostgresClient()
     semaphore = asyncio.Semaphore(args.concurrency)
     hunter_call_budget = {"remaining": args.max_hunter_calls}
     apollo_call_budget = {"remaining": args.max_apollo_calls}

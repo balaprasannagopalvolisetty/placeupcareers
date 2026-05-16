@@ -274,6 +274,12 @@ class SQLiteClient:
                 ("users",            "current_company",       "TEXT"),
                 ("user_preferences", "target_roles_json",     "TEXT DEFAULT '[]'"),
                 ("user_preferences", "target_locations_json", "TEXT DEFAULT '[]'"),
+                ("user_applications", "title",                "TEXT"),
+                ("user_applications", "location",             "TEXT"),
+                ("user_applications", "match_score",          "INTEGER DEFAULT 0"),
+                ("user_applications", "job_url",              "TEXT"),
+                ("user_applications", "created_at",           "TEXT"),
+                ("user_applications", "updated_at",           "TEXT"),
             ):
                 try:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")

@@ -10,13 +10,18 @@ from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, UploadFile, status
 
+from app.config import settings
 from app.db import user_store
 from app.models.user import (
+    DashboardSummary,
+    DashboardSummaryAlert,
     NotificationItem,
     ResumeMetadata,
+    UserApplication,
     UserPreferences,
     UserProfile,
 )
+from app.dependencies import get_db
 from app.security import current_user_id, hash_password, verify_password
 
 log = logging.getLogger(__name__)
@@ -192,6 +197,64 @@ async def list_notifications(user_id: str = Depends(current_user_id)):
     return items
 
 
+@router.get("/dashboard-summary", response_model=DashboardSummary)
+async def get_dashboard_summary(
+    user_id: str = Depends(current_user_id),
+    db=Depends(get_db),
+):
+    """Compact data bundle for the dashboard overview cards/activity feed."""
+    resumes = user_store.list_resumes(user_id)
+    active_resume = next((r for r in resumes if r.get("active")), None) or (resumes[0] if resumes else None)
+
+    try:
+        total_jobs = int(await db.count_jobs())
+    except Exception as exc:
+        log.warning("Dashboard summary job count failed: %s", exc)
+        total_jobs = 0
+
+    try:
+        total_applications = user_store.count_user_applications(user_id)
+    except Exception as exc:
+        log.warning("Dashboard summary application count failed: %s", exc)
+        total_applications = 0
+
+    recent_alerts: list[DashboardSummaryAlert] = []
+    for alert in user_store.list_alerts(user_id, limit=6):
+        recent_alerts.append(DashboardSummaryAlert(
+            id=str(alert.get("id")),
+            title=alert.get("title") or "Update",
+            company=alert.get("company") or "",
+            match_score=int(alert.get("match_score") or 0),
+            message=alert.get("message"),
+            time=_humanize(alert.get("created_at")),
+            unread=bool(alert.get("unread")),
+        ))
+
+    return DashboardSummary(
+        resume_score=int((active_resume or {}).get("score") or 0),
+        has_resume=bool(active_resume),
+        active_resume_name=(active_resume or {}).get("name"),
+        total_resumes=len(resumes),
+        total_jobs=total_jobs,
+        total_applications=total_applications,
+        recent_alerts=recent_alerts,
+    )
+
+
+@router.post("/applications")
+async def save_user_application(payload: UserApplication = Body(...), user_id: str = Depends(current_user_id)):
+    """Store whether a user applied or skipped a job for analytics."""
+    try:
+        return user_store.upsert_user_application(user_id, payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/applications")
+async def list_user_applications(user_id: str = Depends(current_user_id)):
+    return user_store.list_user_applications(user_id)
+
+
 @router.get("/resumes", response_model=list[ResumeMetadata])
 async def list_user_resumes(user_id: str = Depends(current_user_id)):
     return [_to_resume_meta(r) for r in user_store.list_resumes(user_id)]
@@ -213,29 +276,25 @@ async def upload_user_resume(
     if len(content) > MAX_RESUME_BYTES:
         raise HTTPException(status_code=400, detail="File too large. Maximum size is 10MB.")
 
-    storage_root = Path(__file__).resolve().parent.parent.parent / "data" / "resumes" / user_id
-    storage_path = None
-    try:
-        storage_root.mkdir(parents=True, exist_ok=True)
-        storage_path = storage_root / f"{_uuid.uuid4().hex[:12]}_{filename}"
-        storage_path.write_bytes(content)
-    except Exception as exc:
-        log.warning(f"Resume file persistence failed: {exc}")
-        storage_path = None
-
-    score = 0
     try:
         from app.services.ats_scorer import score_resume_quality
         from app.services.resume_parser import parse_resume_file
         parsed = await parse_resume_file(content, filename)
-        score = int(round(float(score_resume_quality(parsed.get("text", "")))))
+        parsed_text = (parsed.get("text") or "").strip()
+        if len(parsed_text) < 30:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not extract readable text from this resume. Please upload a text-based PDF or DOCX.",
+            )
+        score = int(round(float(score_resume_quality(parsed_text))))
+    except HTTPException:
+        raise
     except Exception as exc:
-        log.warning(f"Resume scoring failed (non-fatal): {exc}")
-        score = 0
+        log.warning(f"Resume parsing/scoring failed: {exc}")
+        raise HTTPException(status_code=400, detail=f"Resume parsing failed: {exc}")
 
-    existing = user_store.list_resumes(user_id)
-    for resume in existing:
-        user_store.delete_resume(user_id, resume["id"])
+    # Resume text is stored in Firestore via create_resume(parsed_text=...).
+    # No local file storage needed — Cloud Run containers are ephemeral.
 
     row = user_store.create_resume(
         user_id,
@@ -243,7 +302,8 @@ async def upload_user_resume(
         score=score,
         size_bytes=len(content),
         active=True,
-        storage_path=str(storage_path) if storage_path else None,
+        storage_path=None,
+        parsed_text=parsed_text,
     )
     return _to_resume_meta(row)
 
@@ -271,20 +331,30 @@ async def get_parsed_active_resume(user_id: str = Depends(current_user_id)):
     Resume Quick Wins panel."""
     resumes = user_store.list_resumes(user_id)
     active = next((r for r in resumes if r.get("active")), None) or (resumes[0] if resumes else None)
-    if not active or not active.get("storage_path"):
+    if not active:
         return {"has_resume": False, "skills": [], "keywords": [], "missing_keywords": []}
 
     try:
-        from app.services.resume_parser import parse_resume_file
         from app.utils.text_processing import extract_keywords, extract_skills_from_text
-        with open(active["storage_path"], "rb") as fh:
-            content = fh.read()
-        parsed = await parse_resume_file(content, active.get("name") or "resume.pdf")
-        text = parsed.get("text") or ""
+        text = (active.get("parsed_text") or "").strip()
+        if not text:
+            return {
+                "has_resume": True,
+                "error": "This older resume record does not have stored parsed text. Please re-upload your resume so it can be saved to your private user profile.",
+                "skills": [],
+                "keywords": [],
+                "missing_keywords": [],
+            }
         skills = extract_skills_from_text(text)
         keywords = extract_keywords(text, top_n=40)
     except Exception as e:
-        return {"has_resume": True, "error": str(e), "skills": [], "keywords": []}
+        log.warning("Active resume parse lookup failed for %s: %s", user_id, e)
+        return {
+            "has_resume": True,
+            "error": "Resume text is not available. Please re-upload your resume so it can be saved to your private user profile.",
+            "skills": [],
+            "keywords": [],
+        }
 
     # Diff against the user's target roles → suggest "Quick Wins".
     prefs = user_store.get_preferences(user_id)

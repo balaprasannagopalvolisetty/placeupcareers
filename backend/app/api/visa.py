@@ -20,27 +20,42 @@ router = APIRouter(prefix="/visa", tags=["Visa & H1B"])
 
 
 def _sponsor_row_to_card(r: dict) -> dict:
-    initial_a = int(r.get("initial_approvals") or 0)
-    initial_d = int(r.get("initial_denials") or 0)
-    cont_a = int(r.get("continuing_approvals") or 0)
-    cont_d = int(r.get("continuing_denials") or 0)
+    meta = r.get("data_json") or {}
+    if not isinstance(meta, dict):
+        meta = {}
+    city = r.get("city") or meta.get("city") or meta.get("location_city") or ""
+    state = r.get("state") or meta.get("state") or meta.get("location_state") or ""
+    fy = r.get("fiscal_year") or meta.get("fiscal_year") or meta.get("fy") or 0
+    initial_a = int(r.get("initial_approvals") or meta.get("initial_approvals") or meta.get("approvals") or 0)
+    initial_d = int(r.get("initial_denials") or meta.get("initial_denials") or meta.get("denials") or 0)
+    cont_a = int(r.get("continuing_approvals") or meta.get("continuing_approvals") or 0)
+    cont_d = int(r.get("continuing_denials") or meta.get("continuing_denials") or 0)
     approvals = initial_a + cont_a
     denials = initial_d + cont_d
+    total_petitions = int(r.get("total_petitions") or meta.get("total_petitions") or 0)
+    if approvals == 0 and denials == 0 and total_petitions > 0:
+        approvals = total_petitions
     total = approvals + denials
     rate = round((approvals / total) * 100) if total else 0
+    location = ", ".join(part for part in (city, state) if part) or "Remote / Multiple"
     return {
         "employer": r.get("employer_name") or "Unknown",
-        "city": r.get("city") or "",
-        "state": r.get("state") or "",
+        "city": city,
+        "state": state,
+        "location": location,
         "type": "H-1B",
-        "fiscal_year": r.get("fiscal_year") or 0,
+        "fiscal_year": fy,
+        "fy": fy,
         "approvals": approvals,
+        "approval": approvals,
         "new_approvals": initial_a,
         "continuing_approvals": cont_a,
         "denials": denials,
+        "denial": denials,
         "rate": rate,
-        "status": "Active" if approvals > 0 else "Inactive",
-        "total_petitions": int(r.get("total_petitions") or total),
+        "approval_rate": rate,
+        "status": "Active" if approvals > 0 or total_petitions > 0 else "Inactive",
+        "total_petitions": total_petitions or total,
     }
 
 
@@ -48,23 +63,23 @@ def _sponsor_row_to_card(r: dict) -> dict:
 async def get_visa_dashboard(db=Depends(get_db)):
     """Aggregate sponsorship dashboard view: top sponsors + headline stats."""
     try:
-        rows = await db.get_h1b_sponsors(limit=200)
+        rows = await db.get_h1b_sponsors(limit=100000)
     except Exception:
         rows = []
 
-    sponsors = [_sponsor_row_to_card(r) for r in rows]
-    sponsors.sort(key=lambda s: s["approvals"], reverse=True)
-    sponsors = sponsors[:25]
+    all_sponsors = [_sponsor_row_to_card(r) for r in rows]
+    active_sponsors = [s for s in all_sponsors if (s["approvals"] + s["denials"]) > 0]
+    active_sponsors.sort(key=lambda s: (s["approvals"], s["total_petitions"]), reverse=True)
+    sponsors = active_sponsors[:25]
 
-    total_approvals = sum(s["approvals"] for s in sponsors)
-    total_denials = sum(s["denials"] for s in sponsors)
+    latest_year = max((s["fiscal_year"] for s in active_sponsors), default=0)
+    latest_year_sponsors = [
+        s for s in active_sponsors if latest_year and s["fiscal_year"] == latest_year
+    ] or active_sponsors
+    total_approvals = sum(s["approvals"] for s in latest_year_sponsors)
+    total_denials = sum(s["denials"] for s in latest_year_sponsors)
     total = total_approvals + total_denials
     avg_rate = round((total_approvals / total) * 100) if total else 0
-
-    try:
-        all_count = len(await db.get_h1b_sponsors(limit=100000))
-    except Exception:
-        all_count = len(sponsors)
 
     try:
         visa_jobs = await db.count_jobs({"visa_only": True})
@@ -73,7 +88,7 @@ async def get_visa_dashboard(db=Depends(get_db)):
 
     return {
         "stats": {
-            "h1b_sponsors": f"{all_count:,}+",
+            "h1b_sponsors": f"{len(all_sponsors):,}+",
             "opt_roles": f"{visa_jobs:,}",
             "avg_approval_rate": f"{avg_rate}%",
             "petitions_last_year": f"{total_approvals + total_denials:,}+",

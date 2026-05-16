@@ -45,6 +45,13 @@ function humanizeSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function notifyResumeChanged() {
+  if (typeof window === "undefined") return;
+  const version = String(Date.now());
+  localStorage.setItem("placeup_resume_version", version);
+  window.dispatchEvent(new CustomEvent("placeup:resume-changed", { detail: { version } }));
+}
+
 export function ResumePage() {
   const [dragging, setDragging] = useState(false);
   const [resumes, setResumes] = useState<api.ResumeMetadata[]>([]);
@@ -75,7 +82,13 @@ export function ResumePage() {
     setUploading(true);
     try {
       const uploaded = await api.uploadResume(files[0]);
-      setResumes([uploaded]);
+      setResumes((current) => [
+        uploaded,
+        ...current
+          .map((resume) => ({ ...resume, active: false }))
+          .filter((resume) => resume.id !== uploaded.id),
+      ]);
+      notifyResumeChanged();
       refreshQuickWins();
     } catch (error) {
       setUploadError((error as Error).message || "Failed to upload resume.");
@@ -89,6 +102,7 @@ export function ResumePage() {
     try {
       const updated = await api.setActiveResume(id);
       setResumes((rs) => rs.map((r) => ({ ...r, active: r.id === updated.id })));
+      notifyResumeChanged();
       refreshQuickWins();
     } catch (e) {
       setUploadError((e as Error).message);
@@ -101,6 +115,7 @@ export function ResumePage() {
     try {
       await api.deleteResume(id);
       setQuickWins([]);
+      notifyResumeChanged();
     } catch (e) {
       setUploadError((e as Error).message);
       setResumes(previous);

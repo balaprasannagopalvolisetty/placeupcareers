@@ -24,7 +24,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from app.db.local_db import SQLiteClient
+from app.db.postgres import PostgresClient
 
 
 def parse_args():
@@ -47,7 +47,7 @@ def parse_args():
 
 async def main() -> int:
     args = parse_args()
-    db = SQLiteClient()
+    db = PostgresClient()
 
     rows = await db.get_contacts(
         company=args.company,

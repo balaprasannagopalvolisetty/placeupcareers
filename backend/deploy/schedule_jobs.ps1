@@ -10,20 +10,41 @@ gcloud.cmd config set project $ProjectId
 $JobRunBase = "https://$Region-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/$ProjectId/jobs"
 $SchedulerSa = "placeup-scheduler-sa@$ProjectId.iam.gserviceaccount.com"
 
-gcloud.cmd scheduler jobs create http placeup-job-scraper-6h `
-  --location $Region `
-  --schedule "0 */6 * * *" `
-  --time-zone $TimeZone `
-  --uri "$JobRunBase/placeup-job-scraper-6h:run" `
-  --http-method POST `
-  --oauth-service-account-email $SchedulerSa 2>$null
+function Upsert-SchedulerJob {
+  param(
+    [string]$Name,
+    [string]$Schedule,
+    [string]$Uri
+  )
 
-gcloud.cmd scheduler jobs create http placeup-external-api-12h `
-  --location $Region `
-  --schedule "30 */12 * * *" `
-  --time-zone $TimeZone `
-  --uri "$JobRunBase/placeup-external-api-12h:run" `
-  --http-method POST `
-  --oauth-service-account-email $SchedulerSa 2>$null
+  gcloud.cmd scheduler jobs describe $Name --location $Region --project $ProjectId *> $null
+  if ($LASTEXITCODE -eq 0) {
+    gcloud.cmd scheduler jobs update http $Name `
+      --location $Region `
+      --schedule $Schedule `
+      --time-zone $TimeZone `
+      --uri $Uri `
+      --http-method POST `
+      --oauth-service-account-email $SchedulerSa
+  } else {
+    gcloud.cmd scheduler jobs create http $Name `
+      --location $Region `
+      --schedule $Schedule `
+      --time-zone $TimeZone `
+      --uri $Uri `
+      --http-method POST `
+      --oauth-service-account-email $SchedulerSa
+  }
+}
+
+Upsert-SchedulerJob `
+  -Name "placeup-job-scraper-6h" `
+  -Schedule "0 */6 * * *" `
+  -Uri "$JobRunBase/placeup-job-scraper-6h:run"
+
+Upsert-SchedulerJob `
+  -Name "placeup-external-api-12h" `
+  -Schedule "30 */12 * * *" `
+  -Uri "$JobRunBase/placeup-external-api-12h:run"
 
 Write-Host "Cloud Scheduler jobs created."

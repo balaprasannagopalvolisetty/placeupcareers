@@ -39,7 +39,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from app.db.local_db import SQLiteClient
+from app.db.postgres import PostgresClient
 from app.services.contact_finder import find_contacts
 from app.services.h1b_sponsor_boards import H1B_SPONSOR_BOARDS
 
@@ -152,7 +152,7 @@ async def _enrich_one(company_info: dict, args, db) -> dict:
 
 async def main() -> int:
     args = parse_args()
-    db = SQLiteClient()
+    db = PostgresClient()
 
     companies = _resolve_companies(args)
     print(f"\nRunning coverage diagnostic on {len(companies)} companies…")

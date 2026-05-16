@@ -16,8 +16,9 @@ def get_settings():
 def get_db():
     """Get database client based on configured backend.
 
-    Yields the appropriate database client (SQLite or Firestore)
+    Yields the appropriate database client (Postgres or Firestore)
     based on the DATABASE_BACKEND environment variable.
+    SQLite is no longer supported — all data lives in the cloud.
     """
     if settings.database_backend == "postgres":
         from app.db.postgres import PostgresClient
@@ -26,8 +27,10 @@ def get_db():
         from app.db.firebase import FirestoreClient
         client = FirestoreClient()
     else:
-        from app.db.local_db import SQLiteClient
-        client = SQLiteClient()
+        raise RuntimeError(
+            f"Unsupported DATABASE_BACKEND={settings.database_backend!r}. "
+            "Use 'postgres' for jobs data."
+        )
 
     try:
         yield client

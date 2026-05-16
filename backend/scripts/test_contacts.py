@@ -34,20 +34,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
-import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-# Use a temp DB so we don't pollute your real placeup.db
-import app.db.local_db as _ldb
-_TMP = Path(tempfile.gettempdir()) / "placeup_test_contacts.db"
-if _TMP.exists():
-    _TMP.unlink()
-_ldb.DB_PATH = _TMP
-
-from app.db.local_db import SQLiteClient
+from app.db.postgres import PostgresClient
 from app.models.job import JobPost, JobSource
 from app.services.team_page_crawler import crawl_company_team_pages
 from app.services.github_miner import mine_company_github
@@ -129,7 +121,7 @@ async def cmd_all(args):
     print(f"  Paid:  apollo={bool(args.apollo_key)}, hunter={bool(args.hunter_key)}, "
           f"serpapi={bool(args.serpapi_key)}  (BYOK)")
 
-    db = SQLiteClient()
+    db = PostgresClient()
 
     # Build a fake JobPost so ats_metadata and team_page have a base_url
     fake_job = JobPost(

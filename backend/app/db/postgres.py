@@ -54,17 +54,65 @@ class PostgresClient:
     async def get_jobs(self, filters: dict = None, limit: int = 20, offset: int = 0) -> list[dict]:
         if self._master_jobs_available():
             with self.session() as db:
-                stmt = select(MasterJob)
+                stmt = select(
+                    MasterJob.id,
+                    MasterJob.title,
+                    MasterJob.company,
+                    MasterJob.location,
+                    func.substr(MasterJob.description, 1, 900).label("description"),
+                    MasterJob.source_url,
+                    MasterJob.employment_type,
+                    MasterJob.salary_min,
+                    MasterJob.salary_max,
+                    MasterJob.currency,
+                    MasterJob.visa_opt,
+                    MasterJob.visa_stem_opt,
+                    MasterJob.visa_h1b,
+                    MasterJob.h1b_verified,
+                    MasterJob.visa_score,
+                    MasterJob.source_name,
+                    MasterJob.source_job_id,
+                    MasterJob.posted_at,
+                    MasterJob.last_seen_at,
+                    MasterJob.status,
+                    MasterJob.canonical_key,
+                    MasterJob.extra_metadata,
+                    MasterJob.merged_sources,
+                )
                 stmt = self._apply_master_job_filters(stmt, filters)
                 stmt = stmt.order_by(MasterJob.last_seen_at.desc()).limit(limit).offset(offset)
-                rows = db.execute(stmt).scalars().all()
-                return [self._master_job_to_dict(job) for job in rows]
+                rows = db.execute(stmt).mappings().all()
+                return [self._master_job_mapping_to_dict(row) for row in rows]
         with self.session() as db:
-            stmt = select(Job, Company).join(Company, Job.company_id == Company.id, isouter=True)
+            stmt = select(
+                Job.id,
+                Job.title,
+                Company.name.label("company"),
+                Job.location,
+                func.substr(Job.description, 1, 900).label("description"),
+                Job.source_url,
+                Job.category,
+                Job.employment_type,
+                Job.salary_min,
+                Job.salary_max,
+                Job.currency,
+                Job.visa_opt,
+                Job.visa_stem_opt,
+                Job.visa_h1b,
+                Job.h1b_verified,
+                Job.visa_score,
+                Job.source_name,
+                Job.source_job_id,
+                Job.posted_at,
+                Job.last_seen_at,
+                Job.status,
+                Job.content_hash,
+                Job.extra_metadata,
+            ).join(Company, Job.company_id == Company.id, isouter=True)
             stmt = self._apply_job_filters(stmt, filters)
             stmt = stmt.order_by(Job.last_seen_at.desc()).limit(limit).offset(offset)
-            rows = db.execute(stmt).all()
-            return [self._job_to_dict(job, company) for job, company in rows]
+            rows = db.execute(stmt).mappings().all()
+            return [self._job_mapping_to_dict(row) for row in rows]
 
     async def get_job(self, job_id: str) -> Optional[dict]:
         if self._master_jobs_available():
@@ -228,6 +276,12 @@ class PostgresClient:
             stmt = stmt.where(Job.source_name == filters["source"])
         if filters.get("location"):
             stmt = stmt.where(Job.location.ilike(f"%{filters['location']}%"))
+        if filters.get("posted_since"):
+            stmt = stmt.where(Job.posted_at >= filters["posted_since"])
+        if filters.get("title_terms"):
+            terms = [str(t).strip() for t in filters["title_terms"] if str(t).strip()]
+            if terms:
+                stmt = stmt.where(or_(*[Job.title.ilike(f"%{term}%") for term in terms[:80]]))
         if filters.get("search"):
             q = f"%{filters['search']}%"
             stmt = stmt.where(or_(Job.title.ilike(q), Company.name.ilike(q), Job.description.ilike(q)))
@@ -243,12 +297,17 @@ class PostgresClient:
     def _apply_master_job_filters(self, stmt, filters: dict | None):
         filters = filters or {}
         if filters.get("category"):
-            # Master rows keep category in extra_metadata; taxonomy filtering is still post-fetch.
-            pass
+            stmt = stmt.where(MasterJob.extra_metadata.op("->>")("category") == filters["category"])
         if filters.get("source"):
             stmt = stmt.where(MasterJob.source_name == filters["source"])
         if filters.get("location"):
             stmt = stmt.where(MasterJob.location.ilike(f"%{filters['location']}%"))
+        if filters.get("posted_since"):
+            stmt = stmt.where(MasterJob.posted_at >= filters["posted_since"])
+        if filters.get("title_terms"):
+            terms = [str(t).strip() for t in filters["title_terms"] if str(t).strip()]
+            if terms:
+                stmt = stmt.where(or_(*[MasterJob.title.ilike(f"%{term}%") for term in terms[:80]]))
         if filters.get("search"):
             q = f"%{filters['search']}%"
             stmt = stmt.where(or_(MasterJob.title.ilike(q), MasterJob.company.ilike(q), MasterJob.description.ilike(q)))
@@ -288,6 +347,38 @@ class PostgresClient:
             "extra_metadata": meta | {"merged_sources": job.merged_sources or []},
         }
 
+    def _master_job_mapping_to_dict(self, row) -> dict:
+        meta = row.get("extra_metadata") or {}
+        return {
+            "id": row.get("id"),
+            "title": row.get("title"),
+            "company": row.get("company") or "",
+            "location": row.get("location") or "",
+            "description": row.get("description") or "",
+            "job_url": row.get("source_url") or "",
+            "category": meta.get("category") or "Other",
+            "job_type": row.get("employment_type") or "",
+            "salary": {
+                "min_salary": float(row.get("salary_min")) if row.get("salary_min") is not None else None,
+                "max_salary": float(row.get("salary_max")) if row.get("salary_max") is not None else None,
+                "currency": row.get("currency") or "USD",
+            },
+            "visa": {
+                "visa_opt": row.get("visa_opt"),
+                "visa_stem_opt": row.get("visa_stem_opt"),
+                "visa_h1b": row.get("visa_h1b"),
+                "h1b_verified": row.get("h1b_verified"),
+                "visa_score": row.get("visa_score"),
+            },
+            "source": row.get("source_name"),
+            "source_job_id": row.get("source_job_id") or "",
+            "posted_at": row.get("posted_at"),
+            "scraped_at": row.get("last_seen_at"),
+            "status": row.get("status"),
+            "content_hash": row.get("canonical_key"),
+            "extra_metadata": meta | {"merged_sources": row.get("merged_sources") or []},
+        }
+
     def _job_to_dict(self, job: Job, company: Company | None) -> dict:
         return {
             "id": job.id,
@@ -317,6 +408,37 @@ class PostgresClient:
             "status": job.status,
             "content_hash": job.content_hash,
             "extra_metadata": job.extra_metadata or {},
+        }
+
+    def _job_mapping_to_dict(self, row) -> dict:
+        return {
+            "id": row.get("id"),
+            "title": row.get("title"),
+            "company": row.get("company") or "",
+            "location": row.get("location") or "",
+            "description": row.get("description") or "",
+            "job_url": row.get("source_url") or "",
+            "category": row.get("category") or "Other",
+            "job_type": row.get("employment_type") or "",
+            "salary": {
+                "min_salary": float(row.get("salary_min")) if row.get("salary_min") is not None else None,
+                "max_salary": float(row.get("salary_max")) if row.get("salary_max") is not None else None,
+                "currency": row.get("currency") or "USD",
+            },
+            "visa": {
+                "visa_opt": row.get("visa_opt"),
+                "visa_stem_opt": row.get("visa_stem_opt"),
+                "visa_h1b": row.get("visa_h1b"),
+                "h1b_verified": row.get("h1b_verified"),
+                "visa_score": row.get("visa_score"),
+            },
+            "source": row.get("source_name"),
+            "source_job_id": row.get("source_job_id") or "",
+            "posted_at": row.get("posted_at"),
+            "scraped_at": row.get("last_seen_at"),
+            "status": row.get("status"),
+            "content_hash": row.get("content_hash"),
+            "extra_metadata": row.get("extra_metadata") or {},
         }
 
     def _contact_to_dict(self, contact: Contact, company: Company | None) -> dict:

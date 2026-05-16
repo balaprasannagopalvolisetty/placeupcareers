@@ -37,15 +37,19 @@ def _humanize(iso: Optional[str]) -> str:
 
 
 def _row_to_alert(row: dict) -> AlertItem:
+    match_score = int(row.get("match_score") or 0)
     return AlertItem(
         id=str(row.get("id")),
         title=row.get("title") or "",
         company=row.get("company") or "",
         location=row.get("location") or "",
         salary=row.get("salary") or "",
-        match=int(row.get("match_score") or 0),
+        match=match_score,
+        match_score=match_score,
         visa=row.get("visa") or "",
         time=_humanize(row.get("created_at")),
+        message=row.get("message"),
+        created_at=row.get("created_at"),
         unread=bool(row.get("unread")),
     )
 

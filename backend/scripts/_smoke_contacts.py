@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import asyncio
 import sys
-import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -11,20 +10,13 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-# Redirect SQLite to /tmp (sandbox I/O limits on data/)
-import app.db.local_db as _ldb
-_TMP_DB = Path(tempfile.gettempdir()) / "placeup_smoke.db"
-if _TMP_DB.exists():
-    _TMP_DB.unlink()
-_ldb.DB_PATH = _TMP_DB
-
 from app.models.contact import Contact, ContactSource, ContactConfidence
 from app.services.google_xray import linkedin_search_url
 from app.services.ats_contact_extractor import extract_from_jobpost
 from app.services.contact_finder import find_contacts
 from app.api.contacts import router as contacts_router
 from app.main import app
-from app.db.local_db import SQLiteClient
+from app.db.postgres import PostgresClient
 from app.models.job import JobPost, JobSource
 from app.config import settings
 
@@ -116,7 +108,7 @@ async def main():
     settings.hunter_api_key = "fake-hunter"
     settings.serpapi_key = "fake-serp"
 
-    db = SQLiteClient()
+    db = PostgresClient()
     from httpx import AsyncClient
     with patch.object(AsyncClient, "post", new=fake_post), patch.object(AsyncClient, "get", new=fake_get):
         result = await find_contacts(

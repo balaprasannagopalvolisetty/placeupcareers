@@ -273,6 +273,45 @@ def clean_and_load_jobs(request):
         %s::jsonb, %s::jsonb, %s, %s
     )"""
 
+    schema_repair_query = """
+        CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+        ALTER TABLE silver_posts
+            ADD COLUMN IF NOT EXISTS silver_created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+        ALTER TABLE silver_posts
+            ADD COLUMN IF NOT EXISTS silver_updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+        ALTER TABLE silver_posts
+            ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+        CREATE TABLE IF NOT EXISTS master_jobs (
+          id TEXT PRIMARY KEY,
+          canonical_key TEXT NOT NULL UNIQUE,
+          title TEXT NOT NULL,
+          company TEXT NOT NULL DEFAULT '',
+          location TEXT,
+          country TEXT,
+          source_name TEXT NOT NULL,
+          source_job_id TEXT,
+          source_url TEXT,
+          description TEXT,
+          employment_type TEXT,
+          remote_type TEXT,
+          salary_min NUMERIC(12, 2),
+          salary_max NUMERIC(12, 2),
+          currency TEXT,
+          visa_opt BOOLEAN NOT NULL DEFAULT FALSE,
+          visa_stem_opt BOOLEAN NOT NULL DEFAULT FALSE,
+          visa_h1b BOOLEAN NOT NULL DEFAULT FALSE,
+          h1b_verified BOOLEAN NOT NULL DEFAULT FALSE,
+          visa_score INTEGER NOT NULL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'active',
+          posted_at TIMESTAMPTZ,
+          first_seen_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          last_seen_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          source_priority INTEGER NOT NULL DEFAULT 50,
+          merged_sources JSONB NOT NULL DEFAULT '[]',
+          extra_metadata JSONB NOT NULL DEFAULT '{}'
+        );
+    """
+
     master_sync_query = """
         WITH source_rows AS (
             SELECT
@@ -356,6 +395,7 @@ def clean_and_load_jobs(request):
         if clean_records:
             log_record_types(clean_records[0], label="first_clean_record")
 
+        cursor.execute(schema_repair_query)
         execute_values(cursor, insert_query, clean_records, template=row_template, page_size=500)
         cursor.execute(master_sync_query)
         conn.commit()

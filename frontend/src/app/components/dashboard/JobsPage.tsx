@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
-import { Search, Filter, X, MapPin, DollarSign, Clock, Bookmark, ExternalLink, Flame } from "lucide-react";
+import { Search, Filter, X, MapPin, DollarSign, Clock, Bookmark, ExternalLink, Flame, Briefcase, ShieldCheck, Sparkles, RefreshCw } from "lucide-react";
 import * as api from "../../lib/api";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
@@ -12,6 +12,13 @@ const T = {
 };
 
 const STATUS_CHIPS = ["All", "New", "Applied", "Interview", "Saved"];
+const TIME_CHIPS = [
+  { label: "Any time", value: "" },
+  { label: "Today", value: "today" },
+  { label: "Yesterday", value: "yesterday" },
+  { label: "Week", value: "week" },
+  { label: "Month", value: "month" },
+];
 const VISA_BADGES: Record<string, { bg: string; color: string; border: string }> = {
   "H-1B":   { bg: "rgba(140,58,39,0.15)", color: "#8C3A27", border: "rgba(140,58,39,0.35)" },
   "OPT":    { bg: "rgba(166,55,45,0.12)", color: "#A6372D", border: "rgba(166,55,45,0.3)" },
@@ -50,100 +57,294 @@ function formatSalary(salary: unknown): string {
 interface TaxonomyRole { name: string; synonyms: string[]; visa: string[]; hot: boolean }
 interface TaxonomyCategory { name: string; icon: string; roles: TaxonomyRole[] }
 
-function ATSRing({ score, size = 60 }: { score: number; size?: number }) {
+const JOB_FETCH_RETRY_MS = 700;
+
+function useResponsiveFlags() {
+  const getWidth = () => (typeof window === "undefined" ? 1280 : window.innerWidth);
+  const [width, setWidth] = useState(getWidth);
+
+  useEffect(() => {
+    const onResize = () => setWidth(getWidth());
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  return { width, isMobile: width < 640, isTablet: width < 1024 };
+}
+
+function friendlyJobError(err: unknown): string {
+  const message = (err as Error)?.message || "Could not load jobs";
+  if (message.toLowerCase().includes("failed to fetch")) {
+    return "Network hiccup while loading jobs. Please retry, or refresh if this keeps happening.";
+  }
+  return message;
+}
+
+async function getJobsWithRetry(params: Record<string, string | number | boolean>, attempts = 3) {
+  let lastError: unknown;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 15000);
+      try {
+        const result = await api.getJobs(params, { signal: controller.signal });
+        return result;
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+    } catch (err) {
+      lastError = err;
+      if (i < attempts - 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, JOB_FETCH_RETRY_MS * Math.pow(2, i)));
+      }
+    }
+  }
+  throw lastError;
+}
+
+function decodeHtml(value: string): string {
+  const el = document.createElement("textarea");
+  el.innerHTML = value;
+  return el.value;
+}
+
+function cleanPreview(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return decodeHtml(value).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function formatPosted(value: unknown): string {
+  if (!value) return "Recently";
+  const raw = String(value);
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw.length > 18 ? raw.slice(0, 18) : raw;
+  const days = Math.max(0, Math.floor((Date.now() - date.getTime()) / 86400000));
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
+  if (days < 30) return `${days} days ago`;
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function resolveJobUrl(job: api.JobPost): string {
+  const j: any = job;
+  const candidates = [j.job_url, j.source_url, j.job_url_direct, j.apply_url, j.url, j.company_url, j.external_url];
+  const first = candidates.find((url) => typeof url === "string" && url.trim().length > 0);
+  if (!first) return "";
+  const trimmed = String(first).trim();
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
+function ATSRing({ score, size = 60 }: { score: number | null | undefined; size?: number }) {
+  const hasScore = typeof score === "number" && Number.isFinite(score);
+  const safeScore = hasScore ? Math.max(0, Math.min(100, score)) : 0;
   const r = (size/2) - 5, circ = 2*Math.PI*r;
-  const offset = circ * (1 - score/100);
-  const color = score >= 80 ? T.red : score >= 60 ? T.burnt : T.dark;
+  const offset = circ * (1 - safeScore/100);
+  // Avoid T.dark (#401212) for the ring — it blends into the card background.
+  const color = !hasScore ? T.t3 : safeScore >= 80 ? "#22c55e" : safeScore >= 60 ? T.red : safeScore >= 40 ? T.burnt : "#F2EEB3";
+  const textColor = safeScore >= 40 ? color : "#F2EEB3";
   return (
     <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
       <svg viewBox={`0 0 ${size} ${size}`} style={{ width: "100%", height: "100%", transform: "rotate(-90deg)" }}>
-        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(242,238,179,0.08)" strokeWidth="5" />
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(242,238,179,0.14)" strokeWidth="5" />
         <motion.circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth="5" strokeLinecap="round"
           strokeDasharray={circ} initial={{ strokeDashoffset: circ }} animate={{ strokeDashoffset: offset }}
           transition={{ duration: 1.2, ease: "easeOut" }} />
       </svg>
       <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ fontFamily: F.mono, fontSize: 13, fontWeight: 500, color }}>{score}</span>
-        <span style={{ fontSize: 7, color: T.t3, fontFamily: F.sans, letterSpacing: "0.05em" }}>ATS</span>
+        <span style={{ fontFamily: F.mono, fontSize: hasScore ? 13 : 11, fontWeight: 600, color: textColor }}>{hasScore ? safeScore : "--"}</span>
+        <span style={{ fontSize: 7, color: T.t2, fontFamily: F.sans, letterSpacing: "0.05em" }}>{hasScore ? "ATS" : "Resume"}</span>
       </div>
     </div>
   );
 }
 
+function getScoreMeta(score: number | null | undefined) {
+  if (typeof score !== "number" || !Number.isFinite(score)) {
+    return {
+      label: "Resume needed",
+      detail: "Upload resume for score",
+      color: T.t3,
+      bg: "rgba(242,238,179,0.05)",
+      border: T.border,
+    };
+  }
+  if (score >= 80) return { label: "Strong match", detail: "High keyword overlap", color: "#22c55e", bg: "rgba(34,197,94,0.10)", border: "rgba(34,197,94,0.25)" };
+  if (score >= 60) return { label: "Good match", detail: "Review missing keywords", color: T.red, bg: "rgba(166,55,45,0.12)", border: "rgba(166,55,45,0.28)" };
+  if (score >= 40) return { label: "Partial match", detail: "Resume may need tailoring", color: T.burnt, bg: "rgba(140,58,39,0.12)", border: "rgba(140,58,39,0.28)" };
+  return { label: "Low match", detail: "Large skill gap detected", color: "#F2EEB3", bg: "rgba(242,238,179,0.06)", border: "rgba(242,238,179,0.12)" };
+}
+
 export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
+  const { isMobile, isTablet } = useResponsiveFlags();
   const [taxonomy, setTaxonomy] = useState<TaxonomyCategory[]>([]);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [activeRole, setActiveRole] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [timeFilter, setTimeFilter] = useState("");
   const [location, setLocation] = useState("");
   const [visaOnly, setVisaOnly] = useState(false);
 
   const [jobs, setJobs] = useState<api.JobPost[]>([]);
   const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const pageSize = 40;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [resumeVersion, setResumeVersion] = useState(
+    () => typeof window !== "undefined" ? localStorage.getItem("placeup_resume_version") || "" : ""
+  );
+  const [resumeLink, setResumeLink] = useState<{ checked: boolean; hasResume: boolean; score?: number; name?: string; error?: string }>({
+    checked: false,
+    hasResume: false,
+  });
+  const [pipelineStatus, setPipelineStatus] = useState<{ total_jobs?: number; active_jobs?: number; last_scraped_at?: string | null } | null>(null);
 
   // Load taxonomy once.
   useEffect(() => {
-    fetch("/api/jobs/taxonomy")
-      .then((r) => r.json())
+    api.getJobTaxonomy()
       .then((data) => {
         if (Array.isArray(data?.categories)) setTaxonomy(data.categories);
       })
       .catch(() => {});
+    api.getJobPipelineStatus()
+      .then((status) => setPipelineStatus(status))
+      .catch(() => {});
   }, []);
 
-  // Reload jobs whenever filters change.
+  useEffect(() => {
+    const refresh = () => {
+      setPage(1);
+      setResumeVersion(typeof window !== "undefined" ? localStorage.getItem("placeup_resume_version") || String(Date.now()) : String(Date.now()));
+    };
+    window.addEventListener("placeup:resume-changed", refresh as EventListener);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.removeEventListener("placeup:resume-changed", refresh as EventListener);
+      window.removeEventListener("focus", refresh);
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    api.getParsedActiveResume()
+      .then((resume) => {
+        if (!active) return;
+        setResumeLink({
+          checked: true,
+          hasResume: Boolean(resume.has_resume && !resume.error),
+          score: typeof resume.score === "number" ? resume.score : undefined,
+          name: resume.name,
+          error: resume.error,
+        });
+      })
+      .catch((err) => {
+        if (!active) return;
+        setResumeLink({
+          checked: true,
+          hasResume: false,
+          error: (err as Error).message || "Resume is not linked to this session.",
+        });
+      });
+    return () => { active = false; };
+  }, [resumeVersion]);
+
+  // Reload jobs whenever filters or the active resume change.
   useEffect(() => {
     let active = true;
     setLoading(true);
     setError(null);
 
-    const params: Record<string, string | number | boolean> = { page: 1, page_size: 50 };
+    const params: Record<string, string | number | boolean> = { page, page_size: pageSize, max_years: 10, sort: "match" };
     if (search) params.search = search;
     if (location) params.location = location;
     if (visaOnly) params.visa_only = true;
     if (activeCategory && !activeRole) params.category = activeCategory;
     if (activeRole) params.role = activeRole;
+    if (timeFilter) {
+      params.time_filter = timeFilter;
+      // Pass timezone offset so backend calculates "today"/"yesterday" in the user's local time
+      params.tz_offset = new Date().getTimezoneOffset();
+    }
 
-    api.getJobs(params)
-      .then((response) => {
+    getJobsWithRetry(params)
+      .then((response: any) => {
         if (!active) return;
-        setJobs(response.jobs || []);
-        setTotal(response.total ?? response.jobs?.length ?? 0);
+        // Be defensive: backends have historically returned either
+        //   { jobs: [...], total }    (current) or
+        //   [...]                     (legacy)
+        // Both shapes should render the same All-Jobs grid.
+        const incoming: any[] = Array.isArray(response)
+          ? response
+          : Array.isArray(response?.jobs)
+            ? response.jobs
+            : Array.isArray(response?.results)
+              ? response.results
+              : [];
+        setJobs((prev) => page === 1 ? incoming : [...prev, ...incoming]);
+        const reportedTotal = Array.isArray(response)
+          ? response.length
+          : (response?.total ?? response?.count ?? incoming.length);
+        setTotal(typeof reportedTotal === "number" ? reportedTotal : incoming.length);
       })
       .catch((err) => {
         if (active) {
-          setError((err as Error).message || "Could not load jobs");
-          setJobs([]);
-          setTotal(0);
+          setError(friendlyJobError(err));
+          // Fix 7: Don't clear existing jobs on error — keep stale data visible
         }
       })
       .finally(() => { if (active) setLoading(false); });
 
     return () => { active = false; };
-  }, [activeCategory, activeRole, search, location, visaOnly]);
+  }, [activeCategory, activeRole, search, location, visaOnly, timeFilter, page, resumeVersion, reloadKey]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [activeCategory, activeRole, search, location, visaOnly, timeFilter, statusFilter]);
 
   const filtered = useMemo(() => {
     if (statusFilter === "All") return jobs;
+    if (statusFilter === "Saved") {
+      const savedJobs = JSON.parse(localStorage.getItem("placeup_saved_jobs") || "[]");
+      const savedIds = new Set(Array.isArray(savedJobs) ? savedJobs.map(String) : []);
+      return jobs.filter((j) => savedIds.has(String(j.id)));
+    }
+    if (statusFilter === "New") {
+      return jobs.filter((j) => {
+        const status = String(j.status || "new").toLowerCase();
+        return status === "new" || status === "active";
+      });
+    }
     return jobs.filter((j) => (j.status || "New") === statusFilter);
   }, [jobs, statusFilter]);
 
   const currentCategory = taxonomy.find((c) => c.name === activeCategory);
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: 20 }}>
+    <div style={{ display: "grid", gridTemplateColumns: isTablet ? "1fr" : "280px minmax(0, 1fr)", gap: isMobile ? 12 : 20, alignItems: "start", width: "100%", minWidth: 0 }}>
       {/* CATEGORY SIDEBAR */}
-      <aside style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 16, padding: 12, height: "fit-content", position: "sticky", top: 20 }}>
+      <aside style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 16, padding: isMobile ? 10 : 12, height: "fit-content", position: isTablet ? "relative" : "sticky", top: isTablet ? 0 : 20, minWidth: 0 }}>
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: T.t3, fontFamily: F.sans, padding: "8px 10px 12px" }}>Categories</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: "70vh", overflowY: "auto" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: isTablet ? 320 : "70vh", overflowY: "auto" }}>
+          <button
+            onClick={() => { setActiveCategory(null); setActiveRole(null); }}
+            style={{
+              width: "100%", textAlign: "left", padding: "9px 10px", borderRadius: 8,
+              border: "none", background: !activeCategory ? "rgba(166,55,45,0.10)" : "transparent",
+              color: !activeCategory ? T.red : T.t2, fontSize: 13, fontFamily: F.sans, cursor: "pointer",
+              fontWeight: !activeCategory ? 600 : 400, display: "flex", justifyContent: "space-between", alignItems: "center",
+            }}
+          >
+            All Jobs
+            <span style={{ fontSize: 11, color: T.t3 }}>{total.toLocaleString()}</span>
+          </button>
           {taxonomy.map((cat) => {
             const isActive = cat.name === activeCategory;
             return (
               <div key={cat.name}>
                 <button
-                  onClick={() => { setActiveCategory(cat.name); setActiveRole(null); }}
+                  onClick={() => { setActiveCategory(cat.name); setActiveRole(null); setPage(1); }}
                   style={{
                     width: "100%", textAlign: "left", padding: "9px 10px", borderRadius: 8,
                     border: "none", background: isActive ? "rgba(166,55,45,0.10)" : "transparent",
@@ -152,14 +353,14 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                   }}
                 >
                   {cat.name}
-                  <span style={{ fontSize: 11, color: T.t3 }}>{cat.roles.length}</span>
+                  <span style={{ fontSize: 11, color: T.t3 }}>{cat.roles.length} roles</span>
                 </button>
                 {isActive && (
                   <div style={{ marginLeft: 8, paddingLeft: 8, borderLeft: `1px solid ${T.border}`, marginTop: 4, marginBottom: 4 }}>
                     {cat.roles.map((role) => (
                       <button
                         key={role.name}
-                        onClick={() => setActiveRole(activeRole === role.name ? null : role.name)}
+                        onClick={() => { setActiveRole(activeRole === role.name ? null : role.name); setPage(1); }}
                         style={{
                           width: "100%", textAlign: "left", padding: "6px 8px", borderRadius: 6,
                           border: "none", background: activeRole === role.name ? "rgba(166,55,45,0.06)" : "transparent",
@@ -186,29 +387,103 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       </aside>
 
       {/* JOBS LIST */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+          {[
+            { label: "Open positions", value: total.toLocaleString(), icon: Briefcase },
+            { label: "Visible now", value: filtered.length.toLocaleString(), icon: Sparkles },
+            { label: "Visa filter", value: visaOnly ? "On" : "Off", icon: ShieldCheck },
+          ].map((item) => {
+            const Icon = item.icon;
+            return (
+              <div key={item.label} style={{ background: "rgba(64,18,18,0.42)", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 14, padding: "13px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 9, background: "rgba(166,55,45,0.12)", border: "1px solid rgba(166,55,45,0.22)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Icon size={15} color={T.red} />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: T.text, fontFamily: F.mono, lineHeight: 1.1 }}>{item.value}</div>
+                  <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, marginTop: 2 }}>{item.label}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {pipelineStatus && (
+          <div style={{ padding: "10px 12px", borderRadius: 12, background: "rgba(242,238,179,0.04)", border: `1px solid ${T.border}`, color: T.t3, fontSize: 11, fontFamily: F.sans }}>
+            Pipeline: {Number(pipelineStatus.active_jobs ?? total).toLocaleString()} active jobs
+            {pipelineStatus.last_scraped_at ? ` - last scraped ${formatPosted(pipelineStatus.last_scraped_at)}` : ""}
+          </div>
+        )}
+
         {/* Search + filter bar */}
-        <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 14, padding: "12px 16px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 200, height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)" }}>
+        <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 14, padding: isMobile ? "10px" : "12px 16px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 240px", minWidth: isMobile ? "100%" : 200, height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)" }}>
             <Search size={13} color={T.t3} />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search title, company, JD..."
+            <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search title, company, JD..."
               style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: T.text, fontSize: 13, fontFamily: F.sans }} />
           </div>
-          <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Location"
-            style={{ width: 140, height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", color: T.text, fontSize: 13, outline: "none" }} />
-          <button onClick={() => setVisaOnly(!visaOnly)}
+          <input value={location} onChange={(e) => { setLocation(e.target.value); setPage(1); }} placeholder="Location"
+            style={{ width: isMobile ? "100%" : 140, flex: isMobile ? "1 1 100%" : "0 0 auto", height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", color: T.text, fontSize: 13, outline: "none" }} />
+          <button onClick={() => { setVisaOnly(!visaOnly); setPage(1); }}
             style={{ height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${visaOnly ? "rgba(166,55,45,0.4)" : T.border}`, background: visaOnly ? "rgba(166,55,45,0.10)" : "transparent", color: visaOnly ? T.red : T.t2, fontSize: 12, fontFamily: F.sans, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
             <Filter size={12} /> Visa-friendly
           </button>
-          <div style={{ display: "flex", gap: 6 }}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {STATUS_CHIPS.map((s) => (
-              <button key={s} onClick={() => setStatusFilter(s)}
+                <button key={s} onClick={() => { setStatusFilter(s); setPage(1); }}
                 style={{ height: 32, padding: "0 12px", borderRadius: 9999, border: `1px solid ${statusFilter === s ? "transparent" : T.border}`, background: statusFilter === s ? T.grad : "transparent", color: statusFilter === s ? "#fff" : T.t2, fontSize: 12, cursor: "pointer", fontFamily: F.sans, fontWeight: statusFilter === s ? 600 : 400 }}>
                 {s}
               </button>
             ))}
           </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", width: "100%" }}>
+            {TIME_CHIPS.map((chip) => (
+              <button key={chip.label} onClick={() => { setTimeFilter(chip.value); setPage(1); }}
+                style={{ height: 30, padding: "0 10px", borderRadius: 9999, border: `1px solid ${timeFilter === chip.value ? "transparent" : T.border}`, background: timeFilter === chip.value ? T.grad : "transparent", color: timeFilter === chip.value ? "#fff" : T.t2, fontSize: 11, cursor: "pointer", fontFamily: F.sans, fontWeight: timeFilter === chip.value ? 700 : 400 }}>
+                {chip.label}
+              </button>
+            ))}
+          </div>
         </div>
+
+        {resumeLink.checked && (
+          <div style={{
+            display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: 12,
+            padding: "12px 14px", borderRadius: 14,
+            border: `1px solid ${resumeLink.hasResume ? "rgba(34,197,94,0.22)" : "rgba(166,55,45,0.28)"}`,
+            background: resumeLink.hasResume ? "rgba(34,197,94,0.07)" : "rgba(166,55,45,0.08)",
+            color: T.t2, fontFamily: F.sans,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+              <div style={{
+                width: 30, height: 30, borderRadius: 9, flexShrink: 0,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                background: resumeLink.hasResume ? "rgba(34,197,94,0.10)" : "rgba(166,55,45,0.12)",
+                border: `1px solid ${resumeLink.hasResume ? "rgba(34,197,94,0.24)" : "rgba(166,55,45,0.24)"}`,
+              }}>
+                <ShieldCheck size={14} color={resumeLink.hasResume ? "#22c55e" : T.red} />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: T.text, lineHeight: 1.25 }}>
+                  {resumeLink.hasResume ? "Active resume linked to job matching" : "Resume is not linked to job matching"}
+                </div>
+                <div style={{ fontSize: 11, color: T.t3, lineHeight: 1.4, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {resumeLink.hasResume
+                    ? `${resumeLink.name || "Resume"}${resumeLink.score ? ` - Resume score ${resumeLink.score}` : ""}`
+                    : resumeLink.error || "Upload or re-upload a resume from the Resumes tab."}
+                </div>
+              </div>
+            </div>
+            {!resumeLink.hasResume && (
+              <button
+                onClick={() => { window.location.href = "/dashboard/resumes"; }}
+                style={{ height: 32, padding: "0 12px", borderRadius: 8, border: "none", background: T.grad, color: "#fff", fontSize: 12, fontWeight: 700, fontFamily: F.sans, cursor: "pointer", flexShrink: 0, width: isMobile ? "100%" : "auto" }}
+              >
+                Upload Resume
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Active filters strip */}
         {(activeRole || activeCategory) && (
@@ -222,29 +497,51 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             {activeRole && (
               <span style={{ display: "inline-flex", gap: 4, alignItems: "center", fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "rgba(166,55,45,0.08)", color: T.red, border: "1px solid rgba(166,55,45,0.25)", fontFamily: F.sans }}>
                 Role: {activeRole}
-                <button onClick={() => setActiveRole(null)} style={{ background: "none", border: "none", cursor: "pointer", color: T.red, padding: 0 }}><X size={10} /></button>
+                <button onClick={() => { setActiveRole(null); setPage(1); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.red, padding: 0 }}><X size={10} /></button>
               </span>
             )}
           </div>
         )}
 
-        {error && <div style={{ color: T.red, fontFamily: F.sans, fontSize: 13 }}>Error: {error}</div>}
+        {error && (
+          <div style={{ padding: "14px 16px", borderRadius: 12, background: "rgba(166,55,45,0.08)", border: "1px solid rgba(166,55,45,0.25)", color: T.text, fontFamily: F.sans, fontSize: 13 }}>
+            <div style={{ fontWeight: 700, marginBottom: 4, color: T.red }}>Couldn't load jobs</div>
+            <div style={{ color: T.t2, marginBottom: 10 }}>{error}</div>
+            <button
+              onClick={() => setReloadKey((value) => value + 1)}
+              style={{ height: 32, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.05)", color: T.text, fontSize: 12, fontFamily: F.sans, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}
+            >
+              <RefreshCw size={12} />
+              Retry
+            </button>
+          </div>
+        )}
 
         {/* Job cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          {loading && (
-            <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: 40, color: T.t3, fontFamily: F.sans }}>Loading jobs…</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
+          {loading && jobs.length === 0 && (
+            <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: 40, color: T.t2, fontFamily: F.sans, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 16 }}>
+              Loading jobs…
+            </div>
           )}
-          {!loading && filtered.length === 0 && (
+          {!loading && filtered.length === 0 && !error && (
             <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: 40, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 16, color: T.t2, fontFamily: F.sans }}>
-              <div style={{ fontSize: 14, marginBottom: 6 }}>No jobs found yet for this filter.</div>
-              <div style={{ fontSize: 12, color: T.t3 }}>The scraper runs every 6h. Clear filters or trigger a fresh scrape from the admin endpoint.</div>
+              <div style={{ fontSize: 14, marginBottom: 6 }}>No jobs match the current filters.</div>
+              <div style={{ fontSize: 12, color: T.t3, marginBottom: 12 }}>Try clearing the search, location, or status filter.</div>
+              <button
+                onClick={() => { setSearch(""); setLocation(""); setVisaOnly(false); setTimeFilter(""); setStatusFilter("All"); setActiveCategory(null); setActiveRole(null); setPage(1); }}
+                style={{ padding: "8px 14px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.t2, fontSize: 12, fontFamily: F.sans, cursor: "pointer" }}
+              >Reset filters</button>
             </div>
           )}
           {filtered.map((job, i) => {
             const visaBadges = normalizeVisa(job.visa);
-            const match = job.match_score ?? job.match ?? 0;
+            const match = job.match_score ?? job.match ?? null;
+            const scoreMeta = getScoreMeta(match);
             const id = String(job.id || "");
+            const preview = cleanPreview(job.description).slice(0, 260);
+            const role = (job as any).role || (job as any).taxonomy_category || job.status || "Active";
+            const jobUrl = resolveJobUrl(job);
             return (
               <motion.div
                 key={id}
@@ -252,50 +549,78 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                 whileHover={{ y: -4, boxShadow: "0 16px 36px rgba(1,17,38,0.35)" }}
                 onClick={() => onJobClick(id)}
                 style={{
-                  background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`,
-                  borderLeft: `4px solid ${match >= 80 ? T.red : match >= 60 ? T.burnt : T.dark}`,
-                  borderRadius: 16, padding: 18, cursor: "pointer",
+                  background: "linear-gradient(135deg, rgba(64,18,18,0.62), rgba(25,18,32,0.72))", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`,
+                  borderLeft: `4px solid ${scoreMeta.color}`,
+                  borderRadius: 16, padding: 16, cursor: "pointer", display: "grid",
+                  gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) 138px", gap: 14, alignItems: "stretch",
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: T.text, fontFamily: F.sans, lineHeight: 1.3, marginBottom: 4 }}>{job.title || "Untitled role"}</div>
-                    <div style={{ fontSize: 12, color: T.t2, fontFamily: F.sans, marginBottom: 8 }}>{job.company || "Unknown"}</div>
-                    <div style={{ display: "flex", gap: 10, fontSize: 11, color: T.t3, fontFamily: F.sans, marginBottom: 8, flexWrap: "wrap" }}>
-                      <span style={{ display: "inline-flex", gap: 3, alignItems: "center" }}><MapPin size={10} />{job.location || "Remote"}</span>
-                      <span style={{ display: "inline-flex", gap: 3, alignItems: "center" }}><DollarSign size={10} />{formatSalary(job.salary)}</span>
-                      <span style={{ display: "inline-flex", gap: 3, alignItems: "center" }}><Clock size={10} />{job.posted_at || "Recently"}</span>
+                <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 9 }}>
+                  <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", gap: 10, alignItems: isMobile ? "stretch" : "flex-start" }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: T.text, fontFamily: F.sans, lineHeight: 1.25, marginBottom: 4 }}>{job.title || "Untitled role"}</div>
+                      <div style={{ fontSize: 13, color: T.t2, fontFamily: F.sans, fontWeight: 600 }}>{job.company || "Unknown"}</div>
                     </div>
-                    {job.description && (
-                      <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, lineHeight: 1.55, marginBottom: 8, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-                        {String(job.description).slice(0, 220)}
-                      </div>
-                    )}
-                    <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: "4px 8px", borderRadius: 999, background: "rgba(242,238,179,0.05)", color: T.t2, border: `1px solid ${T.border}`, fontFamily: F.sans, whiteSpace: "nowrap", alignSelf: isMobile ? "flex-start" : "auto" }}>{role}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 12, fontSize: 11, color: T.t3, fontFamily: F.sans, flexWrap: "wrap" }}>
+                    <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}><MapPin size={11} />{job.location || "Remote"}</span>
+                    <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}><DollarSign size={11} />{formatSalary(job.salary)}</span>
+                    <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}><Clock size={11} />{formatPosted(job.posted_at || (job as any).posted)}</span>
+                  </div>
+                  {preview && (
+                    <div style={{ fontSize: 12, color: T.t3, fontFamily: F.sans, lineHeight: 1.55, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                      {preview}
+                    </div>
+                  )}
+                  <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", gap: 10, alignItems: isMobile ? "stretch" : "center", borderTop: `1px solid ${T.border}`, paddingTop: 10 }}>
+                    <div style={{ display: "flex", gap: 5, flexWrap: "wrap", minWidth: 0 }}>
                       {visaBadges.slice(0, 4).map((v) => {
                         const s = VISA_BADGES[v] ?? { bg: "rgba(64,18,18,0.1)", color: T.t2, border: T.border };
-                        return <span key={v} style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 3, background: s.bg, color: s.color, border: `1px solid ${s.border}`, fontFamily: F.sans }}>{v}</span>;
+                        return <span key={v} style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 4, background: s.bg, color: s.color, border: `1px solid ${s.border}`, fontFamily: F.sans }}>{v}</span>;
                       })}
-                      {(job as any).category && (
-                        <span style={{ fontSize: 9, padding: "2px 7px", borderRadius: 3, background: "rgba(242,238,179,0.05)", color: T.t3, border: `1px solid ${T.border}`, fontFamily: F.sans }}>{(job as any).category}</span>
-                      )}
+                      {visaBadges.length === 0 && <span style={{ fontSize: 10, color: T.t3, fontFamily: F.sans }}>Visa not verified</span>}
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap", justifyContent: isMobile ? "flex-start" : "flex-end" }}>
+                      <button onClick={(e) => {
+                        e.stopPropagation();
+                        const savedJobs = JSON.parse(localStorage.getItem("placeup_saved_jobs") || "[]");
+                        const list = Array.isArray(savedJobs) ? savedJobs.map(String) : [];
+                        const next = list.includes(id) ? list.filter((item) => item !== id) : [...list, id];
+                        localStorage.setItem("placeup_saved_jobs", JSON.stringify(next));
+                      }} style={{ width: 32, height: 30, borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.t2, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }} title="Save job"><Bookmark size={13}/></button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const url = jobUrl || `https://www.google.com/search?q=${encodeURIComponent(`${job.company || ""} ${job.title || ""} apply`)}`;
+                          window.open(url, "_blank", "noopener,noreferrer");
+                        }}
+                        style={{ height: 30, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.05)", color: T.t2, fontSize: 11, cursor: "pointer", fontFamily: F.sans, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}
+                      ><ExternalLink size={11}/> Apply</button>
+                      <button onClick={(e) => { e.stopPropagation(); onJobClick(id); }} style={{ height: 30, padding: "0 12px", borderRadius: 8, border: "none", background: T.grad, color: "#fff", fontSize: 11, cursor: "pointer", fontFamily: F.sans, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}><ExternalLink size={11}/> View</button>
                     </div>
                   </div>
-                  <ATSRing score={match} size={64} />
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12, paddingTop: 10, borderTop: `1px solid ${T.border}` }}>
-                  <span style={{ fontSize: 11, color: T.t3, fontFamily: F.sans }}>{(job as any).role || job.status || "New"}</span>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button onClick={(e) => e.stopPropagation()} style={{ padding: "5px 10px", borderRadius: 6, border: `1px solid ${T.border}`, background: "transparent", color: T.t2, fontSize: 11, cursor: "pointer", fontFamily: F.sans, display: "flex", alignItems: "center", gap: 3 }}><Bookmark size={10}/> Save</button>
-                    <button onClick={(e) => { e.stopPropagation(); onJobClick(id); }} style={{ padding: "5px 10px", borderRadius: 6, border: "none", background: T.grad, color: "#fff", fontSize: 11, cursor: "pointer", fontFamily: F.sans, fontWeight: 600, display: "flex", alignItems: "center", gap: 3 }}><ExternalLink size={10}/> View</button>
+                <div style={{ borderRadius: 14, border: `1px solid ${scoreMeta.border}`, background: scoreMeta.bg, padding: 12, display: "flex", flexDirection: isMobile ? "row" : "column", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                  <ATSRing score={match} size={70} />
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: scoreMeta.color, fontFamily: F.sans, lineHeight: 1.2 }}>{scoreMeta.label}</div>
+                    <div style={{ fontSize: 10, color: T.t3, fontFamily: F.sans, lineHeight: 1.35, marginTop: 3 }}>{scoreMeta.detail}</div>
                   </div>
                 </div>
               </motion.div>
             );
           })}
         </div>
+        {!loading && jobs.length < total && statusFilter === "All" && (
+          <button
+            onClick={() => setPage((p) => p + 1)}
+            style={{ alignSelf: "center", marginTop: 6, padding: "10px 18px", borderRadius: 10, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", color: T.t2, fontSize: 13, fontFamily: F.sans, cursor: "pointer" }}
+          >
+            Load more jobs ({jobs.length.toLocaleString()} of {total.toLocaleString()})
+          </button>
+        )}
       </div>
     </div>
   );
 }
-

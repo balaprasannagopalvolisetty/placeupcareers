@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from app.db.postgres import PostgresClient
 
@@ -107,7 +108,7 @@ INSERT INTO master_jobs (
     posted_at, first_seen_at, last_seen_at, source_priority, merged_sources, extra_metadata
 )
 SELECT
-    id, canonical_key, title, company, location, country, source_name, source_job_id,
+    canonical_key AS id, canonical_key, title, company, location, country, source_name, source_job_id,
     source_url, description, employment_type, remote_type, salary_min, salary_max,
     currency, visa_opt, visa_stem_opt, visa_h1b, h1b_verified, visa_score, status,
     posted_at, min_first_seen_at, max_last_seen_at, source_priority, sg.all_sources, extra_metadata
@@ -142,7 +143,19 @@ ON CONFLICT (canonical_key) DO UPDATE SET
 """
 
 
-def rebuild_master_jobs(client: PostgresClient | None = None) -> int:
+def rebuild_master_jobs(client: PostgresClient | Session | None = None, *, db: Session | None = None) -> int:
+    if db is not None:
+        result = db.execute(text(MASTER_SYNC_SQL))
+        count = int(result.rowcount or 0)
+        logger.info("Master jobs sync complete: %s rows upserted", count)
+        return count
+
+    if isinstance(client, Session):
+        result = client.execute(text(MASTER_SYNC_SQL))
+        count = int(result.rowcount or 0)
+        logger.info("Master jobs sync complete: %s rows upserted", count)
+        return count
+
     client = client or PostgresClient()
     with client.session() as db:
         result = db.execute(text(MASTER_SYNC_SQL))

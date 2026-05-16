@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     # --- Server ---
     app_env: str = Field(default="development")
     app_port: int = Field(default=8000)
-    frontend_url: str = Field(default="http://localhost:5173")
+    frontend_url: str = Field(default="https://placeup-frontend-76tybrmgya-ue.a.run.app")
 
     # --- Auth (JWT + password hashing) ---
     jwt_secret: str = Field(
@@ -44,20 +44,42 @@ class Settings(BaseSettings):
     google_cse_id: str = Field(default="", description="Google Programmable Search Engine ID (cx)")
     finalscout_api_key: str = Field(default="", description="FinalScout API key")
 
+    # --- Email Digest (optional SMTP; scheduled from Cloud Scheduler/Run) ---
+    smtp_host: str = Field(default="")
+    smtp_port: int = Field(default=587)
+    smtp_user: str = Field(default="")
+    smtp_password: str = Field(default="")
+    email_from: str = Field(default="jobs@placeupcareer.com")
+
     # --- Database / Firebase / GCP ---
-    database_backend: str = Field(default="sqlite")
+    database_backend: str = Field(default="postgres")
     database_url: str = Field(
         default="postgresql+psycopg://placeup:placeup_dev@localhost:5432/placeup",
         description="SQLAlchemy URL used when DATABASE_BACKEND=postgres.",
     )
     firebase_credentials_path: str = Field(default="./service-account.json")
     gcp_project_id: Optional[str] = Field(default=None)
+    user_database_backend: str = Field(
+        default="firestore",
+        description="User/profile store backend. Use firestore in production.",
+    )
+    user_firestore_project_id: Optional[str] = Field(
+        default=None,
+        description="Firebase/GCP project id for user/profile Firestore data.",
+    )
+    user_firestore_database: str = Field(
+        default="(default)",
+        description="Firestore database id for user/profile data.",
+    )
 
     # --- Scraping Config ---
     scrape_interval_hours: int = Field(default=6)
     scrape_max_concurrency: int = Field(default=28, ge=4, le=200)
     job_inactive_after_days: int = Field(default=12, description="Mark active jobs as inactive after N days without re-scrape")
     proxy_url: Optional[str] = Field(default=None)
+    scrapegraph_enabled: bool = Field(default=False)
+    scrapegraph_max_enrich_per_run: int = Field(default=40, ge=0, le=500)
+    scrapegraph_min_description_chars: int = Field(default=450, ge=50, le=5000)
 
     # --- Redis (optional) ---
     redis_url: Optional[str] = Field(default=None)
@@ -73,6 +95,11 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         origins = [origin.strip() for origin in self.frontend_url.split(",") if origin.strip()]
+        origins.extend([
+            "https://placeupcareer.com",
+            "https://www.placeupcareer.com",
+            "https://placeup-frontend-76tybrmgya-ue.a.run.app",
+        ])
         if self.is_development:
             origins.extend([
                 "http://localhost:5173",
@@ -83,14 +110,22 @@ class Settings(BaseSettings):
         return list(set(origins))
 
     def validate_production(self) -> None:
+        if self.database_backend == "sqlite":
+            raise RuntimeError(
+                "DATABASE_BACKEND=sqlite is no longer supported. "
+                "Use postgres (jobs) + firestore (users) for all environments."
+            )
+        if self.user_database_backend == "sqlite":
+            raise RuntimeError(
+                "USER_DATABASE_BACKEND=sqlite is no longer supported. "
+                "Use firestore for user data in all environments."
+            )
         if not self.is_production:
             return
         if not self.jwt_secret or self.jwt_secret == "dev-only-change-me-jwt-secret-key-32-chars-min":
             raise RuntimeError("JWT_SECRET must be set to a production secret.")
         if len(self.jwt_secret) < 32:
             raise RuntimeError("JWT_SECRET must be at least 32 characters.")
-        if self.database_backend == "sqlite":
-            raise RuntimeError("DATABASE_BACKEND=sqlite is not allowed in production.")
 
     model_config = {
         "env_file": ".env",

@@ -14,8 +14,11 @@ class AlertItem(BaseModel):
     location: str
     salary: str
     match: int = Field(default=0)
+    match_score: int = Field(default=0)
     visa: str = ""
     time: str
+    message: str | None = None
+    created_at: str | None = None
     unread: bool = True
 
 

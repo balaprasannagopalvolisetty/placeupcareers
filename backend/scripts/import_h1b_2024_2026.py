@@ -29,7 +29,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from app.db.local_db import SQLiteClient
+from app.db.postgres import PostgresClient
 from app.services.h1b_data import build_recent_sponsors
 
 logging.basicConfig(
@@ -118,9 +118,9 @@ async def main() -> int:
 
     logger.info("Wrote %s sponsors to %s", len(sponsors), csv_path)
 
-    # Upsert to SQLite
+    # Upsert to Postgres
     if not args.no_db:
-        db = SQLiteClient()
+        db = PostgresClient()
         rows = [s.model_dump(mode="json") for s in sponsors]
         n = await db.upsert_h1b_sponsors(rows)
         logger.info("Upserted %s sponsors into SQLite (%s)", n, db.db_path)

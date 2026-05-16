@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import { Link, useNavigate } from "react-router";
-import { Eye, EyeOff, X, Upload, Check } from "lucide-react";
+import { ChevronDown, Eye, EyeOff, Search, X, Upload, Check } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import * as api from "../lib/api";
 
@@ -16,6 +16,75 @@ const T = {
 
 interface TaxonomyRole { name: string }
 interface TaxonomyCategory { name: string; roles: TaxonomyRole[] }
+
+const LOCATION_SUGGESTIONS = [
+  "Remote",
+  "New York, NY",
+  "San Francisco, CA",
+  "San Jose, CA",
+  "Seattle, WA",
+  "Austin, TX",
+  "Dallas, TX",
+  "Chicago, IL",
+  "Boston, MA",
+  "Los Angeles, CA",
+  "Irvine, CA",
+  "Atlanta, GA",
+  "Denver, CO",
+  "Raleigh, NC",
+  "Charlotte, NC",
+  "Washington, DC",
+  "Jersey City, NJ",
+  "Phoenix, AZ",
+  "Miami, FL",
+  "United States",
+];
+
+const FALLBACK_TARGET_ROLES = [
+  "Software Engineer",
+  "Frontend Engineer",
+  "Backend Engineer",
+  "Full Stack Engineer",
+  "Data Engineer",
+  "Machine Learning Engineer",
+  "Data Scientist",
+  "DevOps / Cloud Engineer",
+  "Cybersecurity Analyst",
+  "Product Manager",
+  "Business Analyst",
+  "UX Designer",
+];
+
+function passwordChecks(value: string) {
+  return {
+    length: value.length >= 8,
+    upper: /[A-Z]/.test(value),
+    lower: /[a-z]/.test(value),
+    number: /\d/.test(value),
+    symbol: /[^A-Za-z0-9]/.test(value),
+  };
+}
+
+function passwordError(value: string) {
+  const checks = passwordChecks(value);
+  if (!checks.length) return "Password must be at least 8 characters.";
+  if (!checks.upper) return "Password must include at least one capital letter.";
+  if (!checks.lower) return "Password must include at least one lowercase letter.";
+  if (!checks.number) return "Password must include at least one number.";
+  if (!checks.symbol) return "Password must include at least one symbol.";
+  return null;
+}
+
+function isValidLinkedInUrl(value: string) {
+  if (!value.trim()) return true;
+  try {
+    const url = new URL(value.trim());
+    const host = url.hostname.replace(/^www\./, "").toLowerCase();
+    return (url.protocol === "https:" || url.protocol === "http:") && host === "linkedin.com" && url.pathname.startsWith("/in/");
+  } catch {
+    return false;
+  }
+}
 
 function Field({ label, type = "text", value, onChange, placeholder, required, rightEl }:
   { label: string; type?: string; value: string; onChange: (v: string) => void; placeholder?: string; required?: boolean; rightEl?: React.ReactNode }) {
@@ -57,6 +126,85 @@ function Select({ label, value, onChange, options, required }:
   );
 }
 
+function PasswordRules({ value }: { value: string }) {
+  const checks = passwordChecks(value);
+  const rules = [
+    { label: "8+ characters", ok: checks.length },
+    { label: "Capital letter", ok: checks.upper },
+    { label: "Lowercase letter", ok: checks.lower },
+    { label: "Number", ok: checks.number },
+    { label: "Symbol", ok: checks.symbol },
+  ];
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 8 }}>
+      {rules.map((rule) => (
+        <div key={rule.label} style={{ display: "flex", alignItems: "center", gap: 5, color: rule.ok ? "#22c55e" : T.t3, fontSize: 11, fontFamily: F.sans }}>
+          <Check size={11} /> {rule.label}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AppSelect({ label, value, onChange, options, required, placeholder = "Select" }:
+  { label: string; value: string; onChange: (v: string) => void; options: readonly string[]; required?: boolean; placeholder?: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 5, position: "relative" }}>
+      <label style={{ fontSize: 12, fontWeight: 500, color: T.t2, fontFamily: F.sans }}>
+        {label} {required ? <span style={{ color: T.red }}>*</span> : null}
+      </label>
+      <button type="button" onClick={() => setOpen((v) => !v)}
+        style={{ height: 42, padding: "0 12px", borderRadius: 10, border: `1px solid ${open ? T.red : T.border}`,
+          background: T.input, color: value ? T.text : T.t3, fontSize: 13, fontFamily: F.sans, outline: "none",
+          display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
+        <span>{value || placeholder}</span>
+        <ChevronDown size={14} color={T.t3} />
+      </button>
+      {open && (
+        <div style={{ position: "absolute", top: 68, left: 0, right: 0, zIndex: 30, maxHeight: 220, overflowY: "auto",
+          borderRadius: 10, border: `1px solid ${T.border}`, background: "#081426", boxShadow: "0 16px 40px rgba(1,17,38,0.5)", padding: 6 }}>
+          {options.map((o) => (
+            <button key={o} type="button" onClick={() => { onChange(o); setOpen(false); }}
+              style={{ width: "100%", textAlign: "left", padding: "9px 10px", borderRadius: 8, border: "none",
+                background: value === o ? "rgba(166,55,45,0.18)" : "transparent", color: T.text,
+                fontSize: 13, fontFamily: F.sans, cursor: "pointer" }}>
+              {o}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LocationSuggestField({ label, value, onChange, placeholder }:
+  { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+  const matches = value.trim().length >= 4
+    ? LOCATION_SUGGESTIONS.filter((item) => {
+        const q = value.trim().toLowerCase();
+        return item.toLowerCase() !== q && item.toLowerCase().includes(q);
+      }).slice(0, 6)
+    : [];
+  return (
+    <div style={{ position: "relative" }}>
+      <Field label={label} value={value} onChange={onChange} placeholder={placeholder} />
+      {matches.length > 0 && (
+        <div style={{ position: "absolute", top: 66, left: 0, right: 0, zIndex: 25, borderRadius: 10,
+          border: `1px solid ${T.border}`, background: "#081426", boxShadow: "0 16px 40px rgba(1,17,38,0.5)", padding: 6 }}>
+          {matches.map((item) => (
+            <button key={item} type="button" onClick={() => onChange(item)}
+              style={{ width: "100%", textAlign: "left", padding: "8px 10px", borderRadius: 8, border: "none",
+                background: "transparent", color: T.text, fontSize: 13, fontFamily: F.sans, cursor: "pointer" }}>
+              {item}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SignUp() {
   const navigate = useNavigate();
   const { signUp } = useAuth();
@@ -80,6 +228,7 @@ export default function SignUp() {
   // Step 3 — preferences
   const [taxonomy, setTaxonomy] = useState<TaxonomyCategory[]>([]);
   const [targetRoles, setTargetRoles] = useState<string[]>([]);
+  const [roleSearch, setRoleSearch] = useState("");
   const [targetLocations, setTargetLocations] = useState<string[]>([]);
   const [locationInput, setLocationInput] = useState("");
 
@@ -92,13 +241,25 @@ export default function SignUp() {
 
   // Load taxonomy once for the role picker.
   useEffect(() => {
-    fetch("/api/jobs/taxonomy")
-      .then((r) => r.json())
+    api.getJobTaxonomy()
       .then((data) => Array.isArray(data?.categories) && setTaxonomy(data.categories))
       .catch(() => {});
   }, []);
 
-  const allRoles = taxonomy.flatMap((c) => c.roles.map((r) => r.name));
+  const allRoles = Array.from(new Set([
+    ...taxonomy.flatMap((c) => c.roles.map((r) => r.name).filter(Boolean)),
+    ...FALLBACK_TARGET_ROLES,
+  ]));
+  const filteredRoles = allRoles
+    .filter((role) => role.toLowerCase().includes(roleSearch.trim().toLowerCase()))
+    .slice(0, 12);
+  const visibleRoles = roleSearch.trim() ? filteredRoles : allRoles.slice(0, 12);
+  const filteredLocationPrefs = locationInput.trim().length >= 4
+    ? LOCATION_SUGGESTIONS.filter((item) => {
+        const q = locationInput.trim().toLowerCase();
+        return item.toLowerCase() !== q && item.toLowerCase().includes(q);
+      }).slice(0, 6)
+    : [];
 
   const toggleRole = (r: string) => {
     setTargetRoles((prev) => {
@@ -120,9 +281,11 @@ export default function SignUp() {
     if (step === 1) {
       if (!firstName || !lastName || !email || !password || !confirm) return "Please complete all fields.";
       if (password !== confirm) return "Passwords do not match.";
-      if (password.length < 8) return "Password must be at least 8 characters.";
+      const passwordProblem = passwordError(password);
+      if (passwordProblem) return passwordProblem;
     }
     if (step === 2) {
+      if (!isValidLinkedInUrl(linkedinUrl)) return "Enter a valid LinkedIn profile URL like https://linkedin.com/in/your-name.";
       if (!visaStatus) return "Please select your visa status.";
     }
     if (step === 3) {
@@ -155,7 +318,7 @@ export default function SignUp() {
         current_role: currentRole || undefined,
         current_company: currentCompany || undefined,
         location: location || undefined,
-        linkedin_url: linkedinUrl || undefined,
+        linkedin_url: linkedinUrl.trim() || undefined,
         target_roles: targetRoles,
         target_locations: targetLocations,
       });
@@ -203,6 +366,9 @@ export default function SignUp() {
             <Field label="Password" type={showPass ? "text" : "password"} value={password} onChange={setPassword} required
               rightEl={<button onClick={() => setShowPass(!showPass)} style={{ background: "none", border: "none", cursor: "pointer", color: T.t3, padding: 0 }}>{showPass ? <EyeOff size={14} /> : <Eye size={14} />}</button>} />
             <Field label="Confirm Password" type="password" value={confirm} onChange={setConfirm} required />
+            <div style={{ gridColumn: "1 / -1" }}>
+              <PasswordRules value={password} />
+            </div>
           </motion.div>
         )}
 
@@ -214,10 +380,10 @@ export default function SignUp() {
             </div>
             <Field label="Current Role" value={currentRole} onChange={setCurrentRole} placeholder="Software Engineer" />
             <Field label="Current Company" value={currentCompany} onChange={setCurrentCompany} placeholder="Acme Corp" />
-            <Select label="Years of Experience" value={experienceLevel} onChange={setExperienceLevel} options={api.YEARS_OPTIONS} />
-            <Select label="Visa Status" value={visaStatus} onChange={setVisaStatus} options={api.VISA_STATUS_OPTIONS} required />
+            <AppSelect label="Years of Experience" value={experienceLevel} onChange={setExperienceLevel} options={api.YEARS_OPTIONS} />
+            <AppSelect label="Visa Status" value={visaStatus} onChange={setVisaStatus} options={api.VISA_STATUS_OPTIONS} required />
             <div style={{ gridColumn: "1 / -1" }}>
-              <Field label="Current Location" value={location} onChange={setLocation} placeholder="San Francisco, CA" />
+              <LocationSuggestField label="Current Location" value={location} onChange={setLocation} placeholder="Start typing, e.g. San F" />
             </div>
           </motion.div>
         )}
@@ -230,26 +396,43 @@ export default function SignUp() {
                 Job Preferences <span style={{ color: T.red }}>*</span>
                 <span style={{ marginLeft: 6, fontSize: 11, color: T.t3 }}>pick up to 5 ({targetRoles.length}/5)</span>
               </div>
-              <div style={{ maxHeight: 220, overflowY: "auto", border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, background: T.input }}>
-                {taxonomy.map((cat) => (
-                  <div key={cat.name} style={{ marginBottom: 8 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: T.t3, fontFamily: F.sans, padding: "4px 6px" }}>{cat.name}</div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                      {cat.roles.map((r) => {
-                        const sel = targetRoles.includes(r.name);
-                        const disabled = !sel && targetRoles.length >= 5;
-                        return (
-                          <button key={r.name} type="button" onClick={() => toggleRole(r.name)} disabled={disabled}
-                            style={{ fontSize: 11, padding: "4px 9px", borderRadius: 4, fontFamily: F.sans, cursor: disabled ? "not-allowed" : "pointer",
-                              background: sel ? T.grad : "rgba(242,238,179,0.05)", color: sel ? "#fff" : (disabled ? T.t3 : T.t2),
-                              border: `1px solid ${sel ? "rgba(166,55,45,0.6)" : T.border}`, opacity: disabled ? 0.5 : 1 }}>
-                            {r.name}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
+              <div style={{ position: "relative", border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, background: T.input }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, height: 38, padding: "0 10px", borderRadius: 8, background: "rgba(1,17,38,0.35)", border: `1px solid ${T.border}` }}>
+                  <Search size={14} color={T.t3} />
+                  <input value={roleSearch} onChange={(e) => setRoleSearch(e.target.value)} placeholder="Search and select target roles"
+                    style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: T.text, fontSize: 13, fontFamily: F.sans }} />
+                  <ChevronDown size={14} color={T.t3} />
+                </div>
+                <div style={{ maxHeight: 180, overflowY: "auto", marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+                  {visibleRoles.map((role) => {
+                    const sel = targetRoles.includes(role);
+                    const disabled = !sel && targetRoles.length >= 5;
+                    return (
+                      <button key={role} type="button" onClick={() => toggleRole(role)} disabled={disabled}
+                        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderRadius: 8, border: "none",
+                          background: sel ? "rgba(166,55,45,0.18)" : "transparent", color: disabled ? T.t3 : T.text,
+                          fontSize: 13, fontFamily: F.sans, cursor: disabled ? "not-allowed" : "pointer", textAlign: "left" }}>
+                        <span>{role}</span>
+                        {sel && <Check size={13} color="#22c55e" />}
+                      </button>
+                    );
+                  })}
+                  {visibleRoles.length === 0 && (
+                    <button type="button" onClick={() => roleSearch.trim() && toggleRole(roleSearch.trim())}
+                      style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderRadius: 8, border: "none",
+                        background: "transparent", color: T.t2, fontSize: 13, fontFamily: F.sans, cursor: roleSearch.trim() ? "pointer" : "default", textAlign: "left" }}>
+                      <span>{roleSearch.trim() ? `Use "${roleSearch.trim()}"` : "Start typing to search roles"}</span>
+                    </button>
+                  )}
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
+                  {targetRoles.map((role) => (
+                    <span key={role} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "rgba(166,55,45,0.1)", color: T.red, border: "1px solid rgba(166,55,45,0.25)", fontFamily: F.sans }}>
+                      {role}
+                      <button type="button" onClick={() => toggleRole(role)} style={{ background: "none", border: "none", cursor: "pointer", color: T.red, padding: 0 }}><X size={10} /></button>
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -258,10 +441,21 @@ export default function SignUp() {
               <div style={{ display: "flex", gap: 8 }}>
                 <input value={locationInput} onChange={(e) => setLocationInput(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addLocation(); } }}
-                  placeholder="e.g. Remote, San Francisco, NYC"
+                  placeholder="Type 4+ letters, e.g. San F"
                   style={{ flex: 1, height: 38, padding: "0 12px", borderRadius: 10, border: `1px solid ${T.border}`, background: T.input, color: T.text, fontSize: 13, fontFamily: F.sans, outline: "none" }} />
                 <button type="button" onClick={addLocation} style={{ padding: "0 16px", borderRadius: 10, border: "none", background: T.grad, color: "#fff", fontSize: 12, fontWeight: 600, fontFamily: F.sans, cursor: "pointer" }}>Add</button>
               </div>
+              {filteredLocationPrefs.length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
+                  {filteredLocationPrefs.map((item) => (
+                    <button key={item} type="button" onClick={() => { setLocationInput(item); if (!targetLocations.includes(item)) setTargetLocations((prev) => [...prev, item]); }}
+                      style={{ fontSize: 11, padding: "4px 9px", borderRadius: 4, fontFamily: F.sans, cursor: "pointer",
+                        background: "rgba(242,238,179,0.05)", color: T.t2, border: `1px solid ${T.border}` }}>
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
                 {targetLocations.map((l) => (
                   <span key={l} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "rgba(166,55,45,0.1)", color: T.red, border: "1px solid rgba(166,55,45,0.25)", fontFamily: F.sans }}>

@@ -3,11 +3,11 @@
  *
  * Wraps the FastAPI backend with typed helpers and a shared bearer-token
  * fetch pipeline. The base URL is read from `VITE_API_BASE`; when empty,
- * requests are sent as relative paths and resolved through the Vite dev
- * proxy (configured in `vite.config.ts`).
+ * requests go to the deployed Google Cloud backend.
  */
 
-const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) || "";
+const DEFAULT_API_BASE = "https://placeup-api-rui2a74muq-ue.a.run.app";
+const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) || DEFAULT_API_BASE;
 const STORAGE_TOKEN_KEY = "placeup_token";
 
 function getStoredToken(): string | null {
@@ -122,13 +122,17 @@ export interface JobPost {
   company: string;
   location: string;
   salary?: unknown;
-  match_score?: number;
+  match_score?: number | null;
   match?: number;
   visa?: string[] | Record<string, unknown> | string;
   posted_at?: string;
   posted?: string;
   status?: string;
   description?: string;
+  job_url?: string;
+  source_url?: string;
+  taxonomy_category?: string;
+  role?: string;
   hiring_manager_name?: string;
   hiring_manager_email?: string;
   hiring_manager_linkedin?: string;
@@ -158,7 +162,7 @@ export interface AlertItem {
   location: string;
   salary: string;
   match: number;
-  match_score?: number;
+  match_score?: number | null;
   message?: string;
   visa: string;
   time: string;
@@ -243,10 +247,13 @@ export interface DashboardSummaryAlert {
 
 export interface DashboardSummary {
   resume_score: number;
+  has_resume?: boolean;
+  active_resume_name?: string | null;
   total_resumes: number;
   total_jobs: number;
   total_applications: number;
   recent_alerts: DashboardSummaryAlert[];
+  featured_jobs?: JobPost[];
 }
 
 export interface SignupPayload {
@@ -338,6 +345,23 @@ export async function getNotifications() { return request<NotificationItem[]>("/
 
 export async function getDashboardSummary() { return request<DashboardSummary>("/api/user/dashboard-summary"); }
 
+export async function saveUserApplication(payload: {
+  job_id: string;
+  title?: string;
+  company?: string;
+  location?: string;
+  job_url?: string;
+  match_score?: number;
+  status: string;
+  not_applied_reason?: string;
+  heard_back?: boolean;
+  position_open?: boolean;
+  salary_offered?: string;
+  notes?: string;
+}) {
+  return request<Record<string, unknown>>("/api/user/applications", { method: "POST", body: JSON.stringify(payload) });
+}
+
 export async function getResumeList() { return request<ResumeMetadata[]>("/api/user/resumes"); }
 
 export async function uploadResume(file: File) {
@@ -356,18 +380,40 @@ export async function deleteResume(resumeId: string) {
 
 // ─── Jobs ───
 
-export async function getJobs(params: Record<string, string | number | boolean | undefined> = {}) {
+export async function getJobs(params: Record<string, string | number | boolean | undefined> = {}, init: RequestInit = {}) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => {
     if (v !== undefined && v !== null && v !== "") query.append(k, String(v));
   });
   const suffix = query.toString() ? `?${query.toString()}` : "";
-  return request<JobListResponse>(`/api/jobs${suffix}`);
+  return request<JobListResponse>(`/api/jobs${suffix}`, init);
+}
+
+export async function getTopMatches(params: Record<string, string | number | boolean | undefined> = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== "") query.append(k, String(v));
+  });
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return request<JobListResponse>(`/api/jobs/top-matches${suffix}`);
 }
 
 export async function getJobDetail(jobId: string) { return request<JobPost>(`/api/jobs/detail/${encodeURIComponent(jobId)}`); }
 export async function getJob(jobId: string) { return request<JobPost>(`/api/jobs/${encodeURIComponent(jobId)}`); }
 export async function getJobStats() { return request<{ total_jobs: number; by_category: Record<string, number> }>("/api/jobs/stats"); }
+export async function getJobPipelineStatus() {
+  return request<{
+    total_jobs: number;
+    active_jobs: number;
+    inactive_jobs: number;
+    last_scraped_at?: string | null;
+    backend?: string;
+    last_run?: Record<string, unknown> | null;
+  }>("/api/jobs/pipeline-status");
+}
+export async function getJobTaxonomy() {
+  return request<{ categories: Array<{ name: string; roles: Array<Record<string, unknown>> }> }>("/api/jobs/taxonomy");
+}
 export async function triggerScrape(payload?: Record<string, unknown>) {
   return request<Record<string, unknown>>("/api/jobs/scrape", { method: "POST", body: JSON.stringify(payload ?? {}) });
 }
@@ -436,6 +482,15 @@ export async function classifyJobVisa(payload: { title: string; company: string;
 }
 
 export async function getVisaDashboard() { return request<VisaDashboard>("/api/visa/dashboard"); }
+
+export async function getVisaSponsors(params: Record<string, string | number | undefined> = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== "") query.append(k, String(v));
+  });
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return request<Record<string, unknown>>(`/api/visa/sponsors${suffix}`);
+}
 
 export async function getH1BEmployer(employer: string) {
   return request<Record<string, unknown>>(`/api/visa/h1b/${encodeURIComponent(employer)}`);

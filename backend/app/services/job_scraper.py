@@ -33,6 +33,8 @@ from app.utils.terminal_table import render_table
 
 logger = logging.getLogger(__name__)
 
+_rapidapi_disabled_until = 0.0
+
 
 def _normalize_source_name(source: str) -> str:
     """Normalize source labels so metrics and logs stay consistent."""
@@ -87,11 +89,12 @@ async def scrape_jobspy(
         offset = 0
         pages = 0
 
+        indeed_country = "canada" if "canada" in (location or "").lower() else "USA"
         scrape_kwargs = dict(
             site_name=site_names,
             search_term=search_term,
             location=location,
-            country_indeed="USA",
+            country_indeed=indeed_country,
             linkedin_fetch_description=True,
             verbose=0,
         )
@@ -123,6 +126,10 @@ async def scrape_jobspy(
                 try:
                     job = _jobspy_row_to_jobpost(row)
                     if job:
+                        extras = job.extra_metadata if isinstance(job.extra_metadata, dict) else {}
+                        extras["requested_location"] = location
+                        extras["requested_search_term"] = search_term
+                        job.extra_metadata = extras
                         jobs.append(job)
                 except Exception as e:
                     logger.debug(f"JobSpy: Skipping row due to error: {e}")
@@ -185,6 +192,13 @@ def _format_skills_cell(value: object) -> Optional[str]:
         return ", ".join(skill_list) if skill_list else None
     text = _pandas_scalar_str(value)
     return text or None
+
+
+def _rapidapi_location_filter(location: str) -> str:
+    normalized = (location or "").strip().lower()
+    if normalized in {"north america", "north_america", "us canada", "usa canada"}:
+        return '"United States" OR "Canada"'
+    return f'"{location or "United States"}"'
 
 
 def _parse_datetime_cell(value: object) -> Optional[datetime]:
@@ -314,7 +328,14 @@ async def scrape_usajobs(
     Returns:
         List of normalized JobPost objects
     """
-    if not settings.usajobs_api_key or not settings.usajobs_email:
+    usajobs_key = (settings.usajobs_api_key or "").strip()
+    usajobs_email = (settings.usajobs_email or "").strip()
+    if (
+        not usajobs_key
+        or not usajobs_email
+        or "example.com" in usajobs_email.lower()
+        or usajobs_key.lower().startswith("your_")
+    ):
         logger.warning("USAJobs: API key or email not configured")
         return []
 
@@ -322,8 +343,8 @@ async def scrape_usajobs(
         url = "https://data.usajobs.gov/api/search"
         headers = {
             "Host": "data.usajobs.gov",
-            "User-Agent": settings.usajobs_email,
-            "Authorization-Key": settings.usajobs_api_key,
+            "User-Agent": usajobs_email,
+            "Authorization-Key": usajobs_key,
         }
         params = {
             "Keyword": search_term,
@@ -429,23 +450,37 @@ async def scrape_linkedin_rapidapi(
     Returns:
         List of normalized JobPost objects
     """
-    if not settings.rapidapi_key:
+    global _rapidapi_disabled_until
+    rapidapi_key = (settings.rapidapi_key or "").strip()
+    if not rapidapi_key or rapidapi_key.lower().startswith("your_"):
         logger.warning("LinkedIn RapidAPI: API key not configured")
+        return []
+    if time.monotonic() < _rapidapi_disabled_until:
+        logger.info("LinkedIn RapidAPI: temporarily paused after provider rate limiting")
         return []
 
     try:
         url = "https://linkedin-job-search-api.p.rapidapi.com/active-jb-24h"
         headers = {
-            "x-rapidapi-key": settings.rapidapi_key,
+            "x-rapidapi-key": rapidapi_key,
             "x-rapidapi-host": "linkedin-job-search-api.p.rapidapi.com",
         }
         params = {
+            "limit": str(min(max(results_wanted, 1), 100)),
+            "offset": "0",
             "title_filter": f'"{search_term}"',
-            "location_filter": f'"{location}"',
+            "location_filter": _rapidapi_location_filter(location),
+            "description_type": "text",
         }
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(url, headers=headers, params=params)
+            if response.status_code == 429:
+                _rapidapi_disabled_until = time.monotonic() + 300
+                logger.warning(
+                    "LinkedIn RapidAPI rate limited; pausing remaining RapidAPI requests for this run"
+                )
+                return []
             response.raise_for_status()
             data = response.json()
 
@@ -465,7 +500,7 @@ async def scrape_linkedin_rapidapi(
         return jobs
 
     except Exception as e:
-        logger.error(f"LinkedIn RapidAPI error: {e}")
+        logger.warning(f"LinkedIn RapidAPI unavailable: {e}")
         return []
 
 
@@ -621,10 +656,15 @@ async def run_scrape_cycle(
 
         concurrency = getattr(settings, "scrape_max_concurrency", None) or 28
         semaphore = asyncio.Semaphore(concurrency)
+        rapidapi_semaphore = asyncio.Semaphore(1)
 
         async def _guarded_capture(source_tag: str, awaitable_job):
             async with semaphore:
                 try:
+                    if _normalize_source_name(source_tag) == "rapidapi":
+                        async with rapidapi_semaphore:
+                            await asyncio.sleep(1.0)
+                            return source_tag, await awaitable_job, None
                     return source_tag, await awaitable_job, None
                 except Exception as exc:
                     return source_tag, None, exc
@@ -646,22 +686,29 @@ async def run_scrape_cycle(
                 source_scraped[normalized_source] = source_scraped.get(normalized_source, 0) + len(outcome)
 
     # Deduplicate + USA/Canada geo filter + years-of-experience tag.
-    from app.services.job_filters import is_us_or_canada, parse_years, is_entry_level
+    from app.services.job_filters import is_us_or_canada, parse_years, is_entry_level, is_target_experience
     seen_hashes: set[str] = set(existing_hashes)
     unique_jobs: list[JobPost] = []
     duplicates_skipped = 0
     geo_filtered = 0
+    experience_filtered = 0
 
     for job in all_jobs:
         if job.content_hash in seen_hashes:
             duplicates_skipped += 1
             continue
         # USA + Canada only (PlaceUp targets international students in NA).
-        if not is_us_or_canada(getattr(job, "location", "") or ""):
+        metadata = getattr(job, "extra_metadata", None) or {}
+        requested_location = metadata.get("requested_location", "") if isinstance(metadata, dict) else ""
+        geo_text = f"{getattr(job, 'location', '') or ''} {requested_location} {getattr(job, 'title', '') or ''}"
+        if not is_us_or_canada(geo_text):
             geo_filtered += 1
             continue
         # Tag years-of-experience heuristic onto the JobPost extras.
         ymin, ymax = parse_years(f"{getattr(job,'title','')}\n{getattr(job,'description','')}")
+        if not is_target_experience(getattr(job, "title", "") or "", ymin, ymax, max_years=10):
+            experience_filtered += 1
+            continue
         try:
             existing_extras = getattr(job, "extra_metadata", None) or {}
             if not isinstance(existing_extras, dict):
@@ -669,6 +716,8 @@ async def run_scrape_cycle(
             existing_extras["years_min"] = ymin
             existing_extras["years_max"] = ymax
             existing_extras["entry_level"] = is_entry_level(ymin)
+            existing_extras["target_experience"] = True
+            existing_extras["target_experience_max_years"] = 10
             job.extra_metadata = existing_extras  # type: ignore[attr-defined]
         except Exception:
             pass
@@ -677,6 +726,15 @@ async def run_scrape_cycle(
 
     if geo_filtered:
         logger.info(f"Geo-filtered {geo_filtered} non-US/CA jobs from {len(all_jobs)} scraped")
+    if experience_filtered:
+        logger.info(f"Experience-filtered {experience_filtered} roles outside 0-10 years from {len(all_jobs)} scraped")
+
+    try:
+        from app.services.scrapegraph_enrichment import enrich_jobs_with_scrapegraph
+
+        await enrich_jobs_with_scrapegraph(unique_jobs)
+    except Exception as exc:
+        logger.warning("ScrapeGraphAI enrichment step skipped: %s", exc)
 
     # Classify each job for visa compatibility (without downgrading
     # records already stamped by the H1B sponsor pipeline).

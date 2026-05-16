@@ -1,3 +1,5 @@
+.git/
+.gitignore
 .env
 .env.*
 !.env.example
@@ -11,15 +13,13 @@ __pycache__/
 .venv/
 venv/
 env/
-data/*
-!data/h1b/
-!data/h1b/*.csv
 downloads/
 dist/
 build/
 *.log
 logs/
-.git/
-.gitignore
+data/*
+!data/h1b/
+!data/h1b/*.csv
 H1b_US_DataLIst.xlsx
 sample user.csv

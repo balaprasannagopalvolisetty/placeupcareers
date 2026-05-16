@@ -43,7 +43,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from app.db.local_db import SQLiteClient
+from app.db.postgres import PostgresClient
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -157,7 +157,7 @@ def _load_input_contacts(args) -> list[dict]:
     """Load contacts either from CSV or SQLite."""
     if args.from_db:
         async def _load():
-            db = SQLiteClient()
+            db = PostgresClient()
             return await db.get_contacts(limit=100000)
         rows = asyncio.run(_load())
         logger.info(f"Loaded {len(rows)} contacts from SQLite")

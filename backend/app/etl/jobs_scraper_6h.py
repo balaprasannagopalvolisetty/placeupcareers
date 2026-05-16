@@ -1,0 +1,35 @@
+"""Production-sized 6-hour job scraper entrypoint for Cloud Run Jobs."""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import logging
+
+from app.etl.jobs_scraper import run
+from app.job_taxonomy import all_early_career_search_terms
+
+
+def main() -> int:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+    args = argparse.Namespace(
+        queries="~".join(term.replace(" ", "_") for term in all_early_career_search_terms()),
+        locations="United_States~Canada",
+        # LinkedIn guest scraping is currently rate-limiting heavily in Cloud
+        # Run. Keep the 6h job on reliable sources so each run finishes and
+        # writes fresh rows instead of spending hours retrying 429s.
+        sources="indeed~google~h1b_sponsor",
+        max_per_source=35,
+        max_per_sponsor=180,
+        tiers="T1~T2",
+        schedule_type="6h",
+        dry_run=False,
+    )
+    return asyncio.run(run(args))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

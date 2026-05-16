@@ -17,6 +17,7 @@ omitted.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 
@@ -37,27 +38,33 @@ class Category:
 
 CATEGORIES: tuple[Category, ...] = (
     Category("Technology & Engineering", "Cpu", (
-        Role("Software Engineer",       ("software engineer", "software developer", "swe", "backend engineer", "frontend engineer", "full stack engineer"), ("OPT","STEM","H-1B"), hot=True),
-        Role("Data Engineer",           ("data engineer", "etl engineer", "analytics engineer", "data platform engineer"), ("OPT","STEM","H-1B"), hot=True),
-        Role("Machine Learning Engineer",("machine learning engineer", "ml engineer", "ml platform", "mlops engineer"), ("OPT","STEM","H-1B"), hot=True),
-        Role("Data Scientist",          ("data scientist", "applied scientist", "research scientist data"), ("OPT","STEM","H-1B"), hot=True),
+        Role("Software Engineer",       ("software engineer", "software developer", "swe", "backend engineer", "frontend engineer", "full stack engineer", "full-stack engineer", "web developer", "java developer", "python developer", "application developer", "mobile engineer", "ios engineer", "android engineer"), ("OPT","STEM","H-1B"), hot=True),
+        Role("Data Engineer",           ("data engineer", "etl engineer", "analytics engineer", "data platform engineer", "big data engineer", "data warehouse engineer", "pipeline engineer"), ("OPT","STEM","H-1B"), hot=True),
+        Role("Machine Learning Engineer",("machine learning engineer", "ml engineer", "machine learning", "ml platform", "mlops engineer", "ai engineer", "genai engineer", "computer vision engineer", "nlp engineer"), ("OPT","STEM","H-1B"), hot=True),
+        Role("Data Scientist",          ("data scientist", "applied scientist", "research scientist data", "decision scientist", "machine learning scientist"), ("OPT","STEM","H-1B"), hot=True),
         Role("DevOps / Cloud Engineer", ("devops engineer", "site reliability engineer", "sre", "cloud engineer", "platform engineer", "infrastructure engineer"), ("OPT","STEM","H-1B")),
         Role("Cybersecurity Analyst",   ("cybersecurity analyst", "security engineer", "soc analyst", "security analyst", "information security analyst"), ("OPT","STEM","H-1B")),
-        Role("QA / Test Engineer",      ("qa engineer", "test engineer", "sdet", "automation engineer", "quality assurance engineer"), ("OPT","STEM","H-1B")),
-        Role("Systems Engineer",        ("systems engineer", "embedded engineer", "firmware engineer"), ("OPT","STEM","H-1B")),
+        Role("QA / Test Engineer",      ("qa engineer", "test engineer", "sdet", "automation engineer", "quality assurance engineer", "quality engineer", "test automation engineer"), ("OPT","STEM","H-1B")),
+        Role("Systems Engineer",        ("systems engineer", "system engineer", "embedded engineer", "firmware engineer", "mbse engineer"), ("OPT","STEM","H-1B")),
         Role("Database Administrator",  ("database administrator", "dba", "database engineer"), ("OPT","STEM","H-1B")),
-        Role("IT Support / Analyst",    ("it support", "it analyst", "helpdesk analyst", "systems analyst"), ("OPT","H-1B")),
+        Role("IT Support / Analyst",    (
+            "it support", "it support specialist", "it support technician", "it support analyst", "it support assistant",
+            "it technician", "it analyst", "it systems analyst", "helpdesk analyst", "help desk analyst",
+            "helpdesk technician", "help desk technician", "service desk analyst", "service desk technician",
+            "desktop support", "desktop support analyst", "desktop support technician",
+            "technical support engineer", "technical support specialist", "computer support specialist", "support analyst",
+        ), ("OPT","H-1B")),
         Role("Product Manager (Tech)",  ("product manager", "technical product manager", "tpm", "associate product manager"), ("OPT","H-1B"), hot=True),
         Role("UI/UX Designer",          ("ui designer", "ux designer", "product designer", "interaction designer"), ("OPT","H-1B")),
         Role("Blockchain Developer",    ("blockchain developer", "smart contract engineer", "web3 engineer", "solidity developer"), ("OPT","STEM","H-1B")),
-        Role("AI Research Scientist",   ("ai research scientist", "research scientist machine learning", "deep learning researcher"), ("OPT","STEM","H-1B","Vol")),
+        Role("AI Research Scientist",   ("ai research scientist", "research scientist machine learning", "deep learning researcher", "research engineer ai", "research engineer machine learning"), ("OPT","STEM","H-1B","Vol")),
     )),
     Category("Data & Analytics", "BarChart3", (
         Role("Business Analyst",        ("business analyst", "business systems analyst"), ("OPT","H-1B"), hot=True),
         Role("Data Analyst",            ("data analyst", "marketing analyst", "operations analyst"), ("OPT","STEM","H-1B"), hot=True),
         Role("Business Intelligence Developer", ("bi developer", "business intelligence developer", "tableau developer", "power bi developer"), ("OPT","STEM","H-1B")),
-        Role("Quantitative Analyst",    ("quantitative analyst", "quant analyst", "quant researcher"), ("OPT","STEM","H-1B")),
-        Role("Research Analyst",        ("research analyst", "market research analyst"), ("OPT","H-1B","Vol")),
+        Role("Quantitative Analyst",    ("quantitative analyst", "quant analyst", "quant researcher", "quantitative researcher", "quantitative developer"), ("OPT","STEM","H-1B")),
+        Role("Research Analyst",        ("research analyst", "market research analyst", "user research analyst", "policy research analyst"), ("OPT","H-1B","Vol")),
         Role("Operations Research Analyst", ("operations research analyst", "or analyst"), ("OPT","STEM","H-1B")),
         Role("Statistician",            ("statistician", "biostatistician"), ("OPT","STEM","H-1B")),
     )),
@@ -82,14 +89,14 @@ CATEGORIES: tuple[Category, ...] = (
         Role("Lab Technician / Research Assistant", ("lab technician", "research assistant", "laboratory technician"), ("OPT","STEM","Vol")),
     )),
     Category("Mechanical & Civil Engineering", "Wrench", (
-        Role("Mechanical Engineer",     ("mechanical engineer", "design engineer mechanical"), ("OPT","STEM","H-1B"), hot=True),
-        Role("Civil Engineer",          ("civil engineer", "structural designer"), ("OPT","STEM","H-1B")),
-        Role("Electrical Engineer",     ("electrical engineer", "power engineer"), ("OPT","STEM","H-1B")),
-        Role("Chemical Engineer",       ("chemical engineer", "process engineer"), ("OPT","STEM","H-1B")),
-        Role("Industrial Engineer",     ("industrial engineer", "manufacturing engineer"), ("OPT","STEM","H-1B")),
+        Role("Mechanical Engineer",     ("mechanical engineer", "mechanical design engineer", "design engineer mechanical", "product design engineer", "hvac engineer"), ("OPT","STEM","H-1B"), hot=True),
+        Role("Civil Engineer",          ("civil engineer", "civil designer", "transportation engineer", "land development engineer", "water resources engineer"), ("OPT","STEM","H-1B")),
+        Role("Electrical Engineer",     ("electrical engineer", "power engineer", "electronics engineer", "hardware engineer", "battery engineer", "controls engineer"), ("OPT","STEM","H-1B")),
+        Role("Chemical Engineer",       ("chemical engineer", "process engineer", "process development engineer", "materials engineer"), ("OPT","STEM","H-1B")),
+        Role("Industrial Engineer",     ("industrial engineer", "manufacturing engineer", "manufacturing process engineer", "quality manufacturing engineer", "lean engineer"), ("OPT","STEM","H-1B")),
         Role("Aerospace Engineer",      ("aerospace engineer", "aeronautical engineer"), ("OPT","STEM","H-1B")),
         Role("Environmental Engineer",  ("environmental engineer",), ("OPT","STEM","H-1B")),
-        Role("Structural Engineer",     ("structural engineer",), ("OPT","STEM","H-1B")),
+        Role("Structural Engineer",     ("structural engineer", "structural designer", "bridge engineer"), ("OPT","STEM","H-1B")),
     )),
     Category("Business & Management", "Briefcase", (
         Role("Management Consultant",   ("management consultant", "strategy consultant", "business consultant"), ("OPT","H-1B"), hot=True),
@@ -97,11 +104,11 @@ CATEGORIES: tuple[Category, ...] = (
         Role("Project Manager",         ("project manager", "program manager", "delivery manager"), ("OPT","H-1B"), hot=True),
         Role("Supply Chain Analyst",    ("supply chain analyst", "logistics analyst", "procurement analyst"), ("OPT","STEM","H-1B")),
         Role("Human Resources Generalist", ("hr generalist", "hr business partner", "people operations"), ("OPT","H-1B")),
-        Role("Strategy Analyst",        ("strategy analyst", "corporate strategy analyst"), ("OPT","H-1B")),
+        Role("Strategy Analyst",        ("strategy analyst", "corporate strategy analyst", "business strategy analyst", "strategic planning analyst"), ("OPT","H-1B")),
         Role("Scrum Master / Agile Coach", ("scrum master", "agile coach", "agile project manager"), ("OPT","H-1B")),
     )),
     Category("Marketing & Communications", "Megaphone", (
-        Role("Digital Marketing Analyst", ("digital marketing analyst", "performance marketing analyst", "seo analyst"), ("OPT","H-1B")),
+        Role("Digital Marketing Analyst", ("digital marketing analyst", "performance marketing analyst", "seo analyst", "paid search analyst", "marketing analyst"), ("OPT","H-1B")),
         Role("Content Strategist",      ("content strategist", "content marketing manager"), ("OPT","H-1B")),
         Role("Marketing Data Analyst",  ("marketing data analyst", "marketing analytics manager"), ("OPT","STEM","H-1B")),
         Role("Social Media Manager",    ("social media manager", "community manager"), ("OPT","H-1B")),
@@ -109,23 +116,23 @@ CATEGORIES: tuple[Category, ...] = (
         Role("Growth Hacker / Growth Analyst", ("growth analyst", "growth marketing manager", "growth hacker"), ("OPT","STEM","H-1B")),
     )),
     Category("Education & Research", "GraduationCap", (
-        Role("Research Assistant / Associate", ("research associate", "graduate research assistant"), ("OPT","STEM","H-1B","Vol")),
-        Role("Teaching Assistant",      ("teaching assistant", "graduate teaching assistant"), ("OPT","Vol")),
+        Role("Research Assistant / Associate", ("research associate", "research assistant", "graduate research assistant", "lab research assistant"), ("OPT","STEM","H-1B","Vol")),
+        Role("Teaching Assistant",      ("teaching assistant", "graduate teaching assistant", "ta instructor"), ("OPT","Vol")),
         Role("Instructional Designer",  ("instructional designer", "learning designer"), ("OPT","H-1B")),
         Role("Education Program Coordinator", ("education program coordinator", "academic program coordinator"), ("OPT","Vol","H-1B")),
         Role("Academic Advisor",        ("academic advisor", "student success advisor"), ("OPT","H-1B")),
         Role("ESL / Language Instructor", ("esl instructor", "english instructor", "language instructor"), ("OPT","Vol")),
     )),
     Category("Government & Policy", "Landmark", (
-        Role("Policy Analyst",          ("policy analyst", "public policy analyst"), ("OPT","H-1B","Vol")),
-        Role("Government IT Specialist", ("government it specialist", "federal it specialist"), ("OPT","STEM","H-1B")),
+        Role("Policy Analyst",          ("policy analyst", "public policy analyst", "legislative analyst"), ("OPT","H-1B","Vol")),
+        Role("Government IT Specialist", ("government it specialist", "federal it specialist", "information technology specialist", "it specialist government", "public sector it specialist"), ("OPT","STEM","H-1B")),
         Role("Intelligence Analyst",    ("intelligence analyst",), ("OPT","H-1B")),
         Role("Urban / City Planner",    ("urban planner", "city planner"), ("OPT","STEM","H-1B")),
         Role("Environmental Policy Analyst", ("environmental policy analyst", "climate policy analyst"), ("OPT","H-1B","Vol")),
         Role("Grant Writer / Nonprofit Program Manager", ("grant writer", "nonprofit program manager"), ("OPT","Vol")),
     )),
     Category("Design & Creative", "Palette", (
-        Role("Product / UX Designer",   ("product designer", "ux designer", "ui ux designer"), ("OPT","H-1B"), hot=True),
+        Role("Product / UX Designer",   ("product designer", "ux designer", "ui ux designer", "ui/ux designer", "user experience designer"), ("OPT","H-1B"), hot=True),
         Role("Graphic Designer",        ("graphic designer", "visual designer"), ("OPT","H-1B")),
         Role("Video / Motion Designer", ("motion designer", "video editor", "motion graphics designer"), ("OPT","H-1B")),
         Role("Architect",               ("architect", "junior architect", "intern architect"), ("OPT","STEM","H-1B")),
@@ -139,14 +146,14 @@ CATEGORIES: tuple[Category, ...] = (
         Role("Compliance Officer",      ("compliance officer", "compliance manager"), ("OPT","H-1B")),
     )),
     Category("Volunteer & OPT-qualifying", "Heart", (
-        Role("Nonprofit Program Assistant", ("nonprofit program assistant", "nonprofit coordinator"), ("OPT","Vol")),
-        Role("Open Source Contributor", ("open source contributor", "open source maintainer"), ("OPT","STEM","Vol")),
-        Role("University Research Volunteer", ("research volunteer",), ("OPT","STEM","Vol")),
+        Role("Nonprofit Program Assistant", ("nonprofit program assistant", "nonprofit coordinator", "nonprofit program coordinator", "program assistant nonprofit", "program coordinator nonprofit"), ("OPT","Vol")),
+        Role("Open Source Contributor", ("open source contributor", "open source maintainer", "open source engineer", "open source developer", "developer advocate open source"), ("OPT","STEM","Vol")),
+        Role("University Research Volunteer", ("research volunteer", "university research volunteer", "clinical research volunteer", "student research volunteer", "research lab volunteer"), ("OPT","STEM","Vol")),
         Role("Community Tech Educator", ("tech educator", "coding instructor", "stem volunteer"), ("OPT","Vol")),
         Role("Health Clinic Volunteer", ("clinic volunteer", "hospital volunteer"), ("OPT","Vol")),
-        Role("Environmental Volunteer", ("environmental volunteer", "conservation volunteer"), ("OPT","Vol")),
-        Role("Legal Aid Volunteer",     ("legal aid volunteer",), ("OPT","Vol")),
-        Role("UN / International Org Intern", ("united nations intern", "international organization intern"), ("OPT","H-1B","Vol")),
+        Role("Environmental Volunteer", ("environmental volunteer", "conservation volunteer", "environmental program coordinator", "environmental program assistant", "conservation coordinator", "sustainability volunteer"), ("OPT","Vol")),
+        Role("Legal Aid Volunteer",     ("legal aid volunteer", "legal aid intern", "legal volunteer", "pro bono intern", "legal clinic volunteer"), ("OPT","Vol")),
+        Role("UN / International Org Intern", ("united nations intern", "international organization intern", "un intern", "un internship", "intern united nations", "intergovernmental affairs intern"), ("OPT","H-1B","Vol")),
     )),
 )
 
@@ -183,6 +190,48 @@ def all_search_terms() -> list[str]:
     return out
 
 
+def all_role_names() -> list[str]:
+    """Canonical UI role names across every category."""
+    return [role.name for cat in CATEGORIES for role in cat.roles]
+
+
+def all_early_career_search_terms() -> list[str]:
+    """Search terms biased toward 0-10 year roles across the taxonomy."""
+    seen: set[str] = set()
+    out: list[str] = []
+    prefixes = ("entry level", "junior", "associate", "new grad")
+    suffixes = ("0-10 years",)
+
+    def add(term: str) -> None:
+        key = " ".join(term.lower().split())
+        if key and key not in seen:
+            seen.add(key)
+            out.append(term)
+
+    for cat in CATEGORIES:
+        for role in cat.roles:
+            add(role.name)
+            for prefix in prefixes:
+                add(f"{prefix} {role.name}")
+            for suffix in suffixes:
+                add(f"{role.name} {suffix}")
+            for synonym in role.synonyms:
+                add(synonym)
+
+    sponsorship_terms = [
+        "entry level visa sponsorship",
+        "junior OPT friendly",
+        "new grad H1B sponsor",
+        "associate OPT STEM",
+        "0-2 years visa sponsorship",
+        "3-5 years H1B sponsor",
+        "5-10 years visa sponsor",
+    ]
+    for term in sponsorship_terms:
+        add(term)
+    return out
+
+
 def categorize(title: str) -> tuple[str, str]:
     """Return (category_name, role_name) best match for an incoming job title."""
     if not title:
@@ -192,7 +241,12 @@ def categorize(title: str) -> tuple[str, str]:
     for cat in CATEGORIES:
         for role in cat.roles:
             for syn in role.synonyms:
-                if syn.lower() in t:
+                needle = syn.lower()
+                if len(needle) <= 4:
+                    matched = bool(re.search(rf"\b{re.escape(needle)}\b", t))
+                else:
+                    matched = needle in t
+                if matched:
                     score = len(syn)  # prefer longest match
                     if score > best[0]:
                         best = (score, cat.name, role.name)

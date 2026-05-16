@@ -5,6 +5,9 @@ Endpoints for listing, filtering, and scraping job postings.
 
 import logging
 import math
+import re
+import html
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from typing import Any, Optional
 
@@ -16,6 +19,7 @@ from app.models.job import (
     ScrapeRequest, ScrapeResult, JobSource, JobCategory,
 )
 from app.security import optional_user_id
+from app.config import settings
 from app.services.job_exporter import export_jobs
 from app.utils.terminal_table import render_table
 
@@ -35,37 +39,376 @@ def _score_job_against_resume(resume_text: str, job_text: str) -> int:
         return 0
     try:
         from app.utils.text_processing import (
-            extract_keywords, extract_skills_from_text, compute_keyword_overlap,
+            clean_text, extract_keywords, extract_skills_from_text, compute_keyword_overlap,
         )
-        jd_kw = list(set(extract_keywords(job_text, top_n=40) + extract_skills_from_text(job_text)))
-        r_kw = list(set(extract_keywords(resume_text, top_n=60) + extract_skills_from_text(resume_text)))
+        job_text = html.unescape(job_text)
+        resume_text = html.unescape(resume_text)
+        job_clean = clean_text(job_text).lower()
+        resume_clean = clean_text(resume_text).lower()
+
+        title = job_text.split("\n", 1)[0].lower()
+        title = clean_text(title)[:160]
+        title_tokens = [
+            token for token in re.findall(r"\b[a-z][a-z+#.-]{2,}\b", title)
+            if token not in {"senior", "staff", "lead", "principal", "junior", "associate", "manager", "remote"}
+        ][:8]
+        title_hits = [
+            token for token in title_tokens
+            if re.search(rf"\b{re.escape(token)}\b", resume_clean)
+        ]
+        title_pct = (len(title_hits) / len(title_tokens) * 100) if title_tokens else 0.0
+
+        domain_terms = [
+            "python", "java", "javascript", "typescript", "react", "node", "sql", "postgresql",
+            "aws", "azure", "gcp", "docker", "kubernetes", "fastapi", "rest", "graphql",
+            "machine learning", "data pipeline", "etl", "tableau", "power bi", "spark",
+            "cad", "catia", "solidworks", "ansys", "fea", "gd&t", "thermal", "battery",
+            "high voltage", "automotive", "manufacturing", "injection molding", "sheet metal",
+            "root cause", "civil", "structural", "electrical", "mechanical", "chemical",
+            "aerospace", "environmental", "clinical", "regulatory", "bioinformatics",
+            "financial modeling", "risk", "audit", "compliance", "treasury", "quantitative",
+            "marketing analytics", "seo", "content strategy", "figma", "ux", "ui",
+        ]
+        job_terms = [term for term in domain_terms if term in job_clean]
+        resume_terms = [term for term in domain_terms if term in resume_clean]
+        term_hits = sorted(set(job_terms) & set(resume_terms))
+        term_pct = (len(term_hits) / len(set(job_terms)) * 100) if job_terms else title_pct
+
+        jd_skills = list(dict.fromkeys(extract_skills_from_text(job_text)))
+        jd_kw = list(dict.fromkeys(jd_skills + extract_keywords(job_text, top_n=45)))
+        r_skills = list(dict.fromkeys(extract_skills_from_text(resume_text)))
+        r_kw = list(dict.fromkeys(r_skills + extract_keywords(resume_text, top_n=70)))
         if not jd_kw:
             return 0
-        _, _, pct = compute_keyword_overlap(r_kw, jd_kw)
-        return int(round(min(100, max(0, pct))))
+        matched, _, keyword_pct = compute_keyword_overlap(r_kw, jd_kw)
+        skill_matched, _, skill_pct = compute_keyword_overlap(r_skills, jd_skills) if jd_skills else ([], [], keyword_pct)
+        required_markers = re.findall(r"(?i)(?:required|requirements?|qualifications?|must have|experience with)\s+([^.;\n]{4,100})", job_text)
+        required_terms = list(dict.fromkeys(extract_skills_from_text(" ".join(required_markers)) + extract_keywords(" ".join(required_markers), top_n=18)))
+        required_hit_pct = keyword_pct
+        if required_terms:
+            req_hits, _, required_hit_pct = compute_keyword_overlap(r_kw, required_terms)
+        density_bonus = min(8, len(matched) // 3)
+        skill_bonus = min(10, len(skill_matched) * 2)
+        title_bonus = 6 if title_pct >= 60 else 0
+        score = (
+            title_pct * 0.22
+            + term_pct * 0.24
+            + keyword_pct * 0.18
+            + skill_pct * 0.16
+            + required_hit_pct * 0.20
+            + density_bonus
+            + skill_bonus
+            + title_bonus
+        )
+        # HR-style matching should not hand out high scores from generic text alone.
+        if skill_pct < 25 and required_hit_pct < 25:
+            score = min(score, 58)
+        if title_pct < 25 and term_pct < 25:
+            score = min(score, 52)
+        return int(round(min(98, max(8, score))))
     except Exception:
         return 0
+
+
+def _baseline_ats_score(job: dict) -> int:
+    """Fallback score shown when no active resume is available."""
+    text = f"{job.get('title') or ''}\n{job.get('description') or ''}"
+    score = 45
+    if len(text) > 900:
+        score += 12
+    elif len(text) > 300:
+        score += 6
+    visa = job.get("visa") or {}
+    if isinstance(visa, dict):
+        score += min(25, int(visa.get("visa_score") or 0) // 4)
+        if visa.get("visa_h1b") or visa.get("visa_opt") or visa.get("visa_stem_opt"):
+            score += 8
+    if job.get("salary"):
+        score += 4
+    if job.get("job_url") or job.get("source_url"):
+        score += 4
+    return max(35, min(92, score))
+
+
+def _posted_since(value: Optional[str], tz_offset_minutes: int = 0) -> Optional[datetime]:
+    """Convert a time filter label to a UTC datetime cutoff.
+
+    Args:
+        value: One of 'today', 'yesterday', 'week', 'month'.
+        tz_offset_minutes: Client timezone offset in minutes from UTC
+            (same sign as JavaScript Date.getTimezoneOffset: positive means
+            behind UTC, e.g. CST = 360).
+    """
+    if not value:
+        return None
+    now = datetime.now(timezone.utc)
+    # Shift "now" into the user's local time to compute their local midnight,
+    # then shift back to UTC for the database query.
+    user_offset = timedelta(minutes=-tz_offset_minutes)  # JS offset sign is inverted
+    user_now = now + user_offset
+    key = value.strip().lower()
+    if key == "today":
+        local_midnight = user_now.replace(hour=0, minute=0, second=0, microsecond=0)
+        return local_midnight - user_offset  # convert back to UTC
+    if key == "yesterday":
+        local_midnight = user_now.replace(hour=0, minute=0, second=0, microsecond=0)
+        return (local_midnight - timedelta(days=1)) - user_offset
+    if key in {"week", "7d", "last_week"}:
+        return now - timedelta(days=7)
+    if key in {"month", "30d", "last_month"}:
+        return now - timedelta(days=30)
+    return None
+
+
+def _taxonomy_terms(category: Optional[str], role: Optional[str]) -> list[str]:
+    if not (category or role):
+        return []
+    payload = to_payload()["categories"]
+    terms: list[str] = []
+    cat_l = (category or "").strip().lower()
+    role_l = (role or "").strip().lower()
+    for cat in payload:
+        if cat_l and cat["name"].lower() != cat_l:
+            continue
+        for row in cat["roles"]:
+            if role_l and row["name"].lower() != role_l:
+                continue
+            terms.append(row["name"])
+            terms.extend(row.get("synonyms") or [])
+    # Keep title filtering broad enough for coverage, small enough for query speed.
+    seen: set[str] = set()
+    out: list[str] = []
+    for term in terms:
+        clean = str(term).strip()
+        key = clean.lower()
+        if len(clean) < 3 or key in seen:
+            continue
+        seen.add(key)
+        out.append(clean)
+    return out[:80]
+
+
+def _preference_terms(user_id: Optional[str]) -> tuple[list[str], list[str]]:
+    if not user_id:
+        return [], []
+    try:
+        prefs = user_store.get_preferences(user_id)
+    except Exception:
+        return [], []
+    roles = [str(v).lower() for v in (prefs.get("target_roles") or []) if str(v).strip()]
+    locations = [str(v).lower() for v in (prefs.get("target_locations") or []) if str(v).strip()]
+    return roles, locations
 
 
 async def _active_resume_text(user_id: Optional[str]) -> Optional[str]:
     """Return the parsed text of the user's active resume, if any."""
     if not user_id:
         return None
-    resumes = user_store.list_resumes(user_id)
+    try:
+        resumes = user_store.list_resumes(user_id)
+    except Exception as exc:
+        logger.warning("Active resume lookup skipped for %s: %s", user_id, exc)
+        return None
     active = next((r for r in resumes if r.get("active")), None) or (resumes[0] if resumes else None)
     if not active:
         return None
-    path = active.get("storage_path")
-    if not path:
-        return None
+    text = (active.get("parsed_text") or "").strip()
+    return text or None
+
+
+def _split_description_points(description: str) -> dict[str, list[str]]:
+    """Derive display-ready job sections from plain scraped descriptions."""
+    clean = re.sub(r"\r\n?", "\n", description or "").strip()
+    clean = re.sub(r"<br\s*/?>", "\n", clean, flags=re.I)
+    clean = re.sub(r"</(p|li|ul|ol|h[1-6])>", "\n", clean, flags=re.I)
+    clean = re.sub(r"<[^>]+>", " ", clean)
+    clean = re.sub(
+        r"(?i)\b(responsibilities|requirements|qualifications|nice to have|preferred|benefits)\s*:",
+        r"\n\1:\n",
+        clean,
+    )
+    clean = re.sub(r"[ \t]+", " ", clean)
+    if not clean:
+        return {"responsibilities": [], "requirements": [], "niceToHave": [], "benefits": []}
+
+    buckets = {
+        "responsibilities": [],
+        "requirements": [],
+        "niceToHave": [],
+        "benefits": [],
+    }
+    active = "responsibilities"
+    heading_map = [
+        (re.compile(r"\b(responsibilit|what you'?ll do|role overview|about the role)\b", re.I), "responsibilities"),
+        (re.compile(r"\b(requirement|qualification|what you bring|must have|minimum)\b", re.I), "requirements"),
+        (re.compile(r"\b(nice to have|preferred|bonus|plus)\b", re.I), "niceToHave"),
+        (re.compile(r"\b(benefit|perk|compensation|we offer)\b", re.I), "benefits"),
+    ]
+
+    raw_lines = [line.strip(" \t-*•·") for line in clean.split("\n") if line.strip()]
+    for line in raw_lines:
+        lowered = line.lower()
+        if lowered in {"nan", "none", "null", "n/a"} or "error" in lowered[:30]:
+            continue
+        if len(line) <= 80:
+            matched_heading = False
+            for pattern, bucket in heading_map:
+                if pattern.search(line):
+                    active = bucket
+                    matched_heading = True
+                    break
+            if matched_heading:
+                continue
+        if 12 <= len(line) <= 220:
+            buckets[active].append(line)
+
+    if not any(buckets.values()):
+        sentences = re.split(r"(?<=[.!?])\s+", clean)
+        buckets["responsibilities"] = [s.strip() for s in sentences if 20 <= len(s.strip()) <= 220][:6]
+
+    seen: set[str] = set()
+    deduped: dict[str, list[str]] = {}
+    for key, values in buckets.items():
+        deduped[key] = []
+        for value in values:
+            normalized = re.sub(r"\W+", " ", value.lower()).strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            deduped[key].append(value)
+
+    return {key: value[:8] for key, value in deduped.items()}
+
+
+def _keyword_payload(resume_text: Optional[str], job_text: str) -> dict:
+    if not job_text:
+        return {"strongKeywords": [], "missingKeywords": []}
+    job_text = html.unescape(job_text)
+    job_text = re.sub(r"<[^>]+>", " ", job_text)
     try:
-        from app.services.resume_parser import parse_resume_file
-        with open(path, "rb") as fh:
-            content = fh.read()
-        parsed = await parse_resume_file(content, active.get("name") or "resume.pdf")
-        return parsed.get("text") or None
+        from app.utils.text_processing import (
+            compute_keyword_overlap,
+            extract_keywords,
+            extract_skills_from_text,
+        )
+        job_keywords = list(dict.fromkeys(extract_skills_from_text(job_text) + extract_keywords(job_text, top_n=30)))
+        if not resume_text:
+            return {"strongKeywords": job_keywords[:10], "missingKeywords": []}
+
+        resume_keywords = list(dict.fromkeys(extract_skills_from_text(resume_text) + extract_keywords(resume_text, top_n=50)))
+        matched, missing, _ = compute_keyword_overlap(resume_keywords, job_keywords)
+        missing_payload = [
+            {"kw": kw, "impact": "High" if idx < 4 else "Medium"}
+            for idx, kw in enumerate(missing[:10])
+        ]
+        return {"strongKeywords": matched[:12], "missingKeywords": missing_payload}
     except Exception:
-        return None
+        return {"strongKeywords": [], "missingKeywords": []}
+
+
+def _split_description_points(description: str) -> dict[str, list[str]]:
+    """Derive display-ready job sections from scraped descriptions."""
+    clean = html.unescape(description or "")
+    clean = re.sub(r"\r\n?", "\n", clean).strip()
+    clean = re.sub(r"<br\s*/?>", "\n", clean, flags=re.I)
+    clean = re.sub(r"<(li|p|h[1-6])[^>]*>", "\n", clean, flags=re.I)
+    clean = re.sub(r"</(p|li|ul|ol|h[1-6])>", "\n", clean, flags=re.I)
+    clean = re.sub(r"<[^>]+>", " ", clean)
+    clean = re.sub(
+        r"(?i)\b(responsibilities|requirements|qualifications|you have|you will|nice to have|preferred|benefits)\s*:",
+        r"\n\1:\n",
+        clean,
+    )
+    clean = re.sub(r"[ \t]+", " ", clean)
+    buckets = {"responsibilities": [], "requirements": [], "niceToHave": [], "benefits": []}
+    if not clean:
+        return buckets
+
+    active: Optional[str] = None
+    heading_map = [
+        (re.compile(r"^(job responsibilities|responsibilities|what you'?ll do|role overview|about the role)\b", re.I), "responsibilities"),
+        (re.compile(r"^(required qualifications|basic qualifications|minimum qualifications|requirements?|qualifications?|what you bring|must have)\b", re.I), "requirements"),
+        (re.compile(r"^(preferred qualifications|nice to have|preferred|bonus|plus)\b", re.I), "niceToHave"),
+        (re.compile(r"^(benefits?|perks?|compensation|we offer|total rewards)\b", re.I), "benefits"),
+    ]
+    bad_patterns = re.compile(
+        r"(traceback|stack trace|exception|client error|server error|http/\d|"
+        r"too many requests|for more information check|undefined|null|nan|"
+        r"apply now|submit an application|redact age|date of birth|privacy policy|"
+        r"equal opportunity|reasonable accommodation|scam|recruiters only contact|"
+        r"salary range|annual salary|base pay|compensation range|\$\d)",
+        re.I,
+    )
+
+    for raw in clean.split("\n"):
+        is_bullet = bool(re.match(r"^\s*(?:[*\-•·]|\d+[.)])\s+", raw))
+        line = raw.strip(" \t-*•·")
+        if not line:
+            continue
+        lowered = line.lower()
+        if lowered in {"nan", "none", "null", "n/a"} or bad_patterns.search(line):
+            continue
+        if len(line) <= 100 and not is_bullet:
+            matched_heading = False
+            for pattern, bucket in heading_map:
+                if pattern.search(line):
+                    active = bucket
+                    matched_heading = True
+                    break
+            if matched_heading:
+                continue
+        if (
+            active
+            and not is_bullet
+            and buckets[active]
+            and (raw.startswith((" ", "\t")) or (line[:1].islower()))
+        ):
+            merged = f"{buckets[active][-1]} {line}"
+            if len(merged) <= 320:
+                buckets[active][-1] = merged
+                continue
+        if active and 12 <= len(line) <= 280:
+            buckets[active].append(line)
+
+    if not any(buckets.values()):
+        sentences = re.split(r"(?<=[.!?])\s+", clean)
+        buckets["responsibilities"] = [
+            s.strip() for s in sentences
+            if 20 <= len(s.strip()) <= 220 and not bad_patterns.search(s)
+        ][:6]
+
+    seen: set[str] = set()
+    deduped: dict[str, list[str]] = {}
+    for key, values in buckets.items():
+        deduped[key] = []
+        for value in values:
+            normalized = re.sub(r"\W+", " ", value.lower()).strip()
+            if not normalized or normalized in seen or normalized in {"responsibilities", "requirements", "nice to have"}:
+                continue
+            seen.add(normalized)
+            deduped[key].append(value)
+    return {key: value[:8] for key, value in deduped.items()}
+
+
+async def _visa_stats_for_company(company: str, db) -> dict:
+    if not company:
+        return {"approvalRate": 0, "petitions": 0}
+    try:
+        rows = await db.get_h1b_sponsors(employer=company, limit=25)
+    except Exception:
+        rows = []
+    approvals = 0
+    denials = 0
+    petitions = 0
+    for row in rows:
+        approvals += int(row.get("initial_approvals") or 0) + int(row.get("continuing_approvals") or 0)
+        denials += int(row.get("initial_denials") or 0) + int(row.get("continuing_denials") or 0)
+        petitions += int(row.get("total_petitions") or 0)
+    total = approvals + denials
+    return {
+        "approvalRate": round((approvals / total) * 100) if total else 0,
+        "petitions": petitions or total,
+    }
 
 
 @router.get("/taxonomy")
@@ -86,7 +429,11 @@ async def list_jobs(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Results per page"),
     role: Optional[str] = Query(None, description="Filter by taxonomy role name"),
-    entry_level: bool = Query(True, description="Prioritize 0-5 yr roles (default true)"),
+    time_filter: Optional[str] = Query(None, description="today, yesterday, week, month"),
+    sort: str = Query("match", description="match or recent"),
+    entry_level: bool = Query(True, description="Prioritize 0-10 yr roles (default true)"),
+    max_years: int = Query(10, ge=0, le=50, description="Default max required years of experience"),
+    tz_offset: int = Query(0, description="Client timezone offset in minutes from UTC (JS getTimezoneOffset)"),
     db=Depends(get_db),
     user_id: Optional[str] = Depends(optional_user_id),
 ):
@@ -107,28 +454,65 @@ async def list_jobs(
         filters["source"] = source
     if visa_only:
         filters["visa_only"] = True
+    posted_since = _posted_since(time_filter, tz_offset_minutes=tz_offset)
+    if posted_since:
+        filters["posted_since"] = posted_since
+    title_terms = _taxonomy_terms(category, role)
+    if title_terms:
+        filters["title_terms"] = title_terms
 
     offset = (page - 1) * page_size
 
-    # When a taxonomy filter is in use, fetch a wider page so post-filter
-    # leaves us with enough rows.
-    fetch_limit = page_size * 5 if (category or role) else page_size
-    fetch_offset = 0 if (category or role) else offset
-
     try:
+        taxonomy_filter_active = bool(category or role)
+        # Taxonomy filters are derived from title/category matching. Counting
+        # all matches first doubles the work and makes category clicks feel
+        # slow, so fetch a bounded candidate pool and derive total from it.
+        total = 50000 if taxonomy_filter_active else await db.count_jobs(filters=filters)
+        # Category and role are derived from titles in Python. Only those
+        # filters need a full pool scan. The normal All Jobs path fetches the
+        # requested page directly so the dashboard does not wait on thousands
+        # of rows just to render the first 100 cards.
+        if taxonomy_filter_active:
+            fetch_limit = min(max(total, page_size), 12000)
+            fetch_offset = 0
+        else:
+            fetch_limit = page_size
+            fetch_offset = offset
         jobs = await db.get_jobs(filters=filters, limit=fetch_limit, offset=fetch_offset)
-        total = await db.count_jobs(filters=filters)
         total_pages = math.ceil(total / page_size) if total > 0 else 1
 
         # Tag each job with taxonomy category + role under sibling fields so we
         # don't collide with JobPost.category (which is a strict Enum).
+        from app.services.job_filters import (
+            is_early_career_title,
+            is_senior_title,
+            is_us_or_canada,
+            is_target_experience,
+        )
         decorated: list[dict] = []
         for j in jobs:
-            cat, rname = categorize(j.get("title") or "")
+            meta = j.get("extra_metadata") or {}
+            if not isinstance(meta, dict):
+                meta = {}
+            requested_location = meta.get("requested_location", "")
+            if not is_us_or_canada(f"{j.get('location') or ''} {requested_location} {j.get('title') or ''}"):
+                continue
+            if not is_target_experience(
+                j.get("title") or "",
+                meta.get("years_min"),
+                meta.get("years_max"),
+                max_years=max_years,
+            ):
+                continue
+            cat, rname = categorize(f"{j.get('title') or ''} {j.get('company') or ''}")
             j = dict(j)
             j["taxonomy_category"] = cat
             j["role"] = rname
             decorated.append(j)
+        if taxonomy_filter_active:
+            total = len(decorated)
+            total_pages = max(1, math.ceil(total / page_size))
         if role:
             role_l = role.strip().lower()
             decorated = [j for j in decorated if (j.get("role") or "").lower() == role_l]
@@ -146,31 +530,62 @@ async def list_jobs(
 
         # Per-user ATS scoring against the active resume.
         resume_text = await _active_resume_text(user_id)
+        preferred_roles, preferred_locations = _preference_terms(user_id)
         for j in decorated:
             jd = j.get("description") or ""
             jt = j.get("title") or ""
             if resume_text and (jd or jt):
                 j["match_score"] = _score_job_against_resume(resume_text, f"{jt}\n{jd}")
+                j["score_type"] = "resume_match"
+            else:
+                # Always provide a score so the UI never shows "--" or "0"
+                j["match_score"] = _baseline_ats_score(j)
+                j["score_type"] = "baseline"
+            pref_bonus = 0
+            hay = f"{j.get('title') or ''} {j.get('role') or ''} {j.get('taxonomy_category') or ''}".lower()
+            loc_hay = f"{j.get('location') or ''}".lower()
+            if preferred_roles and any(term in hay for term in preferred_roles):
+                pref_bonus += 6
+            if preferred_locations and any(term in loc_hay for term in preferred_locations):
+                pref_bonus += 3
+            if pref_bonus and isinstance(j.get("match_score"), int):
+                j["match_score"] = min(98, int(j["match_score"]) + pref_bonus)
 
-        # 0-5 yr prioritization. Tags come from the scraper (extra_metadata).
+        # 0-10 yr prioritization. Tags come from the scraper (extra_metadata).
         if entry_level:
             def _entry_score(j: dict) -> tuple:
                 meta = j.get("extra_metadata") or {}
                 if not isinstance(meta, dict):
                     meta = {}
                 ymin = meta.get("years_min")
-                # Bucket: 0-5 yr roles (incl. unknown) come first.
-                bucket = 0 if (ymin is None or 0 <= int(ymin) <= 5) else 1
-                # Inside the bucket, sort by descending ATS match score.
-                match = -(j.get("match_score") or 0)
-                return (bucket, match)
+                try:
+                    years = int(ymin) if ymin is not None else None
+                except (TypeError, ValueError):
+                    years = None
+                title = j.get("title") or ""
+                # Bucket: explicit junior/new-grad/associate first, then 0-5,
+                # then 6-10, then senior-ish but still <=10, then unknown.
+                if is_early_career_title(title):
+                    bucket = 0
+                elif years is not None and 0 <= years <= 5 and not is_senior_title(title):
+                    bucket = 1
+                elif years is None:
+                    bucket = 4
+                elif years <= max_years:
+                    bucket = 3 if is_senior_title(title) else 2
+                else:
+                    bucket = 5
+                match = -(j.get("match_score") or _baseline_ats_score(j))
+                return (match, bucket) if sort == "match" else (bucket, match)
             decorated.sort(key=_entry_score)
+
+        page_jobs = decorated[offset:offset + page_size] if taxonomy_filter_active else decorated
 
         # Convert to JobPost models for the response. Stash the taxonomy
         # extras and re-attach them post-validation so the strict JobPost
         # enum doesn't reject "Technology & Engineering" etc.
         job_posts: list = []
-        for job_data in decorated:
+        for job_data in page_jobs:
             tax_cat = job_data.pop("taxonomy_category", None)
             tax_role = job_data.pop("role", None)
             try:
@@ -184,6 +599,9 @@ async def list_jobs(
                 payload["role"] = tax_role
             job_posts.append(payload)
 
+        if not taxonomy_filter_active:
+            total_pages = max(1, math.ceil(total / page_size))
+
         # Return a plain dict so taxonomy_category / role survive — FastAPI's
         # default jsonable_encoder doesn't drop unknown keys.
         return {
@@ -196,6 +614,8 @@ async def list_jobs(
                 **filters,
                 **({"role": role} if role else {}),
                 **({"category": category} if category else {}),
+                **({"time_filter": time_filter} if time_filter else {}),
+                **({"sort": sort} if sort else {}),
             },
         }
     except Exception as e:
@@ -226,6 +646,196 @@ async def get_job_stats(db=Depends(get_db)):
         )
     except Exception as e:
         logger.error(f"Error getting job stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/coverage")
+async def get_job_coverage(
+    max_years: int = Query(10, ge=0, le=50),
+    low_threshold: int = Query(10, ge=1, le=100),
+    thin_threshold: int = Query(50, ge=1, le=500),
+    limit: int = Query(100000, ge=100, le=200000),
+    db=Depends(get_db),
+):
+    """Compute live taxonomy coverage from cloud job data.
+
+    This gives the frontend/admin tools one cloud source of truth for which
+    roles are missing, low, thin, or healthy without writing local audit files.
+    """
+    try:
+        from app.services.job_filters import is_target_experience, is_us_or_canada
+
+        taxonomy = to_payload()["categories"]
+        role_rows: dict[str, dict[str, Any]] = {}
+        category_counts = {cat["name"]: 0 for cat in taxonomy}
+        for cat in taxonomy:
+            for role in cat["roles"]:
+                key = role["name"].lower()
+                role_rows[key] = {
+                    "category": cat["name"],
+                    "role": role["name"],
+                    "count": 0,
+                    "status": "MISSING",
+                    "examples": [],
+                }
+
+        jobs = await db.get_jobs(limit=limit, offset=0)
+        considered = 0
+        skipped_geo = 0
+        skipped_experience = 0
+        uncategorized = 0
+        for job in jobs:
+            meta = job.get("extra_metadata") or {}
+            if not isinstance(meta, dict):
+                meta = {}
+            requested_location = meta.get("requested_location", "")
+            if not is_us_or_canada(f"{job.get('location') or ''} {requested_location} {job.get('title') or ''}"):
+                skipped_geo += 1
+                continue
+            if not is_target_experience(
+                job.get("title") or "",
+                meta.get("years_min"),
+                meta.get("years_max"),
+                max_years=max_years,
+            ):
+                skipped_experience += 1
+                continue
+            considered += 1
+            cat_name, role_name = categorize(f"{job.get('title') or ''} {job.get('company') or ''}")
+            if cat_name in category_counts:
+                category_counts[cat_name] += 1
+            key = role_name.lower()
+            row = role_rows.get(key)
+            if row:
+                row["count"] += 1
+                if len(row["examples"]) < 3:
+                    row["examples"].append({
+                        "title": job.get("title") or "",
+                        "company": job.get("company") or "",
+                        "location": job.get("location") or "",
+                    })
+            else:
+                uncategorized += 1
+
+        for row in role_rows.values():
+            count = row["count"]
+            if count == 0:
+                row["status"] = "MISSING"
+            elif count < low_threshold:
+                row["status"] = "LOW"
+            elif count < thin_threshold:
+                row["status"] = "THIN"
+            else:
+                row["status"] = "OK"
+
+        roles = sorted(role_rows.values(), key=lambda item: (item["count"], item["category"], item["role"]))
+        summary: dict[str, int] = {"MISSING": 0, "LOW": 0, "THIN": 0, "OK": 0}
+        for row in roles:
+            summary[row["status"]] = summary.get(row["status"], 0) + 1
+
+        return {
+            "total_loaded": len(jobs),
+            "considered": considered,
+            "skipped_geo": skipped_geo,
+            "skipped_experience": skipped_experience,
+            "uncategorized": uncategorized,
+            "thresholds": {"low": low_threshold, "thin": thin_threshold, "max_years": max_years},
+            "summary": summary,
+            "categories": [{"category": name, "count": count} for name, count in category_counts.items()],
+            "roles": roles,
+            "missing": [row for row in roles if row["status"] == "MISSING"],
+            "low": [row for row in roles if row["status"] == "LOW"],
+            "thin": [row for row in roles if row["status"] == "THIN"],
+        }
+    except Exception as e:
+        logger.error(f"Error getting job coverage: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/scraper-status")
+async def get_scraper_status(limit: int = Query(10, ge=1, le=50), db=Depends(get_db)):
+    """Return latest cloud scraper ETL runs from Postgres ingest_runs."""
+    if not hasattr(db, "session"):
+        return {"runs": [], "message": "Scraper run history is available for Postgres-backed deployments."}
+    try:
+        from sqlalchemy import select
+        from app.db.schema import IngestRun
+
+        with db.session() as session:
+            rows = session.execute(
+                select(IngestRun).order_by(IngestRun.started_at.desc()).limit(limit)
+            ).scalars().all()
+            return {
+                "runs": [
+                    {
+                        "id": str(row.id),
+                        "source_name": row.source_name,
+                        "pipeline_name": row.pipeline_name,
+                        "schedule_type": row.schedule_type,
+                        "status": row.status,
+                        "started_at": row.started_at,
+                        "finished_at": row.finished_at,
+                        "records_seen": row.records_seen,
+                        "records_staged": row.records_staged,
+                        "records_inserted": row.records_inserted,
+                        "records_updated": row.records_updated,
+                        "records_failed": row.records_failed,
+                        "error_message": row.error_message,
+                    }
+                    for row in rows
+                ]
+            }
+    except Exception as e:
+        logger.error(f"Error getting scraper status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/pipeline-status")
+async def get_pipeline_status(db=Depends(get_db)):
+    """Return lightweight job pipeline health for dashboard/UI diagnostics."""
+    try:
+        total_jobs = int(await db.count_jobs())
+        active_jobs = int(await db.count_jobs({"status": "active"}))
+        inactive_jobs = int(await db.count_jobs({"status": "inactive"}))
+        payload: dict[str, Any] = {
+            "total_jobs": total_jobs,
+            "active_jobs": active_jobs,
+            "inactive_jobs": inactive_jobs,
+            "last_scraped_at": None,
+            "last_run": None,
+            "backend": db.__class__.__name__,
+        }
+        if hasattr(db, "session"):
+            from sqlalchemy import select
+            from app.db.schema import IngestRun, Job, MasterJob
+
+            with db.session() as session:
+                run = session.execute(
+                    select(IngestRun).order_by(IngestRun.started_at.desc()).limit(1)
+                ).scalar_one_or_none()
+                if run:
+                    payload["last_run"] = {
+                        "id": str(run.id),
+                        "source_name": run.source_name,
+                        "pipeline_name": run.pipeline_name,
+                        "status": run.status,
+                        "started_at": run.started_at,
+                        "finished_at": run.finished_at,
+                        "records_seen": run.records_seen,
+                        "records_inserted": run.records_inserted,
+                        "records_updated": run.records_updated,
+                        "records_failed": run.records_failed,
+                    }
+                    payload["last_scraped_at"] = run.finished_at or run.started_at
+                if hasattr(db, "_master_jobs_available") and db._master_jobs_available():
+                    latest_seen = session.execute(select(func.max(MasterJob.last_seen_at))).scalar()
+                else:
+                    latest_seen = session.execute(select(func.max(Job.last_seen_at))).scalar()
+                if latest_seen:
+                    payload["last_scraped_at"] = latest_seen
+        return payload
+    except Exception as e:
+        logger.error(f"Error getting pipeline status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -315,13 +925,87 @@ async def get_job_detail(
     if resume_text:
         combined = title + "\n" + description
         payload["match_score"] = _score_job_against_resume(resume_text, combined)
+        payload["score_type"] = "resume_match"
+    else:
+        payload["match_score"] = _baseline_ats_score(payload)
+        payload["score_type"] = "baseline"
+
+    sections = _split_description_points(description)
+    for key, value in sections.items():
+        if value:
+            payload[key] = value
+    payload.update(_keyword_payload(resume_text, f"{title}\n{description}"))
+    payload.update(await _visa_stats_for_company(payload.get("company") or "", db))
 
     try:
         contacts = await db.get_contacts(job_id=job_id, limit=3)
     except Exception:
         contacts = []
     payload["contacts"] = contacts
+    if contacts and not payload.get("hiring_manager_name"):
+        primary = contacts[0]
+        payload["hiring_manager_name"] = primary.get("full_name") or " ".join(
+            part for part in (primary.get("first_name"), primary.get("last_name")) if part
+        ).strip() or None
+        payload["hiring_manager_email"] = primary.get("email")
+        payload["hiring_manager_linkedin"] = primary.get("linkedin_url")
     return payload
+
+
+@router.get("/top-matches")
+async def get_top_matches(
+    limit: int = Query(10, ge=1, le=25),
+    location: Optional[str] = Query(None),
+    time_filter: Optional[str] = Query(None),
+    visa_only: bool = Query(False),
+    tz_offset: int = Query(0, description="Client timezone offset in minutes from UTC (JS getTimezoneOffset)"),
+    db=Depends(get_db),
+    user_id: Optional[str] = Depends(optional_user_id),
+):
+    """Return the strongest jobs for the user's active resume/preferences."""
+    filters: dict[str, Any] = {}
+    if location:
+        filters["location"] = location
+    if visa_only:
+        filters["visa_only"] = True
+    posted_since = _posted_since(time_filter, tz_offset_minutes=tz_offset)
+    if posted_since:
+        filters["posted_since"] = posted_since
+    resume_text = await _active_resume_text(user_id)
+    preferred_roles, preferred_locations = _preference_terms(user_id)
+    terms = preferred_roles[:]
+    if terms:
+        filters["title_terms"] = terms
+    jobs = await db.get_jobs(filters=filters, limit=3000, offset=0)
+    ranked: list[dict] = []
+    for job in jobs:
+        meta = job.get("extra_metadata") or {}
+        if not isinstance(meta, dict):
+            meta = {}
+        cat, rname = categorize(f"{job.get('title') or ''} {job.get('company') or ''}")
+        item = dict(job)
+        item["taxonomy_category"] = cat
+        item["role"] = rname
+        if resume_text:
+            item["match_score"] = _score_job_against_resume(resume_text, f"{item.get('title') or ''}\n{item.get('description') or ''}")
+        else:
+            item["match_score"] = _baseline_ats_score(item)
+        hay = f"{item.get('title') or ''} {rname} {cat}".lower()
+        loc_hay = f"{item.get('location') or ''}".lower()
+        if preferred_roles and any(term in hay for term in preferred_roles):
+            item["match_score"] = min(98, int(item["match_score"]) + 6)
+        if preferred_locations and any(term in loc_hay for term in preferred_locations):
+            item["match_score"] = min(98, int(item["match_score"]) + 3)
+        ranked.append(item)
+    ranked.sort(key=lambda row: int(row.get("match_score") or 0), reverse=True)
+    return {
+        "jobs": ranked[:limit],
+        "total": len(ranked),
+        "page": 1,
+        "page_size": limit,
+        "total_pages": 1,
+        "filters_applied": filters,
+    }
 
 
 @router.get("/{job_id}")
