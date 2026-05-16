@@ -1,10 +1,11 @@
 name: Deploy to Cloud Run + Firebase Hosting
 
-# Triggers on every push to main. Manual trigger also supported so you
-# can re-deploy without pushing a commit.
+# Manual trigger only. The production deploy path currently lives in
+# deploy_separate_cloud_run.ps1 because it wires Cloud SQL, Secret
+# Manager, Cloud Scheduler, Cloud Run services, and Cloud Run jobs
+# together. Keep this workflow manual until it mirrors that script
+# exactly.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       skip_backend:
