@@ -25,7 +25,7 @@ if ($OpenAiSecret) {
   $ApiSecrets = "$ApiSecrets,OPENAI_API_KEY=OPENAI_API_KEY:latest"
   $ScraperSecrets = "$ScraperSecrets,OPENAI_API_KEY=OPENAI_API_KEY:latest"
 }
-gcloud.cmd builds submit backend --tag $Image
+gcloud.cmd builds submit . --tag $Image
 
 gcloud.cmd run deploy placeup-api `
   --image $Image `
@@ -89,20 +89,25 @@ gcloud.cmd run jobs deploy placeup-daily-match-digest `
   --max-retries 1 `
   --task-timeout 1800
 
-gcloud.cmd scheduler jobs create http placeup-daily-match-digest-9am `
+$DigestScheduleUri = "https://$Region-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/$ProjectId/jobs/placeup-daily-match-digest:run"
+$DigestScheduleJob = gcloud.cmd scheduler jobs describe placeup-daily-match-digest-9am `
   --location $Region `
-  --schedule "0 9 * * *" `
-  --time-zone "America/Chicago" `
-  --uri "https://$Region-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/$ProjectId/jobs/placeup-daily-match-digest:run" `
-  --http-method POST `
-  --oauth-service-account-email "placeup-api-sa@$ProjectId.iam.gserviceaccount.com" 2>$null
+  --format "value(name)" 2>$null
 
-if ($LASTEXITCODE -ne 0) {
+if ($DigestScheduleJob) {
   gcloud.cmd scheduler jobs update http placeup-daily-match-digest-9am `
     --location $Region `
     --schedule "0 9 * * *" `
     --time-zone "America/Chicago" `
-    --uri "https://$Region-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/$ProjectId/jobs/placeup-daily-match-digest:run" `
+    --uri $DigestScheduleUri `
+    --http-method POST `
+    --oauth-service-account-email "placeup-api-sa@$ProjectId.iam.gserviceaccount.com"
+} else {
+  gcloud.cmd scheduler jobs create http placeup-daily-match-digest-9am `
+    --location $Region `
+    --schedule "0 9 * * *" `
+    --time-zone "America/Chicago" `
+    --uri $DigestScheduleUri `
     --http-method POST `
     --oauth-service-account-email "placeup-api-sa@$ProjectId.iam.gserviceaccount.com"
 }

@@ -96,16 +96,21 @@ if (-not $SkipBackend) {
   # services doesn't apply to jobs; this re-points to the latest image.
   Write-Host "Deploying ATS worker Cloud Run Job..."
   $imageTag = "us-east1-docker.pkg.dev/$BackendProjectId/placeup/backend:latest"
+  $workerEnv = "APP_ENV=production,DATABASE_BACKEND=postgres,USER_DATABASE_BACKEND=firestore,USER_FIRESTORE_PROJECT_ID=$UserFirestoreProjectId,USER_FIRESTORE_DATABASE=$UserFirestoreDatabase"
 
   gcloud.cmd run jobs deploy placeup-ats-worker `
     --image $imageTag `
     --region $Region `
     --project $BackendProjectId `
+    --service-account "placeup-api-sa@$BackendProjectId.iam.gserviceaccount.com" `
+    --set-cloudsql-instances "$BackendProjectId`:$Region`:$DbInstance" `
+    --set-env-vars $workerEnv `
+    --set-secrets "DATABASE_URL=DATABASE_URL:latest" `
     --memory 1Gi `
     --cpu 1 `
     --task-timeout 1800s `
     --command python `
-    --args "-m,app.workers.ats_worker" `
+    --args="-m,app.workers.ats_worker" `
     --max-retries 1
 }
 
