@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.middleware import RateLimitMiddleware, SecurityHeadersMiddleware
 
 
 logging.basicConfig(
@@ -72,6 +73,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Order matters: rate limiter runs first so abusive callers never reach
+# the route handlers, then security headers are stamped on whatever
+# response comes back (including 429s).
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RateLimitMiddleware)
 
 
 # No-cache headers on every API response so users always see fresh jobs.

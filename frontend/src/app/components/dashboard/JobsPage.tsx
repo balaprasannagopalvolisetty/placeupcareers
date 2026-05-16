@@ -228,23 +228,34 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
 
   useEffect(() => {
     let active = true;
-    api.getParsedActiveResume()
-      .then((resume) => {
+    // Treat the user as having a resume if either:
+    //  (a) the parsed-resume endpoint says so, OR
+    //  (b) the dashboard summary lists at least one resume on file.
+    // This avoids the "asking twice for resume" bug where the Jobs page
+    // would re-prompt for upload just because the older record was
+    // missing parsed_text — even though the user already uploaded at signup.
+    Promise.allSettled([
+      api.getParsedActiveResume(),
+      api.getDashboardSummary(),
+    ])
+      .then(([parsedRes, summaryRes]) => {
         if (!active) return;
+        const parsed = parsedRes.status === "fulfilled" ? parsedRes.value : null;
+        const summary = summaryRes.status === "fulfilled" ? summaryRes.value : null;
+        const hasResume = Boolean(
+          (parsed?.has_resume) ||
+          (summary?.has_resume) ||
+          (summary?.active_resume_name) ||
+          (summary?.total_resumes && summary.total_resumes > 0)
+        );
         setResumeLink({
           checked: true,
-          hasResume: Boolean(resume.has_resume && !resume.error),
-          score: typeof resume.score === "number" ? resume.score : undefined,
-          name: resume.name,
-          error: resume.error,
-        });
-      })
-      .catch((err) => {
-        if (!active) return;
-        setResumeLink({
-          checked: true,
-          hasResume: false,
-          error: (err as Error).message || "Resume is not linked to this session.",
+          hasResume,
+          score: typeof parsed?.score === "number" ? parsed.score : summary?.resume_score,
+          name: parsed?.name || summary?.active_resume_name,
+          // Only surface the "re-upload" error when we are SURE no resume exists
+          // anywhere — otherwise the banner is just noise.
+          error: hasResume ? undefined : parsed?.error,
         });
       });
     return () => { active = false; };

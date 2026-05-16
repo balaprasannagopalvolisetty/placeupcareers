@@ -98,8 +98,23 @@ function getScoreMeta(score: number | null | undefined) {
   return { label: "Low match", detail: "This posting appears far from your active resume.", color: "#F2EEB3", bg: "rgba(242,238,179,0.06)", border: "rgba(242,238,179,0.12)" };
 }
 
+function useViewportWidth() {
+  // Track viewport width so the JobDetail layout can collapse its
+  // 1.8fr / 1fr two-column split into a single stacked column on
+  // phones — without this the right sidebar overflowed off-screen.
+  const get = () => (typeof window === "undefined" ? 1280 : window.innerWidth);
+  const [w, setW] = useState<number>(get);
+  useEffect(() => {
+    const onResize = () => setW(get());
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  return { width: w, isMobile: w < 640, isTablet: w < 1024 };
+}
+
 export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => void }) {
   const { user } = useAuth();
+  const { isMobile, isTablet } = useViewportWidth();
   const [job, setJob] = useState<api.JobPost | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -206,18 +221,21 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
   }, [jobId]);
 
   const openCompanyApply = () => {
-    if (!currentJob.jobUrl) {
-      // No URL on the posting — fall back to opening the company name in a Google search
-      // so the user still has a path forward instead of a dead button.
-      const fallback = `https://www.google.com/search?q=${encodeURIComponent(
-        `${currentJob.company} ${currentJob.title} apply`
-      )}`;
-      window.open(fallback, "_blank", "noopener,noreferrer");
-      setShowApplyModal(true);
-      return;
+    // ALWAYS show the application tracker modal regardless of whether
+    // window.open succeeded (popup blockers / mobile Safari often return
+    // null even when the tab opened). This is what the user wants:
+    // the post-apply questions must always appear.
+    const targetUrl = currentJob.jobUrl
+      ? currentJob.jobUrl
+      : `https://www.google.com/search?q=${encodeURIComponent(
+          `${currentJob.company} ${currentJob.title} apply`
+        )}`;
+    try {
+      window.open(targetUrl, "_blank", "noopener,noreferrer");
+    } catch {
+      // Some embedded webviews block window.open entirely — proceed anyway.
     }
-    const opened = window.open(currentJob.jobUrl, "_blank", "noopener,noreferrer");
-    if (opened) setShowApplyModal(true);
+    setShowApplyModal(true);
   };
 
   const recordApplication = async (status: "applied" | "not_applied", reason = "") => {
@@ -363,17 +381,23 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
   const role = (job as any)?.role || (job as any)?.taxonomy_category || currentJob.status;
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1.8fr 1fr", gap: 20 }}>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: isTablet ? "1fr" : "1.8fr 1fr",
+        gap: isMobile ? 14 : 20,
+      }}
+    >
       {/* MAIN */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
         {/* Back */}
         <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", color: T.t2, fontSize: 13, fontFamily: F.sans, width: "fit-content" }}>
           <ArrowLeft size={14} /> All Jobs
         </button>
 
         {/* Header card */}
-        <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: 24 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 170px", gap: 18, alignItems: "start", marginBottom: 18 }}>
+        <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: isMobile ? 16 : 24 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) 170px", gap: 18, alignItems: "start", marginBottom: 18 }}>
             <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
               <div style={{ width: 60, height: 60, borderRadius: "50%", background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700, color: "#fff", fontFamily: F.sans, boxShadow: "0 0 16px rgba(166,55,45,0.35)" }}>{currentJob.company[0] || "?"}</div>
               <div style={{ minWidth: 0 }}>
@@ -605,7 +629,16 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
           >
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              style={{ width: 460, maxHeight: "85vh", overflowY: "auto", background: "rgba(64,18,18,0.9)", backdropFilter: "blur(24px)", border: "1px solid rgba(242,238,179,0.1)", borderRadius: 24, padding: "36px 32px" }}
+              style={{
+                width: "min(460px, calc(100vw - 24px))",
+                maxHeight: "85vh",
+                overflowY: "auto",
+                background: "rgba(64,18,18,0.9)",
+                backdropFilter: "blur(24px)",
+                border: "1px solid rgba(242,238,179,0.1)",
+                borderRadius: 24,
+                padding: isMobile ? "24px 20px" : "36px 32px",
+              }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
                 <h3 style={{ fontFamily: F.sans, fontSize: 18, fontWeight: 600, color: T.text }}>Application Tracker</h3>

@@ -27,13 +27,40 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
 
-def _score_job_against_resume(resume_text: str, job_text: str) -> int:
+def _prepare_resume_tokens(resume_text: str) -> dict:
+    """Pre-tokenize the resume once so per-job scoring is fast.
+
+    Called ONCE per list request, then re-used across every job. Without
+    this cache, _score_job_against_resume tokenized the resume on every
+    iteration — turning a 40-job page into 40 redundant NLP passes, which
+    is exactly what made the Today / Yesterday filters feel slow.
+    """
+    if not resume_text:
+        return {}
+    try:
+        from app.utils.text_processing import (
+            clean_text, extract_keywords, extract_skills_from_text,
+        )
+        resume_text = html.unescape(resume_text)
+        resume_clean = clean_text(resume_text).lower()
+        r_skills = list(dict.fromkeys(extract_skills_from_text(resume_text)))
+        r_kw = list(dict.fromkeys(r_skills + extract_keywords(resume_text, top_n=70)))
+        return {
+            "raw": resume_text,
+            "clean": resume_clean,
+            "skills": r_skills,
+            "keywords": r_kw,
+        }
+    except Exception:
+        return {}
+
+
+def _score_job_against_resume(resume_text: str, job_text: str, *, resume_cache: Optional[dict] = None) -> int:
     """
     Lightweight per-job ATS-style match score (0-100).
 
-    We don't want to fire the LLM on every list call, so we do a
-    keyword-overlap scoring pass that's fast enough to compute for
-    every job in the page on each request.
+    Pass `resume_cache` from _prepare_resume_tokens to skip redundant
+    resume tokenization (huge speedup for list endpoints).
     """
     if not resume_text or not job_text:
         return 0
@@ -42,9 +69,16 @@ def _score_job_against_resume(resume_text: str, job_text: str) -> int:
             clean_text, extract_keywords, extract_skills_from_text, compute_keyword_overlap,
         )
         job_text = html.unescape(job_text)
-        resume_text = html.unescape(resume_text)
+        if resume_cache:
+            resume_clean = resume_cache.get("clean", "")
+            r_kw = resume_cache.get("keywords") or []
+            r_skills = resume_cache.get("skills") or []
+        else:
+            resume_text = html.unescape(resume_text)
+            resume_clean = clean_text(resume_text).lower()
+            r_skills = list(dict.fromkeys(extract_skills_from_text(resume_text)))
+            r_kw = list(dict.fromkeys(r_skills + extract_keywords(resume_text, top_n=70)))
         job_clean = clean_text(job_text).lower()
-        resume_clean = clean_text(resume_text).lower()
 
         title = job_text.split("\n", 1)[0].lower()
         title = clean_text(title)[:160]
@@ -76,8 +110,7 @@ def _score_job_against_resume(resume_text: str, job_text: str) -> int:
 
         jd_skills = list(dict.fromkeys(extract_skills_from_text(job_text)))
         jd_kw = list(dict.fromkeys(jd_skills + extract_keywords(job_text, top_n=45)))
-        r_skills = list(dict.fromkeys(extract_skills_from_text(resume_text)))
-        r_kw = list(dict.fromkeys(r_skills + extract_keywords(resume_text, top_n=70)))
+        # r_skills / r_kw already provided via resume_cache when caller pre-warmed.
         if not jd_kw:
             return 0
         matched, _, keyword_pct = compute_keyword_overlap(r_kw, jd_kw)
@@ -477,8 +510,12 @@ async def list_jobs(
             fetch_limit = min(max(total, page_size), 12000)
             fetch_offset = 0
         else:
-            fetch_limit = page_size
-            fetch_offset = offset
+            # Post-fetch filters (is_us_or_canada, is_target_experience) routinely
+            # drop ~50-70% of rows, which is why users were seeing ~16 cards even
+            # though the API said "20 per page". Over-fetch ×4 so a full page still
+            # renders after filtering, then bound to a safe ceiling.
+            fetch_limit = min(page_size * 4, 400)
+            fetch_offset = offset * 4 if offset else 0
         jobs = await db.get_jobs(filters=filters, limit=fetch_limit, offset=fetch_offset)
         total_pages = math.ceil(total / page_size) if total > 0 else 1
 
@@ -530,12 +567,18 @@ async def list_jobs(
 
         # Per-user ATS scoring against the active resume.
         resume_text = await _active_resume_text(user_id)
+        # PERF: pre-tokenize the resume ONCE and pass it to each per-job
+        # scoring call. Without this, every job re-parsed the resume,
+        # which is why Today / Yesterday felt slow.
+        resume_cache = _prepare_resume_tokens(resume_text) if resume_text else None
         preferred_roles, preferred_locations = _preference_terms(user_id)
         for j in decorated:
             jd = j.get("description") or ""
             jt = j.get("title") or ""
             if resume_text and (jd or jt):
-                j["match_score"] = _score_job_against_resume(resume_text, f"{jt}\n{jd}")
+                j["match_score"] = _score_job_against_resume(
+                    resume_text, f"{jt}\n{jd}", resume_cache=resume_cache,
+                )
                 j["score_type"] = "resume_match"
             else:
                 # Always provide a score so the UI never shows "--" or "0"
@@ -579,7 +622,14 @@ async def list_jobs(
                 return (match, bucket) if sort == "match" else (bucket, match)
             decorated.sort(key=_entry_score)
 
-        page_jobs = decorated[offset:offset + page_size] if taxonomy_filter_active else decorated
+        # Cap to the requested page_size. For taxonomy/category filters we
+        # slice from the full pool; for the standard path the over-fetch ×4
+        # means we have more than page_size rows after dropping non-US/CA
+        # and out-of-experience-range items, so we still trim to page_size.
+        if taxonomy_filter_active:
+            page_jobs = decorated[offset:offset + page_size]
+        else:
+            page_jobs = decorated[:page_size]
 
         # Convert to JobPost models for the response. Stash the taxonomy
         # extras and re-attach them post-validation so the strict JobPost

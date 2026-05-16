@@ -1,0 +1,199 @@
+name: Deploy to Cloud Run + Firebase Hosting
+
+# Triggers on every push to main. Manual trigger also supported so you
+# can re-deploy without pushing a commit.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      skip_backend:
+        description: "Skip backend deploy"
+        type: boolean
+        default: false
+      skip_frontend:
+        description: "Skip frontend deploy"
+        type: boolean
+        default: false
+
+# Run one deploy at a time — avoids racing two Cloud Run revisions.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  BACKEND_PROJECT_ID: steel-shine-492401-u6
+  FRONTEND_PROJECT_ID: placeup-firebase-641222668282
+  REGION: us-east1
+  # Three Cloud Run resources — one HTTP service for the API, two
+  # Cloud Run Jobs for the scraper and the ATS-scoring worker. Names
+  # mirror deploy_separate_cloud_run.ps1.
+  API_SERVICE: placeup-api
+  SCRAPER_JOB: placeup-job-scraper-6h
+  ATS_WORKER_JOB: placeup-ats-worker
+
+jobs:
+  # ──────────────────────────────────────────────────────────────
+  # Decide what to deploy from changed paths so we don't rebuild
+  # the frontend image when only backend code changed (and vice
+  # versa). Saves 5-8 minutes on most PRs.
+  # ──────────────────────────────────────────────────────────────
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - '.github/workflows/deploy.yml'
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/deploy.yml'
+
+  # ──────────────────────────────────────────────────────────────
+  # Backend → Cloud Run (API service + two scheduled jobs)
+  # ──────────────────────────────────────────────────────────────
+  deploy-backend:
+    needs: detect-changes
+    if: |
+      needs.detect-changes.outputs.backend == 'true' &&
+      !inputs.skip_backend
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # required for Workload Identity Federation
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          # Configure these secrets once in repo settings:
+          #   GCP_WORKLOAD_IDENTITY_PROVIDER → projects/.../providers/github
+          #   GCP_DEPLOYER_SERVICE_ACCOUNT  → ci-deployer@PROJECT.iam.gserviceaccount.com
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.BACKEND_PROJECT_ID }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build & push backend image
+        run: |
+          IMAGE="${REGION}-docker.pkg.dev/${BACKEND_PROJECT_ID}/placeup/backend:${{ github.sha }}"
+          docker build -t "$IMAGE" -f backend/Dockerfile backend
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      - name: Deploy API service
+        run: |
+          gcloud run deploy "$API_SERVICE" \
+            --image "$IMAGE" \
+            --region "$REGION" \
+            --project "$BACKEND_PROJECT_ID" \
+            --platform managed \
+            --memory 2Gi \
+            --cpu 2 \
+            --min-instances 1 \
+            --max-instances 10 \
+            --allow-unauthenticated \
+            --set-env-vars APP_ENV=production,DATABASE_BACKEND=postgres,USER_DATABASE_BACKEND=firestore
+
+      - name: Deploy scraper job
+        run: |
+          gcloud run jobs deploy "$SCRAPER_JOB" \
+            --image "$IMAGE" \
+            --region "$REGION" \
+            --project "$BACKEND_PROJECT_ID" \
+            --memory 2Gi \
+            --cpu 2 \
+            --task-timeout 7200s \
+            --command python \
+            --args -m,app.etl.jobs_scraper_6h \
+            --max-retries 1 \
+            || echo "Scraper job not present yet — create on first deploy"
+
+      - name: Deploy ATS-worker job
+        run: |
+          gcloud run jobs deploy "$ATS_WORKER_JOB" \
+            --image "$IMAGE" \
+            --region "$REGION" \
+            --project "$BACKEND_PROJECT_ID" \
+            --memory 1Gi \
+            --cpu 1 \
+            --task-timeout 1800s \
+            --command python \
+            --args -m,app.workers.ats_worker \
+            --max-retries 1 \
+            || echo "ATS worker job not present yet — create on first deploy"
+
+  # ──────────────────────────────────────────────────────────────
+  # Frontend → Firebase Hosting
+  # ──────────────────────────────────────────────────────────────
+  deploy-frontend:
+    needs: [detect-changes, deploy-backend]
+    if: |
+      always() &&
+      needs.detect-changes.outputs.frontend == 'true' &&
+      !inputs.skip_frontend &&
+      (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install deps
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Resolve API base URL
+        id: api
+        run: |
+          # Pull from secrets, fall back to convention. Allows preview
+          # deploys to point at a staging API without code edits.
+          API_BASE="${{ secrets.VITE_API_BASE }}"
+          if [ -z "$API_BASE" ]; then
+            API_BASE="https://placeup-api-rui2a74muq-ue.a.run.app"
+          fi
+          echo "VITE_API_BASE=$API_BASE" >> "$GITHUB_ENV"
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+        env:
+          VITE_API_BASE: ${{ env.VITE_API_BASE }}
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: ${{ env.FRONTEND_PROJECT_ID }}
+          channelId: live
+          entryPoint: ./frontend

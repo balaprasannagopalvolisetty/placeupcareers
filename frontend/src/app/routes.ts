@@ -1,4 +1,5 @@
 import { createBrowserRouter } from "react-router";
+import { createElement } from "react";
 import Home from "./pages/Home";
 import Dashboard, { OverviewPage } from "./pages/Dashboard";
 import SignIn from "./pages/SignIn";
@@ -11,6 +12,12 @@ import { AlertsPage } from "./components/dashboard/AlertsPage";
 import { AnalyticsPage } from "./components/dashboard/AnalyticsPage";
 import { SettingsPage } from "./components/dashboard/SettingsPage";
 import { UserProfilePage } from "./components/dashboard/UserProfilePage";
+import { ErrorBoundary } from "./components/ErrorBoundary";
+
+// Wrap a route component in our ErrorBoundary so a runtime render error
+// inside e.g. JobsRoute can't blank the entire dashboard.
+const guarded = (Component: React.ComponentType<unknown>) => () =>
+  createElement(ErrorBoundary, null, createElement(Component));
 
 export const router = createBrowserRouter([
   {
@@ -22,15 +29,15 @@ export const router = createBrowserRouter([
         path: "dashboard",
         Component: Dashboard,
         children: [
-          { index: true, Component: OverviewPage },
-          { path: "resumes", Component: ResumePage },
-          { path: "jobs", Component: JobsRoute },
-          { path: "jobs/:jobId", Component: JobDetailRoute },
-          { path: "visa", Component: VisaTrackerPage },
-          { path: "alerts", Component: AlertsPage },
-          { path: "analytics", Component: AnalyticsPage },
-          { path: "settings", Component: SettingsPage },
-          { path: "profile", Component: UserProfilePage },
+          { index: true, Component: guarded(OverviewPage) },
+          { path: "resumes", Component: guarded(ResumePage) },
+          { path: "jobs", Component: guarded(JobsRoute) },
+          { path: "jobs/:jobId", Component: guarded(JobDetailRoute) },
+          { path: "visa", Component: guarded(VisaTrackerPage) },
+          { path: "alerts", Component: guarded(AlertsPage) },
+          { path: "analytics", Component: guarded(AnalyticsPage) },
+          { path: "settings", Component: guarded(SettingsPage) },
+          { path: "profile", Component: guarded(UserProfilePage) },
         ],
       },
       { path: "signin", Component: SignIn },

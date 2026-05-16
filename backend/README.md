@@ -84,9 +84,9 @@ backend/
 │   │   ├── match_engine.py   # Hybrid matching
 │   │   ├── visa_classifier.py# Visa keyword scoring
 │   │   └── h1b_data.py       # H1B data aggregation
-│   ├── db/                   # Database layer
-│   │   ├── firebase.py       # Firestore (production)
-│   │   └── local_db.py       # SQLite (development)
+│   ├── db/                   # Database layer (cloud-only)
+│   │   ├── firebase.py       # Firestore (users)
+│   │   └── postgres.py       # PostgreSQL / Cloud SQL (jobs)
 │   └── utils/                # Shared utilities
 │       ├── deduplication.py  # Content hashing
 │       └── text_processing.py# NLP utilities
@@ -129,9 +129,12 @@ docker build -t placeup-backend .
 docker run -p 8000:8000 --env-file .env placeup-backend
 ```
 
-## CSV / SQLite extras
+## Cloud-only storage
 
-SQLite stores non-column enrichment under `jobs.data_json`. New rows embed everything outside core SQL columns (`is_remote`, `skills`, ATS metadata, nested `extra_metadata`, …); exports surface these fields.
+PlaceUp no longer ships a SQLite fallback. Jobs are stored in Cloud SQL
+(PostgreSQL) and users / resumes live in Firestore. Non-column
+enrichment is embedded in `jobs.data_json` (`is_remote`, `skills`, ATS
+metadata, nested `extra_metadata`, …); exports surface these fields.
 
 ## Terminal Table Formatter
 

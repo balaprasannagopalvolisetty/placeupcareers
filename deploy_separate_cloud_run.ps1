@@ -89,4 +89,24 @@ if (-not $SkipCorsUpdate) {
   Write-Host "Backend CORS updated for frontend origin: $FrontendUrl"
 }
 
+if (-not $SkipBackend) {
+  # Cloud Run JOB (not service) — runs out-of-band ATS scoring so the
+  # API container stays small and fast. Triggered by Cloud Scheduler
+  # (see backend/deploy/README.md). Safe to re-run: --no-traffic on
+  # services doesn't apply to jobs; this re-points to the latest image.
+  Write-Host "Deploying ATS worker Cloud Run Job..."
+  $imageTag = "us-east1-docker.pkg.dev/$BackendProjectId/placeup/backend:latest"
+
+  gcloud.cmd run jobs deploy placeup-ats-worker `
+    --image $imageTag `
+    --region $Region `
+    --project $BackendProjectId `
+    --memory 1Gi `
+    --cpu 1 `
+    --task-timeout 1800s `
+    --command python `
+    --args "-m,app.workers.ats_worker" `
+    --max-retries 1
+}
+
 Write-Host "Separate Cloud Run deployment complete."

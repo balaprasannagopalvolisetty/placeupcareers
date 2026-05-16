@@ -256,16 +256,29 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : isTablet ? "repeat(2, minmax(0, 1fr))" : "repeat(4, 1fr)", gap: 14 }}>
         {/* ATS Score */}
         <GlowCard style={{ padding: 20, gridColumn: "span 1" }}>
-          <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: T.t3, fontFamily: F.sans, marginBottom: 12 }}>Resume Score</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: T.t3, fontFamily: F.sans }}>Resume ATS Score</div>
+            {hasResume && (
+              <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 9999, background: "rgba(34,197,94,0.10)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.25)", fontFamily: F.sans, letterSpacing: "0.04em" }}>LOADED</span>
+            )}
+          </div>
           <div style={{ display: "flex", justifyContent: "center" }}><ATSRing score={resumeScore} /></div>
           <div style={{ fontSize: 12, color: resumeScore > 0 ? T.t2 : T.t3, fontFamily: F.sans, textAlign: "center", marginTop: 8 }}>
-            {resumeScore > 0 ? "Active Resume ATS Score" : hasResume ? "Scoring..." : "Upload a resume to show score"}
+            {resumeScore > 0
+              ? `ATS Score: ${resumeScore}/100`
+              : hasResume
+                ? "Re-scoring active resume…"
+                : "Upload a resume to show score"}
           </div>
-          {activeResumeName && (
-            <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, textAlign: "center", marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {activeResumeName}
+          {activeResumeName ? (
+            <div title={activeResumeName} style={{ fontSize: 11, color: T.t2, fontFamily: F.sans, textAlign: "center", marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              📄 {activeResumeName}
             </div>
-          )}
+          ) : hasResume ? (
+            <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, textAlign: "center", marginTop: 4 }}>
+              Resume on file
+            </div>
+          ) : null}
         </GlowCard>
 
         {/* Applications */}
