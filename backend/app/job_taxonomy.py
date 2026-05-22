@@ -146,14 +146,14 @@ CATEGORIES: tuple[Category, ...] = (
         Role("Compliance Officer",      ("compliance officer", "compliance manager"), ("OPT","H-1B")),
     )),
     Category("Volunteer & OPT-qualifying", "Heart", (
-        Role("Nonprofit Program Assistant", ("nonprofit program assistant", "nonprofit coordinator", "nonprofit program coordinator", "program assistant nonprofit", "program coordinator nonprofit"), ("OPT","Vol")),
-        Role("Open Source Contributor", ("open source contributor", "open source maintainer", "open source engineer", "open source developer", "developer advocate open source"), ("OPT","STEM","Vol")),
-        Role("University Research Volunteer", ("research volunteer", "university research volunteer", "clinical research volunteer", "student research volunteer", "research lab volunteer"), ("OPT","STEM","Vol")),
+        Role("Nonprofit Program Assistant", ("nonprofit program assistant", "nonprofit coordinator", "nonprofit program coordinator", "program assistant nonprofit", "program coordinator nonprofit", "nonprofit", "non-profit", "program assistant", "program coordinator"), ("OPT","Vol")),
+        Role("Open Source Contributor", ("open source contributor", "open source maintainer", "open source engineer", "open source developer", "developer advocate open source", "open source", "developer advocate", "github maintainer"), ("OPT","STEM","Vol")),
+        Role("University Research Volunteer", ("research volunteer", "university research volunteer", "clinical research volunteer", "student research volunteer", "research lab volunteer", "research assistant", "student research", "clinical research assistant"), ("OPT","STEM","Vol")),
         Role("Community Tech Educator", ("tech educator", "coding instructor", "stem volunteer"), ("OPT","Vol")),
         Role("Health Clinic Volunteer", ("clinic volunteer", "hospital volunteer"), ("OPT","Vol")),
         Role("Environmental Volunteer", ("environmental volunteer", "conservation volunteer", "environmental program coordinator", "environmental program assistant", "conservation coordinator", "sustainability volunteer"), ("OPT","Vol")),
-        Role("Legal Aid Volunteer",     ("legal aid volunteer", "legal aid intern", "legal volunteer", "pro bono intern", "legal clinic volunteer"), ("OPT","Vol")),
-        Role("UN / International Org Intern", ("united nations intern", "international organization intern", "un intern", "un internship", "intern united nations", "intergovernmental affairs intern"), ("OPT","H-1B","Vol")),
+        Role("Legal Aid Volunteer",     ("legal aid volunteer", "legal aid intern", "legal volunteer", "pro bono intern", "legal clinic volunteer", "legal intern", "pro bono", "legal aid"), ("OPT","Vol")),
+        Role("UN / International Org Intern", ("united nations intern", "international organization intern", "un intern", "un internship", "intern united nations", "intergovernmental affairs intern", "united nations", "programme management intern", "public administration intern", "international affairs intern", "international organization", "ngo intern"), ("OPT","H-1B","Vol")),
     )),
 )
 

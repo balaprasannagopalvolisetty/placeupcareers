@@ -294,7 +294,11 @@ class PostgresClient:
         if filters.get("title_terms"):
             terms = [str(t).strip() for t in filters["title_terms"] if str(t).strip()]
             if terms:
-                stmt = stmt.where(or_(*[Job.title.ilike(f"%{term}%") for term in terms[:80]]))
+                stmt = stmt.where(or_(*[
+                    clause
+                    for term in terms[:80]
+                    for clause in (Job.title.ilike(f"%{term}%"), Company.name.ilike(f"%{term}%"))
+                ]))
         if filters.get("search"):
             q = f"%{filters['search']}%"
             stmt = stmt.where(or_(Job.title.ilike(q), Company.name.ilike(q), Job.description.ilike(q)))
@@ -322,7 +326,11 @@ class PostgresClient:
         if filters.get("title_terms"):
             terms = [str(t).strip() for t in filters["title_terms"] if str(t).strip()]
             if terms:
-                stmt = stmt.where(or_(*[MasterJob.title.ilike(f"%{term}%") for term in terms[:80]]))
+                stmt = stmt.where(or_(*[
+                    clause
+                    for term in terms[:80]
+                    for clause in (MasterJob.title.ilike(f"%{term}%"), MasterJob.company.ilike(f"%{term}%"))
+                ]))
         if filters.get("search"):
             q = f"%{filters['search']}%"
             stmt = stmt.where(or_(MasterJob.title.ilike(q), MasterJob.company.ilike(q), MasterJob.description.ilike(q)))
