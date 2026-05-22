@@ -1,6 +1,6 @@
 import { useState, useEffect, type ReactNode } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowLeft, MapPin, DollarSign, Clock, ExternalLink, Bookmark, Share2, Check, X, Lock, Copy, Linkedin, ShieldCheck, Sparkles, Briefcase } from "lucide-react";
+import { ArrowLeft, MapPin, DollarSign, ExternalLink, Bookmark, Share2, Check, X, Lock, Copy, Linkedin, ShieldCheck, Sparkles, Briefcase } from "lucide-react";
 import * as api from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
 
@@ -54,6 +54,20 @@ function formatSalary(salary: unknown): string {
     }
   }
   return "Not specified";
+}
+
+function formatPostDate(value: unknown): string {
+  if (!value) return "Recently";
+  const raw = String(value);
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) {
+    return raw.split("T")[0] || raw;
+  }
+  return parsed.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 function ATSRingLarge({ score }: { score: number | null | undefined }) {
@@ -283,7 +297,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
     salary: formatSalary(job?.salary),
     match: job?.match_score ?? job?.match ?? null,
     visa: normalizeVisa(job?.visa),
-    posted: job?.posted_at ?? job?.posted ?? "Recently",
+    posted: formatPostDate(job?.posted_at ?? job?.posted),
     status: job?.status ?? "active",
     description: job?.description ?? "",
     responsibilities: job?.responsibilities ?? [],
@@ -484,8 +498,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
         {/* Header card */}
         <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: isMobile ? 16 : 24 }}>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) 170px", gap: 18, alignItems: "start", marginBottom: 18 }}>
-            <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-              <div style={{ width: 60, height: 60, borderRadius: "50%", background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700, color: "#fff", fontFamily: F.sans, boxShadow: "0 0 16px rgba(166,55,45,0.35)" }}>{currentJob.company[0] || "?"}</div>
+            <div style={{ minWidth: 0 }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 7 }}>
                   <span style={{ fontSize: 10, fontWeight: 700, padding: "4px 8px", borderRadius: 999, background: "rgba(242,238,179,0.05)", color: T.t2, border: `1px solid ${T.border}`, fontFamily: F.sans }}>{role}</span>
@@ -496,7 +509,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
                   <span style={{ fontSize: 14, color: T.t2, fontFamily: F.sans, fontWeight: 500 }}>{currentJob.company}</span>
                   <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13, color: T.t3, fontFamily: F.sans }}><MapPin size={12} />{currentJob.location}</span>
                   <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13, color: T.t3, fontFamily: F.sans }}><DollarSign size={12} />{currentJob.salary}</span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: T.t3, fontFamily: F.sans }}><Clock size={12} />{currentJob.posted}</span>
+                  <span style={{ fontSize: 12, color: T.t3, fontFamily: F.sans }}>{currentJob.posted}</span>
                 </div>
               </div>
             </div>
