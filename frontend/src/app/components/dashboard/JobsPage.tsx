@@ -82,12 +82,12 @@ function friendlyJobError(err: unknown): string {
   return message;
 }
 
-async function getJobsWithRetry(params: Record<string, string | number | boolean>, attempts = 3) {
+async function getJobsWithRetry(params: Record<string, string | number | boolean>, attempts = 2) {
   let lastError: unknown;
   for (let i = 0; i < attempts; i += 1) {
     try {
       const controller = new AbortController();
-      const timeoutId = window.setTimeout(() => controller.abort(), 15000);
+      const timeoutId = window.setTimeout(() => controller.abort(), 10000);
       try {
         const result = await api.getJobs(params, { signal: controller.signal });
         return result;
@@ -294,7 +294,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
     setLoading(true);
     setError(null);
 
-    const params: Record<string, string | number | boolean> = { page, page_size: pageSize, max_years: 10, sort: "match" };
+    const params: Record<string, string | number | boolean> = { page, page_size: pageSize, max_years: 10, sort: "recent" };
     if (search) params.search = search;
     if (location) params.location = location;
     if (visaOnly) params.visa_only = true;

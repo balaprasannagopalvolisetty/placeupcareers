@@ -205,6 +205,13 @@ async def get_dashboard_summary(
     """Compact data bundle for the dashboard overview cards/activity feed."""
     resumes = user_store.list_resumes(user_id)
     active_resume = next((r for r in resumes if r.get("active")), None) or (resumes[0] if resumes else None)
+    resume_score = int((active_resume or {}).get("score") or 0)
+    if active_resume and resume_score <= 0 and (active_resume.get("parsed_text") or "").strip():
+        try:
+            from app.services.ats_scorer import score_resume_quality
+            resume_score = int(round(float(score_resume_quality(active_resume.get("parsed_text") or ""))))
+        except Exception as exc:
+            log.warning("Dashboard summary resume score fallback failed for %s: %s", user_id, exc)
 
     try:
         total_jobs = int(await db.count_jobs())
@@ -231,7 +238,7 @@ async def get_dashboard_summary(
         ))
 
     return DashboardSummary(
-        resume_score=int((active_resume or {}).get("score") or 0),
+        resume_score=resume_score,
         has_resume=bool(active_resume),
         active_resume_name=(active_resume or {}).get("name"),
         total_resumes=len(resumes),

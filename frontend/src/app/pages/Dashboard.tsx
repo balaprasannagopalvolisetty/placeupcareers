@@ -109,7 +109,9 @@ function SpringCounter({ target, suffix = "", prefix = "" }: { target: number; s
 
 // ─── ATS Ring (dashboard overview, 120px) ───
 function ATSRing({ score }: { score: number }) {
-  const r = 52, circ = 2 * Math.PI * r, offset = circ * (1 - score / 100);
+  const safeScore = Math.max(0, Math.min(100, Number.isFinite(score) ? score : 0));
+  const r = 52, circ = 2 * Math.PI * r, offset = circ * (1 - safeScore / 100);
+  const ringColor = safeScore >= 80 ? "#22c55e" : safeScore >= 60 ? "#f59e0b" : safeScore > 0 ? "#F2EEB3" : "rgba(242,238,179,0.45)";
   return (
     <div style={{ position: "relative", width: 120, height: 120, flexShrink: 0 }}>
       <svg viewBox="0 0 120 120" style={{ width: "100%", height: "100%", transform: "rotate(-90deg)" }}>
@@ -119,14 +121,14 @@ function ATSRing({ score }: { score: number }) {
           </linearGradient>
           <filter id="atsGlow"><feGaussianBlur stdDeviation="3" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
         </defs>
-        <circle cx="60" cy="60" r={r} fill="none" stroke="rgba(242,238,179,0.07)" strokeWidth="9" />
-        <motion.circle cx="60" cy="60" r={r} fill="none" stroke="url(#atsG)" strokeWidth="9" strokeLinecap="round"
+        <circle cx="60" cy="60" r={r} fill="none" stroke="rgba(242,238,179,0.16)" strokeWidth="9" />
+        <motion.circle cx="60" cy="60" r={r} fill="none" stroke={ringColor} strokeWidth="9" strokeLinecap="round"
           strokeDasharray={circ} initial={{ strokeDashoffset: circ }} animate={{ strokeDashoffset: offset }}
           transition={{ duration: 1.5, ease: "easeOut" }} filter="url(#atsGlow)" />
       </svg>
       <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ fontFamily: F.mono, fontSize: 28, fontWeight: 500, color: T.red, lineHeight: 1 }}>{score}</span>
-        <span style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: T.t3, fontFamily: F.sans, marginTop: 3 }}>ATS Score</span>
+        <span style={{ fontFamily: F.mono, fontSize: 28, fontWeight: 800, color: "#F2EEB3", lineHeight: 1, textShadow: "0 0 16px rgba(242,238,179,0.22)" }}>{safeScore || "--"}</span>
+        <span style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: T.t2, fontFamily: F.sans, marginTop: 3 }}>ATS Score</span>
       </div>
     </div>
   );
@@ -189,13 +191,14 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const displayFirstName = user?.first_name || "there";
 
-  // Fetch top resume matches for featured jobs.
+  // Fetch top resume matches for featured jobs. Do not use this endpoint for
+  // the dashboard's scraped-jobs count: it intentionally returns only a small
+  // matched subset and made the Overview look like there were only ~43 jobs.
   useEffect(() => {
     let active = true;
     api.getTopMatches({ limit: 3 })
       .then((response) => {
         if (!active) return;
-        if (response.total) setTotalJobs(response.total);
         setFeaturedJobs(response.jobs.map((job) => ({
           id: job.id ?? "",
           title: job.title ?? "Untitled role",
@@ -209,22 +212,41 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
       })
       .catch(() => {});
     return () => { active = false; };
-  }, [resumeScore]);
+  }, []);
 
   // Fetch dashboard summary (resume score, applications, activity)
   useEffect(() => {
     let active = true;
-    api.getDashboardSummary()
-      .then((summary) => {
+    Promise.allSettled([
+      api.getDashboardSummary(),
+      api.getResumeList(),
+      api.getJobPipelineStatus(),
+    ])
+      .then(([summaryResult, resumesResult, pipelineResult]) => {
         if (!active) return;
-        setResumeScore(summary.resume_score);
-        setHasResume(Boolean(summary.has_resume || summary.active_resume_name || summary.total_resumes > 0));
-        setActiveResumeName(summary.active_resume_name || "");
-        setTotalApplications(summary.total_applications);
-        setTotalResumes(summary.total_resumes);
-        if (summary.total_jobs > 0) setTotalJobs(summary.total_jobs);
+        const summary = summaryResult.status === "fulfilled" ? summaryResult.value : null;
+        const resumes = resumesResult.status === "fulfilled" ? resumesResult.value : [];
+        const pipeline = pipelineResult.status === "fulfilled" ? pipelineResult.value : null;
+        const activeResume = resumes.find((resume) => resume.active) || resumes[0];
+
+        if (!summary && !resumes.length && !pipeline) return;
+
+        const resolvedScore = Number(summary?.resume_score || activeResume?.score || 0);
+        const resolvedResumeCount = Math.max(
+          Number(summary?.total_resumes || 0),
+          resumes.length,
+          activeResume ? 1 : 0,
+        );
+        const resolvedResumeName = summary?.active_resume_name || activeResume?.name || "";
+
+        setResumeScore(resolvedScore);
+        setHasResume(Boolean(summary?.has_resume || resolvedResumeName || resolvedResumeCount > 0));
+        setActiveResumeName(resolvedResumeName);
+        setTotalApplications(Number(summary?.total_applications || 0));
+        setTotalResumes(resolvedResumeCount);
+        setTotalJobs(Number(pipeline?.total_jobs || pipeline?.active_jobs || summary?.total_jobs || 0));
         // Derive activity feed from recent alerts
-        const items: ActivityItem[] = summary.recent_alerts.map((a) => {
+        const items: ActivityItem[] = (summary?.recent_alerts || []).map((a) => {
           const matchPct = a.match_score;
           return {
             icon: matchPct > 0 ? Zap : Bell,

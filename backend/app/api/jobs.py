@@ -585,14 +585,10 @@ async def list_jobs(
             total = len(decorated)
             total_pages = max(1, math.ceil(total / page_size))
 
-        # Per-user ATS scoring against the active resume.
         resume_text = await _active_resume_text(user_id)
-        # PERF: pre-tokenize the resume ONCE and pass it to each per-job
-        # scoring call. Without this, every job re-parsed the resume,
-        # which is why Today / Yesterday felt slow.
         resume_cache = _prepare_resume_tokens(resume_text) if resume_text else None
         preferred_roles, preferred_locations = _preference_terms(user_id)
-        for j in decorated:
+        def _score_visible_job(j: dict) -> None:
             jd = j.get("description") or ""
             jt = j.get("title") or ""
             if resume_text and (jd or jt):
@@ -638,7 +634,10 @@ async def list_jobs(
                     bucket = 3 if is_senior_title(title) else 2
                 else:
                     bucket = 5
-                match = -(j.get("match_score") or _baseline_ats_score(j))
+                # Keep the hot list endpoint fast: use a cheap baseline for
+                # ordering the candidate pool, then do real resume scoring only
+                # for the rows returned on this page.
+                match = -_baseline_ats_score(j)
                 return (match, bucket) if sort == "match" else (bucket, match)
             decorated.sort(key=_entry_score)
 
@@ -650,6 +649,13 @@ async def list_jobs(
             page_jobs = decorated[offset:offset + page_size]
         else:
             page_jobs = decorated[:page_size]
+
+        # Per-user ATS scoring is the expensive part of this endpoint. Score
+        # only the rows that will be returned instead of the full over-fetched
+        # candidate pool. This keeps the Jobs page from waiting 30-50 seconds
+        # when a user has an active resume.
+        for job_data in page_jobs:
+            _score_visible_job(job_data)
 
         # Convert to JobPost models for the response. Stash the taxonomy
         # extras and re-attach them post-validation so the strict JobPost
@@ -1047,7 +1053,8 @@ async def get_top_matches(
     terms = preferred_roles[:]
     if terms:
         filters["title_terms"] = terms
-    jobs = await db.get_jobs(filters=filters, limit=3000, offset=0)
+    jobs = await db.get_jobs(filters=filters, limit=400, offset=0)
+    resume_cache = _prepare_resume_tokens(resume_text) if resume_text else None
     ranked: list[dict] = []
     for job in jobs:
         meta = job.get("extra_metadata") or {}
@@ -1058,7 +1065,11 @@ async def get_top_matches(
         item["taxonomy_category"] = cat
         item["role"] = rname
         if resume_text:
-            item["match_score"] = _score_job_against_resume(resume_text, f"{item.get('title') or ''}\n{item.get('description') or ''}")
+            item["match_score"] = _score_job_against_resume(
+                resume_text,
+                f"{item.get('title') or ''}\n{item.get('description') or ''}",
+                resume_cache=resume_cache,
+            )
         else:
             item["match_score"] = _baseline_ats_score(item)
         hay = f"{item.get('title') or ''} {rname} {cat}".lower()
