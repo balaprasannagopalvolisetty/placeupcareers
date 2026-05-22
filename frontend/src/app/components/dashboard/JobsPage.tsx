@@ -60,6 +60,7 @@ interface TaxonomyRole { name: string; synonyms: string[]; visa: string[]; hot: 
 interface TaxonomyCategory { name: string; icon: string; roles: TaxonomyRole[] }
 
 const JOB_FETCH_RETRY_MS = 700;
+const JOB_FETCH_TIMEOUT_MS = 30000;
 
 function useResponsiveFlags() {
   const getWidth = () => (typeof window === "undefined" ? 1280 : window.innerWidth);
@@ -87,7 +88,7 @@ async function getJobsWithRetry(params: Record<string, string | number | boolean
   for (let i = 0; i < attempts; i += 1) {
     try {
       const controller = new AbortController();
-      const timeoutId = window.setTimeout(() => controller.abort(), 10000);
+      const timeoutId = window.setTimeout(() => controller.abort(), JOB_FETCH_TIMEOUT_MS);
       try {
         const result = await api.getJobs(params, { signal: controller.signal });
         return result;
@@ -295,6 +296,10 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
     let active = true;
     setLoading(true);
     setError(null);
+    if (page === 1) {
+      setJobs([]);
+      setTotal(0);
+    }
 
     const params: Record<string, string | number | boolean> = { page, page_size: pageSize, max_years: 10, sort: "recent" };
     if (search) params.search = search;
@@ -332,7 +337,11 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       .catch((err) => {
         if (active) {
           setError(friendlyJobError(err));
-          // Fix 7: Don't clear existing jobs on error — keep stale data visible
+          if (page === 1) {
+            setJobs([]);
+            setTotal(0);
+          }
+          // Keep failed first-page filters from showing stale All Jobs results.
         }
       })
       .finally(() => { if (active) setLoading(false); });
