@@ -521,10 +521,17 @@ async def list_jobs(
 
     try:
         taxonomy_filter_active = bool(category or role)
+        free_text_search_active = bool(search and search.strip())
         # Taxonomy filters are derived from title/category matching. Counting
         # all matches first doubles the work and makes category clicks feel
         # slow, so fetch a bounded candidate pool and derive total from it.
-        total = 50000 if taxonomy_filter_active else await db.count_jobs(filters=filters)
+        #
+        # Free-text search can hit the job description as well as title/company.
+        # An exact COUNT(*) over that broad text search is nearly as expensive
+        # as the page query itself, so avoid doubling the work. The response
+        # still reports enough total to keep pagination moving, then tightens it
+        # once a short final page is reached.
+        total = 50000 if taxonomy_filter_active or free_text_search_active else await db.count_jobs(filters=filters)
         # Category and role are derived from titles in Python. Only those
         # filters need a full pool scan. The normal All Jobs path fetches the
         # requested page directly so the dashboard does not wait on thousands
@@ -586,6 +593,12 @@ async def list_jobs(
             cat_l = category.strip().lower()
             decorated = [j for j in decorated if (j.get("taxonomy_category") or "").lower() == cat_l]
             total = len(decorated)
+            total_pages = max(1, math.ceil(total / page_size))
+        elif free_text_search_active:
+            if len(decorated) < page_size:
+                total = offset + len(decorated)
+            else:
+                total = max(offset + len(decorated) + page_size, page * page_size + 1)
             total_pages = max(1, math.ceil(total / page_size))
 
         resume_text = await _active_resume_text(user_id)
