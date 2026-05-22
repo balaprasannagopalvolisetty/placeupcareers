@@ -47,4 +47,9 @@ Upsert-SchedulerJob `
   -Schedule "30 */12 * * *" `
   -Uri "$JobRunBase/placeup-external-api-12h:run"
 
+Upsert-SchedulerJob `
+  -Name "placeup-taxonomy-role-backfill" `
+  -Schedule "15 2 * * *" `
+  -Uri "$JobRunBase/placeup-taxonomy-role-backfill:run"
+
 Write-Host "Cloud Scheduler jobs created."

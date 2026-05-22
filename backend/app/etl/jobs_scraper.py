@@ -47,6 +47,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sources", default=None, help="Comma-separated JobSource values. Defaults to core sources.")
     parser.add_argument("--max-per-source", type=int, default=120)
     parser.add_argument("--max-per-sponsor", type=int, default=500)
+    parser.add_argument("--h1b-sponsor-concurrency", type=int, default=8)
+    parser.add_argument("--jobspy-hours-old", type=int, default=336)
+    parser.add_argument("--jobspy-page-size", type=int, default=35)
+    parser.add_argument("--jobspy-max-pages", type=int, default=15)
     parser.add_argument("--tiers", default="T1,T2")
     parser.add_argument("--schedule-type", default="6h")
     parser.add_argument("--dry-run", action="store_true", help="Fetch and normalize, but do not write to Postgres.")
@@ -77,6 +81,10 @@ def build_request(args: argparse.Namespace) -> ScrapeRequest:
         results_per_source=args.max_per_source,
         h1b_sponsor_tiers=tiers,
         h1b_sponsor_max_jobs=args.max_per_sponsor,
+        h1b_sponsor_concurrency=getattr(args, "h1b_sponsor_concurrency", 8),
+        jobspy_hours_old=getattr(args, "jobspy_hours_old", 336),
+        jobspy_page_size=getattr(args, "jobspy_page_size", 35),
+        jobspy_max_pages=getattr(args, "jobspy_max_pages", 15),
     )
 
 

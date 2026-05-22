@@ -195,6 +195,34 @@ def all_role_names() -> list[str]:
     return [role.name for cat in CATEGORIES for role in cat.roles]
 
 
+def all_role_backfill_search_terms() -> list[str]:
+    """Focused cloud backfill queries for every visible category role.
+
+    The 6h scraper intentionally casts a wide early-career net. This list is
+    narrower and role-by-role so production can fill each Jobs-page category
+    position without relying on one broad query to happen to cover it.
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+
+    def add(term: str) -> None:
+        clean = " ".join((term or "").replace("/", " ").split())
+        key = clean.lower()
+        if len(clean) >= 3 and key not in seen:
+            seen.add(key)
+            out.append(clean)
+
+    for cat in CATEGORIES:
+        for role in cat.roles:
+            add(role.name)
+            for synonym in role.synonyms[:2]:
+                add(synonym)
+            if cat.name == "Volunteer & OPT-qualifying":
+                for synonym in role.synonyms:
+                    add(synonym)
+    return out
+
+
 def all_early_career_search_terms() -> list[str]:
     """Search terms biased toward 0-10 year roles across the taxonomy."""
     seen: set[str] = set()

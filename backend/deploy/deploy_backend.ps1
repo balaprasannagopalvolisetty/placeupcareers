@@ -93,6 +93,20 @@ gcloud.cmd run jobs deploy placeup-external-api-12h `
   --max-retries 1 `
   --task-timeout 7200
 
+gcloud.cmd run jobs deploy placeup-taxonomy-role-backfill `
+  --image $Image `
+  --region $Region `
+  --service-account "placeup-etl-sa@$ProjectId.iam.gserviceaccount.com" `
+  --command python `
+  --args="-m,app.etl.taxonomy_role_backfill" `
+  --set-cloudsql-instances "$ProjectId`:$Region`:$DbInstance" `
+  --set-env-vars "APP_ENV=production,DATABASE_BACKEND=postgres" `
+  --set-secrets $ExternalSecrets `
+  --memory 2Gi `
+  --cpu 2 `
+  --max-retries 1 `
+  --task-timeout 7200
+
 gcloud.cmd run jobs deploy placeup-h1b-import `
   --image $Image `
   --region $Region `
