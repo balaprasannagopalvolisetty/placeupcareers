@@ -1,5 +1,13 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { getProfile, signin, signup, clearStoredToken, type SignupPayload } from "../lib/api";
+import {
+  clearStoredToken,
+  getSession,
+  logout as apiLogout,
+  refreshAccessToken,
+  signin,
+  signup,
+  type SignupPayload,
+} from "../lib/api";
 
 interface AuthUser {
   id?: string;
@@ -15,7 +23,7 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (payload: SignupPayload) => Promise<void>;
-  signOut: () => void;
+  signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -29,9 +37,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     async function loadProfile() {
       try {
-        const profile = await getProfile();
-        if (active) {
-          setUser(profile);
+        await refreshAccessToken();
+        const session = await getSession();
+        if (active && session.authenticated && session.user) {
+          setUser(session.user);
+        } else if (active) {
+          clearStoredToken();
+          setUser(null);
         }
       } catch (error) {
         clearStoredToken();
@@ -70,9 +82,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const signOut = () => {
-    clearStoredToken();
+  const signOut = async () => {
     setUser(null);
+    await apiLogout();
   };
 
   const value: AuthContextValue = {

@@ -27,9 +27,12 @@ import time
 from collections import defaultdict, deque
 from typing import Deque, Dict, Tuple
 
+import jwt
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, Response
+
+from app.config import settings
 
 log = logging.getLogger(__name__)
 
@@ -41,6 +44,30 @@ RATE_LIMITS: Dict[str, Tuple[int, int]] = {
     "write": (60, 60),
     # Generous bucket: reads. Job listings, taxonomy, dashboard summary.
     "read": (240, 60),
+}
+
+MAX_REQUEST_BODY_BYTES = 12 * 1024 * 1024
+
+PUBLIC_READ_PATHS = {
+    "/",
+    "/api/health",
+    "/api/auth/demo",
+    "/api/auth/oidc/providers",
+    "/api/auth/session",
+    "/docs",
+    "/openapi.json",
+    "/redoc",
+}
+PUBLIC_READ_PREFIXES = (
+    "/api/jobs",
+    "/api/visa",
+    "/api/auth/oidc/google",
+)
+PUBLIC_WRITE_PATHS = {
+    "/api/auth/signin",
+    "/api/auth/signup",
+    "/api/auth/refresh",
+    "/api/auth/logout",
 }
 
 
@@ -109,6 +136,102 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         response.headers["X-RateLimit-Bucket"] = bucket
         response.headers["X-RateLimit-Limit"] = str(max_req)
         response.headers["X-RateLimit-Remaining"] = str(max(0, max_req - len(hits)))
+        return response
+
+
+class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
+    """Reject oversized request bodies before route handlers parse them."""
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        content_length = request.headers.get("content-length")
+        if content_length:
+            try:
+                size = int(content_length)
+            except ValueError:
+                size = 0
+            if size > MAX_REQUEST_BODY_BYTES:
+                return JSONResponse(
+                    {"detail": "Request body is too large."},
+                    status_code=413,
+                    headers={"X-Max-Request-Body-Bytes": str(MAX_REQUEST_BODY_BYTES)},
+                )
+        return await call_next(request)
+
+
+def _has_auth_header(request: Request) -> bool:
+    authorization = request.headers.get("authorization", "")
+    api_key = request.headers.get("x-api-key", "")
+    return authorization.lower().startswith("bearer ") or bool(api_key)
+
+
+def _is_public_read(path: str) -> bool:
+    if path in PUBLIC_READ_PATHS:
+        return True
+    return any(path.startswith(prefix) for prefix in PUBLIC_READ_PREFIXES)
+
+
+class RouteAccessMiddleware(BaseHTTPMiddleware):
+    """Coarse route gate so restricted handlers are not reached anonymously."""
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        path = request.url.path.rstrip("/") or "/"
+        method = request.method.upper()
+        if method in {"OPTIONS", "HEAD"}:
+            return await call_next(request)
+        if method == "GET" and _is_public_read(path):
+            return await call_next(request)
+        if path in PUBLIC_WRITE_PATHS:
+            return await call_next(request)
+        if path.startswith("/api/") and not _has_auth_header(request):
+            return JSONResponse({"detail": "Authentication required"}, status_code=401)
+        return await call_next(request)
+
+
+def _user_id_from_header(request: Request) -> str:
+    authorization = request.headers.get("authorization", "")
+    if not authorization.lower().startswith("bearer "):
+        return ""
+    token = authorization.split(" ", 1)[1].strip()
+    if not token:
+        return ""
+    try:
+        claims = jwt.decode(
+            token,
+            settings.jwt_secret,
+            algorithms=[settings.jwt_algorithm],
+            audience="placeup-career-web",
+            issuer="placeup-career-api",
+        )
+        return str(claims.get("sub") or "")
+    except jwt.InvalidTokenError:
+        return ""
+
+
+class AuditLogMiddleware(BaseHTTPMiddleware):
+    """Log access to sensitive API surfaces with user/IP/status metadata."""
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        response = await call_next(request)
+        path = request.url.path
+        sensitive = path.startswith((
+            "/api/auth",
+            "/api/user",
+            "/api/resume",
+            "/api/match",
+            "/api/contacts",
+            "/api/alerts",
+            "/api/analytics",
+        ))
+        high_signal = request.method.upper() != "GET" or response.status_code >= 400
+        if sensitive and high_signal:
+            log.info(
+                "audit access method=%s path=%s status=%s user_id=%s ip=%s",
+                request.method,
+                path,
+                response.status_code,
+                _user_id_from_header(request) or "anonymous",
+                _client_ip(request),
+            )
         return response
 
 

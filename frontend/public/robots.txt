@@ -1,0 +1,14 @@
+# PlaceUp Careers — robots.txt
+# Indexable site. Authenticated dashboard is blocked from crawlers so we
+# don't pollute Google with /dashboard/* URLs that 401 for anonymous bots.
+
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /api/
+
+# Common-good citizen rate limit for noisy crawlers.
+Crawl-delay: 2
+
+# Sitemap location — kept root-relative so it works on any deploy domain.
+Sitemap: https://placeup.careers/sitemap.xml

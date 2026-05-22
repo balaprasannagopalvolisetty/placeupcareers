@@ -38,12 +38,19 @@ class SignupRequest(BaseModel):
 
 class AuthResponse(BaseModel):
     access_token: str
+    expires_in: int = 900
     token_type: str = "bearer"
     user_id: str
     email: EmailStr
     first_name: str
     last_name: str
     plan: str = "pro"
+
+
+class TokenRefreshResponse(BaseModel):
+    access_token: str
+    expires_in: int = 900
+    token_type: str = "bearer"
 
 
 class UserProfile(BaseModel):
@@ -63,6 +70,11 @@ class UserProfile(BaseModel):
     github_url: Optional[str] = None
     portfolio_url: Optional[str] = None
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class SessionResponse(BaseModel):
+    authenticated: bool
+    user: Optional[UserProfile] = None
 
 
 class UserPreferences(BaseModel):

@@ -5,10 +5,11 @@ Endpoints for resume parsing and ATS scoring.
 
 import logging
 import time
-from fastapi import APIRouter, File, Form, UploadFile, HTTPException
+from fastapi import APIRouter, Depends, File, Form, UploadFile, HTTPException
 from typing import Optional
 
 from app.models.resume import ResumeParseResponse, ResumeScoreResponse
+from app.security import current_user_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/resume", tags=["Resume & ATS"])
@@ -16,6 +17,7 @@ router = APIRouter(prefix="/resume", tags=["Resume & ATS"])
 @router.post("/parse", response_model=ResumeParseResponse)
 async def parse_resume(
     file: UploadFile = File(..., description="Resume file (PDF or DOCX)"),
+    user_id: str = Depends(current_user_id),
 ):
     """Parse a resume file into structured data.
 
@@ -72,8 +74,8 @@ async def parse_resume(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Resume parsing failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Resume parsing failed: {str(e)}")
+        logger.error("Resume parsing failed for %s: %s", user_id, e)
+        raise HTTPException(status_code=500, detail="Resume parsing failed")
 
 
 @router.get("/list")
@@ -94,6 +96,7 @@ async def score_resume(
     job_description: str = Form(..., description="Full job description text"),
     job_title: Optional[str] = Form(None, description="Job title"),
     company: Optional[str] = Form(None, description="Company name"),
+    user_id: str = Depends(current_user_id),
 ):
     """Score a resume against a job description using AI-powered ATS analysis.
 
@@ -158,14 +161,15 @@ async def score_resume(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"ATS scoring failed: {e}")
-        raise HTTPException(status_code=500, detail=f"ATS scoring failed: {str(e)}")
+        logger.error("ATS scoring failed for %s: %s", user_id, e)
+        raise HTTPException(status_code=500, detail="ATS scoring failed")
 
 
 @router.post("/keywords")
 async def extract_keywords(
     file: UploadFile = File(..., description="Resume file (PDF or DOCX)"),
     job_description: str = Form(..., description="Job description text"),
+    user_id: str = Depends(current_user_id),
 ):
     """Extract and compare keywords between resume and job description.
 
@@ -213,5 +217,5 @@ async def extract_keywords(
         }
 
     except Exception as e:
-        logger.error(f"Keyword extraction failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Keyword extraction failed for %s: %s", user_id, e)
+        raise HTTPException(status_code=500, detail="Keyword extraction failed")

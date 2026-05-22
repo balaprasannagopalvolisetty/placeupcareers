@@ -54,10 +54,17 @@ POSITIVE_KEYWORDS = {
 NEGATIVE_KEYWORDS = {
     "no sponsorship": -60,
     "no visa sponsorship": -60,
+    "not able to offer visa": -70,
+    "not able to offer visa transfer": -70,
+    "not able to offer visa transfer or sponsorship": -85,
+    "not able to offer visa sponsorship": -80,
     "not sponsor": -50,
     "unable to sponsor": -60,
     "will not sponsor": -60,
     "cannot sponsor": -60,
+    "without sponsorship": -60,
+    "without current or future sponsorship": -70,
+    "authorized to work in the us without sponsorship": -75,
     "us citizen": -30,
     "us citizens only": -60,
     "citizen only": -50,
@@ -134,11 +141,28 @@ def classify_job(
             score += penalty  # penalty is negative
             negative_hits.append(keyword)
 
+    hard_sponsorship_block = any(
+        phrase in full_text
+        for phrase in (
+            "no sponsorship",
+            "no visa sponsorship",
+            "not able to offer visa",
+            "not able to offer visa transfer or sponsorship",
+            "not able to offer visa sponsorship",
+            "will not sponsor",
+            "cannot sponsor",
+            "unable to sponsor",
+            "without sponsorship",
+            "without current or future sponsorship",
+            "authorized to work in the us without sponsorship",
+        )
+    )
+
     # ─── Step 3: USCIS cross-reference ─────────────────────
     h1b_verified = False
     uscis_petition_count = 0
 
-    if uscis_data:
+    if uscis_data and not hard_sponsorship_block:
         uscis_petition_count = uscis_data.get("total_petitions", 0)
         if uscis_petition_count >= 5:
             score += 30
@@ -171,11 +195,17 @@ def classify_job(
         "jpmorgan", "goldman sachs", "morgan stanley", "citadel",
     ]
     company_lower = company.lower()
-    if any(sponsor in company_lower for sponsor in major_sponsors):
+    if any(sponsor in company_lower for sponsor in major_sponsors) and not hard_sponsorship_block:
         score += 25
         h1b_verified = True
         visa_h1b = True
         keyword_hits.append(f"Known major H1B sponsor: {company}")
+
+    if hard_sponsorship_block:
+        visa_opt = False
+        visa_stem_opt = False
+        visa_h1b = False
+        h1b_verified = False
 
     # ─── Step 5: Normalize score ───────────────────────────
     score = max(0, min(100, score))

@@ -244,9 +244,10 @@ grant the CLI identity permission to add Firebase to the project.
 ### Recommended: Separate Cloud Run Servers
 
 This keeps the API server in `steel-shine-492401-u6` and deploys the frontend as
-its own Cloud Run service in `placeup-firebase-641222668282`. The script builds
-the backend, reads the backend Cloud Run URL, builds the frontend with that URL
-as `VITE_API_BASE`, then updates backend CORS with the frontend Cloud Run origin.
+its own Cloud Run service in `placeup-firebase-641222668282`. The browser calls
+same-origin `/api`; the frontend Nginx server proxies those requests to the
+backend via the runtime-only `BACKEND_ORIGIN` environment variable. Do not embed
+backend service URLs or API keys in client-side JavaScript.
 
 ```powershell
 cd D:\Development_Projects\PlaceUp
@@ -296,7 +297,8 @@ gcloud auth login
 gcloud config set project placeup-firebase-641222668282
 ```
 
-Deploy frontend to Firebase Hosting with the deployed backend URL:
+Deploy frontend to Firebase Hosting only if you also provide a same-origin API
+proxy/rewrite. Do not point browser JavaScript directly at the backend URL:
 
 ```powershell
 cd frontend
@@ -468,8 +470,14 @@ Also confirm the API service points to the same Cloud SQL database where `master
 
 ## 10. Operational Notes
 
-- Local development scheduler is 6 hours and uses `backend/data/.last_scrape_at`; restarting the backend no longer immediately scrapes unless the timer is due.
-- If `placeup_jobs.csv` is open in Excel, exports write a timestamped sidecar instead of failing the scrape.
+- Frontend security headers include CSP, HSTS, frame denial, nosniff, referrer policy, and restricted permissions policy.
+- Access tokens are short-lived bearer JWTs held in browser memory only. Refresh tokens are rotating, hashed server-side, and sent as `HttpOnly; Secure; SameSite=Strict` cookies through same-origin `/api`.
+- Authenticated user data routes enforce server-side user-id ownership checks. Contact PII routes require an authenticated user, and import/export/debug operations require `INTERNAL_API_KEY`.
+- Manual `/api/jobs/scrape` and `/api/jobs/export` require `INTERNAL_API_KEY`; scheduled scraper jobs run out-of-band as Cloud Run Jobs.
+- Payment code is not active in production. If payments are added, use hosted fields such as Stripe Elements, validate prices server-side, verify webhook signatures, and use idempotency keys.
+- Cloud SQL should remain private through Cloud SQL connector/Cloud Run attachment; do not expose database public access. For WAF/DDoS protection, put Cloud Armor in front of the frontend/backend with an external HTTPS Load Balancer before opening admin tooling.
+- Audit logs record sensitive API access with method, path, status, user id when available, and client IP. Set Cloud Logging alerts for repeated failed logins, 401/403 spikes, internal-key failures, and large exports.
+- Run vulnerability checks before production releases: `npm audit --audit-level=high` in `frontend`, plus Python dependency scanning in `backend` with your approved scanner.
 - Analytics now returns real user data only. Empty accounts show empty states.
 - Each user is limited to one active resume; uploading a new resume replaces prior resume metadata for that user.
 - Do not print passwords or secret values in deployment notes. Store production credentials in Secret Manager and rotate anything pasted into chat or terminals.

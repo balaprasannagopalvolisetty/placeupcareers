@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory=$true)][string]$ProjectId,
-  [string]$Region = "us-central1",
+  [string]$Region = "us-east1",
   [string]$DbInstance = "placeup-backend",
   [string]$UserDatabaseBackend = "firestore",
   [string]$UserFirestoreProjectId = $ProjectId,
@@ -20,10 +20,38 @@ $ScraperSecrets = "DATABASE_URL=DATABASE_URL:latest,RAPIDAPI_KEY=RAPIDAPI_KEY:la
 $ExternalSecrets = "DATABASE_URL=DATABASE_URL:latest,RAPIDAPI_KEY=RAPIDAPI_KEY:latest,USAJOBS_API_KEY=USAJOBS_API_KEY:latest,USAJOBS_EMAIL=USAJOBS_EMAIL:latest"
 
 gcloud.cmd config set project $ProjectId
-$OpenAiSecret = gcloud.cmd secrets list --project $ProjectId --filter="name:OPENAI_API_KEY" --format="value(name)"
+function Test-SecretExists([string]$SecretName) {
+  $previousErrorAction = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    & gcloud.cmd secrets describe $SecretName --project $ProjectId --format="value(name)" *> $null
+    return $LASTEXITCODE -eq 0
+  } finally {
+    $ErrorActionPreference = $previousErrorAction
+  }
+}
+
+$OpenAiSecret = Test-SecretExists "OPENAI_API_KEY"
 if ($OpenAiSecret) {
   $ApiSecrets = "$ApiSecrets,OPENAI_API_KEY=OPENAI_API_KEY:latest"
   $ScraperSecrets = "$ScraperSecrets,OPENAI_API_KEY=OPENAI_API_KEY:latest"
+}
+
+$InternalApiSecret = Test-SecretExists "INTERNAL_API_KEY"
+if ($InternalApiSecret) {
+  $ApiSecrets = "$ApiSecrets,INTERNAL_API_KEY=INTERNAL_API_KEY:latest"
+}
+$GoogleClientIdSecret = Test-SecretExists "OIDC_GOOGLE_CLIENT_ID"
+if ($GoogleClientIdSecret) {
+  $ApiSecrets = "$ApiSecrets,OIDC_GOOGLE_CLIENT_ID=OIDC_GOOGLE_CLIENT_ID:latest"
+}
+$GoogleClientSecret = Test-SecretExists "OIDC_GOOGLE_CLIENT_SECRET"
+if ($GoogleClientSecret) {
+  $ApiSecrets = "$ApiSecrets,OIDC_GOOGLE_CLIENT_SECRET=OIDC_GOOGLE_CLIENT_SECRET:latest"
+}
+$GoogleRedirectSecret = Test-SecretExists "OIDC_GOOGLE_REDIRECT_URI"
+if ($GoogleRedirectSecret) {
+  $ApiSecrets = "$ApiSecrets,OIDC_GOOGLE_REDIRECT_URI=OIDC_GOOGLE_REDIRECT_URI:latest"
 }
 gcloud.cmd builds submit . --tag $Image
 

@@ -12,8 +12,8 @@ class Settings(BaseSettings):
     """Application configuration loaded from .env file."""
 
     # --- Server ---
-    app_env: str = Field(default="development")
-    app_port: int = Field(default=8000)
+    app_env: str = Field(default="production")
+    app_port: int = Field(default=8080)
     frontend_url: str = Field(default="https://placeup-frontend-76tybrmgya-ue.a.run.app")
 
     # --- Auth (JWT + password hashing) ---
@@ -22,7 +22,17 @@ class Settings(BaseSettings):
         description="HS256 signing key for access tokens. Must be set in production.",
     )
     jwt_algorithm: str = Field(default="HS256")
-    jwt_expires_minutes: int = Field(default=60 * 24 * 7)  # 7 days
+    jwt_expires_minutes: int = Field(default=15)
+    refresh_token_expires_days: int = Field(default=30)
+    internal_api_key: str = Field(
+        default="",
+        description="Optional shared secret for internal/admin-only API operations.",
+    )
+
+    # --- OAuth2 / OIDC (Google) ---
+    oidc_google_client_id: str = Field(default="")
+    oidc_google_client_secret: str = Field(default="")
+    oidc_google_redirect_uri: str = Field(default="")
 
     # --- LLM Provider ---
     groq_api_key: str = Field(default="")
@@ -54,7 +64,7 @@ class Settings(BaseSettings):
     # --- Database / Firebase / GCP ---
     database_backend: str = Field(default="postgres")
     database_url: str = Field(
-        default="postgresql+psycopg://placeup:placeup_dev@localhost:5432/placeup",
+        default="postgresql+psycopg://placeup:CHANGE_ME@/jobssilverdb?host=/cloudsql/steel-shine-492401-u6:us-east1:placeup-backend",
         description="SQLAlchemy URL used when DATABASE_BACKEND=postgres.",
     )
     firebase_credentials_path: str = Field(default="./service-account.json")
@@ -100,13 +110,6 @@ class Settings(BaseSettings):
             "https://www.placeupcareer.com",
             "https://placeup-frontend-76tybrmgya-ue.a.run.app",
         ])
-        if self.is_development:
-            origins.extend([
-                "http://localhost:5173",
-                "http://localhost:3000",
-                "http://127.0.0.1:5173",
-                "http://127.0.0.1:8000",
-            ])
         return list(set(origins))
 
     def validate_production(self) -> None:

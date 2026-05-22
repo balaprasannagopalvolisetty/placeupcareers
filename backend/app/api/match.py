@@ -10,6 +10,7 @@ from typing import Optional
 
 from app.dependencies import get_db
 from app.models.match import MatchResponse, BatchMatchResult
+from app.security import current_user_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/match", tags=["Match Scoring"])
@@ -21,6 +22,7 @@ async def match_resume_to_job(
     job_id: str = Form(..., description="Job posting ID to match against"),
     job_description: Optional[str] = Form(None, description="Override JD (optional)"),
     job_title: Optional[str] = Form(None, description="Job title (optional)"),
+    user_id: str = Depends(current_user_id),
     db=Depends(get_db),
 ):
     """Score how well a resume matches a specific job posting.
@@ -99,14 +101,15 @@ async def match_resume_to_job(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Match scoring failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Match scoring failed: {str(e)}")
+        logger.error("Match scoring failed for %s: %s", user_id, e)
+        raise HTTPException(status_code=500, detail="Match scoring failed")
 
 
 @router.post("/batch", response_model=BatchMatchResult)
 async def batch_match(
     file: UploadFile = File(..., description="Resume file (PDF or DOCX)"),
     job_ids: str = Form(..., description="Comma-separated job IDs (max 20)"),
+    user_id: str = Depends(current_user_id),
     db=Depends(get_db),
 ):
     """Score a resume against multiple jobs and return ranked results.
@@ -182,5 +185,5 @@ async def batch_match(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Batch match failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Batch match failed for %s: %s", user_id, e)
+        raise HTTPException(status_code=500, detail="Batch match failed")

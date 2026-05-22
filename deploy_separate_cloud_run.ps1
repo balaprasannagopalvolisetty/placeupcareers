@@ -9,7 +9,8 @@ param(
   [string]$FrontendUrl = "",
   [switch]$SkipBackend,
   [switch]$SkipFrontend,
-  [switch]$SkipCorsUpdate
+  [switch]$SkipCorsUpdate,
+  [switch]$SkipScheduler
 )
 
 $ErrorActionPreference = "Stop"
@@ -35,6 +36,18 @@ if (-not $SkipBackend) {
   Push-Location (Join-Path $Root "backend")
   try {
     & ".\deploy\deploy_backend.ps1" @backendArgs
+  } finally {
+    Pop-Location
+  }
+}
+
+if (-not $SkipBackend -and -not $SkipScheduler) {
+  Push-Location (Join-Path $Root "backend")
+  try {
+    & ".\deploy\schedule_jobs.ps1" `
+      -ProjectId $BackendProjectId `
+      -Region $Region `
+      -TimeZone "America/Chicago"
   } finally {
     Pop-Location
   }
@@ -95,7 +108,7 @@ if (-not $SkipBackend) {
   # (see backend/deploy/README.md). Safe to re-run: --no-traffic on
   # services doesn't apply to jobs; this re-points to the latest image.
   Write-Host "Deploying ATS worker Cloud Run Job..."
-  $imageTag = "us-east1-docker.pkg.dev/$BackendProjectId/placeup/backend:latest"
+  $imageTag = "$Region-docker.pkg.dev/$BackendProjectId/placeup/backend:latest"
   $workerEnv = "APP_ENV=production,DATABASE_BACKEND=postgres,USER_DATABASE_BACKEND=firestore,USER_FIRESTORE_PROJECT_ID=$UserFirestoreProjectId,USER_FIRESTORE_DATABASE=$UserFirestoreDatabase"
 
   gcloud.cmd run jobs deploy placeup-ats-worker `

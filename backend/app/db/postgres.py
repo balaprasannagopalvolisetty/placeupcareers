@@ -216,13 +216,24 @@ class PostgresClient:
                 stmt = stmt.join(Company).where(Company.normalized_name == normalize_text(company))
             return int(db.execute(stmt).scalar() or 0)
 
-    async def get_h1b_sponsors(self, employer: str = None, limit: int = 20) -> list[dict]:
+    async def get_h1b_sponsors(self, employer: str = None, state: str = None, limit: int = 20, offset: int = 0) -> list[dict]:
         with self.session() as db:
             stmt = select(H1BSponsor)
             if employer:
                 stmt = stmt.where(H1BSponsor.employer_name.ilike(f"%{employer}%"))
-            rows = db.execute(stmt.order_by(H1BSponsor.total_petitions.desc()).limit(limit)).scalars().all()
+            if state:
+                stmt = stmt.where(func.lower(H1BSponsor.state) == state.lower())
+            rows = db.execute(stmt.order_by(H1BSponsor.total_petitions.desc()).limit(limit).offset(offset)).scalars().all()
             return [row.to_dict() for row in rows]
+
+    async def count_h1b_sponsors(self, employer: str = None, state: str = None) -> int:
+        with self.session() as db:
+            stmt = select(func.count()).select_from(H1BSponsor)
+            if employer:
+                stmt = stmt.where(H1BSponsor.employer_name.ilike(f"%{employer}%"))
+            if state:
+                stmt = stmt.where(func.lower(H1BSponsor.state) == state.lower())
+            return int(db.execute(stmt).scalar() or 0)
 
     async def upsert_h1b_sponsors(self, sponsors: list[dict]) -> int:
         with self.session() as db:

@@ -14,6 +14,19 @@ const T = {
   red: "#A6372D", input: "rgba(242,238,179,0.05)",
 };
 
+function useViewportFlags() {
+  const getWidth = () => (typeof window === "undefined" ? 1280 : window.innerWidth);
+  const [width, setWidth] = useState(getWidth);
+
+  useEffect(() => {
+    const onResize = () => setWidth(getWidth());
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  return { isMobile: width < 640 };
+}
+
 interface TaxonomyRole { name: string }
 interface TaxonomyCategory { name: string; roles: TaxonomyRole[] }
 
@@ -208,6 +221,7 @@ function LocationSuggestField({ label, value, onChange, placeholder }:
 export default function SignUp() {
   const navigate = useNavigate();
   const { signUp } = useAuth();
+  const { isMobile } = useViewportFlags();
 
   // Step 1 — credentials
   const [firstName, setFirstName] = useState("");
@@ -335,9 +349,9 @@ export default function SignUp() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", justifyContent: "center", alignItems: "center", padding: 24, background: T.bg }}>
-      <div style={{ width: "100%", maxWidth: 640, borderRadius: 24, background: "rgba(1,17,38,0.92)", border: `1px solid ${T.border}`, backdropFilter: "blur(28px)", padding: 32, boxShadow: "0 24px 64px rgba(1,17,38,0.4)" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+    <div style={{ minHeight: "100vh", display: "flex", justifyContent: "center", alignItems: "center", padding: isMobile ? 14 : 24, background: T.bg }}>
+      <div style={{ width: "100%", maxWidth: 640, borderRadius: isMobile ? 18 : 24, background: "rgba(1,17,38,0.92)", border: `1px solid ${T.border}`, backdropFilter: "blur(28px)", padding: isMobile ? 18 : 32, boxShadow: "0 24px 64px rgba(1,17,38,0.4)" }}>
+        <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", gap: isMobile ? 12 : 0, marginBottom: 24 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ width: 32, height: 32, borderRadius: 9, background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontFamily: F.sans }}>P</div>
             <div>
@@ -357,7 +371,7 @@ export default function SignUp() {
 
         {/* Step 1 — credentials */}
         {step === 1 && (
-          <motion.div initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <motion.div initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14 }}>
             <Field label="First Name" value={firstName} onChange={setFirstName} required />
             <Field label="Last Name" value={lastName} onChange={setLastName} required />
             <div style={{ gridColumn: "1 / -1" }}>
@@ -374,7 +388,7 @@ export default function SignUp() {
 
         {/* Step 2 — career */}
         {step === 2 && (
-          <motion.div initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <motion.div initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14 }}>
             <div style={{ gridColumn: "1 / -1" }}>
               <Field label="LinkedIn Profile URL" value={linkedinUrl} onChange={setLinkedinUrl} placeholder="https://linkedin.com/in/..." />
             </div>
@@ -438,12 +452,12 @@ export default function SignUp() {
 
             <div>
               <div style={{ fontSize: 12, fontWeight: 500, color: T.t2, fontFamily: F.sans, marginBottom: 6 }}>Location Preferences</div>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 8 }}>
                 <input value={locationInput} onChange={(e) => setLocationInput(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addLocation(); } }}
                   placeholder="Type 4+ letters, e.g. San F"
                   style={{ flex: 1, height: 38, padding: "0 12px", borderRadius: 10, border: `1px solid ${T.border}`, background: T.input, color: T.text, fontSize: 13, fontFamily: F.sans, outline: "none" }} />
-                <button type="button" onClick={addLocation} style={{ padding: "0 16px", borderRadius: 10, border: "none", background: T.grad, color: "#fff", fontSize: 12, fontWeight: 600, fontFamily: F.sans, cursor: "pointer" }}>Add</button>
+                <button type="button" onClick={addLocation} style={{ height: 38, padding: "0 16px", borderRadius: 10, border: "none", background: T.grad, color: "#fff", fontSize: 12, fontWeight: 600, fontFamily: F.sans, cursor: "pointer" }}>Add</button>
               </div>
               {filteredLocationPrefs.length > 0 && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>

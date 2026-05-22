@@ -2,25 +2,29 @@
  * PlaceUp Career — Frontend API Client
  *
  * Wraps the FastAPI backend with typed helpers and a shared bearer-token
- * fetch pipeline. The base URL is read from `VITE_API_BASE`; when empty,
- * requests go to the deployed Google Cloud backend.
+ * fetch pipeline. Access tokens stay in memory; refresh tokens are HttpOnly
+ * cookies issued by the API.
  */
 
-const DEFAULT_API_BASE = "https://placeup-api-rui2a74muq-ue.a.run.app";
-const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) || DEFAULT_API_BASE;
+const DEFAULT_API_BASE = "";
+const configuredApiBase = (import.meta.env.VITE_API_BASE as string | undefined)?.trim();
+const API_BASE = (configuredApiBase || DEFAULT_API_BASE).replace(/\/+$/, "");
 const STORAGE_TOKEN_KEY = "placeup_token";
+let accessToken: string | null = null;
 
 function getStoredToken(): string | null {
-  return typeof window !== "undefined" ? localStorage.getItem(STORAGE_TOKEN_KEY) : null;
+  return accessToken;
 }
 
 export function setStoredToken(token: string) {
+  accessToken = token;
   if (typeof window !== "undefined") {
-    localStorage.setItem(STORAGE_TOKEN_KEY, token);
+    localStorage.removeItem(STORAGE_TOKEN_KEY);
   }
 }
 
 export function clearStoredToken() {
+  accessToken = null;
   if (typeof window !== "undefined") {
     localStorage.removeItem(STORAGE_TOKEN_KEY);
   }
@@ -68,11 +72,29 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return data as T;
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+function shouldAttemptRefresh(path: string) {
+  return ![
+    "/api/auth/signin",
+    "/api/auth/signup",
+    "/api/auth/refresh",
+    "/api/auth/logout",
+    "/api/auth/demo",
+  ].some((authPath) => path.startsWith(authPath));
+}
+
+async function request<T>(path: string, init: RequestInit = {}, retryOnAuth = true): Promise<T> {
   const url = `${API_BASE}${path}`;
   const body = init.body;
   const headers = buildHeaders(init.headers as Record<string, string> | undefined, body);
   const response = await fetch(url, { credentials: "include", ...init, headers, body });
+  if (response.status === 401 && retryOnAuth && shouldAttemptRefresh(path)) {
+    try {
+      await refreshAccessToken();
+      return request<T>(path, init, false);
+    } catch {
+      clearStoredToken();
+    }
+  }
   return parseResponse<T>(response);
 }
 
@@ -80,12 +102,19 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export interface AuthResponse {
   access_token: string;
+  expires_in: number;
   token_type: string;
   user_id: string;
   email: string;
   first_name: string;
   last_name: string;
   plan: string;
+}
+
+export interface TokenRefreshResponse {
+  access_token: string;
+  expires_in: number;
+  token_type: string;
 }
 
 export interface UserProfile {
@@ -103,6 +132,15 @@ export interface UserProfile {
   linkedin_url?: string;
   github_url?: string;
   portfolio_url?: string;
+}
+
+export interface SessionResponse {
+  authenticated: boolean;
+  user?: UserProfile | null;
+}
+
+export interface AuthProvidersResponse {
+  google: boolean;
 }
 
 export interface UserPreferences {
@@ -321,6 +359,37 @@ export async function signup(payload: SignupPayload) {
   });
   setStoredToken(response.access_token);
   return response;
+}
+
+export async function refreshAccessToken() {
+  const response = await fetch(`${API_BASE}/api/auth/refresh`, {
+    method: "POST",
+    credentials: "include",
+    headers: { Accept: "application/json" },
+  });
+  const payload = await parseResponse<TokenRefreshResponse>(response);
+  setStoredToken(payload.access_token);
+  return payload;
+}
+
+export async function getSession() {
+  return request<SessionResponse>("/api/auth/session");
+}
+
+export async function getAuthProviders() {
+  return request<AuthProvidersResponse>("/api/auth/oidc/providers");
+}
+
+export async function logout() {
+  try {
+    await request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }, false);
+  } finally {
+    clearStoredToken();
+  }
+}
+
+export function startGoogleOidc() {
+  window.location.href = `${API_BASE}/api/auth/oidc/google/start`;
 }
 
 // ─── User ───

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, useScroll, useTransform, AnimatePresence } from "motion/react";
 import { Link } from "react-router";
 import {
@@ -29,6 +29,19 @@ const T = {
   glow:     "0 0 48px rgba(166,55,45,0.3), 0 0 16px rgba(166,55,45,0.15)",
 };
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
+
+function useViewportFlags() {
+  const getWidth = () => (typeof window === "undefined" ? 1280 : window.innerWidth);
+  const [width, setWidth] = useState(getWidth);
+
+  useEffect(() => {
+    const onResize = () => setWidth(getWidth());
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  return { isMobile: width < 680 };
+}
 
 // ─── Section Active Context ───
 // (Removed – natural scroll uses whileInView instead)
@@ -344,6 +357,7 @@ export default function Home() {
 // 1. HERO
 // ═══════════════════════════
 function HeroSection() {
+  const { isMobile } = useViewportFlags();
   const stats = [
     { val: "300+", label: "Jobs", delay: 0 },
     { val: "10",   label: "Categories", delay: 0.1 },
@@ -352,7 +366,7 @@ function HeroSection() {
   ];
 
   return (
-    <section style={{ height: "100vh", paddingTop: 64, display: "flex", flexDirection: "column", background: T.bgPage, position: "relative", overflow: "hidden" }}>
+    <section style={{ minHeight: "100svh", paddingTop: 64, display: "flex", flexDirection: "column", background: T.bgPage, position: "relative", overflow: "hidden" }}>
       {/* Decorative grid overlay */}
       <div style={{
         position: "absolute",
@@ -382,7 +396,7 @@ function HeroSection() {
         <OrbitalSphere size={680} />
       </motion.div>
 
-      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 32px", position: "relative", zIndex: 2 }}>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: isMobile ? "40px 18px 28px" : "0 32px", position: "relative", zIndex: 2 }}>
         <div style={{ maxWidth: 780, width: "100%", textAlign: "center" }}>
           {/* Status badge */}
           <motion.div
@@ -505,6 +519,7 @@ const features = [
 ];
 
 function FeaturesSection() {
+  const { isMobile } = useViewportFlags();
   return (
     <section id="features" style={{ minHeight: "100vh", paddingTop: 80, paddingBottom: 80, display: "flex", alignItems: "center", background: T.bgPage, position: "relative" }}>
       {/* Decorative background elements */}
@@ -538,7 +553,7 @@ function FeaturesSection() {
             Everything You Need to <GradText>Get Hired</GradText>
           </h2>
         </SectionReveal>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 18 }}>
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(${isMobile ? "240px" : "300px"}, 1fr))`, gap: 18 }}>
           {features.map((f, i) => (
             <SectionReveal key={f.title} delay={0.15 + i * 0.07} y={30}>
               <GlassCard style={{ padding: 28, height: "100%" }}>
@@ -600,6 +615,7 @@ const plans = [
 ];
 
 function PricingSection() {
+  const { isMobile } = useViewportFlags();
   return (
     <section id="pricing" style={{ minHeight: "100vh", paddingTop: 80, paddingBottom: 80, display: "flex", flexDirection: "column", alignItems: "center", background: T.bgPage, position: "relative" }}>
       {/* Decorative background */}
@@ -636,7 +652,7 @@ function PricingSection() {
           </p>
         </SectionReveal>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(${isMobile ? "240px" : "300px"}, 1fr))`, gap: 20 }}>
           {plans.map((plan, i) => (
             <SectionReveal key={plan.name} delay={0.2 + i * 0.1} y={40}>
               <div style={{ position: "relative", paddingTop: plan.badge ? 16 : 0 }}>
@@ -697,6 +713,7 @@ function PricingSection() {
 // 5. CONTACT
 // ═══════════════════════════
 function ContactSection() {
+  const { isMobile } = useViewportFlags();
   const [form, setForm] = useState({ name: "", email: "", subject: "", message: "" });
   const [sent, setSent] = useState(false);
 
@@ -735,7 +752,7 @@ function ContactSection() {
             </h2>
           </SectionReveal>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: 24, marginBottom: 48 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1.4fr", gap: 24, marginBottom: 48 }}>
             {/* Contact info */}
             <SectionReveal delay={0.2}>
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -773,7 +790,7 @@ function ContactSection() {
                     </motion.div>
                   ) : (
                     <motion.div key="form">
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14, marginBottom: 14 }}>
                         <input placeholder="Full Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
                           style={{ padding: "12px 14px", borderRadius: 12, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", color: T.text, fontSize: 14, fontFamily: F.sans, outline: "none", transition: "border-color 0.3s, background 0.3s" }}
                           onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(166,55,45,0.4)"; e.currentTarget.style.background = "rgba(242,238,179,0.06)"; }}

@@ -1,0 +1,26 @@
+{
+  "name": "PlaceUp Careers",
+  "short_name": "PlaceUp",
+  "description": "Resume-matched job search for H-1B, OPT, and STEM-OPT candidates.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#011126",
+  "theme_color": "#401212",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "maskable any"
+    }
+  ],
+  "categories": ["productivity", "business"]
+}

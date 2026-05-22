@@ -1,16 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#401212" />
+    <meta name="color-scheme" content="dark light" />
 
-  <!DOCTYPE html>
-  <html lang="en">
-    <head>
-      <meta charset="UTF-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <title>PlaceUp Careers</title>
-      <style>html, body { height: 100%; margin: 0; } #root { height: 100%; }</style>
-    </head>
+    <title>PlaceUp Careers — Find H-1B / OPT / STEM-friendly jobs</title>
+    <meta
+      name="description"
+      content="Resume-matched job search for international candidates. PlaceUp surfaces H-1B, OPT, and STEM-OPT friendly roles and scores each posting against your resume."
+    />
+    <link rel="canonical" href="https://placeup.careers/" />
 
-    <body>
-      <div id="root"></div>
-      <script type="module" src="/src/main.tsx"></script>
-    </body>
-  </html>
-  
+    <!-- Icons. Real assets live in /public — see frontend/public/. -->
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- Open Graph — controls how the link unfurls in iMessage / Slack / LinkedIn. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="PlaceUp Careers" />
+    <meta property="og:title" content="PlaceUp Careers — visa-friendly job matching" />
+    <meta
+      property="og:description"
+      content="Upload your resume once. We score every H-1B / OPT / STEM-friendly role against it so you stop guessing where to apply."
+    />
+    <meta property="og:url" content="https://placeup.careers/" />
+    <meta property="og:image" content="https://placeup.careers/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+
+    <!-- Twitter / X card. -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="PlaceUp Careers" />
+    <meta
+      name="twitter:description"
+      content="Resume-matched job search for H-1B, OPT, and STEM-OPT candidates."
+    />
+    <meta name="twitter:image" content="https://placeup.careers/og-image.png" />
+
+    <!-- Honest behaviour for crawlers: indexable, follow links. -->
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large" />
+
+    <!-- Preconnect to the API so the first /api/dashboard-summary call doesn't pay the TCP+TLS handshake on top of the request. -->
+    <link rel="preconnect" href="https://placeup-api-rui2a74muq-ue.a.run.app" crossorigin />
+
+    <style>
+      html, body { height: 100%; margin: 0; background: #011126; }
+      #root { height: 100%; }
+      /* Cheap loading shim while React boots — keeps the page from
+         flashing white between TTFB and hydration. */
+      .placeup-bootstrap {
+        position: fixed; inset: 0;
+        display: flex; align-items: center; justify-content: center;
+        color: #F2EEB3; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase;
+      }
+      .placeup-bootstrap::after {
+        content: ""; margin-left: 10px; width: 14px; height: 14px;
+        border: 2px solid rgba(242,238,179,0.25); border-top-color: #A6372D;
+        border-radius: 50%; animation: placeup-spin 0.9s linear infinite;
+      }
+      @keyframes placeup-spin { to { transform: rotate(360deg); } }
+    </style>
+  </head>
+
+  <body>
+    <div id="root">
+      <!-- Pre-hydration placeholder. React replaces this on mount. -->
+      <div class="placeup-bootstrap">Loading PlaceUp</div>
+    </div>
+    <noscript>
+      <p style="font-family: sans-serif; color: #F2EEB3; padding: 24px; background: #401212;">
+        PlaceUp Careers needs JavaScript to run. Please enable it in your browser settings, then reload.
+      </p>
+    </noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

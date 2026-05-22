@@ -1,7 +1,7 @@
 param(
   [Parameter(Mandatory=$true)][string]$ProjectId,
-  [string]$Region = "us-central1",
-  [string]$DbInstance = "placeup-postgres",
+  [string]$Region = "us-east1",
+  [string]$DbInstance = "placeup-backend",
   [string]$DbPassword = "CHANGE_ME_STRONG_PASSWORD"
 )
 
@@ -37,10 +37,10 @@ gcloud.cmd sql instances create $DbInstance `
   --region=$Region `
   --storage-size=20GB 2>$null
 
-gcloud.cmd sql databases create placeup --instance=$DbInstance 2>$null
+gcloud.cmd sql databases create jobssilverdb --instance=$DbInstance 2>$null
 gcloud.cmd sql users create placeup --instance=$DbInstance --password=$DbPassword 2>$null
 
-$databaseUrl = "postgresql+psycopg://placeup:$DbPassword@/placeup?host=/cloudsql/$ProjectId`:$Region`:$DbInstance"
+$databaseUrl = "postgresql+psycopg://placeup:$DbPassword@/jobssilverdb?host=/cloudsql/$ProjectId`:$Region`:$DbInstance"
 $databaseUrl | gcloud.cmd secrets create DATABASE_URL --data-file=- 2>$null
 $jwtBytes = [System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
 $jwtSecret = [Convert]::ToHexString($jwtBytes).ToLowerInvariant()

@@ -6,11 +6,11 @@ spec:
   template:
     metadata:
       annotations:
-        run.googleapis.com/cloudsql-instances: PROJECT_ID:us-central1:placeup-postgres
+        run.googleapis.com/cloudsql-instances: PROJECT_ID:us-east1:placeup-backend
     spec:
       serviceAccountName: placeup-api-sa@PROJECT_ID.iam.gserviceaccount.com
       containers:
-        - image: us-central1-docker.pkg.dev/PROJECT_ID/placeup/backend:latest
+        - image: us-east1-docker.pkg.dev/PROJECT_ID/placeup/backend:latest
           command: ["uvicorn"]
           args: ["app.main:app", "--host", "0.0.0.0", "--port", "8080"]
           env:

@@ -46,6 +46,9 @@ TECH_SKILLS = {
     "tableau", "power bi", "looker", "databricks", "spark",
     "kafka", "rabbitmq", "celery", "airflow",
     "oauth", "jwt", "ssl", "encryption", "cybersecurity",
+    ".net", "firebase", "supabase", "prisma", "langchain",
+    "openai", "llm", "rag", "vector database",
+    "bigquery", "snowflake", "dbt", "mlflow",
 }
 
 
@@ -121,6 +124,19 @@ def extract_keywords(
     return [kw for kw, _ in counter.most_common(top_n)]
 
 
+def _skill_pattern(skill: str) -> str:
+    """Build a regex pattern for a skill that handles non-word-char boundaries.
+
+    Standard \b fails for skills like c#, c++, .net because \b only works
+    at word/non-word transitions, but # and + are already non-word chars.
+    Use lookahead/lookbehind for such skills instead.
+    """
+    escaped = re.escape(skill)
+    prefix = r"\b" if skill[0].isalnum() or skill[0] == "_" else r"(?<!\w)"
+    suffix = r"\b" if skill[-1].isalnum() or skill[-1] == "_" else r"(?!\w)"
+    return prefix + escaped + suffix
+
+
 def extract_skills_from_text(text: str) -> list[str]:
     """Extract recognized technical skills from text.
 
@@ -137,13 +153,11 @@ def extract_skills_from_text(text: str) -> list[str]:
     found_skills = []
 
     for skill in TECH_SKILLS:
-        # Use word boundary matching for single words
         if " " in skill:
             if skill in text_lower:
                 found_skills.append(skill)
         else:
-            pattern = r"\b" + re.escape(skill) + r"\b"
-            if re.search(pattern, text_lower):
+            if re.search(_skill_pattern(skill), text_lower):
                 found_skills.append(skill)
 
     return sorted(set(found_skills))

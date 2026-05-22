@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory=$true)][string]$ProjectId,
-  [string]$Region = "us-central1",
+  [string]$Region = "us-east1",
   [string]$TimeZone = "America/Chicago"
 )
 

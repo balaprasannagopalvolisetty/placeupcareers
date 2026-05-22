@@ -24,6 +24,7 @@ const VISA_BADGES: Record<string, { bg: string; color: string; border: string }>
   "OPT":    { bg: "rgba(166,55,45,0.12)", color: "#A6372D", border: "rgba(166,55,45,0.3)" },
   "STEM":   { bg: "rgba(64,18,18,0.15)",  color: "#A6372D", border: "rgba(64,18,18,0.3)" },
   "Vol":    { bg: "rgba(34,197,94,0.10)", color: "#22c55e", border: "rgba(34,197,94,0.3)" },
+  "No sponsorship": { bg: "rgba(242,238,179,0.06)", color: "rgba(242,238,179,0.65)", border: "rgba(242,238,179,0.14)" },
 };
 
 function normalizeVisa(visa: unknown): string[] {
@@ -32,6 +33,7 @@ function normalizeVisa(visa: unknown): string[] {
     const map: Record<string, string> = {
       visa_h1b: "H-1B", visa_opt: "OPT", visa_stem_opt: "STEM",
       h1b_verified: "H-1B Verified", green_card: "Green Card",
+      no_sponsorship: "No sponsorship",
     };
     return Object.entries(visa as Record<string, unknown>)
       .filter(([key, value]) => key !== "visa_score" && Boolean(value))
@@ -134,6 +136,21 @@ function resolveJobUrl(job: api.JobPost): string {
   return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 }
 
+// ─── localStorage tracking helpers ───────────────────────────────────────────
+
+function getSavedIds(): Set<string> {
+  try {
+    const s = JSON.parse(localStorage.getItem("placeup_saved_jobs") || "[]");
+    return new Set<string>(Array.isArray(s) ? s.map(String) : []);
+  } catch { return new Set<string>(); }
+}
+
+function getTrackedJobs(): Record<string, "applied" | "interview"> {
+  try {
+    return JSON.parse(localStorage.getItem("placeup_job_tracking") || "{}") as Record<string, "applied" | "interview">;
+  } catch { return {}; }
+}
+
 function ATSRing({ score, size = 60 }: { score: number | null | undefined; size?: number }) {
   const hasScore = typeof score === "number" && Number.isFinite(score);
   const safeScore = hasScore ? Math.max(0, Math.min(100, score)) : 0;
@@ -179,11 +196,17 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const [taxonomy, setTaxonomy] = useState<TaxonomyCategory[]>([]);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [activeRole, setActiveRole] = useState<string | null>(null);
+  // Raw state for inputs; debounced into search/location used for API calls.
+  const [searchRaw, setSearchRaw] = useState("");
   const [search, setSearch] = useState("");
+  const [locationRaw, setLocationRaw] = useState("");
+  const [location, setLocation] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [timeFilter, setTimeFilter] = useState("");
-  const [location, setLocation] = useState("");
   const [visaOnly, setVisaOnly] = useState(false);
+
+  const [savedVersion, setSavedVersion] = useState(0);
+  const [appliedVersion, setAppliedVersion] = useState(0);
 
   const [jobs, setJobs] = useState<api.JobPost[]>([]);
   const [total, setTotal] = useState(0);
@@ -217,6 +240,10 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
     const refresh = () => {
       setPage(1);
       setResumeVersion(typeof window !== "undefined" ? localStorage.getItem("placeup_resume_version") || String(Date.now()) : String(Date.now()));
+      // Re-read saved/tracked state from localStorage whenever the window regains
+      // focus — e.g. user saved a job from the detail view and navigated back.
+      setSavedVersion((v) => v + 1);
+      setAppliedVersion((v) => v + 1);
     };
     window.addEventListener("placeup:resume-changed", refresh as EventListener);
     window.addEventListener("focus", refresh);
@@ -310,25 +337,35 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
     return () => { active = false; };
   }, [activeCategory, activeRole, search, location, visaOnly, timeFilter, page, resumeVersion, reloadKey]);
 
+  // Debounce search/location so API is only called after typing stops.
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchRaw), 400);
+    return () => clearTimeout(t);
+  }, [searchRaw]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setLocation(locationRaw), 400);
+    return () => clearTimeout(t);
+  }, [locationRaw]);
+
   useEffect(() => {
     setPage(1);
   }, [activeCategory, activeRole, search, location, visaOnly, timeFilter, statusFilter]);
 
+  const savedIds = useMemo(() => getSavedIds(), [savedVersion]);
+  const trackedJobs = useMemo(() => getTrackedJobs(), [appliedVersion]);
+
   const filtered = useMemo(() => {
     if (statusFilter === "All") return jobs;
-    if (statusFilter === "Saved") {
-      const savedJobs = JSON.parse(localStorage.getItem("placeup_saved_jobs") || "[]");
-      const savedIds = new Set(Array.isArray(savedJobs) ? savedJobs.map(String) : []);
-      return jobs.filter((j) => savedIds.has(String(j.id)));
-    }
-    if (statusFilter === "New") {
-      return jobs.filter((j) => {
-        const status = String(j.status || "new").toLowerCase();
-        return status === "new" || status === "active";
-      });
-    }
-    return jobs.filter((j) => (j.status || "New") === statusFilter);
-  }, [jobs, statusFilter]);
+    if (statusFilter === "Saved") return jobs.filter((j) => savedIds.has(String(j.id)));
+    if (statusFilter === "New") return jobs.filter((j) => {
+      const s = String(j.status || "new").toLowerCase();
+      return s === "new" || s === "active";
+    });
+    if (statusFilter === "Applied") return jobs.filter((j) => trackedJobs[String(j.id)] === "applied");
+    if (statusFilter === "Interview") return jobs.filter((j) => trackedJobs[String(j.id)] === "interview");
+    return jobs;
+  }, [jobs, statusFilter, savedIds, trackedJobs]);
 
   const currentCategory = taxonomy.find((c) => c.name === activeCategory);
 
@@ -430,10 +467,10 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
         <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 14, padding: isMobile ? "10px" : "12px 16px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 240px", minWidth: isMobile ? "100%" : 200, height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)" }}>
             <Search size={13} color={T.t3} />
-            <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search title, company, JD..."
+            <input value={searchRaw} onChange={(e) => setSearchRaw(e.target.value)} placeholder="Search title, company, JD..."
               style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: T.text, fontSize: 13, fontFamily: F.sans }} />
           </div>
-          <input value={location} onChange={(e) => { setLocation(e.target.value); setPage(1); }} placeholder="Location"
+          <input value={locationRaw} onChange={(e) => setLocationRaw(e.target.value)} placeholder="Location"
             style={{ width: isMobile ? "100%" : 140, flex: isMobile ? "1 1 100%" : "0 0 auto", height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", color: T.text, fontSize: 13, outline: "none" }} />
           <button onClick={() => { setVisaOnly(!visaOnly); setPage(1); }}
             style={{ height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${visaOnly ? "rgba(166,55,45,0.4)" : T.border}`, background: visaOnly ? "rgba(166,55,45,0.10)" : "transparent", color: visaOnly ? T.red : T.t2, fontSize: 12, fontFamily: F.sans, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
@@ -540,7 +577,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
               <div style={{ fontSize: 14, marginBottom: 6 }}>No jobs match the current filters.</div>
               <div style={{ fontSize: 12, color: T.t3, marginBottom: 12 }}>Try clearing the search, location, or status filter.</div>
               <button
-                onClick={() => { setSearch(""); setLocation(""); setVisaOnly(false); setTimeFilter(""); setStatusFilter("All"); setActiveCategory(null); setActiveRole(null); setPage(1); }}
+                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setVisaOnly(false); setTimeFilter(""); setStatusFilter("All"); setActiveCategory(null); setActiveRole(null); setPage(1); }}
                 style={{ padding: "8px 14px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.t2, fontSize: 12, fontFamily: F.sans, cursor: "pointer" }}
               >Reset filters</button>
             </div>
@@ -595,11 +632,23 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                     <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap", justifyContent: isMobile ? "flex-start" : "flex-end" }}>
                       <button onClick={(e) => {
                         e.stopPropagation();
-                        const savedJobs = JSON.parse(localStorage.getItem("placeup_saved_jobs") || "[]");
-                        const list = Array.isArray(savedJobs) ? savedJobs.map(String) : [];
-                        const next = list.includes(id) ? list.filter((item) => item !== id) : [...list, id];
+                        const saved = Array.from(savedIds);
+                        const next = savedIds.has(id) ? saved.filter((item) => item !== id) : [...saved, id];
                         localStorage.setItem("placeup_saved_jobs", JSON.stringify(next));
-                      }} style={{ width: 32, height: 30, borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.t2, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }} title="Save job"><Bookmark size={13}/></button>
+                        setSavedVersion((v) => v + 1);
+                      }} style={{ width: 32, height: 30, borderRadius: 8, border: `1px solid ${savedIds.has(id) ? "rgba(166,55,45,0.4)" : T.border}`, background: savedIds.has(id) ? "rgba(166,55,45,0.08)" : "transparent", color: savedIds.has(id) ? T.red : T.t2, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }} title={savedIds.has(id) ? "Unsave" : "Save job"}><Bookmark size={13} fill={savedIds.has(id) ? T.red : "none"}/></button>
+                      <button onClick={(e) => {
+                        e.stopPropagation();
+                        const cur = trackedJobs[id];
+                        const updated = { ...trackedJobs };
+                        if (!cur) { updated[id] = "applied"; }
+                        else if (cur === "applied") { updated[id] = "interview"; }
+                        else { delete updated[id]; }
+                        localStorage.setItem("placeup_job_tracking", JSON.stringify(updated));
+                        setAppliedVersion((v) => v + 1);
+                      }} style={{ height: 30, padding: "0 10px", borderRadius: 8, border: `1px solid ${trackedJobs[id] === "interview" ? "rgba(59,130,246,0.4)" : trackedJobs[id] === "applied" ? "rgba(34,197,94,0.4)" : T.border}`, background: trackedJobs[id] === "interview" ? "rgba(59,130,246,0.08)" : trackedJobs[id] === "applied" ? "rgba(34,197,94,0.08)" : "transparent", color: trackedJobs[id] === "interview" ? "#3b82f6" : trackedJobs[id] === "applied" ? "#22c55e" : T.t3, fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: F.sans, whiteSpace: "nowrap" }} title={trackedJobs[id] === "interview" ? "Interview stage — click to clear" : trackedJobs[id] === "applied" ? "Applied — click to move to Interview" : "Track application status"}>
+                        {trackedJobs[id] === "interview" ? "Interview" : trackedJobs[id] === "applied" ? "Applied" : "Track"}
+                      </button>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -623,7 +672,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             );
           })}
         </div>
-        {!loading && jobs.length < total && statusFilter === "All" && (
+        {!loading && jobs.length < total && (
           <button
             onClick={() => setPage((p) => p + 1)}
             style={{ alignSelf: "center", marginTop: 6, padding: "10px 18px", borderRadius: 10, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", color: T.t2, fontSize: 13, fontFamily: F.sans, cursor: "pointer" }}

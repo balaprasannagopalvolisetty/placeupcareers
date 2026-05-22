@@ -18,13 +18,52 @@ from app.models.job import (
     JobPost, JobFilter, JobListResponse, JobStats,
     ScrapeRequest, ScrapeResult, JobSource, JobCategory,
 )
-from app.security import optional_user_id
+from app.security import optional_user_id, require_internal_api_key
 from app.config import settings
 from app.services.job_exporter import export_jobs
 from app.utils.terminal_table import render_table
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
+
+SPONSORSHIP_BLOCK_RE = re.compile(
+    r"(?i)\b("
+    r"no\s+(?:visa\s+)?sponsorship|"
+    r"not\s+(?:able|eligible|willing)\s+to\s+(?:offer\s+)?(?:visa\s+)?sponsorship|"
+    r"not\s+(?:able|eligible|willing)\s+to\s+(?:offer\s+)?visa\s+transfer\s+or\s+sponsorship|"
+    r"(?:will|can|do)\s+not\s+sponsor|"
+    r"unable\s+to\s+sponsor|"
+    r"cannot\s+sponsor|"
+    r"without\s+sponsorship|"
+    r"without\s+(?:visa\s+)?transfer\s+or\s+sponsorship|"
+    r"without\s+(?:current\s+)?(?:or\s+future\s+)?sponsorship|"
+    r"authorized\s+to\s+work\s+.*without\s+sponsorship|"
+    r"u\.?s\.?\s+citizens?\s+only|"
+    r"citizenship\s+required|"
+    r"(?:secret|top\s+secret)\s+clearance\s+required"
+    r")\b"
+)
+
+
+def _apply_job_specific_visa_rules(job: dict) -> dict:
+    """Let explicit JD work-authorization text override broad employer signals."""
+    visa = job.get("visa")
+    if not isinstance(visa, dict):
+        return job
+    text = html.unescape(f"{job.get('title') or ''}\n{job.get('description') or ''}")
+    if not SPONSORSHIP_BLOCK_RE.search(text):
+        return job
+    updated = dict(job)
+    updated["visa"] = {
+        **visa,
+        "visa_opt": False,
+        "visa_stem_opt": False,
+        "visa_h1b": False,
+        "h1b_verified": False,
+        "visa_score": 0,
+        "no_sponsorship": True,
+    }
+    return updated
 
 
 def _prepare_resume_tokens(resume_text: str) -> dict:
@@ -96,6 +135,11 @@ def _score_job_against_resume(resume_text: str, job_text: str, *, resume_cache: 
             "python", "java", "javascript", "typescript", "react", "node", "sql", "postgresql",
             "aws", "azure", "gcp", "docker", "kubernetes", "fastapi", "rest", "graphql",
             "machine learning", "data pipeline", "etl", "tableau", "power bi", "spark",
+            "helpdesk", "help desk", "service desk", "desktop support", "technical support",
+            "windows", "windows 10", "windows 11", "macos", "active directory", "azure ad",
+            "office 365", "microsoft 365", "intune", "sccm", "jamf", "okta", "vpn",
+            "ticketing", "tickets", "servicenow", "jira service management", "hardware",
+            "troubleshooting", "imaging", "printer", "network connectivity", "lan", "wan",
             "cad", "catia", "solidworks", "ansys", "fea", "gd&t", "thermal", "battery",
             "high voltage", "automotive", "manufacturing", "injection molding", "sheet metal",
             "root cause", "civil", "structural", "electrical", "mechanical", "chemical",
@@ -107,6 +151,40 @@ def _score_job_against_resume(resume_text: str, job_text: str, *, resume_cache: 
         resume_terms = [term for term in domain_terms if term in resume_clean]
         term_hits = sorted(set(job_terms) & set(resume_terms))
         term_pct = (len(term_hits) / len(set(job_terms)) * 100) if job_terms else title_pct
+
+        role_groups = {
+            "it_support": [
+                "helpdesk", "help desk", "service desk", "desktop support", "technical support",
+                "it support", "troubleshooting", "hardware", "windows", "macos",
+                "active directory", "office 365", "microsoft 365", "intune", "sccm",
+                "ticketing", "servicenow", "vpn", "printer", "imaging", "network connectivity",
+            ],
+            "software": [
+                "software engineer", "software developer", "backend", "frontend", "full stack",
+                "api", "microservices", "react", "node", "python", "java", "typescript",
+                "docker", "kubernetes", "cloud", "database",
+            ],
+            "data": [
+                "data engineer", "data scientist", "data analyst", "etl", "pipeline",
+                "warehouse", "spark", "sql", "python", "tableau", "power bi", "machine learning",
+            ],
+        }
+        role_coverage = 0.0
+        role_penalty = 0
+        role_hits: list[str] = []
+        for group_terms in role_groups.values():
+            jd_group_terms = [term for term in group_terms if term in job_clean]
+            if len(jd_group_terms) < 2:
+                continue
+            resume_group_hits = [term for term in jd_group_terms if term in resume_clean]
+            coverage = len(set(resume_group_hits)) / len(set(jd_group_terms)) * 100
+            if coverage > role_coverage:
+                role_coverage = coverage
+                role_hits = resume_group_hits
+        if role_coverage and role_coverage < 25:
+            role_penalty = 14
+        elif role_coverage and role_coverage < 45:
+            role_penalty = 7
 
         jd_skills = list(dict.fromkeys(extract_skills_from_text(job_text)))
         jd_kw = list(dict.fromkeys(jd_skills + extract_keywords(job_text, top_n=45)))
@@ -126,18 +204,22 @@ def _score_job_against_resume(resume_text: str, job_text: str, *, resume_cache: 
         score = (
             title_pct * 0.22
             + term_pct * 0.24
-            + keyword_pct * 0.18
+            + keyword_pct * 0.14
             + skill_pct * 0.16
-            + required_hit_pct * 0.20
+            + required_hit_pct * 0.18
+            + role_coverage * 0.06
             + density_bonus
             + skill_bonus
             + title_bonus
+            - role_penalty
         )
-        # HR-style matching should not hand out high scores from generic text alone.
-        if skill_pct < 25 and required_hit_pct < 25:
-            score = min(score, 58)
+        # HR-style matching should not hand out medium scores from generic text alone.
+        if skill_pct < 25 and required_hit_pct < 25 and len(role_hits) < 2:
+            score = min(score, 42)
         if title_pct < 25 and term_pct < 25:
-            score = min(score, 52)
+            score = min(score, 38)
+        if role_coverage and role_coverage < 25:
+            score = min(score, 45)
         return int(round(min(98, max(8, score))))
     except Exception:
         return 0
@@ -146,21 +228,23 @@ def _score_job_against_resume(resume_text: str, job_text: str, *, resume_cache: 
 def _baseline_ats_score(job: dict) -> int:
     """Fallback score shown when no active resume is available."""
     text = f"{job.get('title') or ''}\n{job.get('description') or ''}"
-    score = 45
+    score = 32
     if len(text) > 900:
-        score += 12
+        score += 10
     elif len(text) > 300:
-        score += 6
+        score += 5
     visa = job.get("visa") or {}
     if isinstance(visa, dict):
-        score += min(25, int(visa.get("visa_score") or 0) // 4)
+        if visa.get("no_sponsorship"):
+            return max(25, min(45, score))
+        score += min(18, int(visa.get("visa_score") or 0) // 5)
         if visa.get("visa_h1b") or visa.get("visa_opt") or visa.get("visa_stem_opt"):
-            score += 8
+            score += 5
     if job.get("salary"):
-        score += 4
+        score += 3
     if job.get("job_url") or job.get("source_url"):
-        score += 4
-    return max(35, min(92, score))
+        score += 3
+    return max(25, min(78, score))
 
 
 def _posted_since(value: Optional[str], tz_offset_minutes: int = 0) -> Optional[datetime]:
@@ -247,70 +331,6 @@ async def _active_resume_text(user_id: Optional[str]) -> Optional[str]:
         return None
     text = (active.get("parsed_text") or "").strip()
     return text or None
-
-
-def _split_description_points(description: str) -> dict[str, list[str]]:
-    """Derive display-ready job sections from plain scraped descriptions."""
-    clean = re.sub(r"\r\n?", "\n", description or "").strip()
-    clean = re.sub(r"<br\s*/?>", "\n", clean, flags=re.I)
-    clean = re.sub(r"</(p|li|ul|ol|h[1-6])>", "\n", clean, flags=re.I)
-    clean = re.sub(r"<[^>]+>", " ", clean)
-    clean = re.sub(
-        r"(?i)\b(responsibilities|requirements|qualifications|nice to have|preferred|benefits)\s*:",
-        r"\n\1:\n",
-        clean,
-    )
-    clean = re.sub(r"[ \t]+", " ", clean)
-    if not clean:
-        return {"responsibilities": [], "requirements": [], "niceToHave": [], "benefits": []}
-
-    buckets = {
-        "responsibilities": [],
-        "requirements": [],
-        "niceToHave": [],
-        "benefits": [],
-    }
-    active = "responsibilities"
-    heading_map = [
-        (re.compile(r"\b(responsibilit|what you'?ll do|role overview|about the role)\b", re.I), "responsibilities"),
-        (re.compile(r"\b(requirement|qualification|what you bring|must have|minimum)\b", re.I), "requirements"),
-        (re.compile(r"\b(nice to have|preferred|bonus|plus)\b", re.I), "niceToHave"),
-        (re.compile(r"\b(benefit|perk|compensation|we offer)\b", re.I), "benefits"),
-    ]
-
-    raw_lines = [line.strip(" \t-*•·") for line in clean.split("\n") if line.strip()]
-    for line in raw_lines:
-        lowered = line.lower()
-        if lowered in {"nan", "none", "null", "n/a"} or "error" in lowered[:30]:
-            continue
-        if len(line) <= 80:
-            matched_heading = False
-            for pattern, bucket in heading_map:
-                if pattern.search(line):
-                    active = bucket
-                    matched_heading = True
-                    break
-            if matched_heading:
-                continue
-        if 12 <= len(line) <= 220:
-            buckets[active].append(line)
-
-    if not any(buckets.values()):
-        sentences = re.split(r"(?<=[.!?])\s+", clean)
-        buckets["responsibilities"] = [s.strip() for s in sentences if 20 <= len(s.strip()) <= 220][:6]
-
-    seen: set[str] = set()
-    deduped: dict[str, list[str]] = {}
-    for key, values in buckets.items():
-        deduped[key] = []
-        for value in values:
-            normalized = re.sub(r"\W+", " ", value.lower()).strip()
-            if not normalized or normalized in seen:
-                continue
-            seen.add(normalized)
-            deduped[key].append(value)
-
-    return {key: value[:8] for key, value in deduped.items()}
 
 
 def _keyword_payload(resume_text: Optional[str], job_text: str) -> dict:
@@ -543,7 +563,7 @@ async def list_jobs(
             ):
                 continue
             cat, rname = categorize(f"{j.get('title') or ''} {j.get('company') or ''}")
-            j = dict(j)
+            j = _apply_job_specific_visa_rules(dict(j))
             j["taxonomy_category"] = cat
             j["role"] = rname
             decorated.append(j)
@@ -670,7 +690,7 @@ async def list_jobs(
         }
     except Exception as e:
         logger.error(f"Error listing jobs: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error listing jobs")
 
 
 @router.get("/stats", response_model=JobStats)
@@ -696,7 +716,7 @@ async def get_job_stats(db=Depends(get_db)):
         )
     except Exception as e:
         logger.error(f"Error getting job stats: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error getting job stats")
 
 
 @router.get("/coverage")
@@ -799,7 +819,7 @@ async def get_job_coverage(
         }
     except Exception as e:
         logger.error(f"Error getting job coverage: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error getting job coverage")
 
 
 @router.get("/scraper-status")
@@ -837,7 +857,7 @@ async def get_scraper_status(limit: int = Query(10, ge=1, le=50), db=Depends(get
             }
     except Exception as e:
         logger.error(f"Error getting scraper status: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error getting scraper status")
 
 
 @router.get("/pipeline-status")
@@ -856,7 +876,7 @@ async def get_pipeline_status(db=Depends(get_db)):
             "backend": db.__class__.__name__,
         }
         if hasattr(db, "session"):
-            from sqlalchemy import select
+            from sqlalchemy import func, select
             from app.db.schema import IngestRun, Job, MasterJob
 
             with db.session() as session:
@@ -886,12 +906,13 @@ async def get_pipeline_status(db=Depends(get_db)):
         return payload
     except Exception as e:
         logger.error(f"Error getting pipeline status: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error getting pipeline status")
 
 
 @router.post("/scrape", response_model=ScrapeResult)
 async def trigger_scrape(
     request: Optional[ScrapeRequest] = Body(default=None),
+    _: None = Depends(require_internal_api_key),
     db=Depends(get_db),
 ):
     """Trigger a manual job scraping cycle.
@@ -938,11 +959,11 @@ async def trigger_scrape(
 
     except Exception as e:
         logger.error(f"Scrape cycle failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Scrape cycle failed")
 
 
 @router.get("/export")
-async def export_all_jobs(db=Depends(get_db)):
+async def export_all_jobs(_: None = Depends(require_internal_api_key), db=Depends(get_db)):
     """Export all jobs currently in DB to a single rolling CSV/XLSX."""
     try:
         jobs = await db.get_jobs(limit=100000, offset=0)
@@ -950,7 +971,7 @@ async def export_all_jobs(db=Depends(get_db)):
         return {"exported_rows": len(jobs), "artifacts": artifacts}
     except Exception as e:
         logger.error(f"Job export failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Job export failed")
 
 
 @router.get("/detail/{job_id}")
@@ -967,7 +988,7 @@ async def get_job_detail(
     title = job.get("title") or ""
     description = job.get("description") or ""
     cat, rname = categorize(title)
-    payload = dict(job)
+    payload = _apply_job_specific_visa_rules(dict(job))
     payload["taxonomy_category"] = cat
     payload["role"] = rname
 
@@ -1033,7 +1054,7 @@ async def get_top_matches(
         if not isinstance(meta, dict):
             meta = {}
         cat, rname = categorize(f"{job.get('title') or ''} {job.get('company') or ''}")
-        item = dict(job)
+        item = _apply_job_specific_visa_rules(dict(job))
         item["taxonomy_category"] = cat
         item["role"] = rname
         if resume_text:

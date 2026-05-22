@@ -18,6 +18,7 @@ from app.models.contact import (
 from app.models.job import JobPost
 from app.services.contact_finder import bulk_enrich_jobs, find_contacts
 from app.services.email_personalizer import draft_personalized_email
+from app.security import current_user_id, require_internal_api_key
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/contacts", tags=["Contacts"])
@@ -29,6 +30,7 @@ async def import_recruiter_csv(
         default=None,
         description="Absolute path or filename inside backend/. Defaults to 'sample user.csv'.",
     ),
+    _: None = Depends(require_internal_api_key),
     db=Depends(get_db),
 ):
     """Ingest a recruiter CSV (First Name, Last Name, Title, Company, Profile URL, …).
@@ -56,6 +58,7 @@ async def import_recruiter_csv(
 async def enrich_recruiter_emails(
     limit: int = Query(default=200, ge=1, le=2000),
     x_finalscout_key: Optional[str] = Header(default=None, alias="X-FinalScout-Key"),
+    _: None = Depends(require_internal_api_key),
     db=Depends(get_db),
 ):
     """For contacts that have a LinkedIn URL but no email, run them through
@@ -69,6 +72,7 @@ async def enrich_recruiter_emails(
 async def import_sample_and_enrich(
     limit: int = Query(default=20, ge=1, le=2000),
     x_finalscout_key: Optional[str] = Header(default=None, alias="X-FinalScout-Key"),
+    _: None = Depends(require_internal_api_key),
     db=Depends(get_db),
 ):
     """Import backend/sample user.csv, then run LinkedIn email enrichment."""
@@ -83,6 +87,7 @@ async def import_sample_and_enrich(
 @router.get("/debug/finalscout")
 async def debug_finalscout(
     linkedin_url: str = Query(..., description="A LinkedIn profile URL to probe"),
+    _: None = Depends(require_internal_api_key),
 ):
     """Probe every plausible FinalScout endpoint + auth-style combination.
 
@@ -139,7 +144,7 @@ async def debug_finalscout(
 
 
 @router.get("/debug/finalscout-account")
-async def debug_finalscout_account():
+async def debug_finalscout_account(_: None = Depends(require_internal_api_key)):
     """Diagnostic: check FinalScout credit balance + plan."""
     import httpx
     from app.config import settings
@@ -177,6 +182,7 @@ async def enrich_contacts(
     x_apollo_key: Optional[str] = Header(default=None, alias="X-Apollo-Key"),
     x_hunter_key: Optional[str] = Header(default=None, alias="X-Hunter-Key"),
     x_serpapi_key: Optional[str] = Header(default=None, alias="X-SerpAPI-Key"),
+    user_id: str = Depends(current_user_id),
     db=Depends(get_db),
 ):
     """Find recruiter / hiring-manager contacts. Free-first; BYOK headers override platform keys."""
@@ -220,6 +226,7 @@ async def bulk_enrich(
     x_apollo_key: Optional[str] = Header(default=None, alias="X-Apollo-Key"),
     x_hunter_key: Optional[str] = Header(default=None, alias="X-Hunter-Key"),
     x_serpapi_key: Optional[str] = Header(default=None, alias="X-SerpAPI-Key"),
+    user_id: str = Depends(current_user_id),
     db=Depends(get_db),
 ):
     job_rows: list[dict] = []
@@ -258,7 +265,11 @@ async def bulk_enrich(
 
 
 @router.post("/contribute", response_model=Contact)
-async def contribute_contact(payload: ContactContribution = Body(...), db=Depends(get_db)):
+async def contribute_contact(
+    payload: ContactContribution = Body(...),
+    user_id: str = Depends(current_user_id),
+    db=Depends(get_db),
+):
     """Submit a verified contact to the crowdsourced pool (shared across all PlaceUp users)."""
     if not payload.company:
         raise HTTPException(status_code=400, detail="company is required")
@@ -291,6 +302,7 @@ async def list_contacts(
     job_id: Optional[str] = Query(None),
     source: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=500),
+    user_id: str = Depends(current_user_id),
     db=Depends(get_db),
 ):
     fetch_limit = 10000 if source else limit
@@ -341,6 +353,7 @@ async def list_contacts_table(
     job_id: Optional[str] = Query(None),
     source: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=500),
+    user_id: str = Depends(current_user_id),
     db=Depends(get_db),
 ):
     """Human-readable contacts table for CLI use."""
@@ -360,6 +373,7 @@ async def export_job_emails(
         default=None,
         description="Optional filename inside backend/data/exports, e.g. job_contact_emails.csv.",
     ),
+    _: None = Depends(require_internal_api_key),
     db=Depends(get_db),
 ):
     """Export open jobs matched with 3-5 best available contact emails per company."""
@@ -380,7 +394,7 @@ async def export_job_emails(
 
 
 @router.get("/stats")
-async def contact_stats(db=Depends(get_db)):
+async def contact_stats(user_id: str = Depends(current_user_id), db=Depends(get_db)):
     total = await db.count_contacts()
     rows = await db.get_contacts(limit=10000)
     by_source: dict[str, int] = {}
@@ -429,6 +443,7 @@ class EmailDraftRequest(BaseModel):
 async def draft_email_endpoint(
     request: EmailDraftRequest = Body(...),
     x_groq_key: Optional[str] = Header(default=None, alias="X-Groq-Key"),
+    user_id: str = Depends(current_user_id),
     db=Depends(get_db),
 ):
     contact = request.contact

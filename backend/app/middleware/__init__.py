@@ -1,5 +1,11 @@
-"""Cross-cutting middleware: rate limiting, security headers."""
+"""Cross-cutting middleware: rate limiting, request caps, security headers."""
 
-from .security import RateLimitMiddleware, SecurityHeadersMiddleware
+from .security import AuditLogMiddleware, RateLimitMiddleware, RequestSizeLimitMiddleware, RouteAccessMiddleware, SecurityHeadersMiddleware
 
-__all__ = ["RateLimitMiddleware", "SecurityHeadersMiddleware"]
+__all__ = [
+    "AuditLogMiddleware",
+    "RateLimitMiddleware",
+    "RequestSizeLimitMiddleware",
+    "RouteAccessMiddleware",
+    "SecurityHeadersMiddleware",
+]

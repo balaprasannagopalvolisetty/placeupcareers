@@ -33,6 +33,15 @@ def _now_iso() -> str:
     return datetime.now(tz=timezone.utc).isoformat()
 
 
+def _parse_iso(value: str | None) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
 def _doc(collection: str, doc_id: str):
     return _client().collection(collection).document(doc_id)
 
@@ -369,3 +378,84 @@ def list_user_applications(user_id: str, limit: int = 500) -> list[dict]:
         .stream()
     )
     return [snap.to_dict() | {"id": snap.id} for snap in rows]
+
+
+def create_auth_session(
+    user_id: str,
+    *,
+    refresh_hash: str,
+    expires_at: datetime,
+    user_agent: str = "",
+    ip_address: str = "",
+) -> dict:
+    session_id = f"s_{uuid.uuid4().hex}"
+    now = _now_iso()
+    data = {
+        "id": session_id,
+        "user_id": user_id,
+        "refresh_hash": refresh_hash,
+        "created_at": now,
+        "updated_at": now,
+        "expires_at": expires_at.astimezone(timezone.utc).isoformat(),
+        "revoked": False,
+        "user_agent": user_agent[:300],
+        "ip_address": ip_address[:80],
+    }
+    _doc("auth_sessions", session_id).set(data)
+    return data
+
+
+def get_auth_session_by_refresh_hash(refresh_hash: str) -> Optional[dict]:
+    rows = (
+        _client()
+        .collection("auth_sessions")
+        .where("refresh_hash", "==", refresh_hash)
+        .where("revoked", "==", False)
+        .limit(1)
+        .stream()
+    )
+    now = datetime.now(tz=timezone.utc)
+    for snap in rows:
+        data = snap.to_dict() or {}
+        expires_at = _parse_iso(data.get("expires_at"))
+        if expires_at and expires_at > now:
+            return data | {"id": snap.id}
+    return None
+
+
+def rotate_auth_session(session_id: str, *, refresh_hash: str, expires_at: datetime) -> Optional[dict]:
+    ref = _doc("auth_sessions", session_id)
+    snap = ref.get()
+    if not snap.exists:
+        return None
+    ref.set(
+        {
+            "refresh_hash": refresh_hash,
+            "expires_at": expires_at.astimezone(timezone.utc).isoformat(),
+            "updated_at": _now_iso(),
+        },
+        merge=True,
+    )
+    return (ref.get().to_dict() or {}) | {"id": session_id}
+
+
+def revoke_auth_session(session_id: str) -> None:
+    _doc("auth_sessions", session_id).set({"revoked": True, "updated_at": _now_iso()}, merge=True)
+
+
+def revoke_user_sessions(user_id: str) -> int:
+    rows = (
+        _client()
+        .collection("auth_sessions")
+        .where("user_id", "==", user_id)
+        .where("revoked", "==", False)
+        .stream()
+    )
+    batch = _client().batch()
+    count = 0
+    for snap in rows:
+        batch.set(snap.reference, {"revoked": True, "updated_at": _now_iso()}, merge=True)
+        count += 1
+    if count:
+        batch.commit()
+    return count

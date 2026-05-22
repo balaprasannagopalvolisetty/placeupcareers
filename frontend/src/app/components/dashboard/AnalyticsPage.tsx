@@ -2,6 +2,17 @@ import { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from "recharts";
 import { TrendingUp, Eye, FileText, Award } from "lucide-react";
+
+function useViewportFlags() {
+  const getWidth = () => (typeof window === "undefined" ? 1280 : window.innerWidth);
+  const [width, setWidth] = useState(getWidth);
+  useEffect(() => {
+    const onResize = () => setWidth(getWidth());
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  return { isMobile: width < 640, isTablet: width < 1024 };
+}
 import * as api from "../../lib/api";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
@@ -30,6 +41,7 @@ const ICON_BY_LABEL: Record<string, typeof TrendingUp> = {
 };
 
 export function AnalyticsPage() {
+  const { isMobile, isTablet } = useViewportFlags();
   const [metrics, setMetrics] = useState<MetricCard[]>([]);
   const [timeSeries, setTimeSeries] = useState<TimePoint[]>([]);
   const [scoreData, setScoreData] = useState<ScorePoint[]>([]);
@@ -83,7 +95,7 @@ export function AnalyticsPage() {
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       {error && <div style={{ color: T.red, fontFamily: F.sans, fontSize: 13 }}>Error: {error}</div>}
       {/* Metric cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : isTablet ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 14 }}>
         {metrics.length === 0 && (
           <div style={{ gridColumn: "1 / -1", padding: 30, textAlign: "center", color: T.t3, fontFamily: F.sans, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 16 }}>
             No analytics yet. Upload a resume and start tracking applications to populate this page.
@@ -103,7 +115,7 @@ export function AnalyticsPage() {
       </div>
 
       {/* Charts */}
-      <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isTablet ? "1fr" : "1.5fr 1fr", gap: 16 }}>
         <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: 24 }}>
           <div style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 600, color: T.text, marginBottom: 20 }}>Applications Over Time</div>
           {timeSeries.length === 0 ? (

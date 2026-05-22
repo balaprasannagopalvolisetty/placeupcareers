@@ -160,6 +160,31 @@ def _fallback_score(resume_text: str, job_description: str) -> ATSResult:
                      "Potential Match" if overall >= 60 else \
                      "Weak Match" if overall >= 40 else "Not Recommended"
 
+    from app.utils.text_processing import TECH_SKILLS
+
+    # Derive strengths from matched skills
+    tech_matched = [s for s in (matched_skills or keyword_analysis.strong_keywords) if s in TECH_SKILLS]
+    general_matched = [s for s in keyword_analysis.strong_keywords if s not in TECH_SKILLS]
+    strengths: list[str] = []
+    if tech_matched:
+        strengths.append(f"Technical skills present: {', '.join(tech_matched[:6])}")
+    if general_matched:
+        strengths.append(f"Keyword alignment: {', '.join(general_matched[:5])}")
+    if completeness_pct >= 50:
+        strengths.append(f"Resume covers {sections} of 6 key sections")
+    if not strengths:
+        strengths.append("Add more targeted skills and keywords to improve match")
+
+    # Derive concerns from gaps
+    top_missing = (missing_skills or [kw.keyword for kw in keyword_analysis.missing_keywords])[:5]
+    concerns: list[str] = []
+    if top_missing:
+        concerns.append(f"Missing skills/keywords: {', '.join(top_missing)}")
+    if sections < 3:
+        concerns.append("Resume is missing standard sections (experience, education, skills)")
+    if resume_words < 200:
+        concerns.append("Resume appears too short — add more detail to experience entries")
+
     return ATSResult(
         overall_score=round(overall, 1),
         recommendation=recommendation,
@@ -174,8 +199,8 @@ def _fallback_score(resume_text: str, job_description: str) -> ATSResult:
         certifications_score=100.0 if re.search(r"\b(certification|certifications)\b", resume_text.lower()) else 45.0,
         cultural_fit_score=round(min(100.0, (density + skill_pct) / 2), 1),
         keyword_analysis=keyword_analysis,
-        strengths=["Keyword-only analysis (LLM unavailable)"],
-        concerns=["Full AI analysis could not be performed"],
+        strengths=strengths,
+        concerns=concerns,
         improvement_suggestions=[kw.suggestion for kw in keyword_analysis.missing_keywords[:5]],
     )
 

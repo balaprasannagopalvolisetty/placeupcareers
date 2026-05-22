@@ -15,7 +15,7 @@ def get_firestore_db():
     """Initialize and return the Firestore database client.
 
     Uses Firebase Admin SDK with Application Default Credentials
-    (or explicit service account JSON for local dev).
+    (or explicit service account JSON for service deployments).
 
     Returns:
         Firestore client instance
@@ -125,15 +125,28 @@ class FirestoreClient:
 
     # ─── H1B Sponsors Collection ───────────────────────────
 
-    async def get_h1b_sponsors(self, employer: str = None, limit: int = 20) -> list[dict]:
-        """Get H1B sponsor records."""
+    async def get_h1b_sponsors(self, employer: str = None, state: str = None, limit: int = 20, offset: int = 0) -> list[dict]:
+        """Get H1B sponsor records. Firebase doesn't support OFFSET, so we fetch offset+limit and slice."""
         ref = self.db.collection("h1bSponsors")
         if employer:
             ref = ref.where("employer_name", ">=", employer.upper())
             ref = ref.where("employer_name", "<=", employer.upper() + "\uf8ff")
-        ref = ref.limit(limit)
-        docs = ref.stream()
-        return [doc.to_dict() | {"id": doc.id} for doc in docs]
+        fetch_cap = min(offset + limit + 500, 50000)
+        docs = list(ref.limit(fetch_cap).stream())
+        if state:
+            docs = [d for d in docs if (d.to_dict().get("state") or "").lower() == state.lower()]
+        return [doc.to_dict() | {"id": doc.id} for doc in docs[offset: offset + limit]]
+
+    async def count_h1b_sponsors(self, employer: str = None, state: str = None) -> int:
+        """Count H1B sponsor records (must stream all matching docs in Firestore)."""
+        ref = self.db.collection("h1bSponsors")
+        if employer:
+            ref = ref.where("employer_name", ">=", employer.upper())
+            ref = ref.where("employer_name", "<=", employer.upper() + "\uf8ff")
+        docs = list(ref.stream())
+        if state:
+            return sum(1 for d in docs if (d.to_dict().get("state") or "").lower() == state.lower())
+        return len(docs)
 
     async def upsert_h1b_sponsors(self, sponsors: list[dict]) -> int:
         """Batch upsert H1B sponsor records."""

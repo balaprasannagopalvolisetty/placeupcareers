@@ -1,7 +1,7 @@
 param(
   [Parameter(Mandatory=$true)][string]$ProjectId,
-  [string]$Region = "us-central1",
-  [string]$DbInstance = "placeup-postgres"
+  [string]$Region = "us-east1",
+  [string]$DbInstance = "placeup-backend"
 )
 
 $ErrorActionPreference = "Stop"

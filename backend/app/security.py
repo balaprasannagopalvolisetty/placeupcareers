@@ -8,11 +8,13 @@ be longer than 72 bytes" errors on perfectly normal passwords.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import hashlib
+import secrets
 from typing import Optional
 
 import bcrypt
 import jwt
-from fastapi import Header, HTTPException, status
+from fastapi import Cookie, Header, HTTPException, Request, status
 
 from app.config import settings
 
@@ -41,15 +43,31 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
-def create_access_token(user_id: str, email: str, *, plan: str = "Pro") -> str:
+REFRESH_COOKIE_NAME = "placeup_refresh"
+
+
+def refresh_token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def generate_refresh_token() -> str:
+    return secrets.token_urlsafe(48)
+
+
+def create_access_token(user_id: str, email: str, *, plan: str = "Pro", session_id: str | None = None) -> str:
     """Mint a signed JWT carrying the user identity and plan claim."""
     now = datetime.now(tz=timezone.utc)
     payload = {
         "sub": user_id,
         "email": email,
         "plan": plan,
+        "typ": "access",
+        "sid": session_id,
+        "jti": secrets.token_urlsafe(16),
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(minutes=settings.jwt_expires_minutes)).timestamp()),
+        "iss": "placeup-career-api",
+        "aud": "placeup-career-web",
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
@@ -57,7 +75,16 @@ def create_access_token(user_id: str, email: str, *, plan: str = "Pro") -> str:
 def decode_access_token(token: str) -> dict:
     """Decode + verify a token. Raises 401 if invalid or expired."""
     try:
-        return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        claims = jwt.decode(
+            token,
+            settings.jwt_secret,
+            algorithms=[settings.jwt_algorithm],
+            audience="placeup-career-web",
+            issuer="placeup-career-api",
+        )
+        if claims.get("typ") != "access":
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type")
+        return claims
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired")
     except jwt.InvalidTokenError as exc:
@@ -81,6 +108,27 @@ async def current_user_id(
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token missing sub claim")
     return str(user_id)
+
+
+def get_refresh_token_from_request(
+    request: Request,
+    refresh_cookie: Optional[str] = Cookie(default=None, alias=REFRESH_COOKIE_NAME),
+) -> str:
+    if refresh_cookie:
+        return refresh_cookie
+    bearer = request.headers.get("Authorization", "")
+    if bearer.lower().startswith("bearer "):
+        token = bearer.split(" ", 1)[1].strip()
+        if token:
+            return token
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing refresh token")
+
+
+def require_internal_api_key(x_api_key: Optional[str] = Header(default=None, alias="X-API-Key")) -> None:
+    if not settings.internal_api_key:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Internal API key is not configured")
+    if not x_api_key or not secrets.compare_digest(x_api_key, settings.internal_api_key):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid internal API key")
 
 
 async def optional_user_id(

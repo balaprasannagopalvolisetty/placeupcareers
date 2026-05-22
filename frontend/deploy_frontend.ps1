@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory=$true)][string]$ProjectId,
-  [string]$Region = "us-central1",
+  [string]$Region = "us-east1",
   [string]$ApiBase = "https://placeup-api-rui2a74muq-ue.a.run.app"
 )
 
@@ -39,14 +39,14 @@ if (@($repoName) -notcontains "placeup") {
 
 Invoke-Gcloud builds submit . `
   --config cloudbuild.yaml `
-  --substitutions "_IMAGE=$Image,_VITE_API_BASE=$ApiBase"
+  --substitutions "_IMAGE=$Image,_VITE_API_BASE="
 
 Invoke-Gcloud run deploy placeup-frontend `
   --image $Image `
   --region $Region `
   --no-invoker-iam-check `
   --port 8080 `
-  --set-env-vars "APP_ENV=production"
+  --set-env-vars "APP_ENV=production,BACKEND_ORIGIN=$ApiBase"
 
 $FrontendUrl = & gcloud.cmd run services describe placeup-frontend `
   --region $Region `

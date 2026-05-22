@@ -107,19 +107,14 @@ async def list_visa_sponsors(
 ):
     """Searchable sponsor directory backed by the H1B Excel import."""
     try:
-        # The store's `get_h1b_sponsors` already supports an `employer` ILIKE-ish filter.
-        all_rows = await db.get_h1b_sponsors(employer=company, limit=100000)
+        total = await db.count_h1b_sponsors(employer=company, state=state)
+        offset = (page - 1) * page_size
+        rows = await db.get_h1b_sponsors(employer=company, state=state, limit=page_size, offset=offset)
     except Exception as e:
         logger.error(f"Sponsor search failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Sponsor search failed")
 
-    if state:
-        all_rows = [r for r in all_rows if (r.get("state") or "").lower() == state.lower()]
-
-    total = len(all_rows)
-    start = (page - 1) * page_size
-    end = start + page_size
-    sponsors = [_sponsor_row_to_card(r) for r in all_rows[start:end]]
+    sponsors = [_sponsor_row_to_card(r) for r in rows]
     return {
         "total": total,
         "page": page,
@@ -136,7 +131,7 @@ async def get_h1b_employer_data(employer: str, db=Depends(get_db)):
         rows = await db.get_h1b_sponsors(employer=employer, limit=200)
     except Exception as e:
         logger.error(f"H1B employer lookup failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="H1B employer lookup failed")
 
     if not rows:
         return {"employer": employer, "records": [], "total_petitions": 0}
@@ -181,7 +176,7 @@ async def search_h1b_data(
         )
     except Exception as e:
         logger.error(f"H1B search failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="H1B search failed")
 
 
 @router.post("/classify", response_model=VisaScore)
@@ -191,7 +186,7 @@ async def classify_job_visa(request: VisaClassifyRequest):
         return classify_job(title=request.title, company=request.company, description=request.description)
     except Exception as e:
         logger.error(f"Visa classification failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Visa classification failed")
 
 
 @router.get("/salary")
@@ -223,4 +218,4 @@ async def get_h1b_salary_data(
         }
     except Exception as e:
         logger.error(f"H1B salary lookup failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="H1B salary lookup failed")

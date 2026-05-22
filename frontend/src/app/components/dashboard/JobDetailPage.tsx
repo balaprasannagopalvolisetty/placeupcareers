@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ArrowLeft, MapPin, DollarSign, Clock, ExternalLink, Bookmark, Share2, Check, X, Lock, Copy, Linkedin, ShieldCheck, Sparkles, Briefcase } from "lucide-react";
 import * as api from "../../lib/api";
@@ -110,6 +110,95 @@ function useViewportWidth() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
   return { width: w, isMobile: w < 640, isTablet: w < 1024 };
+}
+
+// ─── Job Description Renderer ────────────────────────────────────────────────
+
+function renderInline(text: string): ReactNode {
+  const regex = /(\*\*[^*\n]+\*\*|\*[^*\n]+\*|`[^`\n]+`)/g;
+  const parts: ReactNode[] = [];
+  let last = 0;
+  let k = 0;
+  let m: RegExpExecArray | null;
+  while ((m = regex.exec(text)) !== null) {
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    const tok = m[0];
+    if (tok.startsWith("**"))
+      parts.push(<strong key={k++} style={{ color: T.text, fontWeight: 700 }}>{tok.slice(2, -2)}</strong>);
+    else if (tok.startsWith("*"))
+      parts.push(<em key={k++} style={{ fontStyle: "italic" }}>{tok.slice(1, -1)}</em>);
+    else
+      parts.push(<code key={k++} style={{ fontSize: 12, background: "rgba(242,238,179,0.08)", padding: "1px 5px", borderRadius: 4, fontFamily: F.mono }}>{tok.slice(1, -1)}</code>);
+    last = m.index + tok.length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts.length === 1 && typeof parts[0] === "string" ? parts[0] : <>{parts}</>;
+}
+
+function renderJobDescription(raw: string): ReactNode {
+  if (!raw?.trim()) return <span style={{ color: T.t3, fontFamily: F.sans, fontSize: 13 }}>Open the original posting for full details.</span>;
+
+  // Decode HTML entities and convert block tags to newlines before stripping
+  const ta = document.createElement("textarea");
+  ta.innerHTML = raw;
+  let text = ta.value;
+  text = text.replace(/<br\s*\/?>/gi, "\n");
+  text = text.replace(/<\/?(p|div|li|ul|ol|h[1-6]|section)\b[^>]*>/gi, "\n");
+  text = text.replace(/<[^>]+>/g, "");
+
+  // Normalize: collapse horizontal whitespace only; preserve line breaks
+  const lines = text.split("\n").map((l) => l.replace(/[ \t]+/g, " ").trim());
+
+  const blocks: ReactNode[] = [];
+  let listItems: string[] = [];
+  let listKey = 0;
+
+  const flushList = () => {
+    if (!listItems.length) return;
+    blocks.push(
+      <ul key={`ul-${listKey++}`} style={{ margin: "4px 0 10px", paddingLeft: 20, display: "flex", flexDirection: "column", gap: 3 }}>
+        {listItems.map((item, j) => (
+          <li key={j} style={{ fontSize: 13, color: T.t2, fontFamily: F.sans, lineHeight: 1.65 }}>{renderInline(item)}</li>
+        ))}
+      </ul>
+    );
+    listItems = [];
+  };
+
+  lines.forEach((line, i) => {
+    if (!line) { flushList(); return; }
+
+    // ## or # heading
+    const h1m = line.match(/^#{1,2}\s+(.*)/);
+    if (h1m) {
+      flushList();
+      blocks.push(<div key={`h1-${i}`} style={{ fontSize: 14, fontWeight: 700, color: T.text, fontFamily: F.sans, marginTop: 18, marginBottom: 6, paddingBottom: 4, borderBottom: `1px solid ${T.border}` }}>{h1m[1].replace(/\*\*/g, "")}</div>);
+      return;
+    }
+    // ### sub-heading
+    const h2m = line.match(/^#{3,6}\s+(.*)/);
+    if (h2m) {
+      flushList();
+      blocks.push(<div key={`h2-${i}`} style={{ fontSize: 13, fontWeight: 600, color: T.t2, fontFamily: F.sans, marginTop: 14, marginBottom: 4 }}>{h2m[1].replace(/\*\*/g, "")}</div>);
+      return;
+    }
+    // Standalone **Section Heading** or **Section Heading:**
+    if (/^\*\*[^*]+\*\*:?\s*$/.test(line)) {
+      flushList();
+      blocks.push(<div key={`bh-${i}`} style={{ fontSize: 14, fontWeight: 700, color: T.text, fontFamily: F.sans, marginTop: 18, marginBottom: 6, paddingBottom: 4, borderBottom: `1px solid ${T.border}` }}>{line.replace(/\*\*/g, "").replace(/:$/, "").trim()}</div>);
+      return;
+    }
+    // Bullet / numbered list item
+    const bm = line.match(/^(?:[*\-•·]|\d+[.)]) +(.*)/);
+    if (bm) { listItems.push(bm[1]); return; }
+
+    // Regular paragraph
+    flushList();
+    blocks.push(<p key={`p-${i}`} style={{ fontSize: 13, color: T.t2, fontFamily: F.sans, lineHeight: 1.75, margin: "4px 0" }}>{renderInline(line)}</p>);
+  });
+
+  flushList();
+  return <>{blocks}</>;
 }
 
 export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => void }) {
@@ -372,9 +461,6 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
     }
     return out;
   };
-  const descriptionText = currentJob.description
-    ? decodeHtml(String(currentJob.description)).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
-    : "Open the original posting on the company website for full details.";
   const scoreMeta = getScoreMeta(currentJob.match);
   const visibleKeywords = (currentJob.strongKeywords ?? []).slice(0, 10);
   const visibleMissing = (currentJob.missingKeywords ?? []).slice(0, 10);
@@ -506,10 +592,8 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
 
         {/* Job Description */}
         <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: 24 }}>
-          <h3 style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 12 }}>Job Description</h3>
-          <div style={{ whiteSpace: "pre-wrap", color: T.t2, fontSize: 14, fontFamily: F.sans, lineHeight: 1.75 }}>
-            {descriptionText}
-          </div>
+          <h3 style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 16 }}>Job Description</h3>
+          <div>{renderJobDescription(currentJob.description || "")}</div>
         </div>
       </div>
 

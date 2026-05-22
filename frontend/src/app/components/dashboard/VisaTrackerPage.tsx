@@ -48,7 +48,21 @@ interface DashboardResponse {
   sponsors: SponsorRow[];
 }
 
+function useViewportFlags() {
+  const getWidth = () => (typeof window === "undefined" ? 1280 : window.innerWidth);
+  const [width, setWidth] = useState(getWidth);
+
+  useEffect(() => {
+    const onResize = () => setWidth(getWidth());
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  return { isMobile: width < 640, isTablet: width < 1024 };
+}
+
 export function VisaTrackerPage() {
+  const { isMobile, isTablet } = useViewportFlags();
   const [stats, setStats] = useState({
     h1b_sponsors: "—", opt_roles: "—", avg_approval_rate: "—", petitions_last_year: "—",
   });
@@ -114,7 +128,7 @@ export function VisaTrackerPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       {/* Stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : isTablet ? "repeat(2, minmax(0, 1fr))" : "repeat(4, 1fr)", gap: 14 }}>
         {statCards.map((s, i) => (
           <motion.div key={s.label} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
             style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 14, padding: "16px 18px" }}>
@@ -128,8 +142,8 @@ export function VisaTrackerPage() {
       </div>
 
       {/* Search bar */}
-      <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 14, padding: "12px 16px", display: "flex", gap: 10, alignItems: "center" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)" }}>
+      <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 14, padding: "12px 16px", display: "flex", flexDirection: isMobile ? "column" : "row", gap: 10, alignItems: isMobile ? "stretch" : "center" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, width: isMobile ? "100%" : "auto", height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)" }}>
           <Search size={13} color={T.t3} />
           <input
             value={search}
@@ -143,14 +157,14 @@ export function VisaTrackerPage() {
           onChange={(e) => { setStateFilter(e.target.value.toUpperCase()); setPage(1); }}
           placeholder="State (CA, NY...)"
           maxLength={2}
-          style={{ width: 110, height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", color: T.text, fontSize: 13, outline: "none", fontFamily: F.sans, textTransform: "uppercase" }}
+          style={{ width: isMobile ? "100%" : 110, height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", color: T.text, fontSize: 13, outline: "none", fontFamily: F.sans, textTransform: "uppercase" }}
         />
         <span style={{ fontSize: 12, color: T.t3, fontFamily: F.sans, whiteSpace: "nowrap" }}>
           {loading ? "…" : `${total.toLocaleString()} match${total === 1 ? "" : "es"}`}
         </span>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, color: T.t3, fontFamily: F.sans, fontSize: 12 }}>
+      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, color: T.t3, fontFamily: F.sans, fontSize: 12 }}>
         <span>Verified sponsor records with location, fiscal year, petition counts, approval rate, and status.</span>
         <span style={{ color: T.t2 }}>{total ? `${((page - 1) * pageSize + 1).toLocaleString()}-${Math.min(page * pageSize, total).toLocaleString()} of ${total.toLocaleString()}` : "0 records"}</span>
       </div>
@@ -221,9 +235,9 @@ export function VisaTrackerPage() {
         </div>
         {/* Pagination */}
         {totalPages > 1 && (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", borderTop: `1px solid ${T.border}` }}>
+          <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: 10, padding: "10px 16px", borderTop: `1px solid ${T.border}` }}>
             <span style={{ fontSize: 11, color: T.t3, fontFamily: F.sans }}>Page {page} of {totalPages}</span>
-            <div style={{ display: "flex", gap: 6 }}>
+            <div style={{ display: "flex", gap: 6, justifyContent: isMobile ? "space-between" : "flex-start" }}>
               <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}
                 style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${T.border}`, background: "transparent", color: page <= 1 ? T.t3 : T.t2, fontSize: 11, cursor: page <= 1 ? "not-allowed" : "pointer", fontFamily: F.sans }}>
                 Previous

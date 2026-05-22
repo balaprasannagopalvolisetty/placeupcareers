@@ -4,7 +4,7 @@ import { Link, useNavigate } from "react-router";
 import { Eye, EyeOff, Star } from "lucide-react";
 import { OrbitalSphereSmall } from "../components/OrbitalSphereSmall";
 import { useAuth } from "../context/AuthContext";
-import { getDemoCredentials, type DemoCredentials } from "../lib/api";
+import { getAuthProviders, getDemoCredentials, startGoogleOidc, type DemoCredentials } from "../lib/api";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 const T = {
@@ -18,6 +18,19 @@ const T = {
   red: "#A6372D",
   input: "rgba(242,238,179,0.05)",
 };
+
+function useViewportFlags() {
+  const getWidth = () => (typeof window === "undefined" ? 1280 : window.innerWidth);
+  const [width, setWidth] = useState(getWidth);
+
+  useEffect(() => {
+    const onResize = () => setWidth(getWidth());
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  return { isMobile: width < 760 };
+}
 
 function StyledInput({
   label,
@@ -75,18 +88,23 @@ function StyledInput({
 export default function SignIn() {
   const navigate = useNavigate();
   const { signIn } = useAuth();
+  const { isMobile } = useViewportFlags();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [demo, setDemo] = useState<DemoCredentials | null>(null);
+  const [googleSsoEnabled, setGoogleSsoEnabled] = useState(false);
 
   useEffect(() => {
     let active = true;
     getDemoCredentials()
       .then((d) => { if (active) setDemo(d); })
       .catch(() => { /* prod or unavailable — hide the demo affordance */ });
+    getAuthProviders()
+      .then((providers) => { if (active) setGoogleSsoEnabled(providers.google); })
+      .catch(() => { if (active) setGoogleSsoEnabled(false); });
     return () => { active = false; };
   }, []);
 
@@ -124,13 +142,13 @@ export default function SignIn() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", display: "grid", gridTemplateColumns: "1fr 1fr", background: T.bg }}>
-      <div style={{ position: "relative", overflow: "hidden", background: "linear-gradient(135deg, #011126 0%, #1a0808 100%)" }}>
+    <div style={{ minHeight: "100vh", display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", background: T.bg }}>
+      <div style={{ position: "relative", overflow: "hidden", background: "linear-gradient(135deg, #011126 0%, #1a0808 100%)", minHeight: isMobile ? 240 : "auto" }}>
         <div style={{ position: "absolute", top: "10%", left: "5%", width: 300, height: 300, borderRadius: "50%", filter: "blur(80px)", background: "rgba(140,58,39,0.2)" }} />
         <div style={{ position: "absolute", bottom: "20%", right: "10%", width: 250, height: 250, borderRadius: "50%", filter: "blur(80px)", background: "rgba(166,55,45,0.15)" }} />
-        <div style={{ position: "relative", zIndex: 1, height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 48 }}>
-          <OrbitalSphereSmall />
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }} style={{ marginTop: 40, padding: "20px 24px", borderRadius: 16, background: "rgba(64,18,18,0.65)", backdropFilter: "blur(20px)", border: "1px solid rgba(242,238,179,0.08)", maxWidth: 380 }}>
+        <div style={{ position: "relative", zIndex: 1, height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: isMobile ? 24 : 48 }}>
+          {!isMobile && <OrbitalSphereSmall />}
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }} style={{ marginTop: isMobile ? 0 : 40, padding: isMobile ? "16px 18px" : "20px 24px", borderRadius: 16, background: "rgba(64,18,18,0.65)", backdropFilter: "blur(20px)", border: "1px solid rgba(242,238,179,0.08)", maxWidth: 380 }}>
             <div style={{ display: "flex", gap: 3, marginBottom: 10 }}>
               {[0, 1, 2, 3, 4].map((i) => (
                 <Star key={i} size={12} fill={T.red} color={T.red} />
@@ -149,7 +167,7 @@ export default function SignIn() {
           </motion.div>
         </div>
       </div>
-      <div style={{ background: T.surface, display: "flex", alignItems: "center", justifyContent: "center", padding: 48 }}>
+      <div style={{ background: T.surface, display: "flex", alignItems: "center", justifyContent: "center", padding: isMobile ? "32px 18px" : 48 }}>
         <div style={{ width: "100%", maxWidth: 420 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "center", marginBottom: 40 }}>
             <div style={{ width: 32, height: 32, borderRadius: 9, background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 16px rgba(166,55,45,0.4)" }}>
@@ -232,25 +250,40 @@ export default function SignIn() {
               <div style={{ flex: 1, height: 1, background: T.border }} />
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {["Google", "LinkedIn"].map((provider) => (
-                <button
-                  key={provider}
-                  style={{
-                    width: "100%",
-                    padding: "12px",
-                    borderRadius: 12,
-                    border: `1px solid ${T.border}`,
-                    background: "rgba(242,238,179,0.04)",
-                    color: T.text,
-                    fontSize: 14,
-                    fontFamily: F.sans,
-                    cursor: "pointer",
-                  }}
-                  disabled
-                >
-                  Continue with {provider}
-                </button>
-              ))}
+              <button
+                onClick={startGoogleOidc}
+                disabled={!googleSsoEnabled}
+                style={{
+                  width: "100%",
+                  padding: "12px",
+                  borderRadius: 12,
+                  border: `1px solid ${T.border}`,
+                  background: "rgba(242,238,179,0.04)",
+                  color: T.text,
+                  fontSize: 14,
+                  fontFamily: F.sans,
+                  cursor: googleSsoEnabled ? "pointer" : "not-allowed",
+                  opacity: googleSsoEnabled ? 1 : 0.5,
+                }}
+              >
+                Continue with Google
+              </button>
+              <button
+                style={{
+                  width: "100%",
+                  padding: "12px",
+                  borderRadius: 12,
+                  border: `1px solid ${T.border}`,
+                  background: "rgba(242,238,179,0.04)",
+                  color: T.t3,
+                  fontSize: 14,
+                  fontFamily: F.sans,
+                  cursor: "not-allowed",
+                }}
+                disabled
+              >
+                Continue with LinkedIn
+              </button>
             </div>
             <p style={{ marginTop: 24, textAlign: "center", fontSize: 13, color: T.t2, fontFamily: F.sans }}>
               Don't have an account?{" "}

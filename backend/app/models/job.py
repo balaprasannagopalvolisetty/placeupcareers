@@ -65,6 +65,7 @@ class VisaBadges(BaseModel):
     visa_stem_opt: bool = False
     visa_h1b: bool = False
     h1b_verified: bool = False
+    no_sponsorship: bool = False
     visa_score: int = Field(default=0, ge=0, le=100)
 
 
@@ -122,6 +123,7 @@ class JobPost(BaseModel):
 
     # Matching (populated per-user)
     match_score: Optional[int] = Field(default=None, ge=0, le=100)
+    score_type: Optional[str] = None
 
     # Deduplication
     content_hash: str = ""

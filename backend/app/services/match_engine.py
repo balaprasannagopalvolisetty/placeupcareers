@@ -1,11 +1,10 @@
 """
 PlaceUp Career — Match Scoring Engine
-Hybrid resume-to-job matching using TF-IDF + keywords + LLM semantic analysis.
+Hybrid resume-to-job matching using TF-IDF + keyword overlap scoring.
 
 Scoring weights:
-- TF-IDF cosine similarity: 30%
-- Keyword overlap: 30%
-- LLM semantic score: 40%
+- TF-IDF cosine similarity: 50%
+- Keyword overlap: 50%
 
 Inspired by: github.com/srbhr/Resume-Matcher (TF-IDF approach)
 """
@@ -121,18 +120,46 @@ def compute_keyword_score(resume_text: str, job_description: str) -> tuple[float
     return overlap_pct, matched, missing_with_impact
 
 
-async def compute_semantic_score(
-    resume_text: str,
-    job_description: str,
-    job_title: str = "",
-) -> tuple[float, list[str], list[str], list[str]]:
-    """Compute LLM-based semantic relevance score.
+def _build_insights(
+    matched_kws: list[str],
+    missing_kws: list[KeywordWithImpact],
+    tfidf_score: float,
+    keyword_score: float,
+    overall: int,
+) -> tuple[list[str], list[str], list[str]]:
+    """Derive strengths, gaps, and suggestions from keyword analysis results."""
+    from app.utils.text_processing import TECH_SKILLS
 
-    (Note: Switched to local NLP processing per requirements to avoid LLM costs)
-    Returns dummy fallback data.
-    """
-    logger.info("Semantic scoring skipped (local-only mode)")
-    return 50.0, [], ["Semantic analysis disabled to save costs"], []
+    # Strengths — highlight matched technical skills and keyword coverage
+    strengths: list[str] = []
+    tech_matched = [kw for kw in matched_kws if kw in TECH_SKILLS]
+    if tech_matched:
+        strengths.append(f"Technical skills aligned: {', '.join(tech_matched[:6])}")
+    general_matched = [kw for kw in matched_kws if kw not in TECH_SKILLS]
+    if general_matched:
+        strengths.append(f"Strong keyword coverage: {', '.join(general_matched[:5])}")
+    if tfidf_score >= 60:
+        strengths.append("High overall content similarity to the job description")
+    if not strengths:
+        strengths.append("Upload a more targeted resume to identify strengths")
+
+    # Gaps — missing high-impact keywords
+    high = [kw for kw in missing_kws if kw.impact == "high"]
+    medium = [kw for kw in missing_kws if kw.impact == "medium"]
+    gaps: list[str] = []
+    if high:
+        gaps.append(f"Missing technical skills: {', '.join(k.keyword for k in high[:5])}")
+    if medium:
+        gaps.append(f"Missing keywords: {', '.join(k.keyword for k in medium[:4])}")
+    if overall < 45:
+        gaps.append("Resume vocabulary significantly diverges from this job description")
+
+    # Suggestions — actionable per missing keyword
+    suggestions = [kw.suggestion for kw in missing_kws[:8]]
+    if not suggestions and overall < 65:
+        suggestions.append("Tailor your resume summary and skills section to mirror the job description language")
+
+    return strengths, gaps, suggestions
 
 
 async def compute_match_score(
@@ -143,15 +170,12 @@ async def compute_match_score(
 ) -> MatchResult:
     """Compute the full hybrid match score.
 
-    Combines three scoring methods with weighted averaging:
-    1. TF-IDF cosine similarity (30%)
-    2. Keyword overlap (30%)
-    3. LLM semantic analysis (40%)
+    Combines TF-IDF cosine similarity (50%) and keyword overlap (50%).
 
     Args:
         resume_text: Full resume text
         job_description: Full job description text
-        job_title: Job title for LLM context
+        job_title: Job title for context
         visa_badges: Pre-computed visa compatibility
 
     Returns:
@@ -165,16 +189,10 @@ async def compute_match_score(
     # 2. Keyword score
     keyword_score, matched_kws, missing_kws = compute_keyword_score(resume_text, job_description)
 
-    # 3. Semantic score (async LLM call)
-    semantic_score, strengths, gaps, suggestions = await compute_semantic_score(
-        resume_text, job_description, job_title
-    )
-
     # Compute weighted composite
     overall = round(
         tfidf_score * TFIDF_WEIGHT +
-        keyword_score * KEYWORD_WEIGHT +
-        semantic_score * SEMANTIC_WEIGHT
+        keyword_score * KEYWORD_WEIGHT
     )
     overall = max(0, min(100, overall))
 
@@ -188,6 +206,11 @@ async def compute_match_score(
     else:
         recommendation = "Needs Work"
 
+    # Build actionable insights from keyword analysis
+    strengths, gaps, suggestions = _build_insights(
+        matched_kws, missing_kws, tfidf_score, keyword_score, overall
+    )
+
     elapsed = (time.time() - start_time) * 1000
     logger.info(f"Match scoring completed in {elapsed:.0f}ms — Score: {overall}")
 
@@ -197,7 +220,7 @@ async def compute_match_score(
         scores=MatchScores(
             tfidf_score=tfidf_score,
             keyword_score=keyword_score,
-            semantic_score=semantic_score,
+            semantic_score=0.0,
         ),
         matched_keywords=matched_kws,
         missing_keywords=missing_kws,
