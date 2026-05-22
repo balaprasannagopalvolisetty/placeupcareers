@@ -223,6 +223,8 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
     hasResume: false,
   });
   const [pipelineStatus, setPipelineStatus] = useState<{ total_jobs?: number; active_jobs?: number; last_scraped_at?: string | null } | null>(null);
+  const isLocalStatusFilter = statusFilter === "Saved" || statusFilter === "Applied" || statusFilter === "Interview";
+  const hasServerFilters = Boolean(activeCategory || activeRole || search || location || visaOnly || timeFilter || statusFilter === "New");
 
   // Load taxonomy once.
   useEffect(() => {
@@ -298,6 +300,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
     if (search) params.search = search;
     if (location) params.location = location;
     if (visaOnly) params.visa_only = true;
+    if (statusFilter === "New") params.status = "active";
     if (activeCategory && !activeRole) params.category = activeCategory;
     if (activeRole) params.role = activeRole;
     if (timeFilter) {
@@ -335,16 +338,22 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       .finally(() => { if (active) setLoading(false); });
 
     return () => { active = false; };
-  }, [activeCategory, activeRole, search, location, visaOnly, timeFilter, page, resumeVersion, reloadKey]);
+  }, [activeCategory, activeRole, search, location, visaOnly, timeFilter, statusFilter, page, resumeVersion, reloadKey]);
 
   // Debounce search/location so API is only called after typing stops.
   useEffect(() => {
-    const t = setTimeout(() => setSearch(searchRaw), 400);
+    const t = setTimeout(() => {
+      setPage(1);
+      setSearch(searchRaw);
+    }, 400);
     return () => clearTimeout(t);
   }, [searchRaw]);
 
   useEffect(() => {
-    const t = setTimeout(() => setLocation(locationRaw), 400);
+    const t = setTimeout(() => {
+      setPage(1);
+      setLocation(locationRaw);
+    }, 400);
     return () => clearTimeout(t);
   }, [locationRaw]);
 
@@ -358,16 +367,15 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const filtered = useMemo(() => {
     if (statusFilter === "All") return jobs;
     if (statusFilter === "Saved") return jobs.filter((j) => savedIds.has(String(j.id)));
-    if (statusFilter === "New") return jobs.filter((j) => {
-      const s = String(j.status || "new").toLowerCase();
-      return s === "new" || s === "active";
-    });
+    if (statusFilter === "New") return jobs;
     if (statusFilter === "Applied") return jobs.filter((j) => trackedJobs[String(j.id)] === "applied");
     if (statusFilter === "Interview") return jobs.filter((j) => trackedJobs[String(j.id)] === "interview");
     return jobs;
   }, [jobs, statusFilter, savedIds, trackedJobs]);
 
   const currentCategory = taxonomy.find((c) => c.name === activeCategory);
+  const allJobsCount = Number(pipelineStatus?.total_jobs || pipelineStatus?.active_jobs || total || 0);
+  const openPositionsCount = hasServerFilters ? total : allJobsCount;
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: isTablet ? "1fr" : "280px minmax(0, 1fr)", gap: isMobile ? 12 : 20, alignItems: "start", width: "100%", minWidth: 0 }}>
@@ -376,7 +384,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: T.t3, fontFamily: F.sans, padding: "8px 10px 12px" }}>Categories</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: isTablet ? 320 : "70vh", overflowY: "auto" }}>
           <button
-            onClick={() => { setActiveCategory(null); setActiveRole(null); }}
+            onClick={() => { setActiveCategory(null); setActiveRole(null); setPage(1); }}
             style={{
               width: "100%", textAlign: "left", padding: "9px 10px", borderRadius: 8,
               border: "none", background: !activeCategory ? "rgba(166,55,45,0.10)" : "transparent",
@@ -385,7 +393,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             }}
           >
             All Jobs
-            <span style={{ fontSize: 11, color: T.t3 }}>{total.toLocaleString()}</span>
+            <span style={{ fontSize: 11, color: T.t3 }}>{allJobsCount ? allJobsCount.toLocaleString() : loading ? "..." : "0"}</span>
           </button>
           {taxonomy.map((cat) => {
             const isActive = cat.name === activeCategory;
@@ -438,8 +446,8 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 10 }}>
           {[
-            { label: "Open positions", value: total.toLocaleString(), icon: Briefcase },
-            { label: "Visible now", value: filtered.length.toLocaleString(), icon: Sparkles },
+            { label: "Open positions", value: openPositionsCount ? openPositionsCount.toLocaleString() : loading ? "..." : "0", icon: Briefcase },
+            { label: "Visible now", value: loading && jobs.length === 0 ? "..." : filtered.length.toLocaleString(), icon: Sparkles },
             { label: "Visa filter", value: visaOnly ? "On" : "Off", icon: ShieldCheck },
           ].map((item) => {
             const Icon = item.icon;
@@ -534,7 +542,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
         )}
 
         {/* Active filters strip */}
-        {(activeRole || activeCategory) && (
+        {(activeRole || activeCategory || search || location || visaOnly || timeFilter || statusFilter !== "All") && (
           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ fontSize: 11, color: T.t3, fontFamily: F.sans }}>{filtered.length} of {total} positions</span>
             {activeCategory && (
@@ -546,6 +554,36 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
               <span style={{ display: "inline-flex", gap: 4, alignItems: "center", fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "rgba(166,55,45,0.08)", color: T.red, border: "1px solid rgba(166,55,45,0.25)", fontFamily: F.sans }}>
                 Role: {activeRole}
                 <button onClick={() => { setActiveRole(null); setPage(1); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.red, padding: 0 }}><X size={10} /></button>
+              </span>
+            )}
+            {search && (
+              <span style={{ display: "inline-flex", gap: 4, alignItems: "center", fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "rgba(166,55,45,0.08)", color: T.red, border: "1px solid rgba(166,55,45,0.25)", fontFamily: F.sans }}>
+                Search: {search}
+                <button onClick={() => { setSearchRaw(""); setSearch(""); setPage(1); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.red, padding: 0 }}><X size={10} /></button>
+              </span>
+            )}
+            {location && (
+              <span style={{ display: "inline-flex", gap: 4, alignItems: "center", fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "rgba(166,55,45,0.08)", color: T.red, border: "1px solid rgba(166,55,45,0.25)", fontFamily: F.sans }}>
+                Location: {location}
+                <button onClick={() => { setLocationRaw(""); setLocation(""); setPage(1); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.red, padding: 0 }}><X size={10} /></button>
+              </span>
+            )}
+            {visaOnly && (
+              <span style={{ display: "inline-flex", gap: 4, alignItems: "center", fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "rgba(166,55,45,0.08)", color: T.red, border: "1px solid rgba(166,55,45,0.25)", fontFamily: F.sans }}>
+                Visa-friendly
+                <button onClick={() => { setVisaOnly(false); setPage(1); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.red, padding: 0 }}><X size={10} /></button>
+              </span>
+            )}
+            {timeFilter && (
+              <span style={{ display: "inline-flex", gap: 4, alignItems: "center", fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "rgba(166,55,45,0.08)", color: T.red, border: "1px solid rgba(166,55,45,0.25)", fontFamily: F.sans }}>
+                Time: {TIME_CHIPS.find((chip) => chip.value === timeFilter)?.label || timeFilter}
+                <button onClick={() => { setTimeFilter(""); setPage(1); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.red, padding: 0 }}><X size={10} /></button>
+              </span>
+            )}
+            {statusFilter !== "All" && (
+              <span style={{ display: "inline-flex", gap: 4, alignItems: "center", fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "rgba(166,55,45,0.08)", color: T.red, border: "1px solid rgba(166,55,45,0.25)", fontFamily: F.sans }}>
+                Status: {statusFilter}{isLocalStatusFilter ? " (current page)" : ""}
+                <button onClick={() => { setStatusFilter("All"); setPage(1); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.red, padding: 0 }}><X size={10} /></button>
               </span>
             )}
           </div>

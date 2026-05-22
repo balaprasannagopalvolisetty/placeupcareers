@@ -476,6 +476,7 @@ async def list_jobs(
     location: Optional[str] = Query(None, description="Filter by location"),
     category: Optional[str] = Query(None, description="Filter by category"),
     source: Optional[str] = Query(None, description="Filter by source"),
+    status: Optional[str] = Query(None, description="Filter by job status"),
     visa_only: bool = Query(False, description="Only show visa-friendly jobs"),
     min_salary: Optional[float] = Query(None, description="Minimum salary filter"),
     job_type: Optional[str] = Query(None, description="Full-time, Part-time, Contract"),
@@ -505,6 +506,8 @@ async def list_jobs(
     # uses the legacy JobCategory enum which doesn't match our taxonomy names.
     if source:
         filters["source"] = source
+    if status:
+        filters["status"] = status
     if visa_only:
         filters["visa_only"] = True
     posted_since = _posted_since(time_filter, tz_offset_minutes=tz_offset)
@@ -691,6 +694,7 @@ async def list_jobs(
                 **({"role": role} if role else {}),
                 **({"category": category} if category else {}),
                 **({"time_filter": time_filter} if time_filter else {}),
+                **({"status": status} if status else {}),
                 **({"sort": sort} if sort else {}),
             },
         }
