@@ -291,6 +291,8 @@ class PostgresClient:
             stmt = stmt.where(Job.location.ilike(f"%{filters['location']}%"))
         if filters.get("posted_since"):
             stmt = stmt.where(Job.posted_at >= filters["posted_since"])
+        if filters.get("posted_before"):
+            stmt = stmt.where(Job.posted_at < filters["posted_before"])
         if filters.get("title_terms"):
             terms = [str(t).strip() for t in filters["title_terms"] if str(t).strip()]
             if terms:
@@ -323,6 +325,8 @@ class PostgresClient:
             stmt = stmt.where(MasterJob.location.ilike(f"%{filters['location']}%"))
         if filters.get("posted_since"):
             stmt = stmt.where(MasterJob.posted_at >= filters["posted_since"])
+        if filters.get("posted_before"):
+            stmt = stmt.where(MasterJob.posted_at < filters["posted_before"])
         if filters.get("title_terms"):
             terms = [str(t).strip() for t in filters["title_terms"] if str(t).strip()]
             if terms:

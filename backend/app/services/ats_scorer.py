@@ -61,7 +61,8 @@ async def score_resume_against_job(
         ATSResult with comprehensive scoring and recommendations
     """
     logger.info("Using local TF-IDF/NLP for ATS scoring")
-    return _fallback_score(resume_text, job_description)
+    combined_jd = "\n".join(part for part in [job_title, company, job_description] if part)
+    return _fallback_score(resume_text, combined_jd)
 
 
 def _enhance_keyword_analysis(resume_text: str, job_description: str) -> KeywordAnalysis:

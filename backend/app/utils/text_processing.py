@@ -27,6 +27,20 @@ STOP_WORDS = {
     "including", "strong", "excellent", "responsible", "responsibilities",
     "opportunity", "looking", "join", "company", "within", "across",
     "etc", "using", "used", "well", "new", "help", "make", "ensure",
+    "applicant", "candidate", "candidates", "employee", "employees",
+    "employer", "employment", "apply", "application", "applications",
+    "provide", "provides", "business", "customer", "customers",
+    "client", "clients", "services", "solutions", "environment",
+    "knowledge", "understanding", "preferred", "plus", "bonus",
+    "benefits", "compensation", "salary", "range", "equal", "diversity",
+    "inclusion", "accommodation", "reasonable", "protected", "status",
+}
+
+BOILERPLATE_PHRASES = {
+    "equal opportunity", "reasonable accommodation", "protected status",
+    "privacy policy", "terms conditions", "apply now", "job description",
+    "job type", "salary range", "benefits package", "work environment",
+    "background check", "drug screen", "authorized work", "without sponsorship",
 }
 
 # Technical skills dictionary for enhanced extraction
@@ -49,6 +63,20 @@ TECH_SKILLS = {
     ".net", "firebase", "supabase", "prisma", "langchain",
     "openai", "llm", "rag", "vector database",
     "bigquery", "snowflake", "dbt", "mlflow",
+    "active directory", "microsoft 365", "office 365", "intune", "sccm",
+    "servicenow", "technical support", "desktop support", "help desk",
+    "service desk", "ticketing", "troubleshooting", "vpn", "windows",
+    "macos", "linux administration", "networking", "tcp/ip",
+    "financial modeling", "forecasting", "budgeting", "audit", "gaap",
+    "risk management", "aml", "kyc", "compliance", "regulatory affairs",
+    "clinical research", "clinical trials", "gcp clinical", "biostatistics",
+    "bioinformatics", "genomics", "laboratory", "research assistant",
+    "solidworks", "autocad", "catia", "ansys", "fea", "gd&t",
+    "manufacturing", "lean", "six sigma", "quality assurance",
+    "project management", "program management", "supply chain",
+    "procurement", "logistics", "market research", "seo",
+    "google analytics", "content strategy", "social media",
+    "ux research", "wireframing", "prototyping", "adobe creative suite",
 }
 
 
@@ -102,26 +130,58 @@ def extract_keywords(
     Returns:
         List of keywords ordered by relevance
     """
-    # Normalize
-    text_lower = text.lower()
+    # Normalize and remove job-board/EEO boilerplate before keyword counting.
+    text_lower = clean_text(text).lower()
+    text_lower = re.sub(
+        r"\b(equal opportunity employer|reasonable accommodation|protected veteran|"
+        r"privacy policy|terms and conditions|background check|drug screen|"
+        r"applicants will receive consideration|we are committed to diversity)\b",
+        " ",
+        text_lower,
+    )
     words = re.findall(r"\b[a-z][a-z0-9+#./-]*\b", text_lower)
 
     # Filter stop words and short words
-    filtered = [w for w in words if w not in STOP_WORDS and len(w) >= min_word_length]
+    filtered = [
+        w for w in words
+        if w not in STOP_WORDS
+        and len(w) >= min_word_length
+        and not w.isdigit()
+        and not re.fullmatch(r"\d+[a-z]*", w)
+    ]
 
     # Count frequencies
     counter = Counter(filtered)
+
+    # Add meaningful two-word phrases. This keeps ATS keywords closer to the
+    # JD language ("data pipeline", "active directory") instead of noisy
+    # single words like "data" or "active".
+    for a, b in zip(filtered, filtered[1:]):
+        phrase = f"{a} {b}"
+        if phrase not in BOILERPLATE_PHRASES and a != b:
+            counter[phrase] += 2
 
     # Boost technical skills
     if include_tech:
         # Check for multi-word tech terms
         for skill in TECH_SKILLS:
             if " " in skill and skill in text_lower:
-                counter[skill] = counter.get(skill, 0) + 5
+                counter[skill] = counter.get(skill, 0) + 8
             elif skill in counter:
-                counter[skill] = counter[skill] * 2  # Double weight for tech skills
+                counter[skill] = counter[skill] * 3
 
-    return [kw for kw, _ in counter.most_common(top_n)]
+    out: list[str] = []
+    for kw, _ in counter.most_common(top_n * 2):
+        if kw in BOILERPLATE_PHRASES:
+            continue
+        if " " not in kw and kw in STOP_WORDS:
+            continue
+        if len(kw) < min_word_length:
+            continue
+        out.append(kw)
+        if len(out) >= top_n:
+            break
+    return out
 
 
 def _skill_pattern(skill: str) -> str:
@@ -176,8 +236,26 @@ def compute_keyword_overlap(
     Returns:
         Tuple of (matched_keywords, missing_keywords, overlap_percentage)
     """
-    set1 = set(k.lower() for k in keywords1)
-    set2 = set(k.lower() for k in keywords2)
+    def norm(value: str) -> str:
+        text = value.lower().strip()
+        aliases = {
+            "js": "javascript",
+            "node": "node.js",
+            "nodejs": "node.js",
+            "postgres": "postgresql",
+            "k8s": "kubernetes",
+            "g suite": "google workspace",
+            "m365": "microsoft 365",
+            "o365": "office 365",
+            "ad": "active directory",
+            "powerbi": "power bi",
+            "ci cd": "ci/cd",
+        }
+        text = re.sub(r"[^a-z0-9+#./]+", " ", text).strip()
+        return aliases.get(text, text)
+
+    set1 = {norm(k) for k in keywords1 if str(k).strip()}
+    set2 = {norm(k) for k in keywords2 if str(k).strip()}
 
     matched = sorted(set1 & set2)
     missing = sorted(set2 - set1)

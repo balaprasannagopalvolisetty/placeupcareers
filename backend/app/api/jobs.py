@@ -25,6 +25,7 @@ from app.utils.terminal_table import render_table
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
+DEFAULT_VISIBLE_MAX_AGE_DAYS = 15
 
 SPONSORSHIP_BLOCK_RE = re.compile(
     r"(?i)\b("
@@ -277,6 +278,71 @@ def _posted_since(value: Optional[str], tz_offset_minutes: int = 0) -> Optional[
     return None
 
 
+def _posted_window(value: Optional[str], tz_offset_minutes: int = 0) -> tuple[Optional[datetime], Optional[datetime]]:
+    """Return UTC start/end bounds for frontend time filters."""
+    if not value:
+        return None, None
+    now = datetime.now(timezone.utc)
+    user_offset = timedelta(minutes=-tz_offset_minutes)
+    user_now = now + user_offset
+    local_midnight = user_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    key = value.strip().lower()
+    if key == "today":
+        return local_midnight - user_offset, None
+    if key == "yesterday":
+        return (local_midnight - timedelta(days=1)) - user_offset, local_midnight - user_offset
+    if key in {"week", "7d", "last_week"}:
+        return now - timedelta(days=7), None
+    if key in {"month", "30d", "last_month"}:
+        return now - timedelta(days=30), None
+    return None, None
+
+
+def _visible_jobs_cutoff() -> datetime:
+    """Default frontend isolation boundary.
+
+    Older jobs remain in Postgres/master_jobs for audit/history, but normal
+    frontend projections should not show positions posted more than 15 days ago.
+    """
+    return datetime.now(timezone.utc) - timedelta(days=DEFAULT_VISIBLE_MAX_AGE_DAYS)
+
+
+def _coerce_datetime(value: Any) -> Optional[datetime]:
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if not value:
+        return None
+    try:
+        text = str(value).replace("Z", "+00:00")
+        parsed = datetime.fromisoformat(text)
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+
+def _local_date(value: Any, tz_offset_minutes: int = 0):
+    dt = _coerce_datetime(value)
+    if not dt:
+        return None
+    return (dt + timedelta(minutes=-tz_offset_minutes)).date()
+
+
+def _projection_sort_key(job: dict, tz_offset_minutes: int = 0) -> tuple:
+    """Frontend projection: today high ATS, yesterday high ATS, then high-to-low."""
+    today = (datetime.now(timezone.utc) + timedelta(minutes=-tz_offset_minutes)).date()
+    posted_day = _local_date(job.get("posted_at"), tz_offset_minutes=tz_offset_minutes)
+    if posted_day == today:
+        date_bucket = 0
+    elif posted_day == today - timedelta(days=1):
+        date_bucket = 1
+    else:
+        date_bucket = 2
+    score = int(job.get("match_score") or 0)
+    posted = _coerce_datetime(job.get("posted_at"))
+    posted_ts = posted.timestamp() if posted else 0
+    return (date_bucket, -score, -posted_ts)
+
+
 def _taxonomy_terms(category: Optional[str], role: Optional[str]) -> list[str]:
     if not (category or role):
         return []
@@ -510,9 +576,14 @@ async def list_jobs(
         filters["status"] = status
     if visa_only:
         filters["visa_only"] = True
-    posted_since = _posted_since(time_filter, tz_offset_minutes=tz_offset)
+    posted_since, posted_before = _posted_window(time_filter, tz_offset_minutes=tz_offset)
+    visible_cutoff = _visible_jobs_cutoff()
     if posted_since:
-        filters["posted_since"] = posted_since
+        filters["posted_since"] = max(posted_since, visible_cutoff)
+    else:
+        filters["posted_since"] = visible_cutoff
+    if posted_before:
+        filters["posted_before"] = posted_before
     title_terms = _taxonomy_terms(category, role)
     if title_terms:
         filters["title_terms"] = title_terms
@@ -626,7 +697,13 @@ async def list_jobs(
             if pref_bonus and isinstance(j.get("match_score"), int):
                 j["match_score"] = min(98, int(j["match_score"]) + pref_bonus)
 
-        # 0-10 yr prioritization. Tags come from the scraper (extra_metadata).
+        # Score the filtered candidate pool before slicing so the frontend
+        # projection can be genuinely ATS-ranked, not just baseline-ranked.
+        for job_data in decorated:
+            _score_visible_job(job_data)
+
+        # 0-10 yr prioritization remains as a tie-breaker; the primary
+        # projection is date bucket + ATS score below.
         if entry_level:
             def _entry_score(j: dict) -> tuple:
                 meta = j.get("extra_metadata") or {}
@@ -650,12 +727,11 @@ async def list_jobs(
                     bucket = 3 if is_senior_title(title) else 2
                 else:
                     bucket = 5
-                # Keep the hot list endpoint fast: use a cheap baseline for
-                # ordering the candidate pool, then do real resume scoring only
-                # for the rows returned on this page.
-                match = -_baseline_ats_score(j)
-                return (match, bucket) if sort == "match" else (bucket, match)
+                score = -int(j.get("match_score") or 0)
+                return (bucket, score)
             decorated.sort(key=_entry_score)
+
+        decorated.sort(key=lambda row: _projection_sort_key(row, tz_offset_minutes=tz_offset))
 
         # Cap to the requested page_size. For taxonomy/category filters we
         # slice from the full pool; for the standard path the over-fetch ×4
@@ -665,13 +741,6 @@ async def list_jobs(
             page_jobs = decorated[offset:offset + page_size]
         else:
             page_jobs = decorated[:page_size]
-
-        # Per-user ATS scoring is the expensive part of this endpoint. Score
-        # only the rows that will be returned instead of the full over-fetched
-        # candidate pool. This keeps the Jobs page from waiting 30-50 seconds
-        # when a user has an active resume.
-        for job_data in page_jobs:
-            _score_visible_job(job_data)
 
         # Convert to JobPost models for the response. Stash the taxonomy
         # extras and re-attach them post-validation so the strict JobPost
@@ -1062,9 +1131,13 @@ async def get_top_matches(
         filters["location"] = location
     if visa_only:
         filters["visa_only"] = True
-    posted_since = _posted_since(time_filter, tz_offset_minutes=tz_offset)
+    posted_since, posted_before = _posted_window(time_filter, tz_offset_minutes=tz_offset)
     if posted_since:
-        filters["posted_since"] = posted_since
+        filters["posted_since"] = max(posted_since, _visible_jobs_cutoff())
+    else:
+        filters["posted_since"] = _visible_jobs_cutoff()
+    if posted_before:
+        filters["posted_before"] = posted_before
     resume_text = await _active_resume_text(user_id)
     preferred_roles, preferred_locations = _preference_terms(user_id)
     terms = preferred_roles[:]
@@ -1096,7 +1169,7 @@ async def get_top_matches(
         if preferred_locations and any(term in loc_hay for term in preferred_locations):
             item["match_score"] = min(98, int(item["match_score"]) + 3)
         ranked.append(item)
-    ranked.sort(key=lambda row: int(row.get("match_score") or 0), reverse=True)
+    ranked.sort(key=lambda row: _projection_sort_key(row, tz_offset_minutes=tz_offset))
     return {
         "jobs": ranked[:limit],
         "total": len(ranked),
