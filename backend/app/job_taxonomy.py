@@ -223,6 +223,49 @@ def all_role_backfill_search_terms() -> list[str]:
     return out
 
 
+def all_taxonomy_scrape_search_terms() -> list[str]:
+    """Comprehensive scheduled scrape queries for every Jobs-page position.
+
+    This is intentionally role/synonym based, not prefix-heavy. The scraper
+    already filters roles down to 0-10 years after fetch, so broad role terms
+    collect more complete source coverage than hundreds of narrow "entry level"
+    variants that many job boards do not index consistently.
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+
+    def add(term: str) -> None:
+        clean = " ".join((term or "").replace("/", " ").split())
+        key = clean.lower()
+        if len(clean) >= 3 and key not in seen:
+            seen.add(key)
+            out.append(clean)
+
+    for cat in CATEGORIES:
+        for role in cat.roles:
+            add(role.name)
+            for synonym in role.synonyms:
+                add(synonym)
+
+    coverage_terms = [
+        "entry level visa sponsorship",
+        "junior OPT friendly",
+        "new grad H1B sponsor",
+        "associate OPT STEM",
+        "internship OPT",
+        "visa sponsorship",
+        "H1B sponsor",
+        "OPT eligible",
+        "STEM OPT",
+        "early career",
+        "new graduate",
+    ]
+    for term in coverage_terms:
+        add(term)
+
+    return out
+
+
 def all_early_career_search_terms() -> list[str]:
     """Search terms biased toward 0-10 year roles across the taxonomy."""
     seen: set[str] = set()

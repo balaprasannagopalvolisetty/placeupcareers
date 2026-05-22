@@ -7,7 +7,7 @@ import asyncio
 import logging
 
 from app.etl.jobs_scraper import run as run_job_scraper
-from app.job_taxonomy import all_early_career_search_terms
+from app.job_taxonomy import all_taxonomy_scrape_search_terms
 
 logger = logging.getLogger("placeup.etl.external_api_ingest")
 
@@ -22,7 +22,7 @@ def parse_args() -> argparse.Namespace:
 def _provider_sources(provider: str) -> str:
     provider = (provider or "all").lower()
     if provider in {"all", "external"}:
-        return "rapidapi"
+        return "rapidapi~usajobs~dice"
     if provider in {"jsearch", "rapidapi", "linkedin"}:
         return "rapidapi"
     if provider in {"usajobs", "usa"}:
@@ -34,11 +34,15 @@ def _provider_sources(provider: str) -> str:
 
 async def run(args: argparse.Namespace) -> int:
     scraper_args = argparse.Namespace(
-        queries="~".join(term.replace(" ", "_") for term in all_early_career_search_terms()),
+        queries="~".join(term.replace(" ", "_") for term in all_taxonomy_scrape_search_terms()),
         locations="North_America",
         sources=_provider_sources(args.provider),
-        max_per_source=25,
+        max_per_source=60,
         max_per_sponsor=10,
+        h1b_sponsor_concurrency=1,
+        jobspy_hours_old=720,
+        jobspy_page_size=50,
+        jobspy_max_pages=25,
         tiers="",
         schedule_type=args.schedule_type,
         dry_run=False,
