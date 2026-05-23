@@ -20,6 +20,26 @@ if (-not $UserFirestoreProjectId) {
   $UserFirestoreProjectId = $FrontendProjectId
 }
 
+function Test-GcpSecretExists([string]$ProjectId, [string]$SecretName) {
+  $previousErrorAction = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    & gcloud.cmd secrets describe $SecretName --project $ProjectId --format="value(name)" *> $null
+    return $LASTEXITCODE -eq 0
+  } finally {
+    $ErrorActionPreference = $previousErrorAction
+  }
+}
+
+function Add-OptionalSecretBinding([string]$ProjectId, [string]$CurrentBindings, [string]$SecretName) {
+  if (Test-GcpSecretExists $ProjectId $SecretName) {
+    return "$CurrentBindings,$SecretName=$SecretName`:latest"
+  }
+
+  Write-Host "Secret $SecretName not found; skipping optional binding."
+  return $CurrentBindings
+}
+
 if (-not $SkipBackend) {
   $backendArgs = @{
     ProjectId = $BackendProjectId
@@ -125,6 +145,39 @@ if (-not $SkipBackend) {
     --command python `
     --args="-m,app.workers.ats_worker" `
     --max-retries 1
+
+  # Daily ops digest — emails the deduped company + location list to
+  # operations@placeupcareer.com and (optionally) syncs to a Google
+  # Sheet. SMTP creds + sheet ID come from Secret Manager. Cloud
+  # Scheduler trigger is set up in schedule_jobs.ps1.
+  Write-Host "Deploying companies-export Cloud Run Job..."
+  $exportEnv = "$workerEnv,COMPANIES_EXPORT_TO=operations@placeupcareer.com"
+  # Best-effort secret binding — the job still runs (email skipped, log only)
+  # if these secrets are not present yet. Add them once with:
+  #   gcloud secrets create SMTP_HOST --data-file=- <<< "smtp.gmail.com"
+  #   gcloud secrets create SMTP_PORT --data-file=- <<< "587"
+  #   gcloud secrets create SMTP_USER --data-file=- <<< "no-reply@placeupcareer.com"
+  #   gcloud secrets create SMTP_PASSWORD --data-file=- <<< "<app password>"
+  #   gcloud secrets create COMPANIES_EXPORT_SHEET_ID --data-file=- <<< "<sheet id>"
+  $exportSecrets = "DATABASE_URL=DATABASE_URL:latest"
+  foreach ($secretName in @("SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "COMPANIES_EXPORT_SHEET_ID")) {
+    $exportSecrets = Add-OptionalSecretBinding $BackendProjectId $exportSecrets $secretName
+  }
+
+  gcloud.cmd run jobs deploy placeup-companies-export `
+    --image $imageTag `
+    --region $Region `
+    --project $BackendProjectId `
+    --service-account "placeup-api-sa@$BackendProjectId.iam.gserviceaccount.com" `
+    --set-cloudsql-instances "$BackendProjectId`:$Region`:$DbInstance" `
+    --set-env-vars $exportEnv `
+    --set-secrets $exportSecrets `
+    --memory 512Mi `
+    --cpu 1 `
+    --task-timeout 600s `
+    --command python `
+    --args="-m,app.workers.companies_export" `
+    --max-retries 2
 }
 
 Write-Host "Separate Cloud Run deployment complete."

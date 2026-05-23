@@ -33,6 +33,8 @@ psycopg[binary]>=3.2.3
 python-dotenv>=1.0.0
 aiofiles>=24.1.0
 apscheduler>=3.10.0
+google-api-python-client>=2.150.0
+google-auth>=2.35.0
 
 # Auth — real JWT + password hashing (bcrypt called directly; passlib is
 # incompatible with bcrypt >= 4.x and trips spurious 72-byte errors)

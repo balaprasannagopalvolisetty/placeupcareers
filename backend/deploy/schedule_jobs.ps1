@@ -17,8 +17,16 @@ function Upsert-SchedulerJob {
     [string]$Uri
   )
 
-  gcloud.cmd scheduler jobs describe $Name --location $Region --project $ProjectId *> $null
-  if ($LASTEXITCODE -eq 0) {
+  $previousErrorAction = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    gcloud.cmd scheduler jobs describe $Name --location $Region --project $ProjectId *> $null
+    $exists = $LASTEXITCODE -eq 0
+  } finally {
+    $ErrorActionPreference = $previousErrorAction
+  }
+
+  if ($exists) {
     gcloud.cmd scheduler jobs update http $Name `
       --location $Region `
       --schedule $Schedule `
@@ -51,5 +59,15 @@ Upsert-SchedulerJob `
   -Name "placeup-taxonomy-role-backfill" `
   -Schedule "15 2 * * *" `
   -Uri "$JobRunBase/placeup-taxonomy-role-backfill:run"
+
+# Daily ops digest — pulls deduped (company, location) rows from
+# master_jobs, emails the CSV to operations@placeupcareer.com, and
+# (when COMPANIES_EXPORT_SHEET_ID is set) syncs to a Google Sheet.
+# 06:00 in the configured time zone lands a fresh list in the team's
+# inbox right at the start of the workday.
+Upsert-SchedulerJob `
+  -Name "placeup-companies-export-daily" `
+  -Schedule "0 6 * * *" `
+  -Uri "$JobRunBase/placeup-companies-export:run"
 
 Write-Host "Cloud Scheduler jobs created."
