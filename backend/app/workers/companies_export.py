@@ -268,13 +268,21 @@ def write_to_google_sheet(rows: List[Tuple], *, dry_run: bool) -> bool:
 
     if not sheet_id:
         title = os.getenv("COMPANIES_EXPORT_SHEET_TITLE", DEFAULT_SHEET_TITLE)
-        created = sheets.create(
-            body={
-                "properties": {"title": title},
-                "sheets": [{"properties": {"title": tab}}],
-            },
-            fields="spreadsheetId,spreadsheetUrl",
-        ).execute()
+        try:
+            created = sheets.create(
+                body={
+                    "properties": {"title": title},
+                    "sheets": [{"properties": {"title": tab}}],
+                },
+                fields="spreadsheetId,spreadsheetUrl",
+            ).execute()
+        except Exception as exc:
+            logger.exception(
+                "Google Sheet creation failed. Create a sheet manually or run gcloud auth login "
+                "with Sheets/Drive scopes, then store COMPANIES_EXPORT_SHEET_ID: %s",
+                exc,
+            )
+            return False
         sheet_id = created["spreadsheetId"]
         logger.info(
             "Created Google Sheet for companies export: id=%s url=%s",
