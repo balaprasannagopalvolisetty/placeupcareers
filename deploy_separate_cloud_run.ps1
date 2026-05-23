@@ -151,7 +151,7 @@ if (-not $SkipBackend) {
   # Sheet. SMTP creds + sheet ID come from Secret Manager. Cloud
   # Scheduler trigger is set up in schedule_jobs.ps1.
   Write-Host "Deploying companies-export Cloud Run Job..."
-  $exportEnv = "$workerEnv,COMPANIES_EXPORT_TO=operations@placeupcareer.com"
+  $exportEnv = "$workerEnv,COMPANIES_EXPORT_TO=operations@placeupcareer.com,COMPANIES_EXPORT_CREATE_SHEET=true,COMPANIES_EXPORT_SHARE_EMAIL=operations@placeupcareer.com"
   # Best-effort secret binding — the job still runs (email skipped, log only)
   # if these secrets are not present yet. Add them once with:
   #   gcloud secrets create SMTP_HOST --data-file=- <<< "smtp.gmail.com"

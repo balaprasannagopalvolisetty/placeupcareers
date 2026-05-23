@@ -23,6 +23,10 @@ Required to send email:
 Optional — turns on Google Sheets sync when ALL three are set:
     COMPANIES_EXPORT_SHEET_ID   — Sheet ID from the URL (the long string).
     COMPANIES_EXPORT_SHEET_TAB  — Tab name to write into, default "companies".
+    COMPANIES_EXPORT_CREATE_SHEET — when true and no sheet ID is set, create
+                                      a new spreadsheet and log its ID.
+    COMPANIES_EXPORT_SHARE_EMAIL  — email to share newly created sheets with,
+                                      default operations@placeupcareer.com.
     GOOGLE_APPLICATION_CREDENTIALS  — path to a service-account JSON with
                                       "Sheets API: edit" on that sheet.
 
@@ -57,6 +61,7 @@ logger = logging.getLogger("placeup.workers.companies_export")
 
 DEFAULT_RECIPIENT = "operations@placeupcareer.com"
 DEFAULT_SHEET_TAB = "companies"
+DEFAULT_SHEET_TITLE = "PlaceUp Master Company Locations"
 
 # Query the merged source of truth and collapse every duplicate
 # (company, location) pair. This intentionally does not filter to
@@ -213,18 +218,22 @@ def send_email(*, csv_text: str, html_body: str, generated_at: datetime, dry_run
 def write_to_google_sheet(rows: List[Tuple], *, dry_run: bool) -> bool:
     """Replace the contents of the configured tab with the export.
 
-    No-op when COMPANIES_EXPORT_SHEET_ID is not set, or when the
-    google-api-python-client package is missing.
+    No-op when COMPANIES_EXPORT_SHEET_ID is not set unless
+    COMPANIES_EXPORT_CREATE_SHEET=true. When the job creates a sheet, it
+    logs the Sheet ID so we can store that ID in Secret Manager and keep
+    all future runs updating the same master sheet.
     """
     sheet_id = os.getenv("COMPANIES_EXPORT_SHEET_ID", "").strip()
-    if not sheet_id:
+    create_sheet = os.getenv("COMPANIES_EXPORT_CREATE_SHEET", "").strip().lower() in {"1", "true", "yes", "on"}
+    tab = os.getenv("COMPANIES_EXPORT_SHEET_TAB", DEFAULT_SHEET_TAB)
+
+    if not sheet_id and not create_sheet:
         logger.info("COMPANIES_EXPORT_SHEET_ID not set; skipping Google Sheets sync.")
         return False
 
-    tab = os.getenv("COMPANIES_EXPORT_SHEET_TAB", DEFAULT_SHEET_TAB)
-
     if dry_run:
-        logger.info("DRY RUN — would write %s rows to sheet %s tab %s.", len(rows), sheet_id, tab)
+        target = sheet_id or f"new spreadsheet tab {tab}"
+        logger.info("DRY RUN — would write %s rows to %s.", len(rows), target)
         return False
 
     try:
@@ -256,6 +265,36 @@ def write_to_google_sheet(rows: List[Tuple], *, dry_run: bool) -> bool:
 
     service = build("sheets", "v4", credentials=creds, cache_discovery=False)
     sheets = service.spreadsheets()
+
+    if not sheet_id:
+        title = os.getenv("COMPANIES_EXPORT_SHEET_TITLE", DEFAULT_SHEET_TITLE)
+        created = sheets.create(
+            body={
+                "properties": {"title": title},
+                "sheets": [{"properties": {"title": tab}}],
+            },
+            fields="spreadsheetId,spreadsheetUrl",
+        ).execute()
+        sheet_id = created["spreadsheetId"]
+        logger.info(
+            "Created Google Sheet for companies export: id=%s url=%s",
+            sheet_id,
+            created.get("spreadsheetUrl"),
+        )
+
+        share_email = os.getenv("COMPANIES_EXPORT_SHARE_EMAIL", DEFAULT_RECIPIENT).strip()
+        if share_email:
+            try:
+                drive = build("drive", "v3", credentials=creds, cache_discovery=False)
+                drive.permissions().create(
+                    fileId=sheet_id,
+                    sendNotificationEmail=False,
+                    body={"type": "user", "role": "writer", "emailAddress": share_email},
+                    fields="id",
+                ).execute()
+                logger.info("Shared companies export sheet %s with %s.", sheet_id, share_email)
+            except Exception as exc:
+                logger.exception("Created sheet %s, but sharing with %s failed: %s", sheet_id, share_email, exc)
 
     header = ["company", "location"]
     values = [header]
