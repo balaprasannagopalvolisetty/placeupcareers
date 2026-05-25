@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from "recharts";
-import { TrendingUp, Eye, FileText, Award } from "lucide-react";
+import { TrendingUp, Award, ExternalLink } from "lucide-react";
 
 function useViewportFlags() {
   const getWidth = () => (typeof window === "undefined" ? 1280 : window.innerWidth);
@@ -35,8 +35,6 @@ interface ScorePoint { version: string; score: number }
 
 const ICON_BY_LABEL: Record<string, typeof TrendingUp> = {
   applications: TrendingUp,
-  "profile views": Eye,
-  "resume downloads": FileText,
   "top match": Award,
 };
 
@@ -45,6 +43,7 @@ export function AnalyticsPage() {
   const [metrics, setMetrics] = useState<MetricCard[]>([]);
   const [timeSeries, setTimeSeries] = useState<TimePoint[]>([]);
   const [scoreData, setScoreData] = useState<ScorePoint[]>([]);
+  const [applications, setApplications] = useState<api.UserApplicationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,14 +52,13 @@ export function AnalyticsPage() {
     setLoading(true);
     setError(null);
 
-    api
-      .getAnalyticsDashboard()
-      .then((data) => {
+    Promise.all([api.getAnalyticsDashboard(), api.getUserApplications()])
+      .then(([data, appRows]) => {
         if (!active) return;
 
         if (Array.isArray(data.metrics) && data.metrics.length) {
           setMetrics(
-            data.metrics.map((m, i) => {
+            data.metrics.filter((m) => !["profile views", "resume downloads"].includes((m.label || "").toLowerCase())).map((m, i) => {
               const key = (m.label || "").toLowerCase();
               const Icon = ICON_BY_LABEL[key] ?? TrendingUp;
               const color = i % 2 === 0 ? T.red : T.burnt;
@@ -74,6 +72,7 @@ export function AnalyticsPage() {
 
         const scores = data.ats_score_history ?? data.resume_scores;
         if (Array.isArray(scores) && scores.length) setScoreData(scores as ScorePoint[]);
+        setApplications((appRows || []).filter((row) => row.status === "applied" || row.status === "interview"));
       })
       .catch((err) => {
         if (active) setError((err as Error).message || "Could not load analytics.");
@@ -112,6 +111,39 @@ export function AnalyticsPage() {
             <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans }}>{m.trend}</div>
           </motion.div>
         ))}
+      </div>
+
+      <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: 24 }}>
+        <div style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 600, color: T.text, marginBottom: 16 }}>Applied Positions</div>
+        {applications.length === 0 ? (
+          <div style={{ color: T.t3, fontFamily: F.sans, fontSize: 13 }}>No applied positions yet.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {applications.map((app) => (
+              <div key={`${app.job_id}-${app.updated_at || app.created_at || app.title}`} style={{ padding: 14, borderRadius: 14, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: T.text, fontFamily: F.sans }}>{app.title || "Applied position"}</div>
+                    <div style={{ fontSize: 12, color: T.t2, fontFamily: F.sans, marginTop: 3 }}>{app.company || "Unknown company"} · {app.location || "Location not specified"}</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 11, color: T.red, fontFamily: F.sans, fontWeight: 700 }}>{app.match_score || 0}% match</span>
+                    {app.job_url && (
+                      <a href={app.job_url} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 5, color: T.t2, fontSize: 11, fontFamily: F.sans, textDecoration: "none" }}>
+                        <ExternalLink size={12} /> Job post
+                      </a>
+                    )}
+                  </div>
+                </div>
+                {(app.description || app.notes) && (
+                  <div style={{ marginTop: 10, fontSize: 12, color: T.t3, fontFamily: F.sans, lineHeight: 1.55, display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                    {app.description || app.notes}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Charts */}

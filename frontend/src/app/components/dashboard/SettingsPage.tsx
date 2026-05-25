@@ -4,6 +4,7 @@ import { motion } from "motion/react";
 import { Save, AlertTriangle, MailCheck, KeyRound, Trash2 } from "lucide-react";
 import * as api from "../../lib/api";
 import { clearStoredToken } from "../../lib/api";
+import { BillingPage } from "./BillingPage";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif" };
 const T = {
@@ -12,22 +13,6 @@ const T = {
   grad: "linear-gradient(135deg, #8C3A27, #A6372D, #401212)", red: "#A6372D",
   input: "rgba(242,238,179,0.05)",
 };
-
-const JOB_PREFERENCE_SUGGESTIONS = [
-  "Software Engineer",
-  "Frontend Engineer",
-  "Backend Engineer",
-  "Full Stack Engineer",
-  "Security Engineer",
-  "Cybersecurity Analyst",
-  "Data Engineer",
-  "Machine Learning Engineer",
-  "Data Scientist",
-  "DevOps / Cloud Engineer",
-  "Analytics Engineer",
-  "Product Manager",
-  "Business Analyst",
-];
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -57,6 +42,24 @@ function Field({ label, type = "text", placeholder, value, onChange, disabled }:
         onFocus={(e) => { e.target.style.borderColor = T.red; }}
         onBlur={(e) => { e.target.style.borderColor = T.border; }}
       />
+    </div>
+  );
+}
+
+function SelectField({ label, value, options, onChange }: {
+  label: string; value: string; options: readonly string[] | string[]; onChange: (v: string) => void;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+      <label style={{ fontSize: 12, fontWeight: 600, color: T.t2, fontFamily: F.sans }}>{label}</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ height: 44, padding: "0 14px", borderRadius: 10, border: `1px solid ${T.border}`, background: T.input, color: T.text, fontSize: 13, fontFamily: F.sans, outline: "none" }}
+      >
+        <option value="">Select</option>
+        {options.map((option) => <option key={option} value={option}>{option}</option>)}
+      </select>
     </div>
   );
 }
@@ -93,32 +96,42 @@ export function SettingsPage() {
   // Forgot/verify status notes shown next to the email field.
   const [forgotStatus, setForgotStatus] = useState<string | null>(null);
   const [verifyStatus, setVerifyStatus] = useState<string | null>(null);
+  const [allRoles, setAllRoles] = useState<string[]>([]);
+  const [roleToAdd, setRoleToAdd] = useState("");
   const navigate = useNavigate();
 
   useEffect(() => {
     let active = true;
-    Promise.all([api.getProfile(), api.getPreferences()])
-      .then(([p, pr]) => { if (active) { setProfile(p); setPrefs(pr); } })
+    Promise.all([api.getProfile(), api.getPreferences(), api.getJobTaxonomy()])
+      .then(([p, pr, taxonomy]) => {
+        if (active) {
+          setProfile(p);
+          setPrefs(pr);
+          const roles = Array.from(new Set((taxonomy.categories || []).flatMap((cat) => cat.roles.map((role: any) => String(role.name || "")).filter(Boolean))));
+          setAllRoles(roles);
+        }
+      })
       .catch((err) => { if (active) setError((err as Error).message); });
     return () => { active = false; };
   }, []);
 
   const update = (k: keyof api.UserProfile, v: string) => setProfile((p) => p ? ({ ...p, [k]: v }) : p);
   const updatePref = (k: keyof api.UserPreferences, v: any) => setPrefs((pr) => pr ? ({ ...pr, [k]: v }) : pr);
-  const rolesFromPreferenceText = (value: string) => value
-    .split(/[,;\n]/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .slice(0, 25);
   const addJobPreference = (suggestion: string) => {
     setPrefs((pr) => {
       if (!pr) return pr;
-      const current = pr.job_preferences || "";
-      const parts = current.split(",").map((item) => item.trim()).filter(Boolean);
+      const parts = pr.target_roles || [];
       if (parts.some((item) => item.toLowerCase() === suggestion.toLowerCase())) return pr;
-      const next = [...parts, suggestion];
+      const next = [...parts, suggestion].slice(0, 25);
       const targetRoles = Array.from(new Set([...(pr.target_roles || []), suggestion]));
       return { ...pr, job_preferences: next.join(", "), target_roles: targetRoles.slice(0, 25) };
+    });
+  };
+  const removeJobPreference = (role: string) => {
+    setPrefs((pr) => {
+      if (!pr) return pr;
+      const next = (pr.target_roles || []).filter((item) => item !== role);
+      return { ...pr, target_roles: next, job_preferences: next.join(", ") };
     });
   };
 
@@ -131,9 +144,8 @@ export function SettingsPage() {
       await api.updateProfile(profile);
       await api.updatePreferences({
         ...prefs,
-        target_roles: rolesFromPreferenceText(prefs.job_preferences || "").length
-          ? rolesFromPreferenceText(prefs.job_preferences || "")
-          : (prefs.target_roles || []).slice(0, 25),
+        job_preferences: (prefs.target_roles || []).join(", "),
+        target_roles: (prefs.target_roles || []).slice(0, 25),
       });
       if (pwNew) {
         if (pwNew !== pwConfirm) throw new Error("Passwords don't match");
@@ -167,29 +179,35 @@ export function SettingsPage() {
 
       <Section title="Career Preferences">
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-          <Field label="Current Visa Status" value={profile.visa_status || ""} onChange={(v) => update("visa_status", v)} />
-          <Field label="Years of Experience" value={profile.experience_years || ""} onChange={(v) => update("experience_years", v)} />
+          <SelectField label="Current Visa Status" value={profile.visa_status || ""} options={api.VISA_STATUS_OPTIONS} onChange={(v) => update("visa_status", v)} />
+          <SelectField label="Years of Experience" value={profile.experience_years || ""} options={api.YEARS_OPTIONS} onChange={(v) => update("experience_years", v)} />
         </div>
         <div style={{ marginTop: 14 }}>
           <label style={{ fontSize: 12, fontWeight: 600, color: T.t2, fontFamily: F.sans, display: "block", marginBottom: 5 }}>Job Preferences</label>
-          <textarea
-            value={prefs.job_preferences || ""}
-            onChange={(e) => updatePref("job_preferences", e.target.value)}
-            style={{ width: "100%", height: 80, padding: "10px 14px", borderRadius: 10, border: `1px solid ${T.border}`, background: T.input, color: T.text, fontSize: 13, fontFamily: F.sans, resize: "none", outline: "none", boxSizing: "border-box" }} />
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <select value={roleToAdd} onChange={(e) => setRoleToAdd(e.target.value)}
+              style={{ flex: 1, height: 44, padding: "0 14px", borderRadius: 10, border: `1px solid ${T.border}`, background: T.input, color: T.text, fontSize: 13, fontFamily: F.sans, outline: "none" }}>
+              <option value="">Select one of the available roles</option>
+              {allRoles.map((role) => <option key={role} value={role}>{role}</option>)}
+            </select>
+            <button type="button" onClick={() => { if (roleToAdd) { addJobPreference(roleToAdd); setRoleToAdd(""); } }}
+              style={{ height: 44, padding: "0 14px", borderRadius: 10, border: "none", background: T.grad, color: "#fff", fontSize: 12, fontWeight: 700, fontFamily: F.sans, cursor: "pointer" }}>
+              Add
+            </button>
+          </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
-            {JOB_PREFERENCE_SUGGESTIONS.map((suggestion) => {
-              const selected = (prefs.job_preferences || "").toLowerCase().includes(suggestion.toLowerCase());
-              return (
-                <button key={suggestion} type="button" onClick={() => addJobPreference(suggestion)}
-                  style={{ fontSize: 11, fontWeight: 600, padding: "5px 9px", borderRadius: 6, fontFamily: F.sans,
-                    cursor: selected ? "default" : "pointer", background: selected ? "rgba(166,55,45,0.16)" : "rgba(242,238,179,0.05)",
-                    color: selected ? T.red : T.t2, border: selected ? "1px solid rgba(166,55,45,0.28)" : `1px solid ${T.border}` }}>
-                  {suggestion}
-                </button>
-              );
-            })}
+            {(prefs.target_roles || []).map((role) => (
+              <span key={role} style={{ fontSize: 11, fontWeight: 600, padding: "5px 9px", borderRadius: 6, fontFamily: F.sans, background: "rgba(166,55,45,0.16)", color: T.red, border: "1px solid rgba(166,55,45,0.28)", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                {role}
+                <button type="button" onClick={() => removeJobPreference(role)} style={{ background: "none", border: "none", color: T.red, cursor: "pointer", padding: 0 }}>×</button>
+              </span>
+            ))}
           </div>
         </div>
+      </Section>
+
+      <Section title="Billing">
+        <BillingPage />
       </Section>
 
       <Section title="Notification Preferences">

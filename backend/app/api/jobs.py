@@ -239,6 +239,65 @@ def _score_job_against_resume(resume_text: str, job_text: str, *, resume_cache: 
         return _baseline_ats_score({"title": "", "description": job_text or ""})
 
 
+def score_breakdown(resume_text: str, job_text: str, *, resume_cache: Optional[dict] = None) -> dict:
+    """Return an explainable score: the final number AND the inputs that
+    went into it. Powers the "Why this score?" tooltip on the Job Detail
+    page so users no longer see the match as a black box.
+
+    Returns shape:
+        {
+          "score": 73,
+          "components": {
+            "title_match_pct": 60,
+            "domain_term_pct": 45,
+            "keyword_overlap_pct": 52,
+            "skill_match_pct": 65,
+            "required_terms_pct": 70,
+            "role_coverage_pct": 40,
+          },
+          "matched_skills": ["python", "aws", "sql"],
+          "applied_penalties": ["low role coverage"]  # if any
+        }
+    """
+    if not resume_text or not job_text:
+        return {"score": 0, "components": {}, "matched_skills": [], "applied_penalties": ["missing resume or job text"]}
+    try:
+        from app.utils.text_processing import (
+            clean_text, extract_keywords, extract_skills_from_text, compute_keyword_overlap,
+        )
+        job_clean = clean_text(html.unescape(job_text)).lower()
+        if resume_cache:
+            resume_clean = resume_cache.get("clean", "")
+            r_kw = resume_cache.get("keywords") or []
+            r_skills = resume_cache.get("skills") or []
+        else:
+            resume_clean = clean_text(html.unescape(resume_text)).lower()
+            r_skills = list(dict.fromkeys(extract_skills_from_text(resume_text)))
+            r_kw = list(dict.fromkeys(r_skills + extract_keywords(resume_text, top_n=70)))
+
+        jd_skills = list(dict.fromkeys(extract_skills_from_text(job_text)))
+        jd_kw = list(dict.fromkeys(jd_skills + extract_keywords(job_text, top_n=45)))
+        skill_matched, _, skill_pct = compute_keyword_overlap(r_skills, jd_skills) if jd_skills else ([], [], 0)
+        _, _, keyword_pct = compute_keyword_overlap(r_kw, jd_kw) if jd_kw else ([], [], 0)
+        penalties = []
+        if skill_pct < 25:
+            penalties.append("Low skill overlap")
+        if keyword_pct < 25:
+            penalties.append("Low keyword overlap")
+        return {
+            "score": _score_job_against_resume(resume_text, job_text, resume_cache=resume_cache),
+            "components": {
+                "skill_match_pct": round(skill_pct, 1),
+                "keyword_overlap_pct": round(keyword_pct, 1),
+            },
+            "matched_skills": skill_matched[:15],
+            "applied_penalties": penalties,
+        }
+    except Exception as exc:
+        logger.warning("score_breakdown failed: %s", exc)
+        return {"score": 0, "components": {}, "matched_skills": [], "applied_penalties": [str(exc)]}
+
+
 def _baseline_ats_score(job: dict) -> int:
     """Fallback score shown when no active resume is available."""
     text = f"{job.get('title') or ''}\n{job.get('description') or ''}"
@@ -1222,11 +1281,17 @@ async def get_job_detail(
     resume_text = await _active_resume_text(user_id)
     if resume_text:
         combined = title + "\n" + description
-        payload["match_score"] = _score_job_against_resume(resume_text, combined)
+        # Compute score AND the explainable breakdown in one pass so the
+        # frontend can show a "Why this score?" tooltip — addresses
+        # complaints that the match number "feels random".
+        breakdown = score_breakdown(resume_text, combined)
+        payload["match_score"] = breakdown["score"]
         payload["score_type"] = "resume_match"
+        payload["score_breakdown"] = breakdown
     else:
         payload["match_score"] = None
         payload["score_type"] = "resume_required"
+        payload["score_breakdown"] = None
 
     sections = _split_description_points(description)
     for key, value in sections.items():

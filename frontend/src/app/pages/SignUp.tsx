@@ -227,6 +227,7 @@ export default function SignUp() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [showPass, setShowPass] = useState(false);
@@ -293,7 +294,7 @@ export default function SignUp() {
 
   const validateStep = (): string | null => {
     if (step === 1) {
-      if (!firstName || !lastName || !email || !password || !confirm) return "Please complete all fields.";
+      if (!firstName || !lastName || !email || !phone || !password || !confirm) return "Please complete all fields.";
       if (password !== confirm) return "Passwords do not match.";
       const passwordProblem = passwordError(password);
       if (passwordProblem) return passwordProblem;
@@ -327,6 +328,7 @@ export default function SignUp() {
     try {
       await signUp({
         first_name: firstName, last_name: lastName, email, password,
+        phone: phone || undefined,
         visa_status: visaStatus || undefined,
         experience_level: experienceLevel || undefined,
         current_role: currentRole || undefined,
@@ -353,7 +355,7 @@ export default function SignUp() {
       <div style={{ width: "100%", maxWidth: 640, borderRadius: isMobile ? 18 : 24, background: "rgba(1,17,38,0.92)", border: `1px solid ${T.border}`, backdropFilter: "blur(28px)", padding: isMobile ? 18 : 32, boxShadow: "0 24px 64px rgba(1,17,38,0.4)" }}>
         <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", gap: isMobile ? 12 : 0, marginBottom: 24 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 9, background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontFamily: F.sans }}>P</div>
+            <img src="/logo_white.png" alt="PlaceUp Career" style={{ width: 34, height: 34, objectFit: "contain" }} />
             <div>
               <div style={{ fontFamily: F.sans, fontSize: 17, fontWeight: 700, color: T.text }}>Create your account</div>
               <div style={{ fontSize: 12, color: T.t2, fontFamily: F.sans }}>Step {step} of 4</div>
@@ -376,6 +378,9 @@ export default function SignUp() {
             <Field label="Last Name" value={lastName} onChange={setLastName} required />
             <div style={{ gridColumn: "1 / -1" }}>
               <Field label="Gmail / Email" type="email" value={email} onChange={setEmail} placeholder="you@example.com" required />
+            </div>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <Field label="Phone Number" type="tel" value={phone} onChange={setPhone} placeholder="+1 555 012 3456" required />
             </div>
             <Field label="Password" type={showPass ? "text" : "password"} value={password} onChange={setPassword} required
               rightEl={<button onClick={() => setShowPass(!showPass)} style={{ background: "none", border: "none", cursor: "pointer", color: T.t3, padding: 0 }}>{showPass ? <EyeOff size={14} /> : <Eye size={14} />}</button>} />

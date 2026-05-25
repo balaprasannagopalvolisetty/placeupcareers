@@ -249,6 +249,7 @@ async def signup(payload: SignupRequest, request: Request, response: Response):
 
     profile_updates = {
         k: v for k, v in {
+            "phone": payload.phone,
             "current_role": payload.current_role,
             "current_company": payload.current_company,
             "location": payload.location,

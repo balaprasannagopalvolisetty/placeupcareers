@@ -170,9 +170,7 @@ export default function SignIn() {
       <div style={{ background: T.surface, display: "flex", alignItems: "center", justifyContent: "center", padding: isMobile ? "32px 18px" : 48 }}>
         <div style={{ width: "100%", maxWidth: 420 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "center", marginBottom: 40 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 9, background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 16px rgba(166,55,45,0.4)" }}>
-              <span style={{ color: "#fff", fontSize: 14, fontWeight: 800, fontFamily: F.sans }}>P</span>
-            </div>
+            <img src="/logo_white.png" alt="PlaceUp Career" style={{ width: 34, height: 34, objectFit: "contain" }} />
             <span style={{ fontFamily: F.sans, fontWeight: 700, fontSize: 18, color: T.text, letterSpacing: "-0.02em" }}>
               PlaceUp <span style={{ color: T.red, fontSize: 14, fontWeight: 600 }}>Career</span>
             </span>

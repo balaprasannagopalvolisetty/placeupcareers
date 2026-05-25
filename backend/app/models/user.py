@@ -22,6 +22,7 @@ class SignupRequest(BaseModel):
     last_name: str
     email: EmailStr
     password: str
+    phone: Optional[str] = None
     # Career details
     visa_status: Optional[str] = None
     experience_level: Optional[str] = None        # e.g. "0-1 years"
@@ -133,6 +134,7 @@ class UserApplication(BaseModel):
     company: str = ""
     location: str = ""
     job_url: str = ""
+    description: str = ""
     match_score: int = 0
     status: str = "applied"
     not_applied_reason: Optional[str] = None

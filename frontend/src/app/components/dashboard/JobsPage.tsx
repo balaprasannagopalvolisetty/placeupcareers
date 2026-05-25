@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
-import { Search, Filter, X, MapPin, DollarSign, Clock, Bookmark, ExternalLink, Flame, Briefcase, ShieldCheck, Sparkles, RefreshCw } from "lucide-react";
+import { Search, Filter, X, MapPin, DollarSign, Clock, Bookmark, ExternalLink, Briefcase, ShieldCheck, Sparkles, RefreshCw } from "lucide-react";
 import * as api from "../../lib/api";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
@@ -12,12 +12,11 @@ const T = {
 };
 
 const STATUS_CHIPS = ["All", "New", "Applied", "Interview", "Saved"];
-const TIME_CHIPS = [
+const TIME_OPTIONS = [
   { label: "Any time", value: "" },
   { label: "Today", value: "today" },
   { label: "Yesterday", value: "yesterday" },
   { label: "Week", value: "week" },
-  { label: "Month", value: "month" },
 ];
 const VISA_BADGES: Record<string, { bg: string; color: string; border: string }> = {
   "H-1B":   { bg: "rgba(140,58,39,0.15)", color: "#8C3A27", border: "rgba(140,58,39,0.35)" },
@@ -161,6 +160,18 @@ function getTrackedJobs(): Record<string, "applied" | "interview" | "not_applied
   try {
     return JSON.parse(localStorage.getItem("placeup_job_tracking") || "{}") as Record<string, "applied" | "interview" | "not_applied">;
   } catch { return {}; }
+}
+
+function companyLogoUrl(job: api.JobPost): string {
+  const url = resolveJobUrl(job);
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, "");
+    if (host) return `https://logo.clearbit.com/${host}`;
+  } catch {
+    // Fall back to Clearbit's domain guess below.
+  }
+  const slug = (job.company || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return slug ? `https://logo.clearbit.com/${slug}.com` : "";
 }
 
 function ATSRing({ score, size = 60 }: { score: number | null | undefined; size?: number }) {
@@ -453,7 +464,10 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
     return jobs;
   }, [jobs, statusFilter, savedIds, trackedJobs]);
 
-  const currentCategory = taxonomy.find((c) => c.name === activeCategory);
+  const allRoles = useMemo(
+    () => Array.from(new Set(taxonomy.flatMap((cat) => cat.roles.map((role) => role.name)).filter(Boolean))),
+    [taxonomy],
+  );
   const allJobsCount = Number(pipelineStatus?.total_jobs || pipelineStatus?.active_jobs || total || 0);
   const openPositionsCount = hasServerFilters ? total : allJobsCount;
   const targetRoleCount = userPrefs?.target_roles?.length || 0;
@@ -471,6 +485,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       company: job.company || "",
       location: job.location || "",
       job_url: resolveJobUrl(job),
+      description: cleanPreview(job.description).slice(0, 12000),
       match_score: typeof job.match_score === "number" ? job.match_score : 0,
       status,
       position_open: true,
@@ -478,72 +493,9 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   };
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: isTablet ? "1fr" : "280px minmax(0, 1fr)", gap: isMobile ? 12 : 20, alignItems: "start", width: "100%", minWidth: 0 }}>
-      {/* CATEGORY SIDEBAR */}
-      <aside style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 16, padding: isMobile ? 10 : 12, height: "fit-content", position: isTablet ? "relative" : "sticky", top: isTablet ? 0 : 20, minWidth: 0 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: T.t3, fontFamily: F.sans, padding: "8px 10px 12px" }}>Categories</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: isTablet ? 320 : "70vh", overflowY: "auto" }}>
-          <button
-            onClick={() => { setActiveCategory(null); setActiveRole(null); setPage(1); }}
-            style={{
-              width: "100%", textAlign: "left", padding: "9px 10px", borderRadius: 8,
-              border: "none", background: !activeCategory ? "rgba(166,55,45,0.10)" : "transparent",
-              color: !activeCategory ? T.red : T.t2, fontSize: 13, fontFamily: F.sans, cursor: "pointer",
-              fontWeight: !activeCategory ? 600 : 400, display: "flex", justifyContent: "space-between", alignItems: "center",
-            }}
-          >
-            All Jobs
-            <span style={{ fontSize: 11, color: T.t3 }}>{allJobsCount ? allJobsCount.toLocaleString() : loading ? "..." : "0"}</span>
-          </button>
-          {taxonomy.map((cat) => {
-            const isActive = cat.name === activeCategory;
-            return (
-              <div key={cat.name}>
-                <button
-                  onClick={() => { setActiveCategory(cat.name); setActiveRole(null); setPage(1); }}
-                  style={{
-                    width: "100%", textAlign: "left", padding: "9px 10px", borderRadius: 8,
-                    border: "none", background: isActive ? "rgba(166,55,45,0.10)" : "transparent",
-                    color: isActive ? T.red : T.t2, fontSize: 13, fontFamily: F.sans, cursor: "pointer",
-                    fontWeight: isActive ? 600 : 400, display: "flex", justifyContent: "space-between", alignItems: "center",
-                  }}
-                >
-                  {cat.name}
-                  <span style={{ fontSize: 11, color: T.t3 }}>{cat.roles.length} roles</span>
-                </button>
-                {isActive && (
-                  <div style={{ marginLeft: 8, paddingLeft: 8, borderLeft: `1px solid ${T.border}`, marginTop: 4, marginBottom: 4 }}>
-                    {cat.roles.map((role) => (
-                      <button
-                        key={role.name}
-                        onClick={() => { setActiveRole(activeRole === role.name ? null : role.name); setPage(1); }}
-                        style={{
-                          width: "100%", textAlign: "left", padding: "6px 8px", borderRadius: 6,
-                          border: "none", background: activeRole === role.name ? "rgba(166,55,45,0.06)" : "transparent",
-                          color: activeRole === role.name ? T.red : T.t3, fontSize: 12, fontFamily: F.sans, cursor: "pointer",
-                          display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6,
-                        }}
-                      >
-                        <span>{role.name}</span>
-                        <span style={{ display: "flex", gap: 3, alignItems: "center", flexShrink: 0 }}>
-                          {role.hot && <Flame size={9} color={T.red} />}
-                          {role.visa.slice(0, 2).map((v) => {
-                            const s = VISA_BADGES[v] ?? VISA_BADGES["OPT"];
-                            return <span key={v} style={{ fontSize: 8, fontWeight: 700, padding: "1px 4px", borderRadius: 3, background: s.bg, color: s.color, border: `1px solid ${s.border}` }}>{v}</span>;
-                          })}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </aside>
-
+    <div style={{ width: "100%", minWidth: 0 }}>
       {/* JOBS LIST */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0, maxWidth: 1080, margin: "0 auto" }}>
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -565,12 +517,10 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
               <Sparkles size={14} /> Live job board
             </div>
             <h2 style={{ margin: "5px 0 3px", color: T.text, fontSize: isMobile ? 20 : 24, fontWeight: 800, fontFamily: F.sans, lineHeight: 1.15 }}>
-              {personalized && targetRoleCount ? "Roles matched to your saved targets" : "Visa-friendly roles matched to your profile"}
+              Visa-friendly positions matched to your profile
             </h2>
             <div style={{ color: T.t2, fontSize: 12, lineHeight: 1.55, fontFamily: F.sans }}>
-              {personalized && targetRoleCount
-                ? `Showing jobs from ${targetRoleCount} target role${targetRoleCount === 1 ? "" : "s"} saved during signup.`
-                : "Browse by role taxonomy, time posted, location, and ATS match without losing your current filters."}
+              Positions load automatically from your saved role preferences. Use the filters below to narrow by role, time, location, visa, or status.
             </div>
           </div>
           <button
@@ -614,6 +564,14 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
 
         {/* Search + filter bar */}
         <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 14, padding: isMobile ? "10px" : "12px 16px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <select
+            value={activeRole || ""}
+            onChange={(e) => { setActiveRole(e.target.value || null); setActiveCategory(null); setPage(1); }}
+            style={{ height: 36, minWidth: isMobile ? "100%" : 220, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", color: T.text, fontSize: 13, fontFamily: F.sans, outline: "none" }}
+          >
+            <option value="">All saved roles</option>
+            {allRoles.map((role) => <option key={role} value={role}>{role}</option>)}
+          </select>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 240px", minWidth: isMobile ? "100%" : 200, height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)" }}>
             <Search size={13} color={T.t3} />
             <input value={searchRaw} onChange={(e) => setSearchRaw(e.target.value)} placeholder="Search title, company, JD..."
@@ -625,25 +583,18 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             style={{ height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${visaOnly ? "rgba(166,55,45,0.4)" : T.border}`, background: visaOnly ? "rgba(166,55,45,0.10)" : "transparent", color: visaOnly ? T.red : T.t2, fontSize: 12, fontFamily: F.sans, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
             <Filter size={12} /> Visa-friendly
           </button>
-          {targetRoleCount > 0 && (
-            <button onClick={() => { setPersonalized(!personalized); setActiveCategory(null); setActiveRole(null); setPage(1); }}
-              style={{ height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${personalized ? "rgba(166,55,45,0.4)" : T.border}`, background: personalized ? "rgba(166,55,45,0.10)" : "transparent", color: personalized ? T.red : T.t2, fontSize: 12, fontFamily: F.sans, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
-              <Sparkles size={12} /> My roles
-            </button>
-          )}
+          <select
+            value={timeFilter}
+            onChange={(e) => { setTimeFilter(e.target.value); setPage(1); }}
+            style={{ height: 36, width: isMobile ? "100%" : 136, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", color: T.text, fontSize: 12, fontFamily: F.sans, outline: "none" }}
+          >
+            {TIME_OPTIONS.map((chip) => <option key={chip.label} value={chip.value}>{chip.label}</option>)}
+          </select>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {STATUS_CHIPS.map((s) => (
                 <button key={s} onClick={() => { setStatusFilter(s); setPage(1); }}
                 style={{ height: 32, padding: "0 12px", borderRadius: 9999, border: `1px solid ${statusFilter === s ? "transparent" : T.border}`, background: statusFilter === s ? T.grad : "transparent", color: statusFilter === s ? "#fff" : T.t2, fontSize: 12, cursor: "pointer", fontFamily: F.sans, fontWeight: statusFilter === s ? 600 : 400 }}>
                 {s}
-              </button>
-            ))}
-          </div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", width: "100%" }}>
-            {TIME_CHIPS.map((chip) => (
-              <button key={chip.label} onClick={() => { setTimeFilter(chip.value); setPage(1); }}
-                style={{ height: 30, padding: "0 10px", borderRadius: 9999, border: `1px solid ${timeFilter === chip.value ? "transparent" : T.border}`, background: timeFilter === chip.value ? T.grad : "transparent", color: timeFilter === chip.value ? "#fff" : T.t2, fontSize: 11, cursor: "pointer", fontFamily: F.sans, fontWeight: timeFilter === chip.value ? 700 : 400 }}>
-                {chip.label}
               </button>
             ))}
           </div>
@@ -689,7 +640,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
         )}
 
         {/* Active filters strip */}
-        {(activeRole || activeCategory || search || location || visaOnly || timeFilter || statusFilter !== "All" || (personalized && targetRoleCount > 0)) && (
+        {(activeRole || activeCategory || search || location || visaOnly || timeFilter || statusFilter !== "All") && (
           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ fontSize: 11, color: T.t3, fontFamily: F.sans }}>{filtered.length} of {total} positions</span>
             {activeCategory && (
@@ -721,15 +672,9 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                 <button onClick={() => { setVisaOnly(false); setPage(1); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.red, padding: 0 }}><X size={10} /></button>
               </span>
             )}
-            {personalized && targetRoleCount > 0 && (
-              <span style={{ display: "inline-flex", gap: 4, alignItems: "center", fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "rgba(166,55,45,0.08)", color: T.red, border: "1px solid rgba(166,55,45,0.25)", fontFamily: F.sans }}>
-                My roles: {targetRoleCount}
-                <button onClick={() => { setPersonalized(false); setPage(1); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.red, padding: 0 }}><X size={10} /></button>
-              </span>
-            )}
             {timeFilter && (
               <span style={{ display: "inline-flex", gap: 4, alignItems: "center", fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "rgba(166,55,45,0.08)", color: T.red, border: "1px solid rgba(166,55,45,0.25)", fontFamily: F.sans }}>
-                Time: {TIME_CHIPS.find((chip) => chip.value === timeFilter)?.label || timeFilter}
+                Time: {TIME_OPTIONS.find((chip) => chip.value === timeFilter)?.label || timeFilter}
                 <button onClick={() => { setTimeFilter(""); setPage(1); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.red, padding: 0 }}><X size={10} /></button>
               </span>
             )}
@@ -768,7 +713,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
               <div style={{ fontSize: 14, marginBottom: 6 }}>No jobs match the current filters.</div>
               <div style={{ fontSize: 12, color: T.t3, marginBottom: 12 }}>Try clearing the search, location, or status filter.</div>
               <button
-                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setVisaOnly(false); setTimeFilter(""); setStatusFilter("All"); setActiveCategory(null); setActiveRole(null); setPersonalized(false); setPage(1); }}
+                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setVisaOnly(false); setTimeFilter(""); setStatusFilter("All"); setActiveCategory(null); setActiveRole(null); setPersonalized(true); setPage(1); }}
                 style={{ padding: "8px 14px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.t2, fontSize: 12, fontFamily: F.sans, cursor: "pointer" }}
               >Reset filters</button>
             </div>
@@ -781,6 +726,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             const preview = cleanPreview(job.description).slice(0, 260);
             const role = (job as any).role || (job as any).taxonomy_category || job.status || "Active";
             const jobUrl = resolveJobUrl(job);
+            const logo = companyLogoUrl(job);
             return (
               <motion.div
                 key={id}
@@ -804,6 +750,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                       <div
                         aria-hidden="true"
                         style={{
+                          position: "relative", overflow: "hidden",
                           width: 44, height: 44, borderRadius: 11, flexShrink: 0,
                           display: "flex", alignItems: "center", justifyContent: "center",
                           fontFamily: F.sans, fontWeight: 700, fontSize: 17, color: "#fff",
@@ -816,6 +763,15 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                         }}
                       >
                         {(job.company || "?").trim().charAt(0).toUpperCase()}
+                        {logo && (
+                          <img
+                            src={logo}
+                            alt=""
+                            loading="lazy"
+                            onError={(e) => { e.currentTarget.style.display = "none"; }}
+                            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", padding: 6, background: "rgba(255,255,255,0.92)" }}
+                          />
+                        )}
                       </div>
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ fontSize: 16, fontWeight: 700, color: T.text, fontFamily: F.sans, lineHeight: 1.25, marginBottom: 4 }}>{job.title || "Untitled role"}</div>

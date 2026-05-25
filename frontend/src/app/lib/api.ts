@@ -377,6 +377,7 @@ export interface SignupPayload {
   last_name: string;
   email: string;
   password: string;
+  phone?: string;
   visa_status?: string;
   experience_level?: string;
   current_role?: string;
@@ -564,6 +565,7 @@ export interface UserApplicationRow {
   company?: string;
   location?: string;
   job_url?: string;
+  description?: string;
   match_score?: number;
   status: string;
   not_applied_reason?: string;

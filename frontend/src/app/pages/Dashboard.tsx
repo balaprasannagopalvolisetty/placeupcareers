@@ -3,12 +3,11 @@ import { motion, AnimatePresence, useMotionValue, useTransform, animate } from "
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import {
   Home, FileText, Globe, Bell, BarChart3, Settings, LogOut,
-  Search, Sun, Moon, Menu, X, User, ChevronDown, Briefcase,
+  Menu, X, User, ChevronDown, Briefcase,
   TrendingUp, ChevronRight, CheckCircle2, Bookmark, Clock,
-  ArrowUpRight, Zap, Activity, MapPin, DollarSign, FileCheck,
-  CreditCard, Shield,
+  ArrowUpRight, MapPin, DollarSign, FileCheck,
+  Shield,
 } from "lucide-react";
-import { useTheme } from "../components/Layout";
 import { useAuth } from "../context/AuthContext";
 import * as api from "../lib/api";
 import { ResumePage } from "../components/dashboard/ResumePage";
@@ -94,7 +93,6 @@ const NAV_ITEMS = [
   { icon: Globe,    label: "Visa Tracker", to: "/dashboard/visa" },
   { icon: Bell,     label: "Alerts", to: "/dashboard/alerts" },
   { icon: BarChart3,label: "Analytics", to: "/dashboard/analytics" },
-  { icon: CreditCard,label: "Billing", to: "/dashboard/billing" },
   { icon: Settings, label: "Settings", to: "/dashboard/settings" },
 ];
 
@@ -172,14 +170,12 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
   const { isMobile, isTablet } = useViewportFlags();
   type FeaturedJob = { id: string | number; title: string; company: string; location: string; salary: string; match: number | null; visa: string[]; posted: string };
   const [featuredJobs, setFeaturedJobs] = useState<FeaturedJob[]>([]);
-  const [totalJobs, setTotalJobs] = useState(0);
   const [resumeScore, setResumeScore] = useState(0);
   const [hasResume, setHasResume] = useState(false);
   const [activeResumeName, setActiveResumeName] = useState("");
   const [totalApplications, setTotalApplications] = useState(0);
+  const [applications, setApplications] = useState<api.UserApplicationRow[]>([]);
   const [totalResumes, setTotalResumes] = useState(0);
-  type ActivityItem = { icon: typeof Zap; label: string; sub: string; time: string; color: string };
-  const [activityItems, setActivityItems] = useState<ActivityItem[]>([]);
 
   const handleJobClick = (id: string | number) => {
     if (onJobClick) {
@@ -198,7 +194,7 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
   // matched subset and made the Overview look like there were only ~43 jobs.
   useEffect(() => {
     let active = true;
-    api.getTopMatches({ limit: 3 })
+    api.getTopMatches({ limit: 20 })
       .then((response) => {
         if (!active) return;
         setFeaturedJobs(response.jobs.map((job) => ({
@@ -222,16 +218,16 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
     Promise.allSettled([
       api.getDashboardSummary(),
       api.getResumeList(),
-      api.getJobPipelineStatus(),
+      api.getUserApplications(),
     ])
-      .then(([summaryResult, resumesResult, pipelineResult]) => {
+      .then(([summaryResult, resumesResult, applicationsResult]) => {
         if (!active) return;
         const summary = summaryResult.status === "fulfilled" ? summaryResult.value : null;
         const resumes = resumesResult.status === "fulfilled" ? resumesResult.value : [];
-        const pipeline = pipelineResult.status === "fulfilled" ? pipelineResult.value : null;
+        const applicationRows = applicationsResult.status === "fulfilled" ? applicationsResult.value : [];
         const activeResume = resumes.find((resume) => resume.active) || resumes[0];
 
-        if (!summary && !resumes.length && !pipeline) return;
+        if (!summary && !resumes.length && !applicationRows.length) return;
 
         const resolvedScore = Number(summary?.resume_score || activeResume?.score || 0);
         const resolvedResumeCount = Math.max(
@@ -244,21 +240,9 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
         setResumeScore(resolvedScore);
         setHasResume(Boolean(summary?.has_resume || resolvedResumeName || resolvedResumeCount > 0));
         setActiveResumeName(resolvedResumeName);
-        setTotalApplications(Number(summary?.total_applications || 0));
+        setApplications(applicationRows.filter((row) => row.status === "applied" || row.status === "interview"));
+        setTotalApplications(Number(summary?.total_applications || applicationRows.length || 0));
         setTotalResumes(resolvedResumeCount);
-        setTotalJobs(Number(pipeline?.total_jobs || pipeline?.active_jobs || summary?.total_jobs || 0));
-        // Derive activity feed from recent alerts
-        const items: ActivityItem[] = (summary?.recent_alerts || []).map((a) => {
-          const matchPct = a.match_score;
-          return {
-            icon: matchPct > 0 ? Zap : Bell,
-            label: matchPct > 0 ? `New match: ${a.title} (${matchPct}%)` : (a.message || a.title),
-            sub: a.company ? `at ${a.company}` : "Job alert",
-            time: a.time,
-            color: matchPct > 80 ? T.red : T.burnt,
-          };
-        });
-        setActivityItems(items);
       })
       .catch(() => {});
     return () => { active = false; };
@@ -272,14 +256,14 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
         <h2 style={{ fontFamily: F.sans, fontSize: 22, fontWeight: 700, color: T.text, marginBottom: 4 }}>{greeting}, {displayFirstName}! 👋</h2>
         <p style={{ fontSize: 14, color: T.t2, fontFamily: F.sans }}>
-          Showing {visibleJobs.length} of {totalJobs.toLocaleString()} scraped jobs available in your dashboard.
+          Showing your top {visibleJobs.length} resume-matched positions from the roles you selected.
         </p>
       </motion.div>
 
-      {/* 4-stat row */}
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : isTablet ? "repeat(2, minmax(0, 1fr))" : "repeat(4, 1fr)", gap: 14 }}>
+      {/* Summary row */}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : isTablet ? "repeat(2, minmax(0, 1fr))" : "repeat(3, 1fr)", gap: 14 }}>
         {/* ATS Score */}
-        <GlowCard style={{ padding: 20, gridColumn: "span 1" }}>
+        <GlowCard style={{ padding: 20, gridColumn: "span 1" }} onClick={() => navigate("/dashboard/resumes")}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: T.t3, fontFamily: F.sans }}>Resume ATS Score</div>
             {hasResume && (
@@ -306,19 +290,7 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
         </GlowCard>
 
         {/* Applications */}
-        <GlowCard style={{ padding: 20 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(166,55,45,0.1)", border: "1px solid rgba(166,55,45,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <Briefcase size={16} color={T.red} />
-            </div>
-          </div>
-          <div style={{ fontFamily: F.sans, fontSize: isMobile ? 30 : 38, fontWeight: 800, color: T.text, lineHeight: 1, marginBottom: 4 }}><SpringCounter target={totalJobs} /></div>
-          <div style={{ fontSize: 13, color: T.t2, fontFamily: F.sans }}>Scraped jobs</div>
-          <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, marginTop: 2 }}>In database</div>
-        </GlowCard>
-
-        {/* Applications */}
-        <GlowCard style={{ padding: 20 }}>
+        <GlowCard style={{ padding: 20 }} onClick={() => navigate("/dashboard/analytics")}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
             <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(140,58,39,0.1)", border: "1px solid rgba(140,58,39,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <CheckCircle2 size={16} color={T.burnt} />
@@ -331,7 +303,15 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
           </div>
           <div style={{ fontFamily: F.sans, fontSize: isMobile ? 30 : 38, fontWeight: 800, color: T.text, lineHeight: 1, marginBottom: 4 }}><SpringCounter target={totalApplications} /></div>
           <div style={{ fontSize: 13, color: T.t2, fontFamily: F.sans }}>Applications</div>
-          <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, marginTop: 2 }}>Tracked submissions</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 6 }}>
+            {applications.length === 0 ? (
+              <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans }}>Tracked submissions</div>
+            ) : applications.slice(0, 4).map((app) => (
+              <div key={`${app.job_id}-${app.title}`} style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {app.title || "Applied role"}
+              </div>
+            ))}
+          </div>
         </GlowCard>
 
         {/* Resumes */}
@@ -391,31 +371,6 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
         </div>
       </div>
 
-      {/* Recent Activity */}
-      <GlowCard style={{ overflow: "hidden" }}>
-        <div style={{ padding: "18px 24px", borderBottom: `1px solid ${T.border}`, display: "flex", justifyContent: "space-between" }}>
-          <span style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 600, color: T.text }}>Recent Activity</span>
-          <Activity size={16} color={T.t3} />
-        </div>
-        {activityItems.length === 0 && (
-          <div style={{ padding: "24px", textAlign: "center", color: T.t3, fontSize: 13, fontFamily: F.sans }}>
-            No recent activity yet. Alerts and matches will appear here.
-          </div>
-        )}
-        {activityItems.map((item, i) => (
-          <motion.div key={i} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.4 + i * 0.07 }}
-            style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 24px", borderBottom: i < activityItems.length - 1 ? `1px solid ${T.border}` : "none" }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(166,55,45,0.1)", border: "1px solid rgba(166,55,45,0.18)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <item.icon size={15} color={item.color} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: F.sans, marginBottom: 1 }}>{item.label}</div>
-              <div style={{ fontSize: 12, color: T.t3, fontFamily: F.sans }}>{item.sub}</div>
-            </div>
-            <span style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, flexShrink: 0 }}>{item.time}</span>
-          </motion.div>
-        ))}
-      </GlowCard>
     </div>
   );
 }
@@ -424,7 +379,6 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
 // MAIN DASHBOARD
 // ═══════════════════════════
 export default function Dashboard() {
-  const { dark, toggle } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
   const { user, loading: authLoading, isAuthenticated, signOut } = useAuth();
@@ -474,9 +428,7 @@ export default function Dashboard() {
         {/* Logo */}
         <div style={{ padding: "0 24px", height: 64, display: "flex", alignItems: "center", borderBottom: `1px solid ${T.border}` }}>
           <Link to="/" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none" }}>
-            <div style={{ width: 32, height: 32, borderRadius: 9, background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 14px rgba(166,55,45,0.35)" }}>
-              <span style={{ color: "#fff", fontSize: 13, fontWeight: 800, fontFamily: F.sans }}>P</span>
-            </div>
+            <img src="/logo_white.png" alt="PlaceUp Career" style={{ width: 34, height: 34, objectFit: "contain", flexShrink: 0 }} />
             <span style={{ fontFamily: F.sans, fontWeight: 700, fontSize: 16, color: T.text, letterSpacing: "-0.02em" }}>
               PlaceUp <span style={{ color: T.red, fontSize: 13, fontWeight: 600 }}>Career</span>
             </span>
@@ -558,7 +510,7 @@ export default function Dashboard() {
               transition={{ type: "spring", stiffness: 300, damping: 30 }}
               style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 256, background: "rgba(1,17,38,0.98)", backdropFilter: "blur(24px)", borderRight: `1px solid ${T.border}`, padding: "24px 10px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", padding: "0 12px", marginBottom: 20 }}>
-                <span style={{ fontFamily: F.sans, fontWeight: 700, fontSize: 16, color: T.text }}>PlaceUp</span>
+                <img src="/logo_white.png" alt="PlaceUp Career" style={{ width: 34, height: 34, objectFit: "contain" }} />
                 <button onClick={() => setSidebarOpen(false)} style={{ background: "rgba(242,238,179,0.05)", border: "none", cursor: "pointer", color: T.text, padding: 6, borderRadius: 6 }}><X size={16} /></button>
               </div>
               {navItems.map((item) => (
@@ -586,17 +538,6 @@ export default function Dashboard() {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 6 : 8 }}>
-            {/* Search */}
-            <div className="hidden sm:flex items-center gap-2" style={{ height: 38, padding: "0 12px", borderRadius: 10, background: "rgba(242,238,179,0.04)", border: `1px solid ${T.border}` }}>
-              <Search size={14} color={T.t3} />
-              <input placeholder="Search jobs..." style={{ background: "transparent", border: "none", outline: "none", width: 160, fontSize: 13, color: T.text, fontFamily: F.sans }} />
-            </div>
-
-            {/* Theme toggle */}
-            <motion.button whileTap={{ scale: 0.92 }} onClick={toggle} style={{ width: 38, height: 38, borderRadius: 10, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: T.t2 }}>
-              {dark ? <Sun size={16} /> : <Moon size={16} />}
-            </motion.button>
-
             {/* Notifications */}
             <div style={{ position: "relative" }}>
               <motion.button whileTap={{ scale: 0.92 }} onClick={() => { setNotifOpen(!notifOpen); setUserMenuOpen(false); }}

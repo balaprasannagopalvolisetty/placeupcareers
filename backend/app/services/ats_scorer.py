@@ -222,9 +222,20 @@ def score_resume_quality(resume_text: str) -> float:
         if re.search(rf"\b{re.escape(section)}\b", cleaned.lower()):
             sections += 1
 
-    score = 40.0
-    score += min(25.0, len(skills) * 3.0)
-    score += min(20.0, len(set(keywords)) * 0.5)
-    score += min(15.0, sections * 3.0)
-    score += min(20.0, max(0.0, min(word_count, 1200) - 200) / 50.0)
+    # Keep the generic resume score conservative. The previous baseline
+    # started at 40 and rewarded raw keyword volume too heavily, so weak
+    # resumes could look like 90+ just by containing common tech words.
+    score = 8.0
+    score += min(22.0, len(set(skills)) * 1.8)
+    score += min(10.0, len(set(keywords)) * 0.18)
+    score += min(24.0, sections * 3.0)
+    score += min(14.0, max(0.0, min(word_count, 1100) - 220) / 65.0)
+    if re.search(r"\b\d+(\.\d+)?%|\$\d+|\b\d+x\b|\b\d+\+\b", resume_text.lower()):
+        score += 8.0
+    if re.search(r"\b(github|linkedin|portfolio|certification|certified)\b", cleaned.lower()):
+        score += 6.0
+    if word_count < 180:
+        score -= 18.0
+    if sections < 3:
+        score -= 12.0
     return round(min(100.0, max(0.0, score)), 1)

@@ -353,6 +353,7 @@ def upsert_user_application(user_id: str, payload: dict) -> dict:
         "company": payload.get("company") or "",
         "location": payload.get("location") or "",
         "job_url": payload.get("job_url") or "",
+        "description": (payload.get("description") or "")[:12000],
         "match_score": int(payload.get("match_score") or 0),
         "status": payload.get("status") or "applied",
         "not_applied_reason": payload.get("not_applied_reason") or "",

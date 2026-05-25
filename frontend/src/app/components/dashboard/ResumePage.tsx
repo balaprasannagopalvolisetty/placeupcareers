@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
-import { Upload, Check, FileText, Trash2, TrendingUp, Zap } from "lucide-react";
+import { Upload, FileText, Trash2 } from "lucide-react";
 import * as api from "../../lib/api";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
@@ -58,19 +58,13 @@ export function ResumePage() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [quickWins, setQuickWins] = useState<Array<{ kw: string; tip: string; impact: string }>>([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
-
-  const refreshQuickWins = () =>
-    api.getParsedActiveResume()
-      .then((parsed) => setQuickWins(parsed.quick_wins || []))
-      .catch(() => setQuickWins([]));
 
   useEffect(() => {
     let active = true;
     setLoading(true);
     api.getResumeList()
-      .then((list) => { if (active) { setResumes(list); refreshQuickWins(); } })
+      .then((list) => { if (active) setResumes(list); })
       .catch((err) => { if (active) setUploadError((err as Error).message); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -78,6 +72,10 @@ export function ResumePage() {
 
   const handleFiles = async (files: FileList | null) => {
     if (!files?.length) return;
+    if (resumes.length >= 5) {
+      setUploadError("Resume limit reached. Delete an old resume before uploading another.");
+      return;
+    }
     setUploadError(null);
     setUploading(true);
     try {
@@ -89,7 +87,6 @@ export function ResumePage() {
           .filter((resume) => resume.id !== uploaded.id),
       ]);
       notifyResumeChanged();
-      refreshQuickWins();
     } catch (error) {
       setUploadError((error as Error).message || "Failed to upload resume.");
     } finally {
@@ -103,7 +100,6 @@ export function ResumePage() {
       const updated = await api.setActiveResume(id);
       setResumes((rs) => rs.map((r) => ({ ...r, active: r.id === updated.id })));
       notifyResumeChanged();
-      refreshQuickWins();
     } catch (e) {
       setUploadError((e as Error).message);
     }
@@ -114,7 +110,6 @@ export function ResumePage() {
     setResumes((rs) => rs.filter((r) => r.id !== id));
     try {
       await api.deleteResume(id);
-      setQuickWins([]);
       notifyResumeChanged();
     } catch (e) {
       setUploadError((e as Error).message);
@@ -132,7 +127,7 @@ export function ResumePage() {
       >
         <Upload size={32} color={T.red} style={{ margin: "0 auto 12px" }} />
         <div style={{ fontSize: 15, fontWeight: 500, color: T.text, fontFamily: F.sans, marginBottom: 6 }}>Drop your resume here or click to upload</div>
-        <div style={{ fontSize: 13, color: T.t3, fontFamily: F.sans, marginBottom: 16 }}>PDF or DOCX · Max 10MB</div>
+        <div style={{ fontSize: 13, color: T.t3, fontFamily: F.sans, marginBottom: 16 }}>PDF or DOCX · Max 10MB · 5 resume limit</div>
         <label style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "11px 22px", borderRadius: 10, background: T.grad, color: "#fff", fontSize: 13, fontWeight: 600, fontFamily: F.sans, cursor: "pointer", boxShadow: "0 0 20px rgba(166,55,45,0.3)" }}>
           <Upload size={14} /> {uploading ? "Uploading…" : "Choose File"}
           <input ref={inputRef} type="file" accept=".pdf,.docx" style={{ display: "none" }}
@@ -174,34 +169,6 @@ export function ResumePage() {
             </motion.div>
           ))
         )}
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        {[
-          { icon: TrendingUp, title: "Increase Your Score", tips: ["Add quantified achievements with numbers", "Include keywords from your selected job preferences", "Use standard section headers", "Keep content focused on the target role"] },
-          { icon: Zap, title: "Quick Wins", tips: quickWins.map((win) => win.tip) },
-        ].map((card) => (
-          <div key={card.title} style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: 22 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(166,55,45,0.1)", border: "1px solid rgba(166,55,45,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <card.icon size={16} color={T.red} />
-              </div>
-              <span style={{ fontFamily: F.sans, fontSize: 14, fontWeight: 600, color: T.text }}>{card.title}</span>
-            </div>
-            <ul style={{ display: "flex", flexDirection: "column", gap: 8, listStyle: "none", padding: 0, margin: 0 }}>
-              {card.tips.length === 0 && (
-                <li style={{ fontSize: 13, color: T.t3, fontFamily: F.sans, lineHeight: 1.5 }}>
-                  Upload a resume and choose job preferences to generate personalized quick wins.
-                </li>
-              )}
-              {card.tips.map((t) => (
-                <li key={t} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13, color: T.t2, fontFamily: F.sans, lineHeight: 1.5 }}>
-                  <Check size={12} color={T.red} style={{ marginTop: 2, flexShrink: 0 }} /> {t}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
       </div>
     </div>
   );

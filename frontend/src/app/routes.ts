@@ -43,9 +43,6 @@ const AnalyticsPage = lazy(() =>
 const SettingsPage = lazy(() =>
   import("./components/dashboard/SettingsPage").then((m) => ({ default: m.SettingsPage }))
 );
-const BillingPage = lazy(() =>
-  import("./components/dashboard/BillingPage").then((m) => ({ default: m.BillingPage }))
-);
 const AdminPage = lazy(() =>
   import("./components/dashboard/AdminPage").then((m) => ({ default: m.AdminPage }))
 );
@@ -137,7 +134,6 @@ export const router = createBrowserRouter([
           { path: "alerts", Component: authedGuarded(AlertsPage) },
           { path: "applications", Component: authedGuarded(ApplicationsPage) },
           { path: "analytics", Component: authedGuarded(AnalyticsPage) },
-          { path: "billing", Component: authedGuarded(BillingPage) },
           { path: "settings", Component: authedGuarded(SettingsPage) },
           { path: "admin", Component: authedGuarded(AdminPage) },
           { path: "profile", Component: authedGuarded(UserProfilePage) },

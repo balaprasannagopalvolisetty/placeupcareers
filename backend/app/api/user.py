@@ -79,11 +79,19 @@ def _to_resume_meta(row: dict) -> ResumeMetadata:
         uploaded_dt = datetime.fromisoformat(uploaded) if isinstance(uploaded, str) else datetime.now(timezone.utc)
     except Exception:
         uploaded_dt = datetime.now(timezone.utc)
+    score = int(row.get("score") or 0)
+    parsed_text = (row.get("parsed_text") or "").strip()
+    if parsed_text:
+        try:
+            from app.services.ats_scorer import score_resume_quality
+            score = int(round(float(score_resume_quality(parsed_text))))
+        except Exception as exc:
+            log.warning("Resume score refresh failed for %s: %s", row.get("id"), exc)
     return ResumeMetadata(
         id=row["id"],
         name=row.get("name") or "resume.pdf",
         uploaded_at=uploaded_dt,
-        score=int(row.get("score") or 0),
+        score=score,
         size_bytes=int(row.get("size_bytes") or 0),
         active=bool(row.get("active")),
     )
@@ -246,7 +254,7 @@ async def get_dashboard_summary(
     resumes = user_store.list_resumes(user_id)
     active_resume = next((r for r in resumes if r.get("active")), None) or (resumes[0] if resumes else None)
     resume_score = int((active_resume or {}).get("score") or 0)
-    if active_resume and resume_score <= 0 and (active_resume.get("parsed_text") or "").strip():
+    if active_resume and (active_resume.get("parsed_text") or "").strip():
         try:
             from app.services.ats_scorer import score_resume_quality
             resume_score = int(round(float(score_resume_quality(active_resume.get("parsed_text") or ""))))
@@ -313,6 +321,9 @@ async def upload_user_resume(
     user_id: str = Depends(current_user_id),
 ):
     filename = file.filename or "resume.pdf"
+    existing_resumes = user_store.list_resumes(user_id)
+    if len(existing_resumes) >= 5:
+        raise HTTPException(status_code=400, detail="Resume limit reached. Delete an old resume before uploading another.")
     ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
     if ext not in ALLOWED_RESUME_EXT:
         raise HTTPException(status_code=400, detail=f"Unsupported file type: .{ext}")

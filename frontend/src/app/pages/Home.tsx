@@ -593,7 +593,7 @@ const plans = [
     cta: "Start Basic", ctaLink: "/signup",
   },
   {
-    name: "Pro", price: "$25.99", period: "/mo", desc: "For serious international job seekers",
+    name: "Pro", price: "$15.99", period: "/mo", desc: "For serious international job seekers",
     badge: "Most Popular", featured: true, borderColor: T.red,
     features: [
       ["Unlimited ATS Scoring", true], ["Smart Daily Alerts", true], ["Full Visa Tracker", true],
@@ -603,7 +603,7 @@ const plans = [
     cta: "Go Pro →", ctaLink: "/signup",
   },
   {
-    name: "Elite", price: "$150", period: " one-time", desc: "White-glove placement service",
+    name: "Elite", price: "$45", period: "/mo", desc: "White-glove placement service",
     badge: "Premium", featured: false, borderColor: T.burnt,
     features: [
       ["Everything in Pro", true], ["1:1 Career Coaching", true], ["AI Resume Rewrite", true],

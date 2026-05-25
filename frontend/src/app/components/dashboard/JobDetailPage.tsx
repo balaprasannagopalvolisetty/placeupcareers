@@ -350,6 +350,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
         company: currentJob.company,
         location: currentJob.location,
         job_url: currentJob.jobUrl,
+        description: currentJob.description,
         match_score: typeof currentJob.match === "number" ? currentJob.match : 0,
         status,
         not_applied_reason: reason,

@@ -1,7 +1,6 @@
 import { Link, useLocation } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
-import { useTheme } from "./Layout";
-import { Sun, Moon, Menu, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { useState, useCallback } from "react";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif" };
@@ -21,7 +20,6 @@ const navItems = [
 ];
 
 export function Navbar() {
-  const { dark, toggle } = useTheme();
   const [open, setOpen] = useState(false);
   const location = useLocation();
   const isHome = location.pathname === "/";
@@ -49,14 +47,7 @@ export function Navbar() {
 
         {/* Logo */}
         <Link to="/" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none" }}>
-          <div style={{
-            width: 30, height: 30, borderRadius: 8,
-            background: C.grad,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: "0 0 16px rgba(166,55,45,0.4)",
-          }}>
-            <span style={{ color: "#fff", fontSize: 13, fontWeight: 800, fontFamily: F.sans }}>P</span>
-          </div>
+          <img src="/logo_white.png" alt="PlaceUp Career" style={{ width: 32, height: 32, objectFit: "contain" }} />
           <span style={{ fontFamily: F.sans, fontWeight: 700, fontSize: 17, color: C.text, letterSpacing: "-0.02em" }}>
             PlaceUp
             <span style={{ fontSize: 13, fontWeight: 600, color: "#A6372D", marginLeft: 4 }}>Career</span>
@@ -100,16 +91,6 @@ export function Navbar() {
           }}>
             Get Started →
           </Link>
-          <button
-            onClick={toggle}
-            style={{
-              width: 36, height: 36, borderRadius: 8, border: `1px solid ${C.border}`,
-              background: "rgba(242,238,179,0.05)", cursor: "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}
-          >
-            {dark ? <Sun size={15} color={C.t2} /> : <Moon size={15} color={C.t2} />}
-          </button>
         </div>
 
         {/* Mobile hamburger */}
