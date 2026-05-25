@@ -561,6 +561,13 @@ async def run_scrape_cycle(
     source_attempts: dict[str, int] = {}
     source_scraped: dict[str, int] = {}
     source_errors: dict[str, int] = {}
+    google_allowed_terms: set[str] = set()
+    if JobSource.GOOGLE in request.sources:
+        try:
+            from app.job_taxonomy import all_role_names
+            google_allowed_terms = {term.lower() for term in all_role_names()}
+        except Exception:
+            google_allowed_terms = set()
 
     # Build scraping tasks for all query × source combinations
     tasks: list[tuple[str, asyncio.Future]] = []
@@ -577,15 +584,20 @@ async def run_scrape_cycle(
             for src in request.sources:
                 site_name = site_map.get(src)
                 if site_name:
+                    if src == JobSource.GOOGLE and google_allowed_terms and search_term.lower() not in google_allowed_terms:
+                        continue
                     normalized_source = _normalize_source_name(site_name)
+                    source_results_wanted = min(request.results_per_source, 20) if src == JobSource.GOOGLE else request.results_per_source
+                    source_page_size = min(request.jobspy_page_size, 10) if src == JobSource.GOOGLE else request.jobspy_page_size
+                    source_max_pages = min(request.jobspy_max_pages, 3) if src == JobSource.GOOGLE else request.jobspy_max_pages
                     tasks.append((site_name, scrape_jobspy(
                         search_term=search_term,
                         location=location,
-                        results_wanted=request.results_per_source,
+                        results_wanted=source_results_wanted,
                         hours_old=request.jobspy_hours_old,
                         site_names=[site_name],
-                        page_size=request.jobspy_page_size,
-                        max_pages=request.jobspy_max_pages,
+                        page_size=source_page_size,
+                        max_pages=source_max_pages,
                     )))
                     sources_used.append(normalized_source)
                     source_attempts[normalized_source] = source_attempts.get(normalized_source, 0) + 1
@@ -657,10 +669,15 @@ async def run_scrape_cycle(
         concurrency = getattr(settings, "scrape_max_concurrency", None) or 28
         semaphore = asyncio.Semaphore(concurrency)
         rapidapi_semaphore = asyncio.Semaphore(1)
+        google_semaphore = asyncio.Semaphore(1)
 
         async def _guarded_capture(source_tag: str, awaitable_job):
             async with semaphore:
                 try:
+                    if _normalize_source_name(source_tag) == "google":
+                        async with google_semaphore:
+                            await asyncio.sleep(2.5)
+                            return source_tag, await awaitable_job, None
                     if _normalize_source_name(source_tag) == "rapidapi":
                         async with rapidapi_semaphore:
                             await asyncio.sleep(1.0)
