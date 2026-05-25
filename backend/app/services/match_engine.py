@@ -18,7 +18,7 @@ from app.models.match import MatchResult, MatchScores
 from app.models.resume import KeywordWithImpact
 from app.models.job import VisaBadges
 from app.utils.text_processing import (
-    extract_keywords, extract_skills_from_text,
+    extract_relevant_keywords, extract_skills_from_text,
     compute_keyword_overlap, truncate_text, clean_text,
 )
 
@@ -96,11 +96,11 @@ def compute_keyword_score(resume_text: str, job_description: str) -> tuple[float
         Tuple of (score 0-100, matched_keywords, missing_keywords)
     """
     # Extract keywords + technical skills
-    jd_keywords = extract_keywords(job_description, top_n=30)
+    jd_keywords = extract_relevant_keywords(job_description, top_n=30)
     jd_skills = extract_skills_from_text(job_description)
     jd_all = list(set(jd_keywords + jd_skills))
 
-    resume_keywords = extract_keywords(resume_text, top_n=40)
+    resume_keywords = extract_relevant_keywords(resume_text, top_n=40)
     resume_skills = extract_skills_from_text(resume_text)
     resume_all = list(set(resume_keywords + resume_skills))
 

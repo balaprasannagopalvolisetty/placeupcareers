@@ -259,7 +259,7 @@ async def signup(payload: SignupRequest, request: Request, response: Response):
         user_store.update_user_profile(user["id"], profile_updates)
         user = user_store.get_user_by_id(user["id"]) or user
 
-    target_roles = list(payload.target_roles or payload.targets or [])[:5]
+    target_roles = list(payload.target_roles or payload.targets or [])[:25]
     pref_updates: dict = {}
     if target_roles:
         pref_updates["target_roles"] = target_roles

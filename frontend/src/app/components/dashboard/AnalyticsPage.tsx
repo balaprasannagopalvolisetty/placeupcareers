@@ -155,7 +155,7 @@ export function AnalyticsPage() {
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={scoreData} margin={{ top: 5, right: 10, bottom: 0, left: -20 }}>
               <XAxis dataKey="version" tick={{ fill: T.t3, fontSize: 11, fontFamily: F.sans }} axisLine={false} tickLine={false} />
-              <YAxis domain={[50, 100]} tick={{ fill: T.t3, fontSize: 11, fontFamily: F.sans }} axisLine={false} tickLine={false} />
+              <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tick={{ fill: T.t3, fontSize: 11, fontFamily: F.sans }} axisLine={false} tickLine={false} />
               <Tooltip contentStyle={{ background: "rgba(64,18,18,0.9)", border: "1px solid rgba(242,238,179,0.1)", borderRadius: 10, color: T.text, fontFamily: F.sans, fontSize: 12 }} />
               <Bar dataKey="score" radius={[6, 6, 0, 0]}>
                 {scoreData.map((_, i) => (

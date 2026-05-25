@@ -30,7 +30,7 @@ class SignupRequest(BaseModel):
     location: Optional[str] = None                # current location
     linkedin_url: Optional[str] = None
     # Preferences
-    target_roles: list[str] = Field(default_factory=list, max_length=5)
+    target_roles: list[str] = Field(default_factory=list, max_length=25)
     target_locations: list[str] = Field(default_factory=list)
     # Legacy alias kept for older clients.
     targets: list[str] = Field(default_factory=list)
@@ -86,7 +86,7 @@ class UserPreferences(BaseModel):
     notification_marketing_emails: bool = False
     visa_status: Optional[str] = None
     experience_level: Optional[str] = None
-    target_roles: list[str] = Field(default_factory=list, max_length=5)
+    target_roles: list[str] = Field(default_factory=list, max_length=25)
     target_locations: list[str] = Field(default_factory=list)
 
 

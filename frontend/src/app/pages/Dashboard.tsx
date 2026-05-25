@@ -170,7 +170,7 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
   const navigate = useNavigate();
   const { user } = useAuth();
   const { isMobile, isTablet } = useViewportFlags();
-  type FeaturedJob = { id: string | number; title: string; company: string; location: string; salary: string; match: number; visa: string[]; posted: string };
+  type FeaturedJob = { id: string | number; title: string; company: string; location: string; salary: string; match: number | null; visa: string[]; posted: string };
   const [featuredJobs, setFeaturedJobs] = useState<FeaturedJob[]>([]);
   const [totalJobs, setTotalJobs] = useState(0);
   const [resumeScore, setResumeScore] = useState(0);
@@ -207,7 +207,7 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
           company: job.company ?? "Unknown",
           location: job.location ?? "Remote",
           salary: formatSalary(job.salary),
-          match: job.match_score ?? 0,
+          match: typeof job.match_score === "number" ? job.match_score : null,
           visa: normalizeVisa(job.visa),
           posted: job.posted_at ?? "Recently",
         })));
@@ -366,7 +366,9 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
                   <div style={{ width: 40, height: 40, borderRadius: "50%", background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: F.sans, boxShadow: "0 0 12px rgba(166,55,45,0.3)" }}>
                     {job.company[0]}
                   </div>
-                  <span style={{ fontSize: 16, fontWeight: 800, color: T.red, fontFamily: F.mono }}>{job.match}%</span>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: job.match === null ? T.t3 : T.red, fontFamily: F.mono }}>
+                    {job.match === null ? "Resume needed" : `${job.match}%`}
+                  </span>
                 </div>
                 <div style={{ fontSize: 14, fontWeight: 600, color: T.text, fontFamily: F.sans, marginBottom: 4, lineHeight: 1.3 }}>{job.title}</div>
                 <div style={{ fontSize: 12, color: T.t2, fontFamily: F.sans, marginBottom: 10 }}>{job.company}</div>
@@ -380,7 +382,7 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
                   <span style={{ display: "flex", alignItems: "center", gap: 3 }}><DollarSign size={10} />{job.salary}</span>
                 </div>
                 <div style={{ height: 3, borderRadius: 2, background: "rgba(242,238,179,0.05)", marginTop: 12, overflow: "hidden" }}>
-                  <motion.div initial={{ width: 0 }} animate={{ width: `${job.match}%` }} transition={{ duration: 1, ease: "easeOut", delay: 0.3 + i * 0.08 }}
+                  <motion.div initial={{ width: 0 }} animate={{ width: `${job.match ?? 0}%` }} transition={{ duration: 1, ease: "easeOut", delay: 0.3 + i * 0.08 }}
                     style={{ height: "100%", borderRadius: 2, background: T.grad }} />
                 </div>
               </GlowCard>

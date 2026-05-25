@@ -278,7 +278,7 @@ export default function SignUp() {
   const toggleRole = (r: string) => {
     setTargetRoles((prev) => {
       if (prev.includes(r)) return prev.filter((x) => x !== r);
-      if (prev.length >= 5) return prev;  // hard cap
+      if (prev.length >= 25) return prev;  // hard cap
       return [...prev, r];
     });
   };
@@ -303,7 +303,7 @@ export default function SignUp() {
       if (!visaStatus) return "Please select your visa status.";
     }
     if (step === 3) {
-      if (targetRoles.length === 0) return "Pick at least one target role (max 5).";
+      if (targetRoles.length === 0) return "Pick at least one target role.";
     }
     if (step === 4) {
       if (!resumeFile) return "Please upload one resume to create your account.";
@@ -408,7 +408,7 @@ export default function SignUp() {
             <div style={{ marginBottom: 18 }}>
               <div style={{ fontSize: 12, fontWeight: 500, color: T.t2, fontFamily: F.sans, marginBottom: 6 }}>
                 Job Preferences <span style={{ color: T.red }}>*</span>
-                <span style={{ marginLeft: 6, fontSize: 11, color: T.t3 }}>pick up to 5 ({targetRoles.length}/5)</span>
+                <span style={{ marginLeft: 6, fontSize: 11, color: T.t3 }}>pick up to 25 ({targetRoles.length}/25)</span>
               </div>
               <div style={{ position: "relative", border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, background: T.input }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, height: 38, padding: "0 10px", borderRadius: 8, background: "rgba(1,17,38,0.35)", border: `1px solid ${T.border}` }}>
@@ -420,7 +420,7 @@ export default function SignUp() {
                 <div style={{ maxHeight: 180, overflowY: "auto", marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
                   {visibleRoles.map((role) => {
                     const sel = targetRoles.includes(role);
-                    const disabled = !sel && targetRoles.length >= 5;
+                    const disabled = !sel && targetRoles.length >= 25;
                     return (
                       <button key={role} type="button" onClick={() => toggleRole(role)} disabled={disabled}
                         style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderRadius: 8, border: "none",

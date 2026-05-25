@@ -39,11 +39,15 @@ class Category:
 CATEGORIES: tuple[Category, ...] = (
     Category("Technology & Engineering", "Cpu", (
         Role("Software Engineer",       ("software engineer", "software developer", "swe", "backend engineer", "frontend engineer", "full stack engineer", "full-stack engineer", "web developer", "java developer", "python developer", "application developer", "mobile engineer", "ios engineer", "android engineer"), ("OPT","STEM","H-1B"), hot=True),
+        Role("Frontend Engineer",       ("frontend engineer", "front end engineer", "front-end engineer", "frontend developer", "front end developer", "react developer", "ui engineer", "web frontend engineer"), ("OPT","STEM","H-1B"), hot=True),
+        Role("Backend Engineer",        ("backend engineer", "back end engineer", "back-end engineer", "backend developer", "api engineer", "server side engineer", "java backend engineer", "python backend engineer"), ("OPT","STEM","H-1B"), hot=True),
+        Role("Full Stack Engineer",     ("full stack engineer", "full-stack engineer", "fullstack engineer", "full stack developer", "full-stack developer", "mern stack developer", "web application developer"), ("OPT","STEM","H-1B"), hot=True),
         Role("Data Engineer",           ("data engineer", "etl engineer", "analytics engineer", "data platform engineer", "big data engineer", "data warehouse engineer", "pipeline engineer"), ("OPT","STEM","H-1B"), hot=True),
         Role("Machine Learning Engineer",("machine learning engineer", "ml engineer", "machine learning", "ml platform", "mlops engineer", "ai engineer", "genai engineer", "computer vision engineer", "nlp engineer"), ("OPT","STEM","H-1B"), hot=True),
         Role("Data Scientist",          ("data scientist", "applied scientist", "research scientist data", "decision scientist", "machine learning scientist"), ("OPT","STEM","H-1B"), hot=True),
         Role("DevOps / Cloud Engineer", ("devops engineer", "site reliability engineer", "sre", "cloud engineer", "platform engineer", "infrastructure engineer"), ("OPT","STEM","H-1B")),
         Role("Cybersecurity Analyst",   ("cybersecurity analyst", "security engineer", "soc analyst", "security analyst", "information security analyst"), ("OPT","STEM","H-1B")),
+        Role("Security Engineer",       ("security engineer", "application security engineer", "appsec engineer", "cloud security engineer", "product security engineer", "security software engineer"), ("OPT","STEM","H-1B"), hot=True),
         Role("QA / Test Engineer",      ("qa engineer", "test engineer", "sdet", "automation engineer", "quality assurance engineer", "quality engineer", "test automation engineer"), ("OPT","STEM","H-1B")),
         Role("Systems Engineer",        ("systems engineer", "system engineer", "embedded engineer", "firmware engineer", "mbse engineer"), ("OPT","STEM","H-1B")),
         Role("Network Engineer",        ("network engineer", "network administrator", "network analyst", "noc engineer", "telecom engineer"), ("OPT","STEM","H-1B")),
@@ -199,6 +203,18 @@ EXTRA_ROLE_SYNONYMS: dict[str, tuple[str, ...]] = {
         "associate software engineer", "engineer i", "engineer ii",
         "software engineer ii", "software engineer iii",
     ),
+    "Frontend Engineer": (
+        "frontend software engineer", "front end software engineer", "react engineer",
+        "javascript engineer", "typescript engineer", "ui software engineer",
+    ),
+    "Backend Engineer": (
+        "backend software engineer", "back end software engineer", "server engineer",
+        "api developer", "microservices engineer", "distributed systems engineer",
+    ),
+    "Full Stack Engineer": (
+        "full stack software engineer", "fullstack software engineer",
+        "full-stack software engineer", "node react developer",
+    ),
     "Machine Learning Engineer": (
         "ai/ml engineer", "ai ml engineer", "ml ops engineer", "generative ai engineer",
         "applied ml engineer", "ml infrastructure engineer",
@@ -233,6 +249,10 @@ EXTRA_ROLE_SYNONYMS: dict[str, tuple[str, ...]] = {
     "Cybersecurity Analyst": (
         "application security engineer", "appsec engineer", "cloud security engineer",
         "security operations analyst", "threat intel analyst",
+    ),
+    "Security Engineer": (
+        "security developer", "security automation engineer", "detection engineer",
+        "devsecops engineer", "information security engineer",
     ),
     "Business Analyst": (
         "business intelligence analyst", "operations analyst", "process analyst",

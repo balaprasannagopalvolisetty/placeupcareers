@@ -121,13 +121,31 @@ async def run(args: argparse.Namespace) -> int:
             # Dedup by content_hash so a Stripe role that also came in
             # via JobSpy doesn't get duplicated by the Tier-1 pull.
             seen = {j.content_hash for j in jobs if getattr(j, "content_hash", None)}
+            added = 0
             for tj in tier1_jobs:
                 if not getattr(tj, "content_hash", None) or tj.content_hash in seen:
                     continue
                 seen.add(tj.content_hash)
                 jobs.append(tj)
+                added += 1
+            result.total_scraped += added
+            result.new_jobs += added
+            result.sources_used = sorted(set([*result.sources_used, "tier1_ats"]))
+            result.source_breakdown["tier1_ats"] = {
+                "attempts": 1,
+                "scraped": len(tier1_jobs),
+                "unique": added,
+                "errors": 0,
+            }
         except Exception as exc:
             logger.warning("tier1_ats source failed (non-fatal): %s", exc)
+            result.errors.append(f"tier1_ats: {exc}")
+            result.source_breakdown["tier1_ats"] = {
+                "attempts": 1,
+                "scraped": 0,
+                "unique": 0,
+                "errors": 1,
+            }
 
     if scrapegraph_discovery_enabled:
         try:

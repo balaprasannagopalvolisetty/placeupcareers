@@ -167,7 +167,7 @@ def update_preferences(user_id: str, fields: dict[str, Any]) -> dict:
     }
     updates = {k: v for k, v in fields.items() if k in allowed}
     if "target_roles" in fields:
-        updates["target_roles"] = list(fields.get("target_roles") or [])[:5]
+        updates["target_roles"] = list(fields.get("target_roles") or [])[:25]
     if "target_locations" in fields:
         updates["target_locations"] = list(fields.get("target_locations") or [])
     updates["updated_at"] = _now_iso()

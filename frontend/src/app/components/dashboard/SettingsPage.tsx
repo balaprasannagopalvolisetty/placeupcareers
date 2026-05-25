@@ -18,10 +18,13 @@ const JOB_PREFERENCE_SUGGESTIONS = [
   "Frontend Engineer",
   "Backend Engineer",
   "Full Stack Engineer",
+  "Security Engineer",
+  "Cybersecurity Analyst",
   "Data Engineer",
   "Machine Learning Engineer",
   "Data Scientist",
   "DevOps / Cloud Engineer",
+  "Analytics Engineer",
   "Product Manager",
   "Business Analyst",
 ];
@@ -102,13 +105,20 @@ export function SettingsPage() {
 
   const update = (k: keyof api.UserProfile, v: string) => setProfile((p) => p ? ({ ...p, [k]: v }) : p);
   const updatePref = (k: keyof api.UserPreferences, v: any) => setPrefs((pr) => pr ? ({ ...pr, [k]: v }) : pr);
+  const rolesFromPreferenceText = (value: string) => value
+    .split(/[,;\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 25);
   const addJobPreference = (suggestion: string) => {
     setPrefs((pr) => {
       if (!pr) return pr;
       const current = pr.job_preferences || "";
       const parts = current.split(",").map((item) => item.trim()).filter(Boolean);
       if (parts.some((item) => item.toLowerCase() === suggestion.toLowerCase())) return pr;
-      return { ...pr, job_preferences: [...parts, suggestion].join(", ") };
+      const next = [...parts, suggestion];
+      const targetRoles = Array.from(new Set([...(pr.target_roles || []), suggestion]));
+      return { ...pr, job_preferences: next.join(", "), target_roles: targetRoles.slice(0, 25) };
     });
   };
 
@@ -119,7 +129,12 @@ export function SettingsPage() {
     setSaved(false);
     try {
       await api.updateProfile(profile);
-      await api.updatePreferences(prefs);
+      await api.updatePreferences({
+        ...prefs,
+        target_roles: rolesFromPreferenceText(prefs.job_preferences || "").length
+          ? rolesFromPreferenceText(prefs.job_preferences || "")
+          : (prefs.target_roles || []).slice(0, 25),
+      });
       if (pwNew) {
         if (pwNew !== pwConfirm) throw new Error("Passwords don't match");
         if (pwNew.length < 8) throw new Error("Password must be ≥ 8 chars");

@@ -401,11 +401,32 @@ def _terms_for_role_names(role_names: list[str]) -> list[str]:
     if not selected:
         return []
     terms: list[str] = []
+    matched: set[str] = set()
     for cat in CATEGORIES:
         for role in cat.roles:
-            if role.name.lower() in selected:
+            names = {role.name.lower(), *(syn.lower() for syn in role.synonyms)}
+            if selected.intersection(names):
+                matched.update(selected.intersection(names))
                 terms.append(role.name)
                 terms.extend(role.synonyms)
+    # Keep user-entered role text useful even when it does not exactly match a
+    # canonical taxonomy label. This prevents preferences like "security",
+    # "frontend engineer", or "fullstack" from narrowing the Jobs page to zero.
+    fuzzy_map = {
+        "security": ("security engineer", "cybersecurity analyst", "security analyst", "appsec engineer", "cloud security engineer"),
+        "frontend": ("frontend engineer", "front end engineer", "react developer", "ui engineer"),
+        "front end": ("frontend engineer", "front end engineer", "react developer", "ui engineer"),
+        "backend": ("backend engineer", "back end engineer", "api engineer", "server side engineer"),
+        "back end": ("backend engineer", "back end engineer", "api engineer", "server side engineer"),
+        "fullstack": ("full stack engineer", "full-stack engineer", "full stack developer"),
+        "full stack": ("full stack engineer", "full-stack engineer", "full stack developer"),
+        "product manager": ("product manager", "technical product manager", "associate product manager"),
+    }
+    for original in selected - matched:
+        terms.append(original)
+        for key, expansions in fuzzy_map.items():
+            if key in original:
+                terms.extend(expansions)
     seen: set[str] = set()
     out: list[str] = []
     for term in terms:
