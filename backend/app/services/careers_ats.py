@@ -982,6 +982,106 @@ async def scrape_bamboohr_board(board_token: str, *, max_jobs: int = 2000) -> li
     return jobs
 
 
+# ─── Workable ────────────────────────────────────────────────────────────────
+
+async def scrape_workable_board(board_token: str, *, max_jobs: int = 2000) -> list[JobPost]:
+    """Pull open roles from a Workable-hosted board.
+
+    Public endpoint: https://apply.workable.com/api/v3/accounts/{token}/jobs?state=published
+
+    Workable paginates with a `nextPage` token. We follow the pagination
+    chain up to `max_jobs` rows so boards with thousands of openings
+    actually come through fully (27,000+ SMB companies use Workable so
+    this is one of the most valuable feeds).
+    """
+    token = board_token.strip()
+    if not token:
+        return []
+
+    base_url = f"https://apply.workable.com/api/v3/accounts/{token}/jobs"
+    params: dict[str, Any] = {"state": "published", "limit": 100}
+    jobs: list[JobPost] = []
+
+    try:
+        async with httpx.AsyncClient(timeout=45.0, headers=DEFAULT_HEADERS) as client:
+            while len(jobs) < max_jobs:
+                response = await client.get(base_url, params=params)
+                if response.status_code in (403, 404):
+                    # Account doesn't exist or board is private — fail quietly.
+                    return jobs
+                response.raise_for_status()
+                payload = response.json() if response.content else {}
+                items = payload.get("results") if isinstance(payload, dict) else None
+                if not isinstance(items, list) or not items:
+                    break
+                for item in items:
+                    if len(jobs) >= max_jobs:
+                        break
+                    parsed = _workable_item_to_jobpost(item, board_token=token)
+                    if parsed:
+                        jobs.append(parsed)
+                # Workable returns nextPage as an opaque token; absent → done.
+                next_page = payload.get("nextPage") if isinstance(payload, dict) else None
+                if not next_page:
+                    break
+                params = {"state": "published", "limit": 100, "since_id": next_page}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Workable %r: %s", token, exc)
+        return jobs
+
+    logger.info("Workable %r: normalized %s jobs", token, len(jobs))
+    return jobs
+
+
+def _workable_item_to_jobpost(item: dict, board_token: str) -> Optional[JobPost]:
+    title = _safe_str(item.get("title"))
+    if not title:
+        return None
+    # Workable's response uses `company` when available, else fall back to
+    # the slug-derived display name so the catalog name still wins later.
+    company = _safe_str(item.get("company") or board_token.replace("-", " ").title())
+    location_obj = item.get("location") or {}
+    if isinstance(location_obj, dict):
+        location = ", ".join(
+            x for x in [
+                _safe_str(location_obj.get("city")),
+                _safe_str(location_obj.get("region")),
+                _safe_str(location_obj.get("country")),
+            ] if x
+        )
+    else:
+        location = _safe_str(location_obj)
+    description = _safe_str(item.get("description") or item.get("requirements") or "")
+    shortcode = _safe_str(item.get("shortcode") or item.get("id"))
+    job_url = _safe_str(item.get("url") or item.get("application_url"))
+    if not job_url and shortcode:
+        job_url = f"https://apply.workable.com/{board_token}/j/{shortcode}/"
+
+    is_remote = bool(item.get("remote") or (isinstance(location_obj, dict) and location_obj.get("workplace") == "remote"))
+    return JobPost(
+        id=generate_job_id(title, company, location or shortcode),
+        title=title,
+        company=company,
+        location=location,
+        description=description,
+        job_url=job_url,
+        category=JobCategory.OTHER,
+        job_type=_safe_str(item.get("employment_type")),
+        source=JobSource.WORKABLE,
+        source_job_id=shortcode,
+        posted_at=_parse_dt(item.get("published") or item.get("created_at")),
+        is_remote=is_remote,
+        content_hash=generate_content_hash(title, company, location or board_token),
+        scraped_at=datetime.utcnow(),
+        extra_metadata={
+            "ats": "workable",
+            "board_token": board_token,
+            "department": _safe_str(item.get("department")),
+            "function": _safe_str(item.get("function")),
+        },
+    )
+
+
 # ─── Multi-ATS dispatcher ────────────────────────────────────────────────────
 
 ATS_DISPATCH = {
@@ -995,6 +1095,7 @@ ATS_DISPATCH = {
     "jazzhr": scrape_jazzhr_board,
     "rippling": scrape_rippling_board,
     "bamboohr": scrape_bamboohr_board,
+    "workable": scrape_workable_board,
 }
 
 

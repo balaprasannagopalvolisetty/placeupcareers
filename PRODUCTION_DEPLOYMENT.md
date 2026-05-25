@@ -4,6 +4,12 @@ This deployment runs:
 
 - `placeup-api`: FastAPI backend on Cloud Run.
 - `placeup-job-scraper-6h`: Cloud Run Job scheduled every 6 hours.
+- `placeup-job-scraper-6h` includes the bounded `scrapegraph_discovery`
+  source for direct career pages, Google Jobs pages, and public LinkedIn job
+  search pages. It uses ScrapeGraphAI with OpenRouter (`OPENROUTER_API_KEY`)
+  and is capped by `SCRAPEGRAPH_DISCOVERY_MAX_URLS` to control cost. Production
+  uses a 220-URL cap so the run can cover direct career pages plus Google Jobs
+  and LinkedIn discovery for every Jobs-page taxonomy role.
 - `clean-and-load-jobs`: Gen2 Cloud Run Function scheduled every 12 hours for Firestore bronze to Cloud SQL silver.
 - `master_jobs`: deduplicated master table combining normalized scraper jobs and `silver_posts`.
 - `placeup-frontend`: Vite React app on Firebase Hosting or Cloud Run.

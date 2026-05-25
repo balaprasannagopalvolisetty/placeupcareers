@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import { motion } from "motion/react";
-import { Save } from "lucide-react";
+import { Save, AlertTriangle, MailCheck, KeyRound, Trash2 } from "lucide-react";
 import * as api from "../../lib/api";
+import { clearStoredToken } from "../../lib/api";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif" };
 const T = {
@@ -79,6 +81,16 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Account-deletion confirmation flow — kept local to this page so a
+  // misrouted state update somewhere else can't accidentally trigger it.
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  // Forgot/verify status notes shown next to the email field.
+  const [forgotStatus, setForgotStatus] = useState<string | null>(null);
+  const [verifyStatus, setVerifyStatus] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     let active = true;
@@ -173,13 +185,200 @@ export function SettingsPage() {
         <Toggle label="Marketing Emails" desc="Product updates and tips" on={prefs.notification_marketing_emails} onChange={(v) => updatePref("notification_marketing_emails", v)} />
       </Section>
 
+      <Section title="Email & Account">
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{
+            display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap",
+            padding: "12px 14px", borderRadius: 10,
+            background: (profile as any).email_verified ? "rgba(34,197,94,0.07)" : "rgba(242,238,179,0.04)",
+            border: `1px solid ${(profile as any).email_verified ? "rgba(34,197,94,0.22)" : T.border}`,
+          }}>
+            <MailCheck size={16} color={(profile as any).email_verified ? "#22c55e" : T.t3} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, color: T.text, fontFamily: F.sans, fontWeight: 600 }}>
+                {profile.email || "—"}
+              </div>
+              <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, marginTop: 2 }}>
+                {(profile as any).email_verified
+                  ? "Verified"
+                  : "Not yet verified — verification helps recover your account."}
+              </div>
+            </div>
+            {!(profile as any).email_verified && (
+              <button
+                onClick={async () => {
+                  try {
+                    const r = await api.resendVerification(profile.email || "");
+                    setVerifyStatus(r.message || "Verification email re-sent — check your inbox.");
+                  } catch (e) {
+                    setVerifyStatus((e as Error).message || "Could not send verification right now.");
+                  }
+                }}
+                style={{
+                  padding: "8px 12px", borderRadius: 8, border: `1px solid ${T.border}`,
+                  background: "rgba(242,238,179,0.05)", color: T.text,
+                  fontSize: 12, fontFamily: F.sans, cursor: "pointer",
+                }}
+              >Resend verification</button>
+            )}
+          </div>
+          {verifyStatus && (
+            <div style={{ fontSize: 12, color: T.t2, fontFamily: F.sans, paddingLeft: 4 }}>{verifyStatus}</div>
+          )}
+
+          <div style={{ fontSize: 12, color: T.t3, fontFamily: F.sans, lineHeight: 1.5 }}>
+            Your account data lives in encrypted Firestore collections
+            (<code>users</code>, <code>user_preferences</code>, <code>user_resumes</code>,
+            <code>user_applications</code>, <code>user_alerts</code>, <code>auth_sessions</code>).
+            See <a href="/privacy" style={{ color: T.t2 }}>Privacy Policy</a> for the
+            full breakdown.
+          </div>
+        </div>
+      </Section>
+
       <Section title="Security">
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <Field label="Current Password" type="password" placeholder="••••••••" value={pwCurrent} onChange={setPwCurrent} />
           <Field label="New Password" type="password" placeholder="••••••••" value={pwNew} onChange={setPwNew} />
           <Field label="Confirm New Password" type="password" placeholder="••••••••" value={pwConfirm} onChange={setPwConfirm} />
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={async () => {
+                if (!profile.email) return;
+                try {
+                  const r = await api.forgotPassword(profile.email);
+                  setForgotStatus(r.message || "Reset link sent — check your inbox.");
+                } catch (e) {
+                  setForgotStatus((e as Error).message || "Couldn't send reset link.");
+                }
+              }}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 6,
+                padding: "8px 12px", borderRadius: 8,
+                border: `1px solid ${T.border}`, background: "transparent",
+                color: T.t2, fontSize: 12, fontFamily: F.sans, cursor: "pointer",
+              }}
+            >
+              <KeyRound size={12} /> Forgot password? Send reset link
+            </button>
+            {forgotStatus && (
+              <span style={{ fontSize: 12, color: "#22c55e", fontFamily: F.sans }}>{forgotStatus}</span>
+            )}
+          </div>
         </div>
       </Section>
+
+      <Section title="Danger Zone">
+        <div style={{
+          display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap",
+          padding: 14, borderRadius: 10,
+          background: "rgba(166,55,45,0.06)", border: "1px solid rgba(166,55,45,0.25)",
+        }}>
+          <AlertTriangle size={18} color={T.red} style={{ marginTop: 2 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: T.text, fontFamily: F.sans }}>
+              Delete your account
+            </div>
+            <div style={{ fontSize: 12, color: T.t2, fontFamily: F.sans, marginTop: 4, lineHeight: 1.5 }}>
+              Permanently removes your profile, resumes, applications, alerts, and saved jobs.
+              This cannot be undone. Backups roll off within 30 days.
+            </div>
+          </div>
+          <button
+            onClick={() => { setDeletePassword(""); setDeleteError(null); setShowDeleteModal(true); }}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              padding: "9px 14px", borderRadius: 9,
+              border: "1px solid rgba(166,55,45,0.4)", background: "rgba(166,55,45,0.12)",
+              color: T.red, fontSize: 12, fontWeight: 600, fontFamily: F.sans, cursor: "pointer",
+            }}
+          >
+            <Trash2 size={13} /> Delete account
+          </button>
+        </div>
+      </Section>
+
+      {showDeleteModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => !deleting && setShowDeleteModal(false)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 200,
+            background: "rgba(1,17,38,0.85)", backdropFilter: "blur(6px)",
+            display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(440px, 100%)", padding: "28px 26px", borderRadius: 18,
+              background: "rgba(64,18,18,0.92)", border: "1px solid rgba(242,238,179,0.1)",
+              color: T.text, fontFamily: F.sans,
+            }}
+          >
+            <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>Delete your account?</h3>
+            <p style={{ fontSize: 13, color: T.t2, lineHeight: 1.5, marginTop: 8 }}>
+              Type your password to confirm. Every Firestore record we hold for you will be
+              removed immediately. Your refresh tokens will be revoked so all other devices
+              are signed out.
+            </p>
+            <input
+              type="password"
+              autoComplete="current-password"
+              placeholder="Password (or type DELETE if you signed in with Google)"
+              value={deletePassword}
+              onChange={(e) => setDeletePassword(e.target.value)}
+              style={{
+                width: "100%", boxSizing: "border-box",
+                height: 42, padding: "0 12px", marginTop: 14, borderRadius: 10,
+                border: `1px solid ${T.border}`, background: T.input,
+                color: T.text, fontSize: 13, fontFamily: F.sans, outline: "none",
+              }}
+            />
+            {deleteError && (
+              <div style={{ marginTop: 10, color: T.red, fontSize: 12 }}>{deleteError}</div>
+            )}
+            <div style={{ display: "flex", gap: 10, marginTop: 18, justifyContent: "flex-end" }}>
+              <button
+                disabled={deleting}
+                onClick={() => setShowDeleteModal(false)}
+                style={{
+                  padding: "9px 14px", borderRadius: 9,
+                  border: `1px solid ${T.border}`, background: "transparent",
+                  color: T.t2, fontSize: 13, fontFamily: F.sans, cursor: "pointer",
+                }}
+              >Cancel</button>
+              <button
+                disabled={deleting || !deletePassword}
+                onClick={async () => {
+                  setDeleting(true);
+                  setDeleteError(null);
+                  try {
+                    await api.deleteAccount(deletePassword);
+                    clearStoredToken();
+                    navigate("/", { replace: true });
+                  } catch (e) {
+                    setDeleteError((e as Error).message || "Delete failed");
+                  } finally {
+                    setDeleting(false);
+                  }
+                }}
+                style={{
+                  padding: "9px 14px", borderRadius: 9, border: "none",
+                  background: "linear-gradient(135deg, #8C3A27, #A6372D, #401212)",
+                  color: "#fff", fontSize: 13, fontWeight: 600, fontFamily: F.sans,
+                  cursor: deleting || !deletePassword ? "not-allowed" : "pointer",
+                  opacity: deleting || !deletePassword ? 0.6 : 1,
+                }}
+              >
+                {deleting ? "Deleting…" : "Yes, delete forever"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {error ? (
         <div style={{ color: "#ef4444", fontFamily: F.sans, fontSize: 13 }}>{error}</div>

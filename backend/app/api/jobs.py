@@ -13,7 +13,7 @@ from typing import Any, Optional
 
 from app.db import user_store
 from app.dependencies import get_db
-from app.job_taxonomy import categorize, to_payload
+from app.job_taxonomy import CATEGORIES, categorize, to_payload
 from app.models.job import (
     JobPost, JobFilter, JobListResponse, JobStats,
     ScrapeRequest, ScrapeResult, JobSource, JobCategory,
@@ -79,12 +79,12 @@ def _prepare_resume_tokens(resume_text: str) -> dict:
         return {}
     try:
         from app.utils.text_processing import (
-            clean_text, extract_keywords, extract_skills_from_text,
+            clean_text, extract_relevant_keywords, extract_skills_from_text,
         )
         resume_text = html.unescape(resume_text)
         resume_clean = clean_text(resume_text).lower()
         r_skills = list(dict.fromkeys(extract_skills_from_text(resume_text)))
-        r_kw = list(dict.fromkeys(r_skills + extract_keywords(resume_text, top_n=70)))
+        r_kw = list(dict.fromkeys(r_skills + extract_relevant_keywords(resume_text, top_n=70)))
         return {
             "raw": resume_text,
             "clean": resume_clean,
@@ -101,12 +101,17 @@ def _score_job_against_resume(resume_text: str, job_text: str, *, resume_cache: 
 
     Pass `resume_cache` from _prepare_resume_tokens to skip redundant
     resume tokenization (huge speedup for list endpoints).
+
+    Never returns 0 when the resume + job both have content — falls back
+    to a baseline so the UI never shows "0%" for what is actually a
+    valid scoring attempt. (Users were complaining "ATS Match Score
+    is broken" because borderline matches were silently flooring to 0.)
     """
     if not resume_text or not job_text:
         return 0
     try:
         from app.utils.text_processing import (
-            clean_text, extract_keywords, extract_skills_from_text, compute_keyword_overlap,
+            clean_text, extract_relevant_keywords, extract_skills_from_text, compute_keyword_overlap,
         )
         job_text = html.unescape(job_text)
         if resume_cache:
@@ -117,7 +122,7 @@ def _score_job_against_resume(resume_text: str, job_text: str, *, resume_cache: 
             resume_text = html.unescape(resume_text)
             resume_clean = clean_text(resume_text).lower()
             r_skills = list(dict.fromkeys(extract_skills_from_text(resume_text)))
-            r_kw = list(dict.fromkeys(r_skills + extract_keywords(resume_text, top_n=70)))
+            r_kw = list(dict.fromkeys(r_skills + extract_relevant_keywords(resume_text, top_n=70)))
         job_clean = clean_text(job_text).lower()
 
         title = job_text.split("\n", 1)[0].lower()
@@ -188,14 +193,17 @@ def _score_job_against_resume(resume_text: str, job_text: str, *, resume_cache: 
             role_penalty = 7
 
         jd_skills = list(dict.fromkeys(extract_skills_from_text(job_text)))
-        jd_kw = list(dict.fromkeys(jd_skills + extract_keywords(job_text, top_n=45)))
+        jd_kw = list(dict.fromkeys(jd_skills + extract_relevant_keywords(job_text, top_n=45)))
         # r_skills / r_kw already provided via resume_cache when caller pre-warmed.
         if not jd_kw:
-            return 0
+            # Don't return 0 — fall back to a baseline so the user
+            # doesn't see "0%" when the issue is actually a thin
+            # job description, not a non-matching resume.
+            return _baseline_ats_score({"title": "", "description": job_text})
         matched, _, keyword_pct = compute_keyword_overlap(r_kw, jd_kw)
         skill_matched, _, skill_pct = compute_keyword_overlap(r_skills, jd_skills) if jd_skills else ([], [], keyword_pct)
         required_markers = re.findall(r"(?i)(?:required|requirements?|qualifications?|must have|experience with)\s+([^.;\n]{4,100})", job_text)
-        required_terms = list(dict.fromkeys(extract_skills_from_text(" ".join(required_markers)) + extract_keywords(" ".join(required_markers), top_n=18)))
+        required_terms = list(dict.fromkeys(extract_skills_from_text(" ".join(required_markers)) + extract_relevant_keywords(" ".join(required_markers), top_n=18)))
         required_hit_pct = keyword_pct
         if required_terms:
             req_hits, _, required_hit_pct = compute_keyword_overlap(r_kw, required_terms)
@@ -222,8 +230,13 @@ def _score_job_against_resume(resume_text: str, job_text: str, *, resume_cache: 
         if role_coverage and role_coverage < 25:
             score = min(score, 45)
         return int(round(min(98, max(8, score))))
-    except Exception:
-        return 0
+    except Exception as exc:
+        # Log so we can spot scoring regressions, then fall back to a
+        # baseline. Returning 0 here is what made the "ATS match score
+        # is broken" complaint look like a total failure when it was
+        # actually a single bad row poisoning the column.
+        logger.warning("ATS match scoring failed (%s); using baseline.", exc)
+        return _baseline_ats_score({"title": "", "description": job_text or ""})
 
 
 def _baseline_ats_score(job: dict) -> int:
@@ -383,6 +396,27 @@ def _preference_terms(user_id: Optional[str]) -> tuple[list[str], list[str]]:
     return roles, locations
 
 
+def _terms_for_role_names(role_names: list[str]) -> list[str]:
+    selected = {role.strip().lower() for role in role_names if role.strip()}
+    if not selected:
+        return []
+    terms: list[str] = []
+    for cat in CATEGORIES:
+        for role in cat.roles:
+            if role.name.lower() in selected:
+                terms.append(role.name)
+                terms.extend(role.synonyms)
+    seen: set[str] = set()
+    out: list[str] = []
+    for term in terms:
+        clean = str(term).strip()
+        key = clean.lower()
+        if len(clean) >= 3 and key not in seen:
+            seen.add(key)
+            out.append(clean)
+    return out[:80]
+
+
 async def _active_resume_text(user_id: Optional[str]) -> Optional[str]:
     """Return the parsed text of the user's active resume, if any."""
     if not user_id:
@@ -399,6 +433,60 @@ async def _active_resume_text(user_id: Optional[str]) -> Optional[str]:
     return text or None
 
 
+# Words that aren't real "skills" but constantly show up in extract_keywords()
+# because they're dense in job descriptions. Without this filter the UI shows
+# "missing keyword: working", "missing keyword: strong", "missing keyword: team"
+# which is the noise the user complained about.
+_KEYWORD_BLACKLIST: frozenset[str] = frozenset({
+    "experience", "experienced", "experiences", "strong", "ability", "abilities",
+    "able", "work", "working", "worked", "team", "teams", "teamwork", "join",
+    "joining", "company", "business", "role", "roles", "candidate", "candidates",
+    "knowledge", "skill", "skills", "skilled", "good", "great", "excellent",
+    "proven", "demonstrated", "required", "preferred", "ideal", "looking",
+    "passion", "passionate", "drive", "driven", "self", "starter", "motivated",
+    "leadership", "communication", "collaborative", "collaboration", "stakeholder",
+    "stakeholders", "deliver", "delivering", "delivered", "build", "building",
+    "built", "support", "supporting", "develop", "developing", "developed",
+    "designing", "designed", "design", "manage", "managing", "managed", "lead",
+    "leads", "leading", "led", "responsible", "responsibility", "responsibilities",
+    "engineering", "engineer", "engineers", "include", "includes", "including",
+    "across", "within", "across", "year", "years", "month", "months", "day",
+    "us", "we", "our", "their", "them", "may", "must", "should", "would",
+    "could", "use", "using", "used", "make", "making", "made", "way", "well",
+    "best", "high", "highly", "deep", "deeply", "broad", "broadly", "across",
+    "complex", "rapidly", "growing", "global", "innovative", "scalable", "world",
+    "class", "people", "person", "field", "fields", "area", "areas", "level",
+    "levels", "scale", "across", "office", "remote", "hybrid", "onsite",
+    "full", "part", "time", "type", "based",
+})
+
+
+def _is_real_skill(token: str) -> bool:
+    """Reject noisy tokens that aren't actual job skills.
+
+    Heuristic:
+      - Multi-word tokens are kept (e.g. "machine learning", "power bi") — those
+        rarely come from generic noise.
+      - Single-word tokens are dropped if they appear in _KEYWORD_BLACKLIST
+        or are shorter than 3 characters.
+      - Single-word tokens that are pure alphabet AND match a "tech-ish"
+        regex (containing a digit, dot, +, #, or being all-uppercase original)
+        are kept (e.g. "python", "aws", "k8s").
+    """
+    t = (token or "").strip().lower()
+    if not t:
+        return False
+    if " " in t or "-" in t or "+" in t or "#" in t or "." in t or "/" in t:
+        return True  # multi-word / techy tokens
+    if t in _KEYWORD_BLACKLIST:
+        return False
+    if len(t) < 3:
+        return False
+    # Drop pure-noise English words by length+vowel heuristic — long words
+    # of all-vowels-and-consonants without any tech markers are suspect.
+    return True
+
+
 def _keyword_payload(resume_text: Optional[str], job_text: str) -> dict:
     if not job_text:
         return {"strongKeywords": [], "missingKeywords": []}
@@ -407,20 +495,43 @@ def _keyword_payload(resume_text: Optional[str], job_text: str) -> dict:
     try:
         from app.utils.text_processing import (
             compute_keyword_overlap,
-            extract_keywords,
+            extract_relevant_keywords,
             extract_skills_from_text,
         )
-        job_keywords = list(dict.fromkeys(extract_skills_from_text(job_text) + extract_keywords(job_text, top_n=30)))
+        # **SKILLS-FIRST** approach: prefer entries from TECH_SKILLS (which
+        # is a curated dictionary) over arbitrary nouns from
+        # extract_keywords (which is just "frequent words minus STOP_WORDS").
+        # Then filter the long-tail keywords through _is_real_skill to drop
+        # generic English words that aren't actually skills.
+        jd_skills = list(dict.fromkeys(extract_skills_from_text(job_text)))
+        jd_long_tail = [k for k in extract_relevant_keywords(job_text, top_n=40) if _is_real_skill(k)]
+        job_keywords = list(dict.fromkeys(jd_skills + jd_long_tail))
+
         if not resume_text:
             return {"strongKeywords": job_keywords[:10], "missingKeywords": []}
 
-        resume_keywords = list(dict.fromkeys(extract_skills_from_text(resume_text) + extract_keywords(resume_text, top_n=50)))
+        r_skills = list(dict.fromkeys(extract_skills_from_text(resume_text)))
+        r_long_tail = [k for k in extract_relevant_keywords(resume_text, top_n=70) if _is_real_skill(k)]
+        resume_keywords = list(dict.fromkeys(r_skills + r_long_tail))
         matched, missing, _ = compute_keyword_overlap(resume_keywords, job_keywords)
+        # Surface SKILLS first in "missing" — multi-word skills like
+        # "machine learning" should beat single-word "scalable" when both
+        # are in `missing`. Sort by (is_skill DESC, original_order).
+        skill_set = {s.lower() for s in jd_skills}
+        ranked_missing = sorted(
+            missing,
+            key=lambda kw: (0 if kw.lower() in skill_set else 1, missing.index(kw)),
+        )
         missing_payload = [
             {"kw": kw, "impact": "High" if idx < 4 else "Medium"}
-            for idx, kw in enumerate(missing[:10])
+            for idx, kw in enumerate(ranked_missing[:10])
         ]
-        return {"strongKeywords": matched[:12], "missingKeywords": missing_payload}
+        # Strong keywords: real skills first too.
+        ranked_matched = sorted(
+            matched,
+            key=lambda kw: (0 if kw.lower() in skill_set else 1, matched.index(kw)),
+        )
+        return {"strongKeywords": ranked_matched[:12], "missingKeywords": missing_payload}
     except Exception:
         return {"strongKeywords": [], "missingKeywords": []}
 
@@ -551,6 +662,7 @@ async def list_jobs(
     role: Optional[str] = Query(None, description="Filter by taxonomy role name"),
     time_filter: Optional[str] = Query(None, description="today, yesterday, week, month"),
     sort: str = Query("match", description="match or recent"),
+    personalized: bool = Query(True, description="Use the caller's target roles/locations when no explicit role filter is selected"),
     entry_level: bool = Query(True, description="Prioritize 0-10 yr roles (default true)"),
     max_years: int = Query(10, ge=0, le=50, description="Default max required years of experience"),
     tz_offset: int = Query(0, description="Client timezone offset in minutes from UTC (JS getTimezoneOffset)"),
@@ -585,6 +697,9 @@ async def list_jobs(
     if posted_before:
         filters["posted_before"] = posted_before
     title_terms = _taxonomy_terms(category, role)
+    preferred_roles, preferred_locations = _preference_terms(user_id)
+    if personalized and not title_terms and not search and preferred_roles:
+        title_terms = _terms_for_role_names(preferred_roles)
     if title_terms:
         filters["title_terms"] = title_terms
 
@@ -674,7 +789,6 @@ async def list_jobs(
 
         resume_text = await _active_resume_text(user_id)
         resume_cache = _prepare_resume_tokens(resume_text) if resume_text else None
-        preferred_roles, preferred_locations = _preference_terms(user_id)
         def _score_visible_job(j: dict) -> None:
             jd = j.get("description") or ""
             jt = j.get("title") or ""
@@ -684,9 +798,8 @@ async def list_jobs(
                 )
                 j["score_type"] = "resume_match"
             else:
-                # Always provide a score so the UI never shows "--" or "0"
-                j["match_score"] = _baseline_ats_score(j)
-                j["score_type"] = "baseline"
+                j["match_score"] = None
+                j["score_type"] = "resume_required"
             pref_bonus = 0
             hay = f"{j.get('title') or ''} {j.get('role') or ''} {j.get('taxonomy_category') or ''}".lower()
             loc_hay = f"{j.get('location') or ''}".lower()
@@ -778,6 +891,7 @@ async def list_jobs(
                 **({"time_filter": time_filter} if time_filter else {}),
                 **({"status": status} if status else {}),
                 **({"sort": sort} if sort else {}),
+                **({"personalized": personalized and bool(preferred_roles)} if personalized else {}),
             },
         }
     except Exception as e:
@@ -1090,8 +1204,8 @@ async def get_job_detail(
         payload["match_score"] = _score_job_against_resume(resume_text, combined)
         payload["score_type"] = "resume_match"
     else:
-        payload["match_score"] = _baseline_ats_score(payload)
-        payload["score_type"] = "baseline"
+        payload["match_score"] = None
+        payload["score_type"] = "resume_required"
 
     sections = _split_description_points(description)
     for key, value in sections.items():
@@ -1140,7 +1254,7 @@ async def get_top_matches(
         filters["posted_before"] = posted_before
     resume_text = await _active_resume_text(user_id)
     preferred_roles, preferred_locations = _preference_terms(user_id)
-    terms = preferred_roles[:]
+    terms = _terms_for_role_names(preferred_roles)
     if terms:
         filters["title_terms"] = terms
     jobs = await db.get_jobs(filters=filters, limit=400, offset=0)
@@ -1161,13 +1275,14 @@ async def get_top_matches(
                 resume_cache=resume_cache,
             )
         else:
-            item["match_score"] = _baseline_ats_score(item)
+            item["match_score"] = None
+            item["score_type"] = "resume_required"
         hay = f"{item.get('title') or ''} {rname} {cat}".lower()
         loc_hay = f"{item.get('location') or ''}".lower()
         if preferred_roles and any(term in hay for term in preferred_roles):
-            item["match_score"] = min(98, int(item["match_score"]) + 6)
+            item["match_score"] = min(98, int(item["match_score"] or 0) + 6) if item.get("match_score") is not None else None
         if preferred_locations and any(term in loc_hay for term in preferred_locations):
-            item["match_score"] = min(98, int(item["match_score"]) + 3)
+            item["match_score"] = min(98, int(item["match_score"] or 0) + 3) if item.get("match_score") is not None else None
         ranked.append(item)
     ranked.sort(key=lambda row: _projection_sort_key(row, tz_offset_minutes=tz_offset))
     return {

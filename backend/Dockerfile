@@ -12,6 +12,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# ScrapeGraphAI needs a browser runtime for dynamic career pages, Google Jobs,
+# and LinkedIn guest pages in the 6-hour Cloud Run job.
+RUN python -m playwright install --with-deps chromium
+
 # Copy application code
 COPY . .
 

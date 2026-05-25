@@ -23,6 +23,7 @@ Design notes
 from __future__ import annotations
 
 import logging
+import secrets
 import time
 from collections import defaultdict, deque
 from typing import Deque, Dict, Tuple
@@ -59,9 +60,8 @@ PUBLIC_READ_PATHS = {
     "/redoc",
 }
 PUBLIC_READ_PREFIXES = (
-    "/api/jobs",
-    "/api/visa",
     "/api/auth/oidc/google",
+    "/api/payments/plans",
 )
 PUBLIC_WRITE_PATHS = {
     "/api/auth/signin",
@@ -80,8 +80,25 @@ def _bucket_for(path: str, method: str) -> str:
 
 
 def _client_ip(request: Request) -> str:
-    # Cloud Run injects the real client IP into X-Forwarded-For. Trust
-    # only the leftmost entry — anything else is attacker-controlled.
+    """Resolve the originating client IP across the proxy chain.
+
+    Header priority (highest trust first):
+      1. `CF-Connecting-IP`  - Cloudflare injects this when the request
+         comes through the CF proxy. We trust it because Cloudflare's
+         WAF is the public-facing edge once DNS is proxied; nothing
+         else can reach Cloud Run if firewall rules require the CF
+         IP range (see .github/CLOUDFLARE.md).
+      2. `True-Client-IP`    - Cloudflare Enterprise version of #1.
+      3. `X-Forwarded-For`   - Cloud Run injects this. The leftmost
+         entry is the real client; anything to its right is the
+         proxy chain itself.
+      4. `request.client.host` - direct socket peer, only useful when
+         no proxies are in front.
+    """
+    for header in ("cf-connecting-ip", "true-client-ip"):
+        value = request.headers.get(header)
+        if value:
+            return value.strip()
     xff = request.headers.get("x-forwarded-for")
     if xff:
         return xff.split(",", 1)[0].strip()
@@ -158,10 +175,14 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-def _has_auth_header(request: Request) -> bool:
+def _has_valid_auth_header(request: Request) -> bool:
     authorization = request.headers.get("authorization", "")
     api_key = request.headers.get("x-api-key", "")
-    return authorization.lower().startswith("bearer ") or bool(api_key)
+    if authorization.lower().startswith("bearer "):
+        return bool(_user_id_from_header(request))
+    if api_key and settings.internal_api_key:
+        return secrets.compare_digest(api_key, settings.internal_api_key)
+    return False
 
 
 def _is_public_read(path: str) -> bool:
@@ -182,7 +203,7 @@ class RouteAccessMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         if path in PUBLIC_WRITE_PATHS:
             return await call_next(request)
-        if path.startswith("/api/") and not _has_auth_header(request):
+        if path.startswith("/api/") and not _has_valid_auth_header(request):
             return JSONResponse({"detail": "Authentication required"}, status_code=401)
         return await call_next(request)
 

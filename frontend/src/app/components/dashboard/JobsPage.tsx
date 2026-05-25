@@ -43,6 +43,17 @@ function normalizeVisa(visa: unknown): string[] {
   return [];
 }
 
+function normalizeTaxonomyVisa(visa: unknown): string[] {
+  if (Array.isArray(visa)) return visa.filter((v): v is string => typeof v === "string" && v.trim().length > 0);
+  if (typeof visa === "string") {
+    return visa
+      .split(/[\s,]+/)
+      .map((v) => v.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
 function formatSalary(salary: unknown): string {
   if (!salary) return "—";
   if (typeof salary === "string") return salary;
@@ -56,7 +67,7 @@ function formatSalary(salary: unknown): string {
   return "—";
 }
 
-interface TaxonomyRole { name: string; synonyms: string[]; visa: string[]; hot: boolean }
+interface TaxonomyRole { name: string; synonyms: string[] | string; visa: string[]; hot: boolean }
 interface TaxonomyCategory { name: string; icon: string; roles: TaxonomyRole[] }
 
 const JOB_FETCH_RETRY_MS = 700;
@@ -146,9 +157,9 @@ function getSavedIds(): Set<string> {
   } catch { return new Set<string>(); }
 }
 
-function getTrackedJobs(): Record<string, "applied" | "interview"> {
+function getTrackedJobs(): Record<string, "applied" | "interview" | "not_applied"> {
   try {
-    return JSON.parse(localStorage.getItem("placeup_job_tracking") || "{}") as Record<string, "applied" | "interview">;
+    return JSON.parse(localStorage.getItem("placeup_job_tracking") || "{}") as Record<string, "applied" | "interview" | "not_applied">;
   } catch { return {}; }
 }
 
@@ -197,6 +208,11 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const [taxonomy, setTaxonomy] = useState<TaxonomyCategory[]>([]);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [activeRole, setActiveRole] = useState<string | null>(null);
+  // Pulled from user_preferences once at mount. When present, the API
+  // uses every saved target role/location to personalize results.
+  // The user can still override any of these inline.
+  const [userPrefs, setUserPrefs] = useState<{ target_roles: string[]; target_locations: string[] } | null>(null);
+  const [prefsApplied, setPrefsApplied] = useState(false);
   // Raw state for inputs; debounced into search/location used for API calls.
   const [searchRaw, setSearchRaw] = useState("");
   const [search, setSearch] = useState("");
@@ -205,9 +221,11 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const [statusFilter, setStatusFilter] = useState("All");
   const [timeFilter, setTimeFilter] = useState("");
   const [visaOnly, setVisaOnly] = useState(false);
+  const [personalized, setPersonalized] = useState(true);
 
   const [savedVersion, setSavedVersion] = useState(0);
   const [appliedVersion, setAppliedVersion] = useState(0);
+  const [serverTrackedJobs, setServerTrackedJobs] = useState<Record<string, "applied" | "interview" | "not_applied">>({});
 
   const [jobs, setJobs] = useState<api.JobPost[]>([]);
   const [total, setTotal] = useState(0);
@@ -225,19 +243,72 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   });
   const [pipelineStatus, setPipelineStatus] = useState<{ total_jobs?: number; active_jobs?: number; last_scraped_at?: string | null } | null>(null);
   const isLocalStatusFilter = statusFilter === "Saved" || statusFilter === "Applied" || statusFilter === "Interview";
-  const hasServerFilters = Boolean(activeCategory || activeRole || search || location || visaOnly || timeFilter || statusFilter === "New");
+  const hasServerFilters = Boolean(
+    activeCategory || activeRole || search || location || visaOnly || timeFilter || statusFilter === "New" ||
+    (personalized && (userPrefs?.target_roles?.length || 0) > 0)
+  );
 
   // Load taxonomy once.
   useEffect(() => {
     api.getJobTaxonomy()
       .then((data) => {
-        if (Array.isArray(data?.categories)) setTaxonomy(data.categories);
+        if (Array.isArray(data?.categories)) {
+          setTaxonomy(data.categories.map((cat: any) => ({
+            ...cat,
+            roles: Array.isArray(cat?.roles)
+              ? cat.roles.map((role: any) => ({
+                  ...role,
+                  visa: normalizeTaxonomyVisa(role?.visa),
+                }))
+              : [],
+          })));
+        }
       })
       .catch(() => {});
     api.getJobPipelineStatus()
       .then((status) => setPipelineStatus(status))
       .catch(() => {});
+
+    // Pull the user's saved preferences ONCE on mount. We use them to
+    // pre-fill the location filter + bias the first role pick. We do
+    // not auto-apply on every preference change because the user might
+    // want to manually broaden their search inside this session.
+    api.getPreferences()
+      .then((prefs) => {
+        if (!prefs) return;
+        const roles = (prefs.target_roles || []).filter(Boolean) as string[];
+        const locations = (prefs.target_locations || []).filter(Boolean) as string[];
+        setUserPrefs({ target_roles: roles, target_locations: locations });
+        if (!prefsApplied && (roles.length || locations.length)) {
+          if (locations[0]) {
+            setLocationRaw(locations[0]);
+            setLocation(locations[0]);
+          }
+          // Don't pre-pick a category/role until we see the taxonomy
+          // (otherwise we set invalid values). The taxonomy-matching
+          // effect below handles that once `taxonomy` is loaded.
+          setPrefsApplied(true);
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    api.getUserApplications()
+      .then((rows) => {
+        if (!active) return;
+        const next: Record<string, "applied" | "interview" | "not_applied"> = {};
+        for (const row of rows || []) {
+          if (row.job_id && ["applied", "interview", "not_applied"].includes(row.status)) {
+            next[String(row.job_id)] = row.status as "applied" | "interview" | "not_applied";
+          }
+        }
+        setServerTrackedJobs(next);
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [appliedVersion]);
 
   useEffect(() => {
     const refresh = () => {
@@ -301,7 +372,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       setTotal(0);
     }
 
-    const params: Record<string, string | number | boolean> = { page, page_size: pageSize, max_years: 10, sort: "recent" };
+    const params: Record<string, string | number | boolean> = { page, page_size: pageSize, max_years: 10, sort: "recent", personalized };
     if (search) params.search = search;
     if (location) params.location = location;
     if (visaOnly) params.visa_only = true;
@@ -347,7 +418,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       .finally(() => { if (active) setLoading(false); });
 
     return () => { active = false; };
-  }, [activeCategory, activeRole, search, location, visaOnly, timeFilter, statusFilter, page, resumeVersion, reloadKey]);
+  }, [activeCategory, activeRole, search, location, visaOnly, timeFilter, statusFilter, personalized, page, resumeVersion, reloadKey]);
 
   // Debounce search/location so API is only called after typing stops.
   useEffect(() => {
@@ -368,10 +439,10 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
 
   useEffect(() => {
     setPage(1);
-  }, [activeCategory, activeRole, search, location, visaOnly, timeFilter, statusFilter]);
+  }, [activeCategory, activeRole, search, location, visaOnly, timeFilter, statusFilter, personalized]);
 
   const savedIds = useMemo(() => getSavedIds(), [savedVersion]);
-  const trackedJobs = useMemo(() => getTrackedJobs(), [appliedVersion]);
+  const trackedJobs = useMemo(() => ({ ...getTrackedJobs(), ...serverTrackedJobs }), [appliedVersion, serverTrackedJobs]);
 
   const filtered = useMemo(() => {
     if (statusFilter === "All") return jobs;
@@ -385,6 +456,26 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const currentCategory = taxonomy.find((c) => c.name === activeCategory);
   const allJobsCount = Number(pipelineStatus?.total_jobs || pipelineStatus?.active_jobs || total || 0);
   const openPositionsCount = hasServerFilters ? total : allJobsCount;
+  const targetRoleCount = userPrefs?.target_roles?.length || 0;
+
+  const persistApplication = async (job: api.JobPost, status: "applied" | "interview" | "not_applied") => {
+    const id = String(job.id || "");
+    if (!id) return;
+    const updated = { ...trackedJobs, [id]: status };
+    localStorage.setItem("placeup_job_tracking", JSON.stringify(updated));
+    setServerTrackedJobs((prev) => ({ ...prev, [id]: status }));
+    setAppliedVersion((v) => v + 1);
+    await api.saveUserApplication({
+      job_id: id,
+      title: job.title || "",
+      company: job.company || "",
+      location: job.location || "",
+      job_url: resolveJobUrl(job),
+      match_score: typeof job.match_score === "number" ? job.match_score : 0,
+      status,
+      position_open: true,
+    });
+  };
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: isTablet ? "1fr" : "280px minmax(0, 1fr)", gap: isMobile ? 12 : 20, alignItems: "start", width: "100%", minWidth: 0 }}>
@@ -453,11 +544,52 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
 
       {/* JOBS LIST */}
       <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{
+            borderRadius: 18,
+            border: `1px solid ${T.border}`,
+            background: "linear-gradient(135deg, rgba(64,18,18,0.62), rgba(1,17,38,0.62))",
+            backdropFilter: "blur(20px)",
+            padding: isMobile ? 16 : 18,
+            display: "flex",
+            flexDirection: isMobile ? "column" : "row",
+            alignItems: isMobile ? "stretch" : "center",
+            justifyContent: "space-between",
+            gap: 14,
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, color: T.red, fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: F.sans }}>
+              <Sparkles size={14} /> Live job board
+            </div>
+            <h2 style={{ margin: "5px 0 3px", color: T.text, fontSize: isMobile ? 20 : 24, fontWeight: 800, fontFamily: F.sans, lineHeight: 1.15 }}>
+              {personalized && targetRoleCount ? "Roles matched to your saved targets" : "Visa-friendly roles matched to your profile"}
+            </h2>
+            <div style={{ color: T.t2, fontSize: 12, lineHeight: 1.55, fontFamily: F.sans }}>
+              {personalized && targetRoleCount
+                ? `Showing jobs from ${targetRoleCount} target role${targetRoleCount === 1 ? "" : "s"} saved during signup.`
+                : "Browse by role taxonomy, time posted, location, and ATS match without losing your current filters."}
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setReloadKey((value) => value + 1);
+              api.getJobPipelineStatus().then((status) => setPipelineStatus(status)).catch(() => {});
+            }}
+            style={{ height: 38, padding: "0 13px", borderRadius: 10, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.05)", color: T.text, cursor: "pointer", fontSize: 12, fontWeight: 800, fontFamily: F.sans, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, flexShrink: 0 }}
+          >
+            <RefreshCw size={13} />
+            Refresh
+          </button>
+        </motion.div>
+
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 10 }}>
           {[
             { label: "Open positions", value: openPositionsCount ? openPositionsCount.toLocaleString() : loading ? "..." : "0", icon: Briefcase },
             { label: "Visible now", value: loading && jobs.length === 0 ? "..." : filtered.length.toLocaleString(), icon: Sparkles },
-            { label: "Visa filter", value: visaOnly ? "On" : "Off", icon: ShieldCheck },
+            { label: "Personalized", value: personalized && targetRoleCount ? "On" : "Off", icon: ShieldCheck },
           ].map((item) => {
             const Icon = item.icon;
             return (
@@ -493,6 +625,12 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             style={{ height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${visaOnly ? "rgba(166,55,45,0.4)" : T.border}`, background: visaOnly ? "rgba(166,55,45,0.10)" : "transparent", color: visaOnly ? T.red : T.t2, fontSize: 12, fontFamily: F.sans, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
             <Filter size={12} /> Visa-friendly
           </button>
+          {targetRoleCount > 0 && (
+            <button onClick={() => { setPersonalized(!personalized); setActiveCategory(null); setActiveRole(null); setPage(1); }}
+              style={{ height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${personalized ? "rgba(166,55,45,0.4)" : T.border}`, background: personalized ? "rgba(166,55,45,0.10)" : "transparent", color: personalized ? T.red : T.t2, fontSize: 12, fontFamily: F.sans, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+              <Sparkles size={12} /> My roles
+            </button>
+          )}
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {STATUS_CHIPS.map((s) => (
                 <button key={s} onClick={() => { setStatusFilter(s); setPage(1); }}
@@ -551,7 +689,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
         )}
 
         {/* Active filters strip */}
-        {(activeRole || activeCategory || search || location || visaOnly || timeFilter || statusFilter !== "All") && (
+        {(activeRole || activeCategory || search || location || visaOnly || timeFilter || statusFilter !== "All" || (personalized && targetRoleCount > 0)) && (
           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ fontSize: 11, color: T.t3, fontFamily: F.sans }}>{filtered.length} of {total} positions</span>
             {activeCategory && (
@@ -581,6 +719,12 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
               <span style={{ display: "inline-flex", gap: 4, alignItems: "center", fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "rgba(166,55,45,0.08)", color: T.red, border: "1px solid rgba(166,55,45,0.25)", fontFamily: F.sans }}>
                 Visa-friendly
                 <button onClick={() => { setVisaOnly(false); setPage(1); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.red, padding: 0 }}><X size={10} /></button>
+              </span>
+            )}
+            {personalized && targetRoleCount > 0 && (
+              <span style={{ display: "inline-flex", gap: 4, alignItems: "center", fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "rgba(166,55,45,0.08)", color: T.red, border: "1px solid rgba(166,55,45,0.25)", fontFamily: F.sans }}>
+                My roles: {targetRoleCount}
+                <button onClick={() => { setPersonalized(false); setPage(1); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.red, padding: 0 }}><X size={10} /></button>
               </span>
             )}
             {timeFilter && (
@@ -624,7 +768,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
               <div style={{ fontSize: 14, marginBottom: 6 }}>No jobs match the current filters.</div>
               <div style={{ fontSize: 12, color: T.t3, marginBottom: 12 }}>Try clearing the search, location, or status filter.</div>
               <button
-                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setVisaOnly(false); setTimeFilter(""); setStatusFilter("All"); setActiveCategory(null); setActiveRole(null); setPage(1); }}
+                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setVisaOnly(false); setTimeFilter(""); setStatusFilter("All"); setActiveCategory(null); setActiveRole(null); setPersonalized(false); setPage(1); }}
                 style={{ padding: "8px 14px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.t2, fontSize: 12, fontFamily: F.sans, cursor: "pointer" }}
               >Reset filters</button>
             </div>
@@ -652,9 +796,31 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
               >
                 <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 9 }}>
                   <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", gap: 10, alignItems: isMobile ? "stretch" : "flex-start" }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: T.text, fontFamily: F.sans, lineHeight: 1.25, marginBottom: 4 }}>{job.title || "Untitled role"}</div>
-                      <div style={{ fontSize: 13, color: T.t2, fontFamily: F.sans, fontWeight: 600 }}>{job.company || "Unknown"}</div>
+                    <div style={{ display: "flex", gap: 12, alignItems: "flex-start", minWidth: 0, flex: 1 }}>
+                      {/* Company avatar — first-letter gradient circle.
+                          Cheaper than fetching real logos and looks consistent
+                          across every card. Color seed from the company name
+                          so each company gets the same color every time. */}
+                      <div
+                        aria-hidden="true"
+                        style={{
+                          width: 44, height: 44, borderRadius: 11, flexShrink: 0,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontFamily: F.sans, fontWeight: 700, fontSize: 17, color: "#fff",
+                          background: `linear-gradient(135deg, ${
+                            ["#8C3A27", "#A6372D", "#7c2d12", "#9a3412", "#6b21a8", "#475569"][
+                              Math.abs((job.company || "X").charCodeAt(0)) % 6
+                            ]
+                          }, #401212)`,
+                          boxShadow: "0 4px 12px rgba(64,18,18,0.45)",
+                        }}
+                      >
+                        {(job.company || "?").trim().charAt(0).toUpperCase()}
+                      </div>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: T.text, fontFamily: F.sans, lineHeight: 1.25, marginBottom: 4 }}>{job.title || "Untitled role"}</div>
+                        <div style={{ fontSize: 13, color: T.t2, fontFamily: F.sans, fontWeight: 600 }}>{job.company || "Unknown"}</div>
+                      </div>
                     </div>
                     <span style={{ fontSize: 10, fontWeight: 700, padding: "4px 8px", borderRadius: 999, background: "rgba(242,238,179,0.05)", color: T.t2, border: `1px solid ${T.border}`, fontFamily: F.sans, whiteSpace: "nowrap", alignSelf: isMobile ? "flex-start" : "auto" }}>{role}</span>
                   </div>
@@ -684,21 +850,18 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                         localStorage.setItem("placeup_saved_jobs", JSON.stringify(next));
                         setSavedVersion((v) => v + 1);
                       }} style={{ width: 32, height: 30, borderRadius: 8, border: `1px solid ${savedIds.has(id) ? "rgba(166,55,45,0.4)" : T.border}`, background: savedIds.has(id) ? "rgba(166,55,45,0.08)" : "transparent", color: savedIds.has(id) ? T.red : T.t2, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }} title={savedIds.has(id) ? "Unsave" : "Save job"}><Bookmark size={13} fill={savedIds.has(id) ? T.red : "none"}/></button>
-                      <button onClick={(e) => {
+                      <button onClick={async (e) => {
                         e.stopPropagation();
                         const cur = trackedJobs[id];
-                        const updated = { ...trackedJobs };
-                        if (!cur) { updated[id] = "applied"; }
-                        else if (cur === "applied") { updated[id] = "interview"; }
-                        else { delete updated[id]; }
-                        localStorage.setItem("placeup_job_tracking", JSON.stringify(updated));
-                        setAppliedVersion((v) => v + 1);
-                      }} style={{ height: 30, padding: "0 10px", borderRadius: 8, border: `1px solid ${trackedJobs[id] === "interview" ? "rgba(59,130,246,0.4)" : trackedJobs[id] === "applied" ? "rgba(34,197,94,0.4)" : T.border}`, background: trackedJobs[id] === "interview" ? "rgba(59,130,246,0.08)" : trackedJobs[id] === "applied" ? "rgba(34,197,94,0.08)" : "transparent", color: trackedJobs[id] === "interview" ? "#3b82f6" : trackedJobs[id] === "applied" ? "#22c55e" : T.t3, fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: F.sans, whiteSpace: "nowrap" }} title={trackedJobs[id] === "interview" ? "Interview stage — click to clear" : trackedJobs[id] === "applied" ? "Applied — click to move to Interview" : "Track application status"}>
+                        const nextStatus = cur === "applied" ? "interview" : "applied";
+                        await persistApplication(job, nextStatus);
+                      }} style={{ height: 30, padding: "0 10px", borderRadius: 8, border: `1px solid ${trackedJobs[id] === "interview" ? "rgba(59,130,246,0.4)" : trackedJobs[id] === "applied" ? "rgba(34,197,94,0.4)" : T.border}`, background: trackedJobs[id] === "interview" ? "rgba(59,130,246,0.08)" : trackedJobs[id] === "applied" ? "rgba(34,197,94,0.08)" : "transparent", color: trackedJobs[id] === "interview" ? "#3b82f6" : trackedJobs[id] === "applied" ? "#22c55e" : T.t3, fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: F.sans, whiteSpace: "nowrap" }} title={trackedJobs[id] === "interview" ? "Interview stage" : trackedJobs[id] === "applied" ? "Applied - click to move to Interview" : "Track application status"}>
                         {trackedJobs[id] === "interview" ? "Interview" : trackedJobs[id] === "applied" ? "Applied" : "Track"}
                       </button>
                       <button
-                        onClick={(e) => {
+                        onClick={async (e) => {
                           e.stopPropagation();
+                          await persistApplication(job, "applied");
                           const url = jobUrl || `https://www.google.com/search?q=${encodeURIComponent(`${job.company || ""} ${job.title || ""} apply`)}`;
                           window.open(url, "_blank", "noopener,noreferrer");
                         }}

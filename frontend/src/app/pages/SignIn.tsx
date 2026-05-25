@@ -244,48 +244,16 @@ export default function SignIn() {
                 </span>
               </motion.button>
             )}
-            <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "20px 0" }}>
-              <div style={{ flex: 1, height: 1, background: T.border }} />
-              <span style={{ fontSize: 12, color: T.t3, fontFamily: F.sans }}>or continue with</span>
-              <div style={{ flex: 1, height: 1, background: T.border }} />
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <button
-                onClick={startGoogleOidc}
-                disabled={!googleSsoEnabled}
-                style={{
-                  width: "100%",
-                  padding: "12px",
-                  borderRadius: 12,
-                  border: `1px solid ${T.border}`,
-                  background: "rgba(242,238,179,0.04)",
-                  color: T.text,
-                  fontSize: 14,
-                  fontFamily: F.sans,
-                  cursor: googleSsoEnabled ? "pointer" : "not-allowed",
-                  opacity: googleSsoEnabled ? 1 : 0.5,
-                }}
-              >
-                Continue with Google
-              </button>
-              <button
-                style={{
-                  width: "100%",
-                  padding: "12px",
-                  borderRadius: 12,
-                  border: `1px solid ${T.border}`,
-                  background: "rgba(242,238,179,0.04)",
-                  color: T.t3,
-                  fontSize: 14,
-                  fontFamily: F.sans,
-                  cursor: "not-allowed",
-                }}
-                disabled
-              >
-                Continue with LinkedIn
-              </button>
-            </div>
-            <p style={{ marginTop: 24, textAlign: "center", fontSize: 13, color: T.t2, fontFamily: F.sans }}>
+            {/* Social SSO buttons intentionally removed per product
+                request. If/when Google or LinkedIn OAuth is re-enabled,
+                the backend endpoints in app/api/auth.py (/oidc/google
+                etc.) are still live — just re-add the buttons here. */}
+            <p style={{ marginTop: 18, textAlign: "center", fontSize: 12, color: T.t3, fontFamily: F.sans }}>
+              <Link to="/forgot-password" style={{ color: T.t2, textDecoration: "none" }}>
+                Forgot password?
+              </Link>
+            </p>
+            <p style={{ marginTop: 8, textAlign: "center", fontSize: 13, color: T.t2, fontFamily: F.sans }}>
               Don't have an account?{" "}
               <Link to="/signup" style={{ color: T.red, fontWeight: 600, textDecoration: "none" }}>
                 Sign up

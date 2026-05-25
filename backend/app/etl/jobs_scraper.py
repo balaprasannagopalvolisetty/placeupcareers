@@ -73,6 +73,10 @@ def build_request(args: argparse.Namespace) -> ScrapeRequest:
             JobSource.USAJOBS,
             JobSource.DICE,
             JobSource.H1B_SPONSOR,
+            # Direct Tier-1 ATS pulls (Greenhouse/Lever/Ashby/SmartRecruiters/
+            # Workable/Recruitee). Filtered to the 88 taxonomy roles before
+            # they hit master_jobs. See app/etl/sources/tier1_ats.py.
+            JobSource.TIER1_ATS,
         ]
     return ScrapeRequest(
         search_terms=queries,
@@ -92,7 +96,71 @@ async def run(args: argparse.Namespace) -> int:
     from app.services.job_scraper import run_scrape_cycle
 
     request = build_request(args)
+    # Strip custom aggregate sources off the request before run_scrape_cycle
+    # sees them — the inner cycle doesn't know about them, we'll run them
+    # ourselves and merge afterwards.
+    tier1_enabled = JobSource.TIER1_ATS in (request.sources or [])
+    if tier1_enabled:
+        request.sources = [s for s in request.sources if s != JobSource.TIER1_ATS]
+    scrapegraph_discovery_enabled = JobSource.SCRAPEGRAPH_DISCOVERY in (request.sources or [])
+    if scrapegraph_discovery_enabled:
+        request.sources = [s for s in request.sources if s != JobSource.SCRAPEGRAPH_DISCOVERY]
+
     result, jobs = await run_scrape_cycle(request=request, existing_hashes=set())
+
+    if tier1_enabled:
+        try:
+            from app.etl.sources.tier1_ats import scrape_tier1_ats
+            tier1_jobs = await scrape_tier1_ats(
+                tiers=tuple(request.h1b_sponsor_tiers or ("T1", "T2")),
+                max_jobs_per_sponsor=request.h1b_sponsor_max_jobs or 500,
+                concurrency=request.h1b_sponsor_concurrency or 8,
+                apply_taxonomy_filter=True,
+            )
+            logger.info("tier1_ats added %s jobs (post-taxonomy filter)", len(tier1_jobs))
+            # Dedup by content_hash so a Stripe role that also came in
+            # via JobSpy doesn't get duplicated by the Tier-1 pull.
+            seen = {j.content_hash for j in jobs if getattr(j, "content_hash", None)}
+            for tj in tier1_jobs:
+                if not getattr(tj, "content_hash", None) or tj.content_hash in seen:
+                    continue
+                seen.add(tj.content_hash)
+                jobs.append(tj)
+        except Exception as exc:
+            logger.warning("tier1_ats source failed (non-fatal): %s", exc)
+
+    if scrapegraph_discovery_enabled:
+        try:
+            from app.services.scrapegraph_discovery import scrape_scrapegraph_discovery
+            scrapegraph_jobs = await scrape_scrapegraph_discovery()
+            logger.info("scrapegraph_discovery added %s jobs", len(scrapegraph_jobs))
+            seen = {j.content_hash for j in jobs if getattr(j, "content_hash", None)}
+            added = 0
+            for sj in scrapegraph_jobs:
+                if not getattr(sj, "content_hash", None) or sj.content_hash in seen:
+                    continue
+                seen.add(sj.content_hash)
+                jobs.append(sj)
+                added += 1
+            result.total_scraped += added
+            result.new_jobs += added
+            result.sources_used = sorted(set([*result.sources_used, "scrapegraph_discovery"]))
+            result.source_breakdown["scrapegraph_discovery"] = {
+                "attempts": 1,
+                "scraped": len(scrapegraph_jobs),
+                "unique": added,
+                "errors": 0,
+            }
+        except Exception as exc:
+            logger.warning("scrapegraph_discovery source failed (non-fatal): %s", exc)
+            result.errors.append(f"scrapegraph_discovery: {exc}")
+            result.source_breakdown["scrapegraph_discovery"] = {
+                "attempts": 1,
+                "scraped": 0,
+                "unique": 0,
+                "errors": 1,
+            }
+
     job_payloads = [job.model_dump(mode="json") for job in jobs]
     normalized = [normalize_job_payload(payload) for payload in job_payloads]
     staging_records = [

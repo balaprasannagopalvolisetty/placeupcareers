@@ -82,20 +82,81 @@ function shouldAttemptRefresh(path: string) {
   ].some((authPath) => path.startsWith(authPath));
 }
 
+// ── In-flight dedup + tiny TTL cache for GET reads ──────────────────
+// Many components (Overview, JobsPage banner, Resume page) all call
+// getDashboardSummary() within the same React commit. Without this,
+// that's 3 separate network roundtrips. With in-flight dedup they
+// share one Promise. With the 4-second TTL, page navigations also
+// reuse the result instead of refetching — making the "refresh"/
+// "fetching time" feel near-instant.
+const _readCache = new Map<string, { at: number; data: unknown }>();
+const _inflight = new Map<string, Promise<unknown>>();
+const READ_TTL_MS = 4000;
+
+function _readCacheKey(path: string, init: RequestInit) {
+  return `${(init.method || "GET").toUpperCase()} ${path}`;
+}
+
+/** Invalidate the read cache — call from auth events, resume upload, etc. */
+export function invalidateApiCache(prefix?: string) {
+  if (!prefix) {
+    _readCache.clear();
+    _inflight.clear();
+    return;
+  }
+  for (const k of _readCache.keys()) {
+    if (k.includes(prefix)) _readCache.delete(k);
+  }
+  for (const k of _inflight.keys()) {
+    if (k.includes(prefix)) _inflight.delete(k);
+  }
+}
+
 async function request<T>(path: string, init: RequestInit = {}, retryOnAuth = true): Promise<T> {
+  const method = (init.method || "GET").toUpperCase();
+  const cacheable = method === "GET" && !init.body;
+  const cacheKey = cacheable ? _readCacheKey(path, init) : "";
+
+  if (cacheable) {
+    const hit = _readCache.get(cacheKey);
+    if (hit && Date.now() - hit.at < READ_TTL_MS) return hit.data as T;
+    const flying = _inflight.get(cacheKey);
+    if (flying) return flying as Promise<T>;
+  }
+
   const url = `${API_BASE}${path}`;
   const body = init.body;
   const headers = buildHeaders(init.headers as Record<string, string> | undefined, body);
-  const response = await fetch(url, { credentials: "include", ...init, headers, body });
-  if (response.status === 401 && retryOnAuth && shouldAttemptRefresh(path)) {
-    try {
-      await refreshAccessToken();
-      return request<T>(path, init, false);
-    } catch {
-      clearStoredToken();
+
+  const exec = (async () => {
+    const response = await fetch(url, { credentials: "include", ...init, headers, body });
+    if (response.status === 401 && retryOnAuth && shouldAttemptRefresh(path)) {
+      try {
+        await refreshAccessToken();
+        return request<T>(path, init, false);
+      } catch {
+        clearStoredToken();
+      }
     }
+    const parsed = await parseResponse<T>(response);
+    if (cacheable && response.ok) _readCache.set(cacheKey, { at: Date.now(), data: parsed });
+    return parsed;
+  })();
+
+  if (cacheable) {
+    const promise = exec.finally(() => _inflight.delete(cacheKey));
+    _inflight.set(cacheKey, promise);
+    return promise as Promise<T>;
   }
-  return parseResponse<T>(response);
+  return exec;
+}
+
+// Any time we know server state mutated, blow the cache so the next
+// read pulls fresh data. Without this hook, the TTL cache would keep
+// serving a stale dashboard for up to READ_TTL_MS after upload/delete.
+if (typeof window !== "undefined") {
+  window.addEventListener("placeup:resume-changed", () => invalidateApiCache());
+  window.addEventListener("placeup:application-changed", () => invalidateApiCache("/api/user/"));
 }
 
 // ─── Types ───
@@ -152,6 +213,8 @@ export interface UserPreferences {
   notification_marketing_emails: boolean;
   visa_status?: string;
   experience_level?: string;
+  target_roles?: string[];
+  target_locations?: string[];
 }
 
 export interface JobPost {
@@ -294,6 +357,21 @@ export interface DashboardSummary {
   featured_jobs?: JobPost[];
 }
 
+export interface PaymentPlan {
+  id: "basic" | "pro" | "elite";
+  name: string;
+  price: number;
+  interval: string;
+  features: string[];
+}
+
+export interface AdminSummary {
+  users: number;
+  plans: Record<string, number>;
+  payments: { configured: boolean; provider: string };
+  finalscout: { multi_key_configured: boolean };
+}
+
 export interface SignupPayload {
   first_name: string;
   last_name: string;
@@ -407,14 +485,80 @@ export async function updatePreferences(payload: Partial<UserPreferences>) {
 }
 
 export async function changePassword(payload: { current_password: string; new_password: string }) {
-  return request<{ ok: boolean }>("/api/user/password", { method: "PUT", body: JSON.stringify(payload) });
+  const result = await request<{ ok: boolean }>(
+    "/api/user/password",
+    { method: "PUT", body: JSON.stringify(payload) },
+  );
+  invalidateApiCache("/api/user/");
+  return result;
+}
+
+export async function deleteAccount(password: string) {
+  return request<{ ok: boolean; deleted: Record<string, number> }>(
+    "/api/user/account",
+    { method: "DELETE", body: JSON.stringify({ password }) },
+  );
+}
+
+export async function forgotPassword(email: string) {
+  return request<{ ok: boolean; message: string }>(
+    "/api/auth/forgot-password",
+    { method: "POST", body: JSON.stringify({ email }) },
+  );
+}
+
+export async function resendVerification(email: string) {
+  return request<{ ok: boolean; message: string }>(
+    "/api/auth/resend-verification",
+    { method: "POST", body: JSON.stringify({ email }) },
+  );
+}
+
+// ─── Billing ───
+export interface PlanFeature { label: string; included: boolean; }
+export interface PlanCard {
+  slug: "basic" | "pro" | "elite";
+  name: string;
+  price_cents: number;
+  currency: string;
+  interval: string;
+  description: string;
+  features: PlanFeature[];
+  stripe_price_id: string | null;
+  recommended: boolean;
+}
+
+export async function getBillingPlans() {
+  return request<PlanCard[]>("/api/billing/plans");
+}
+
+export async function getMyBilling() {
+  return request<{
+    plan: string;
+    stripe_customer_id?: string;
+    stripe_subscription_id?: string;
+    subscription_status?: string;
+    current_period_end?: number;
+    cancel_at_period_end?: boolean;
+  }>("/api/billing/me");
+}
+
+export async function startCheckout(plan: "basic" | "pro" | "elite") {
+  return request<{ url: string; session_id: string }>(
+    "/api/billing/checkout",
+    { method: "POST", body: JSON.stringify({ plan }) },
+  );
+}
+
+export async function openBillingPortal() {
+  return request<{ url: string }>("/api/billing/portal");
 }
 
 export async function getNotifications() { return request<NotificationItem[]>("/api/user/notifications"); }
 
 export async function getDashboardSummary() { return request<DashboardSummary>("/api/user/dashboard-summary"); }
 
-export async function saveUserApplication(payload: {
+export interface UserApplicationRow {
   job_id: string;
   title?: string;
   company?: string;
@@ -427,8 +571,26 @@ export async function saveUserApplication(payload: {
   position_open?: boolean;
   salary_offered?: string;
   notes?: string;
-}) {
-  return request<Record<string, unknown>>("/api/user/applications", { method: "POST", body: JSON.stringify(payload) });
+  created_at?: string;
+  updated_at?: string;
+}
+
+export async function saveUserApplication(payload: Omit<UserApplicationRow, "created_at" | "updated_at">) {
+  const result = await request<Record<string, unknown>>(
+    "/api/user/applications",
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+  // Tell the rest of the app a tracked application changed — the cache
+  // layer in this file listens for this event and invalidates any
+  // /api/user/* reads (applications list, dashboard summary counters).
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("placeup:application-changed", { detail: payload }));
+  }
+  return result;
+}
+
+export async function getUserApplications() {
+  return request<UserApplicationRow[]>("/api/user/applications");
 }
 
 export async function getResumeList() { return request<ResumeMetadata[]>("/api/user/resumes"); }
@@ -616,4 +778,42 @@ export interface ParsedResume {
 
 export async function getParsedActiveResume() {
   return request<ParsedResume>("/api/user/resume/parsed");
+}
+
+// Payments
+export async function getPaymentPlans() {
+  return request<{ plans: PaymentPlan[] }>("/api/payments/plans");
+}
+
+export async function createCheckout(plan_id: string) {
+  return request<{ checkout_url: string; plan: PaymentPlan }>("/api/payments/checkout", {
+    method: "POST",
+    body: JSON.stringify({ plan_id }),
+  });
+}
+
+// Admin
+export async function getAdminSummary() {
+  return request<AdminSummary>("/api/admin/summary");
+}
+
+export async function getAdminUsers(limit = 200) {
+  return request<{ users: Array<Record<string, unknown>> }>(`/api/admin/users?limit=${limit}`);
+}
+
+export async function getAdminPayments() {
+  return request<{ payments: Array<Record<string, unknown>>; note?: string }>("/api/admin/payments");
+}
+
+export async function uploadAdminFinalScoutCsv(file: File, params: { limit?: number; dry_run?: boolean; concurrency?: number } = {}) {
+  const query = new URLSearchParams();
+  if (params.limit) query.append("limit", String(params.limit));
+  if (params.dry_run !== undefined) query.append("dry_run", String(params.dry_run));
+  if (params.concurrency) query.append("concurrency", String(params.concurrency));
+  const formData = new FormData();
+  formData.append("file", file);
+  return request<Record<string, unknown>>(`/api/admin/finalscout/upload-csv?${query.toString()}`, {
+    method: "POST",
+    body: formData,
+  });
 }

@@ -423,6 +423,21 @@ def get_auth_session_by_refresh_hash(refresh_hash: str) -> Optional[dict]:
     return None
 
 
+def get_auth_session(session_id: str) -> Optional[dict]:
+    if not session_id:
+        return None
+    snap = _doc("auth_sessions", session_id).get()
+    if not snap.exists:
+        return None
+    data = snap.to_dict() or {}
+    expires_at = _parse_iso(data.get("expires_at"))
+    if data.get("revoked"):
+        return None
+    if expires_at and expires_at <= datetime.now(tz=timezone.utc):
+        return None
+    return data | {"id": snap.id}
+
+
 def rotate_auth_session(session_id: str, *, refresh_hash: str, expires_at: datetime) -> Optional[dict]:
     ref = _doc("auth_sessions", session_id)
     snap = ref.get()
@@ -459,3 +474,186 @@ def revoke_user_sessions(user_id: str) -> int:
     if count:
         batch.commit()
     return count
+
+
+# Alias so password_reset.py and any future caller can use the more
+# evocative name without us having to rename the original helper.
+def revoke_all_refresh_tokens(user_id: str) -> int:
+    """Revoke every active refresh-token session for the given user.
+
+    Called from the password reset flow so a leaked password that
+    already minted refresh tokens cannot continue to mint new access
+    tokens after the password is changed.
+    """
+    return revoke_user_sessions(user_id)
+
+
+# ─── Password reset + email verification token store ────────────────
+#
+# Both flows store a SHA-256-hashed token (the plaintext token only
+# exists in the email link we send) and an expiry timestamp. Lookups
+# are by token_hash — the user_id is the payload we return on consume.
+#
+# Each call to `upsert_*` overwrites any prior token for that user so
+# requesting a new reset link invalidates the previous one. Each
+# `consume_*` deletes the document atomically so a single token can't
+# be re-used.
+
+def _token_doc_id(token_hash: str) -> str:
+    # Firestore document IDs can't contain "/", and hex digests don't
+    # anyway, but we still hard-trim to keep the path clean.
+    return token_hash[:128]
+
+
+def upsert_password_reset(
+    *,
+    user_id: str,
+    token_hash: str,
+    expires_at: datetime,
+) -> None:
+    """Persist a password-reset token. Overwrites any prior token for this user."""
+    # Wipe any in-flight reset tokens this user already has so the only
+    # active link in their inbox is the most recent one.
+    existing = (
+        _client()
+        .collection("password_resets")
+        .where("user_id", "==", user_id)
+        .stream()
+    )
+    batch = _client().batch()
+    for snap in existing:
+        batch.delete(snap.reference)
+    batch.set(
+        _doc("password_resets", _token_doc_id(token_hash)),
+        {
+            "user_id": user_id,
+            "token_hash": token_hash,
+            "expires_at": expires_at.astimezone(timezone.utc).isoformat(),
+            "created_at": _now_iso(),
+        },
+    )
+    batch.commit()
+
+
+def consume_password_reset(token_hash: str) -> Optional[dict]:
+    """Atomically look up + delete a reset token. Returns {user_id} or None."""
+    ref = _doc("password_resets", _token_doc_id(token_hash))
+    snap = ref.get()
+    if not snap.exists:
+        return None
+    data = snap.to_dict() or {}
+    # Always delete first — even if expired, so the document doesn't
+    # linger and accumulate. Deleting after the expiry check would
+    # also be correct; this just makes the cleanup cheaper.
+    ref.delete()
+    expires_at = _parse_iso(data.get("expires_at"))
+    if expires_at and expires_at < datetime.now(tz=timezone.utc):
+        return None
+    return {"user_id": data.get("user_id")}
+
+
+def upsert_email_verification(
+    *,
+    user_id: str,
+    token_hash: str,
+    expires_at: datetime,
+) -> None:
+    """Persist an email-verification token. Overwrites any prior token."""
+    existing = (
+        _client()
+        .collection("email_verifications")
+        .where("user_id", "==", user_id)
+        .stream()
+    )
+    batch = _client().batch()
+    for snap in existing:
+        batch.delete(snap.reference)
+    batch.set(
+        _doc("email_verifications", _token_doc_id(token_hash)),
+        {
+            "user_id": user_id,
+            "token_hash": token_hash,
+            "expires_at": expires_at.astimezone(timezone.utc).isoformat(),
+            "created_at": _now_iso(),
+        },
+    )
+    batch.commit()
+
+
+def consume_email_verification(token_hash: str) -> Optional[dict]:
+    ref = _doc("email_verifications", _token_doc_id(token_hash))
+    snap = ref.get()
+    if not snap.exists:
+        return None
+    data = snap.to_dict() or {}
+    ref.delete()
+    expires_at = _parse_iso(data.get("expires_at"))
+    if expires_at and expires_at < datetime.now(tz=timezone.utc):
+        return None
+    return {"user_id": data.get("user_id")}
+
+
+def mark_email_verified(user_id: str) -> None:
+    _doc("users", user_id).set(
+        {"email_verified": True, "email_verified_at": _now_iso(), "updated_at": _now_iso()},
+        merge=True,
+    )
+
+
+# ─── Account deletion (full cascade) ────────────────────────────────
+
+def delete_user(user_id: str) -> dict:
+    """Permanently delete a user and every record we hold for them.
+
+    This is a HARD delete — there is no soft-delete flag because the
+    privacy policy at /privacy promises "Deletion removes active records
+    immediately; backups roll off within 30 days". To honour that we
+    have to wipe the live records on the spot.
+
+    Returns a summary of how many docs were removed from each
+    collection, useful for logging and for the API response so the
+    user has audit trail of what happened.
+    """
+    counts: dict[str, int] = {}
+
+    # Sessions first — invalidate auth so any in-flight access tokens
+    # stop refreshing the moment we delete the user document.
+    counts["auth_sessions_revoked"] = revoke_user_sessions(user_id)
+
+    # Per-collection wipe. Each one is a small batch; Firestore caps
+    # batches at 500 ops so we paginate.
+    user_owned = [
+        ("user_preferences", None),       # doc id == user_id
+        ("user_alert_settings", None),
+        ("user_alerts", "user_id"),
+        ("user_resumes", "user_id"),
+        ("user_applications", "user_id"),
+        ("auth_sessions", "user_id"),
+        ("password_resets", "user_id"),
+        ("email_verifications", "user_id"),
+    ]
+    for collection, filter_field in user_owned:
+        wiped = 0
+        if filter_field is None:
+            # Singleton doc keyed on user_id.
+            ref = _doc(collection, user_id)
+            snap = ref.get()
+            if snap.exists:
+                ref.delete()
+                wiped += 1
+        else:
+            for snap in _client().collection(collection).where(filter_field, "==", user_id).stream():
+                snap.reference.delete()
+                wiped += 1
+        counts[collection] = wiped
+
+    # Finally the user doc itself.
+    user_ref = _doc("users", user_id)
+    user_doc = user_ref.get()
+    if user_doc.exists:
+        user_ref.delete()
+        counts["users"] = 1
+    else:
+        counts["users"] = 0
+
+    return counts

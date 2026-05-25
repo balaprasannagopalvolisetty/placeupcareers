@@ -22,7 +22,7 @@ Ignore navigation, cookie notices, unrelated recommended jobs, ads, and page chr
 
 
 def _is_enabled() -> bool:
-    return bool(settings.scrapegraph_enabled and settings.openai_api_key.strip())
+    return bool(settings.scrapegraph_enabled and settings.openrouter_api_key.strip())
 
 
 def _needs_enrichment(job: JobPost) -> bool:
@@ -57,10 +57,19 @@ def _description_from_result(result: dict[str, Any]) -> str:
 def _run_scrapegraph(job: JobPost) -> dict[str, Any]:
     from scrapegraphai.graphs import SmartScraperGraph
 
+    model = settings.openrouter_model.strip() or "anthropic/claude-3.5-haiku"
+    if not model.startswith("oneapi/"):
+        model = f"oneapi/{model}"
     graph_config = {
         "llm": {
-            "api_key": settings.openai_api_key,
-            "model": "openai/gpt-4o-mini",
+            "api_key": settings.openrouter_api_key,
+            "model": model,
+            "base_url": settings.openrouter_base_url,
+            "format": "json",
+        },
+        "headers": {
+            "HTTP-Referer": settings.openrouter_referer,
+            "X-Title": "PlaceUp Career",
         },
         "headless": True,
         "verbose": False,
@@ -82,8 +91,8 @@ async def enrich_jobs_with_scrapegraph(jobs: list[JobPost]) -> int:
     JobSpy/H1B; this only fills weak descriptions from the canonical detail URL.
     """
     if not _is_enabled():
-        if settings.scrapegraph_enabled and not settings.openai_api_key.strip():
-            logger.warning("ScrapeGraphAI enrichment enabled but OPENAI_API_KEY is not configured")
+        if settings.scrapegraph_enabled and not settings.openrouter_api_key.strip():
+            logger.warning("ScrapeGraphAI enrichment enabled but OPENROUTER_API_KEY is not configured")
         return 0
 
     candidates = [job for job in jobs if _needs_enrichment(job)]

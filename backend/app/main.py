@@ -156,9 +156,12 @@ from app.api.visa import router as visa_router
 from app.api.contacts import router as contacts_router
 from app.api.auth import router as auth_router
 from app.api.password_reset import router as password_reset_router
+from app.api.billing import router as billing_router
 from app.api.user import router as user_router
 from app.api.alerts import router as alerts_router
 from app.api.analytics import router as analytics_router
+from app.api.payments import router as payments_router
+from app.api.admin import router as admin_router
 
 app.include_router(health_router, prefix="/api")
 app.include_router(jobs_router, prefix="/api")
@@ -168,9 +171,12 @@ app.include_router(visa_router, prefix="/api")
 app.include_router(contacts_router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 app.include_router(password_reset_router, prefix="/api")
+app.include_router(billing_router, prefix="/api")
 app.include_router(user_router, prefix="/api")
 app.include_router(alerts_router, prefix="/api")
 app.include_router(analytics_router, prefix="/api")
+app.include_router(payments_router, prefix="/api")
+app.include_router(admin_router, prefix="/api")
 
 
 @app.exception_handler(RequestValidationError)

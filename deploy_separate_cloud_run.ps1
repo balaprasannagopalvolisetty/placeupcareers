@@ -178,6 +178,50 @@ if (-not $SkipBackend) {
     --command python `
     --args="-m,app.workers.companies_export" `
     --max-retries 2
+
+  # Daily stale-jobs sweeper — UPDATE-only, tiny resource footprint.
+  # Just needs Cloud SQL access + DATABASE_URL.
+  Write-Host "Deploying stale-jobs sweeper Cloud Run Job..."
+  gcloud.cmd run jobs deploy placeup-stale-jobs-sweeper `
+    --image $imageTag `
+    --region $Region `
+    --project $BackendProjectId `
+    --service-account "placeup-api-sa@$BackendProjectId.iam.gserviceaccount.com" `
+    --set-cloudsql-instances "$BackendProjectId`:$Region`:$DbInstance" `
+    --set-env-vars $workerEnv `
+    --set-secrets "DATABASE_URL=DATABASE_URL:latest" `
+    --memory 512Mi `
+    --cpu 1 `
+    --task-timeout 300s `
+    --command python `
+    --args="-m,app.workers.stale_jobs_sweeper" `
+    --max-retries 2
+
+  # FinalScout multi-key batch worker. Rotates through every key in
+  # FINALSCOUT_API_KEYS (comma-separated secret) to enrich contacts
+  # with verified emails at scale. Per-key usage is persisted to
+  # /tmp/finalscout_state.json inside the container — survives within
+  # a single Cloud Run task but resets between tasks (which is fine
+  # because the daily Scheduler trigger is the natural reset point).
+  Write-Host "Deploying FinalScout multi-key batch Cloud Run Job..."
+  $finalscoutSecrets = "DATABASE_URL=DATABASE_URL:latest"
+  $finalscoutSecrets = Add-OptionalSecretBinding $BackendProjectId $finalscoutSecrets "FINALSCOUT_API_KEYS"
+  $finalscoutSecrets = Add-OptionalSecretBinding $BackendProjectId $finalscoutSecrets "FINALSCOUT_API_KEY"
+
+  gcloud.cmd run jobs deploy placeup-finalscout-batch `
+    --image $imageTag `
+    --region $Region `
+    --project $BackendProjectId `
+    --service-account "placeup-api-sa@$BackendProjectId.iam.gserviceaccount.com" `
+    --set-cloudsql-instances "$BackendProjectId`:$Region`:$DbInstance" `
+    --set-env-vars $workerEnv `
+    --set-secrets $finalscoutSecrets `
+    --memory 512Mi `
+    --cpu 1 `
+    --task-timeout 1800s `
+    --command python `
+    --args="-m,app.workers.finalscout_batch,--limit,200" `
+    --max-retries 1
 }
 
 Write-Host "Separate Cloud Run deployment complete."

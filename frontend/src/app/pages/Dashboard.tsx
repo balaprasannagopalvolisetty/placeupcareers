@@ -6,6 +6,7 @@ import {
   Search, Sun, Moon, Menu, X, User, ChevronDown, Briefcase,
   TrendingUp, ChevronRight, CheckCircle2, Bookmark, Clock,
   ArrowUpRight, Zap, Activity, MapPin, DollarSign, FileCheck,
+  CreditCard, Shield,
 } from "lucide-react";
 import { useTheme } from "../components/Layout";
 import { useAuth } from "../context/AuthContext";
@@ -93,6 +94,7 @@ const NAV_ITEMS = [
   { icon: Globe,    label: "Visa Tracker", to: "/dashboard/visa" },
   { icon: Bell,     label: "Alerts", to: "/dashboard/alerts" },
   { icon: BarChart3,label: "Analytics", to: "/dashboard/analytics" },
+  { icon: CreditCard,label: "Billing", to: "/dashboard/billing" },
   { icon: Settings, label: "Settings", to: "/dashboard/settings" },
 ];
 
@@ -448,10 +450,12 @@ export default function Dashboard() {
   const displayName = user ? `${user.first_name} ${user.last_name}` : "Loading...";
   const displayPlan = user?.plan || "";
   const displayAvatar = user ? `${user.first_name?.[0] ?? "P"}${user.last_name?.[0] ?? "U"}` : "PU";
+  const isAdmin = String(user?.plan || "").toLowerCase() === "admin" || ["admin@placeupcareer.com", "jobs@placeupcareer.com"].includes(String(user?.email || "").toLowerCase());
+  const navItems = isAdmin ? [...NAV_ITEMS, { icon: Shield, label: "Admin", to: "/dashboard/admin" }] : NAV_ITEMS;
 
   const routeLabel = location.pathname.startsWith("/dashboard/jobs/") ? "Job Detail" :
     location.pathname.startsWith("/dashboard/profile") ? "Profile" :
-    NAV_ITEMS.find((item) => item.to !== "/dashboard" ? location.pathname.startsWith(item.to) : location.pathname === "/dashboard")?.label ?? "Overview";
+    navItems.find((item) => item.to !== "/dashboard" ? location.pathname.startsWith(item.to) : location.pathname === "/dashboard")?.label ?? "Overview";
 
   const unread = notifications.filter((n) => n.unread).length;
 
@@ -479,7 +483,7 @@ export default function Dashboard() {
 
         {/* Nav */}
         <nav style={{ flex: 1, padding: "14px 10px", display: "flex", flexDirection: "column", gap: 2 }}>
-          {NAV_ITEMS.map((item) => (
+          {navItems.map((item) => (
             <NavLink key={item.label} to={item.to!} end={item.to === "/dashboard"}
               style={({ isActive }) => ({
                 width: "100%",
@@ -555,7 +559,7 @@ export default function Dashboard() {
                 <span style={{ fontFamily: F.sans, fontWeight: 700, fontSize: 16, color: T.text }}>PlaceUp</span>
                 <button onClick={() => setSidebarOpen(false)} style={{ background: "rgba(242,238,179,0.05)", border: "none", cursor: "pointer", color: T.text, padding: 6, borderRadius: 6 }}><X size={16} /></button>
               </div>
-              {NAV_ITEMS.map((item) => (
+              {navItems.map((item) => (
                 <button key={item.label} onClick={() => { navigate(item.to!); setSidebarOpen(false); }}
                   style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, height: 40, padding: "0 12px", borderRadius: 10, border: "none", cursor: "pointer", marginBottom: 2, background: location.pathname.startsWith(item.to!) ? "rgba(166,55,45,0.09)" : "transparent", color: location.pathname.startsWith(item.to!) ? T.red : T.t2, fontSize: 13, fontFamily: F.sans, textAlign: "left" }}>
                   <item.icon size={16} />{item.label}

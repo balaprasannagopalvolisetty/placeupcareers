@@ -46,7 +46,10 @@ CATEGORIES: tuple[Category, ...] = (
         Role("Cybersecurity Analyst",   ("cybersecurity analyst", "security engineer", "soc analyst", "security analyst", "information security analyst"), ("OPT","STEM","H-1B")),
         Role("QA / Test Engineer",      ("qa engineer", "test engineer", "sdet", "automation engineer", "quality assurance engineer", "quality engineer", "test automation engineer"), ("OPT","STEM","H-1B")),
         Role("Systems Engineer",        ("systems engineer", "system engineer", "embedded engineer", "firmware engineer", "mbse engineer"), ("OPT","STEM","H-1B")),
+        Role("Network Engineer",        ("network engineer", "network administrator", "network analyst", "noc engineer", "telecom engineer"), ("OPT","STEM","H-1B")),
         Role("Database Administrator",  ("database administrator", "dba", "database engineer"), ("OPT","STEM","H-1B")),
+        Role("Solutions Architect",     ("solutions architect", "solution architect", "cloud architect", "technical architect", "enterprise architect"), ("OPT","STEM","H-1B"), hot=True),
+        Role("CRM / ERP Developer",     ("salesforce developer", "servicenow developer", "sap developer", "oracle developer", "erp developer", "crm developer"), ("OPT","STEM","H-1B")),
         Role("IT Support / Analyst",    (
             "it support", "it support specialist", "it support technician", "it support analyst", "it support assistant",
             "it technician", "it analyst", "it systems analyst", "helpdesk analyst", "help desk analyst",
@@ -63,6 +66,7 @@ CATEGORIES: tuple[Category, ...] = (
         Role("Business Analyst",        ("business analyst", "business systems analyst"), ("OPT","H-1B"), hot=True),
         Role("Data Analyst",            ("data analyst", "marketing analyst", "operations analyst"), ("OPT","STEM","H-1B"), hot=True),
         Role("Business Intelligence Developer", ("bi developer", "business intelligence developer", "tableau developer", "power bi developer"), ("OPT","STEM","H-1B")),
+        Role("Analytics Engineer",      ("analytics engineer", "dbt developer", "data modeling analyst", "semantic layer engineer"), ("OPT","STEM","H-1B"), hot=True),
         Role("Quantitative Analyst",    ("quantitative analyst", "quant analyst", "quant researcher", "quantitative researcher", "quantitative developer"), ("OPT","STEM","H-1B")),
         Role("Research Analyst",        ("research analyst", "market research analyst", "user research analyst", "policy research analyst"), ("OPT","H-1B","Vol")),
         Role("Operations Research Analyst", ("operations research analyst", "or analyst"), ("OPT","STEM","H-1B")),
@@ -77,6 +81,7 @@ CATEGORIES: tuple[Category, ...] = (
         Role("Actuary",                 ("actuary", "actuarial analyst"), ("OPT","STEM","H-1B")),
         Role("Compliance Analyst",      ("compliance analyst", "kyc analyst", "aml analyst"), ("OPT","H-1B")),
         Role("Treasury Analyst",        ("treasury analyst",), ("OPT","H-1B")),
+        Role("Tax Analyst",             ("tax analyst", "tax associate", "international tax analyst"), ("OPT","H-1B")),
     )),
     Category("Healthcare & Biotech", "Activity", (
         Role("Clinical Research Associate", ("clinical research associate", "cra", "clinical trial associate"), ("OPT","STEM","H-1B")),
@@ -87,6 +92,7 @@ CATEGORIES: tuple[Category, ...] = (
         Role("Regulatory Affairs Specialist", ("regulatory affairs specialist", "regulatory affairs associate"), ("OPT","H-1B")),
         Role("Public Health Analyst",   ("public health analyst", "epidemiologist"), ("OPT","H-1B","Vol")),
         Role("Lab Technician / Research Assistant", ("lab technician", "research assistant", "laboratory technician"), ("OPT","STEM","Vol")),
+        Role("Medical Technologist",    ("medical technologist", "clinical laboratory scientist", "medical laboratory scientist"), ("OPT","STEM","H-1B")),
     )),
     Category("Mechanical & Civil Engineering", "Wrench", (
         Role("Mechanical Engineer",     ("mechanical engineer", "mechanical design engineer", "design engineer mechanical", "product design engineer", "hvac engineer"), ("OPT","STEM","H-1B"), hot=True),
@@ -106,6 +112,7 @@ CATEGORIES: tuple[Category, ...] = (
         Role("Human Resources Generalist", ("hr generalist", "hr business partner", "people operations"), ("OPT","H-1B")),
         Role("Strategy Analyst",        ("strategy analyst", "corporate strategy analyst", "business strategy analyst", "strategic planning analyst"), ("OPT","H-1B")),
         Role("Scrum Master / Agile Coach", ("scrum master", "agile coach", "agile project manager"), ("OPT","H-1B")),
+        Role("Technical Program Manager", ("technical program manager", "tpm program manager", "engineering program manager"), ("OPT","H-1B"), hot=True),
     )),
     Category("Marketing & Communications", "Megaphone", (
         Role("Digital Marketing Analyst", ("digital marketing analyst", "performance marketing analyst", "seo analyst", "paid search analyst", "marketing analyst"), ("OPT","H-1B")),
@@ -114,6 +121,7 @@ CATEGORIES: tuple[Category, ...] = (
         Role("Social Media Manager",    ("social media manager", "community manager"), ("OPT","H-1B")),
         Role("Brand Manager",           ("brand manager", "associate brand manager"), ("OPT","H-1B")),
         Role("Growth Hacker / Growth Analyst", ("growth analyst", "growth marketing manager", "growth hacker"), ("OPT","STEM","H-1B")),
+        Role("Marketing Operations Specialist", ("marketing operations specialist", "marketing automation specialist", "crm marketing specialist", "salesforce marketing cloud specialist"), ("OPT","H-1B")),
     )),
     Category("Education & Research", "GraduationCap", (
         Role("Research Assistant / Associate", ("research associate", "research assistant", "graduate research assistant", "lab research assistant"), ("OPT","STEM","H-1B","Vol")),
@@ -158,18 +166,163 @@ CATEGORIES: tuple[Category, ...] = (
 )
 
 
+# ─── Synonym expansion ─────────────────────────────────────────────────
+#
+# Job boards rarely post a role as exactly "Software Engineer" — they
+# post "Senior Software Engineer", "Software Engineer II", "Staff
+# Backend Engineer", etc. The synonyms in CATEGORIES are the BASE
+# titles; this expansion adds the common seniority/level prefixes
+# that every modern HR system uses so the scraper's title matcher
+# can recognize them as the same role.
+#
+# We expand at call sites (not in CATEGORIES) so the UI role pickers
+# stay tidy with the 88 canonical names while the scraper still has
+# the full firehose of ~600+ matchable variants.
+
+SENIORITY_PREFIXES: tuple[str, ...] = (
+    "junior", "associate", "entry level", "entry-level", "new grad", "new graduate",
+    "senior", "sr", "sr.", "staff", "principal", "lead", "head of",
+)
+
+LEVEL_SUFFIXES: tuple[str, ...] = (
+    "i", "ii", "iii", "iv", "1", "2", "3", "4",
+    "intern", "internship", "co-op", "coop", "apprentice", "trainee",
+)
+
+# Extra modern-day synonyms NOT covered by CATEGORIES that we want the
+# scraper / title matcher to also catch. Each entry is
+# (canonical_role_name, extra_synonyms).
+EXTRA_ROLE_SYNONYMS: dict[str, tuple[str, ...]] = {
+    "Software Engineer": (
+        "software development engineer", "sde", "sde i", "sde ii", "sde iii",
+        "developer", "applications engineer", "platform software engineer",
+        "associate software engineer", "engineer i", "engineer ii",
+        "software engineer ii", "software engineer iii",
+    ),
+    "Machine Learning Engineer": (
+        "ai/ml engineer", "ai ml engineer", "ml ops engineer", "generative ai engineer",
+        "applied ml engineer", "ml infrastructure engineer",
+    ),
+    "Data Engineer": (
+        "data infrastructure engineer", "data ops engineer", "dataops engineer",
+        "analytics platform engineer",
+    ),
+    "DevOps / Cloud Engineer": (
+        "aws engineer", "azure engineer", "gcp engineer", "kubernetes engineer",
+        "reliability engineer", "production engineer", "build engineer",
+    ),
+    "Solutions Architect": (
+        "aws solutions architect", "azure solutions architect", "gcp solutions architect",
+        "customer engineer", "pre sales engineer", "sales engineer technical",
+    ),
+    "Network Engineer": (
+        "junior network engineer", "network operations engineer", "network support engineer",
+    ),
+    "CRM / ERP Developer": (
+        "salesforce administrator", "salesforce admin", "servicenow administrator",
+        "netsuite developer", "workday analyst",
+    ),
+    "Data Scientist": (
+        "ml scientist", "research scientist", "quantitative scientist",
+        "applied ai scientist",
+    ),
+    "Product Manager (Tech)": (
+        "product owner", "senior product manager", "principal product manager",
+        "group product manager", "associate product manager",
+    ),
+    "Cybersecurity Analyst": (
+        "application security engineer", "appsec engineer", "cloud security engineer",
+        "security operations analyst", "threat intel analyst",
+    ),
+    "Business Analyst": (
+        "business intelligence analyst", "operations analyst", "process analyst",
+        "junior business analyst",
+    ),
+    "Analytics Engineer": (
+        "senior analytics engineer", "junior analytics engineer", "data modeler",
+        "dbt analytics engineer",
+    ),
+    "Financial Analyst": (
+        "associate financial analyst", "senior financial analyst", "corporate financial analyst",
+        "fp&a", "fp and a analyst",
+    ),
+    "Project Manager": (
+        "technical program manager", "agile project manager", "associate project manager",
+        "junior project manager", "it project manager",
+    ),
+    "Technical Program Manager": (
+        "technical project manager", "program manager technical", "release program manager",
+    ),
+    "Mechanical Engineer": (
+        "associate mechanical engineer", "senior mechanical engineer", "mechanical design engineer ii",
+    ),
+    "Electrical Engineer": (
+        "associate electrical engineer", "senior electrical engineer", "rf engineer",
+        "embedded electrical engineer",
+    ),
+    "Civil Engineer": (
+        "associate civil engineer", "senior civil engineer", "geotechnical engineer",
+    ),
+    "Digital Marketing Analyst": (
+        "growth marketing analyst", "performance marketing manager", "ppc analyst",
+    ),
+    "Research Assistant / Associate": (
+        "postdoctoral researcher", "postdoc researcher", "phd research assistant",
+    ),
+}
+
+
+def _expand_with_seniority(base: str) -> list[str]:
+    """Generate Senior/Staff/Junior/level prefixes for a base title."""
+    base = base.strip()
+    if not base:
+        return []
+    low = base.lower()
+    out: list[str] = [base]
+    # Skip prefixing titles that already contain a seniority marker — would
+    # produce "senior senior X" gibberish.
+    if any(p in low for p in SENIORITY_PREFIXES):
+        return out
+    for p in SENIORITY_PREFIXES:
+        out.append(f"{p} {base}")
+    # Level suffixes (only for titles that look like engineering roles —
+    # nonsensical for "Paralegal II", "Treasury Analyst IV", etc).
+    if any(t in low for t in ("engineer", "developer", "scientist", "analyst", "designer")):
+        for suf in LEVEL_SUFFIXES:
+            out.append(f"{base} {suf}")
+    return out
+
+
 def all_search_terms() -> list[str]:
     """All synonyms across every role + a sponsorship-keyword variant for each."""
     seen: set[str] = set()
     out: list[str] = []
     for cat in CATEGORIES:
         for role in cat.roles:
-            for syn in role.synonyms:
+            # Base synonyms straight from CATEGORIES.
+            for syn in (role.name, *role.synonyms, *EXTRA_ROLE_SYNONYMS.get(role.name, ())):
                 key = syn.lower()
                 if key in seen:
                     continue
                 seen.add(key)
                 out.append(syn)
+            # Plus modern-day aliases we want the scraper to recognize.
+            for extra in EXTRA_ROLE_SYNONYMS.get(role.name, ()):
+                key = extra.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append(extra)
+            # Plus auto-generated seniority + level variants for the
+            # canonical name. This catches "Senior Software Engineer",
+            # "Software Engineer II", etc. without us having to enumerate
+            # every combination by hand.
+            for variant in _expand_with_seniority(role.name):
+                key = variant.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append(variant)
     # Add a visa-friendly variant for the most popular roles to bias toward sponsoring employers.
     sponsorship_terms = [
         "software engineer visa sponsorship",

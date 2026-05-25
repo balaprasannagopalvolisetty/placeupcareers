@@ -16,6 +16,7 @@ import bcrypt
 import jwt
 from fastapi import Cookie, Header, HTTPException, Request, status
 
+from app.db import user_store
 from app.config import settings
 
 
@@ -107,6 +108,11 @@ async def current_user_id(
     user_id = claims.get("sub")
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token missing sub claim")
+    if not user_store.get_user_by_id(str(user_id)):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User no longer exists")
+    session_id = claims.get("sid")
+    if session_id and not user_store.get_auth_session(str(session_id)):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired or revoked")
     return str(user_id)
 
 

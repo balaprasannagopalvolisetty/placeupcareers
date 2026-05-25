@@ -43,6 +43,13 @@ BOILERPLATE_PHRASES = {
     "background check", "drug screen", "authorized work", "without sponsorship",
 }
 
+NOISY_KEYWORDS = STOP_WORDS | {
+    "agile team", "business needs", "cross functional", "fast paced",
+    "high quality", "job duties", "key responsibilities", "minimum qualifications",
+    "preferred qualifications", "strong communication", "team members",
+    "work closely", "work experience", "working knowledge",
+}
+
 # Technical skills dictionary for enhanced extraction
 TECH_SKILLS = {
     "python", "javascript", "typescript", "java", "c++", "c#", "go", "rust",
@@ -78,6 +85,38 @@ TECH_SKILLS = {
     "google analytics", "content strategy", "social media",
     "ux research", "wireframing", "prototyping", "adobe creative suite",
 }
+
+DOMAIN_KEYWORDS = {
+    "analytics", "api", "apis", "automation", "backend", "budgeting",
+    "clinical", "compliance", "dashboard", "dashboards", "data", "database",
+    "debugging", "etl", "forecasting", "frontend", "infrastructure",
+    "integration", "metrics", "pipeline", "pipelines", "reporting",
+    "research", "risk", "security", "statistical", "testing", "validation",
+    "workflow", "workflows",
+}
+
+
+def is_relevant_keyword(keyword: str) -> bool:
+    """Return True for skill-like ATS terms and False for JD filler text."""
+    raw = (keyword or "").strip().lower()
+    if not raw or raw in NOISY_KEYWORDS or raw in BOILERPLATE_PHRASES:
+        return False
+    normalized = re.sub(r"[^a-z0-9+#./-]+", " ", raw).strip()
+    if not normalized or normalized in NOISY_KEYWORDS:
+        return False
+    if normalized in TECH_SKILLS or normalized in DOMAIN_KEYWORDS:
+        return True
+    if any(ch.isdigit() or ch in "+#./-" for ch in normalized):
+        return True
+    parts = normalized.split()
+    if len(parts) > 1:
+        return any(part in TECH_SKILLS or part in DOMAIN_KEYWORDS for part in parts)
+    # Single generic nouns are usually bad ATS advice unless we know them.
+    return False
+
+
+def extract_relevant_keywords(text: str, top_n: int = 30) -> list[str]:
+    return [kw for kw in extract_keywords(text, top_n=top_n * 2) if is_relevant_keyword(kw)][:top_n]
 
 
 def clean_text(text: str) -> str:

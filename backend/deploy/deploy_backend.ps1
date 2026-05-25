@@ -10,11 +10,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Image = "$Region-docker.pkg.dev/$ProjectId/placeup/backend:latest"
-$ApiEnv = "APP_ENV=production,DATABASE_BACKEND=postgres,USER_DATABASE_BACKEND=$UserDatabaseBackend,USER_FIRESTORE_PROJECT_ID=$UserFirestoreProjectId,USER_FIRESTORE_DATABASE=$UserFirestoreDatabase,SCRAPE_INTERVAL_HOURS=6,SCRAPEGRAPH_ENABLED=false"
+$ApiEnv = "APP_ENV=production,DATABASE_BACKEND=postgres,USER_DATABASE_BACKEND=$UserDatabaseBackend,USER_FIRESTORE_PROJECT_ID=$UserFirestoreProjectId,USER_FIRESTORE_DATABASE=$UserFirestoreDatabase,SCRAPE_INTERVAL_HOURS=6,SCRAPEGRAPH_ENABLED=false,ADMIN_EMAILS=jobs@placeupcareer.com"
 if ($FrontendUrl) {
   $ApiEnv = "$ApiEnv,FRONTEND_URL=$FrontendUrl"
 }
-$ScraperEnv = "APP_ENV=production,DATABASE_BACKEND=postgres,SCRAPEGRAPH_ENABLED=false,SCRAPE_MAX_CONCURRENCY=10"
+$ScraperEnv = "APP_ENV=production,DATABASE_BACKEND=postgres,SCRAPEGRAPH_ENABLED=false,SCRAPEGRAPH_DISCOVERY_ENABLED=true,SCRAPEGRAPH_DISCOVERY_MAX_URLS=220,SCRAPEGRAPH_DISCOVERY_CONCURRENCY=3,SCRAPE_MAX_CONCURRENCY=10"
 $ApiSecrets = "DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,RAPIDAPI_KEY=RAPIDAPI_KEY:latest,USAJOBS_API_KEY=USAJOBS_API_KEY:latest,USAJOBS_EMAIL=USAJOBS_EMAIL:latest,HUNTER_API_KEY=HUNTER_API_KEY:latest,FINALSCOUT_API_KEY=FINALSCOUT_API_KEY:latest"
 $ScraperSecrets = "DATABASE_URL=DATABASE_URL:latest,RAPIDAPI_KEY=RAPIDAPI_KEY:latest,USAJOBS_API_KEY=USAJOBS_API_KEY:latest,USAJOBS_EMAIL=USAJOBS_EMAIL:latest,HUNTER_API_KEY=HUNTER_API_KEY:latest,FINALSCOUT_API_KEY=FINALSCOUT_API_KEY:latest"
 $ExternalSecrets = "DATABASE_URL=DATABASE_URL:latest,RAPIDAPI_KEY=RAPIDAPI_KEY:latest,USAJOBS_API_KEY=USAJOBS_API_KEY:latest,USAJOBS_EMAIL=USAJOBS_EMAIL:latest"
@@ -35,6 +35,24 @@ $OpenAiSecret = Test-SecretExists "OPENAI_API_KEY"
 if ($OpenAiSecret) {
   $ApiSecrets = "$ApiSecrets,OPENAI_API_KEY=OPENAI_API_KEY:latest"
   $ScraperSecrets = "$ScraperSecrets,OPENAI_API_KEY=OPENAI_API_KEY:latest"
+}
+
+$OpenRouterSecret = Test-SecretExists "OPENROUTER_API_KEY"
+if ($OpenRouterSecret) {
+  $ApiSecrets = "$ApiSecrets,OPENROUTER_API_KEY=OPENROUTER_API_KEY:latest"
+  $ScraperSecrets = "$ScraperSecrets,OPENROUTER_API_KEY=OPENROUTER_API_KEY:latest"
+}
+
+$FinalScoutKeysSecret = Test-SecretExists "FINALSCOUT_API_KEYS"
+if ($FinalScoutKeysSecret) {
+  $ApiSecrets = "$ApiSecrets,FINALSCOUT_API_KEYS=FINALSCOUT_API_KEYS:latest"
+  $ScraperSecrets = "$ScraperSecrets,FINALSCOUT_API_KEYS=FINALSCOUT_API_KEYS:latest"
+}
+
+foreach ($PaymentSecretName in @("PAYMENT_BASIC_CHECKOUT_URL", "PAYMENT_PRO_CHECKOUT_URL", "PAYMENT_ELITE_CHECKOUT_URL")) {
+  if (Test-SecretExists $PaymentSecretName) {
+    $ApiSecrets = "$ApiSecrets,$PaymentSecretName=$PaymentSecretName`:latest"
+  }
 }
 
 $InternalApiSecret = Test-SecretExists "INTERNAL_API_KEY"

@@ -70,4 +70,21 @@ Upsert-SchedulerJob `
   -Schedule "0 6 * * *" `
   -Uri "$JobRunBase/placeup-companies-export:run"
 
+# Daily stale-jobs sweeper — flips status='inactive' on any posting
+# whose last_seen_at is older than job_inactive_after_days (default
+# 14d). Keeps the Jobs page honest: roles that fell off the source
+# ATS stop appearing as "active" in the dashboard.
+Upsert-SchedulerJob `
+  -Name "placeup-stale-jobs-sweeper-daily" `
+  -Schedule "30 3 * * *" `
+  -Uri "$JobRunBase/placeup-stale-jobs-sweeper:run"
+
+# Daily FinalScout multi-key enrichment. Runs at 04:00 local — well
+# after stale-jobs sweeper, before the morning ops digest at 06:00, so
+# the new emails it discovers land in the operations Sheet the same day.
+Upsert-SchedulerJob `
+  -Name "placeup-finalscout-batch-daily" `
+  -Schedule "0 4 * * *" `
+  -Uri "$JobRunBase/placeup-finalscout-batch:run"
+
 Write-Host "Cloud Scheduler jobs created."

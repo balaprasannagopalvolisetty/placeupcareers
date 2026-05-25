@@ -16,7 +16,7 @@ from app.models.resume import (
     ParsedResume, ATSResult, SkillMatch, KeywordAnalysis, KeywordWithImpact,
 )
 from app.utils.text_processing import (
-    extract_keywords, extract_skills_from_text,
+    extract_relevant_keywords, extract_skills_from_text,
     compute_keyword_overlap, truncate_text, clean_text,
 )
 
@@ -79,16 +79,16 @@ def _enhance_keyword_analysis(resume_text: str, job_description: str) -> Keyword
         KeywordAnalysis with strong/missing/additional keywords
     """
     # Extract keywords from both documents
-    jd_keywords = extract_keywords(job_description, top_n=30)
-    resume_keywords = extract_keywords(resume_text, top_n=40)
+    jd_keywords = extract_relevant_keywords(job_description, top_n=30)
+    resume_keywords = extract_relevant_keywords(resume_text, top_n=40)
 
     # Also extract recognized technical skills
     jd_skills = extract_skills_from_text(job_description)
     resume_skills = extract_skills_from_text(resume_text)
 
     # Combine keywords and skills for comprehensive analysis
-    jd_all = list(set(jd_keywords + jd_skills))
-    resume_all = list(set(resume_keywords + resume_skills))
+    jd_all = list(dict.fromkeys(jd_skills + jd_keywords))
+    resume_all = list(dict.fromkeys(resume_skills + resume_keywords))
 
     matched, missing_list, density = compute_keyword_overlap(resume_all, jd_all)
 
@@ -215,7 +215,7 @@ def score_resume_quality(resume_text: str) -> float:
     words = cleaned.split()
     word_count = len(words)
     skills = extract_skills_from_text(cleaned)
-    keywords = extract_keywords(cleaned, top_n=40)
+    keywords = extract_relevant_keywords(cleaned, top_n=40)
 
     sections = 0
     for section in ("experience", "education", "skills", "projects", "certifications", "summary", "contact", "work history"):

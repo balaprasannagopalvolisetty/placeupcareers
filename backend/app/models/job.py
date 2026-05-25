@@ -34,8 +34,15 @@ class JobSource(str, Enum):
     JAZZHR = "jazzhr"
     RIPPLING = "rippling"
     BAMBOOHR = "bamboohr"
+    WORKABLE = "workable"
     # Aggregated H1B sponsor pipeline (multi-ATS, all curated H1B sponsors)
     H1B_SPONSOR = "h1b_sponsor"
+    # Tier-1 ATS aggregate (Greenhouse/Lever/Ashby/SmartRecruiters/Workable/Recruitee)
+    # filtered down to the taxonomy roles. Owned by app/etl/sources/tier1_ats.py.
+    TIER1_ATS = "tier1_ats"
+    # AI-assisted discovery for direct career pages, Google Jobs, and public
+    # LinkedIn job search pages. Owned by app/services/scrapegraph_discovery.py.
+    SCRAPEGRAPH_DISCOVERY = "scrapegraph_discovery"
 
 
 class JobCategory(str, Enum):

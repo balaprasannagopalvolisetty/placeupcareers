@@ -165,7 +165,47 @@ async def change_password(payload: dict = Body(...), user_id: str = Depends(curr
     if not user or not verify_password(current, user.get("password_hash", "")):
         raise HTTPException(status_code=401, detail="Current password is incorrect")
     user_store.set_user_password(user_id, hash_password(new))
+    # Revoke all other refresh-token sessions so a stolen old password
+    # can't keep an attacker logged in elsewhere.
+    try:
+        user_store.revoke_user_sessions(user_id)
+    except Exception:
+        pass
     return {"ok": True}
+
+
+@router.delete("/account")
+async def delete_account(payload: dict = Body(...), user_id: str = Depends(current_user_id)):
+    """Permanently delete the caller's account + every record we hold.
+
+    Requires the current password as a final safeguard so a stolen
+    bearer token can't wipe an account without also knowing the
+    user's password.
+
+    Honours the deletion promise in /privacy: "Deletion removes active
+    records immediately; backups roll off within 30 days."
+    """
+    confirm = (payload or {}).get("password") or ""
+    user = user_store.get_user_by_id(user_id)
+    if not user:
+        # Pretend success — don't leak whether the account existed.
+        return {"ok": True, "deleted": {}}
+    # If the account was created via OAuth and has no password set,
+    # require the confirmation phrase "DELETE" instead so the user
+    # still has to actively type something.
+    password_hash = user.get("password_hash") or ""
+    if password_hash:
+        if not verify_password(confirm, password_hash):
+            raise HTTPException(status_code=401, detail="Password does not match")
+    else:
+        if confirm.strip() != "DELETE":
+            raise HTTPException(
+                status_code=400,
+                detail="Type DELETE to confirm permanent removal of your account.",
+            )
+    counts = user_store.delete_user(user_id)
+    log.info("Account deleted: user_id=%s counts=%s", user_id, counts)
+    return {"ok": True, "deleted": counts}
 
 
 @router.get("/preferences", response_model=UserPreferences)

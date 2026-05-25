@@ -28,6 +28,10 @@ class Settings(BaseSettings):
         default="",
         description="Optional shared secret for internal/admin-only API operations.",
     )
+    admin_emails: str = Field(
+        default="",
+        description="Comma-separated emails allowed to access admin-only APIs.",
+    )
 
     # --- OAuth2 / OIDC (Google) ---
     oidc_google_client_id: str = Field(default="")
@@ -39,6 +43,35 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(default="")
     llm_provider: str = Field(default="groq")
     llm_model: str = Field(default="llama-3.3-70b-versatile")
+
+    # --- OpenRouter (unified LLM gateway used by ScrapeGraphAI discovery) ---
+    # OpenRouter exposes an OpenAI-compatible API at https://openrouter.ai/api/v1,
+    # so we point any "openai/..."-prefixed ScrapeGraphAI model at it via
+    # base_url. Picking a cheap model keeps daily scrapes affordable —
+    # claude-3.5-haiku and gemini-2.0-flash both extract well from job pages
+    # at < $0.001 per scrape.
+    openrouter_api_key: str = Field(default="", description="OpenRouter API key — primary LLM for scrapegraph discovery.")
+    openrouter_model: str = Field(
+        default="anthropic/claude-3.5-haiku",
+        description="OpenRouter model slug (e.g. anthropic/claude-3.5-haiku, google/gemini-2.0-flash-001).",
+    )
+    openrouter_base_url: str = Field(
+        default="https://openrouter.ai/api/v1",
+        description="OpenAI-compatible endpoint for OpenRouter.",
+    )
+    openrouter_referer: str = Field(
+        default="https://placeup.careers",
+        description="HTTP-Referer header — OpenRouter uses it for app attribution.",
+    )
+
+    # --- ScrapeGraphAI discovery (separate from enrichment) ---
+    scrapegraph_discovery_enabled: bool = Field(default=False)
+    scrapegraph_discovery_max_urls: int = Field(default=30, ge=0, le=500, description="Hard cap on URLs scraped per run — protects spend.")
+    scrapegraph_discovery_concurrency: int = Field(default=3, ge=1, le=10, description="Concurrent SmartScraperGraph runs.")
+    scrapegraph_career_pages: str = Field(
+        default="",
+        description="Optional comma-separated extra career page URLs to scrape (beyond the curated list).",
+    )
 
     # --- Job Scraping APIs ---
     rapidapi_key: str = Field(default="")
@@ -53,6 +86,22 @@ class Settings(BaseSettings):
     google_api_key: str = Field(default="", description="Google API key (Programmable Search free fallback)")
     google_cse_id: str = Field(default="", description="Google Programmable Search Engine ID (cx)")
     finalscout_api_key: str = Field(default="", description="FinalScout API key")
+    finalscout_api_keys: str = Field(default="", description="Comma-separated FinalScout keys for multi-key batch enrichment")
+
+    # --- Stripe billing ---
+    # Test mode: use sk_test_* keys + test price IDs.
+    # Production: sk_live_* + the corresponding live prices.
+    # Set up once in Stripe dashboard, then put the IDs into Secret Manager.
+    stripe_api_key: str = Field(default="", description="Stripe secret API key (sk_test_… or sk_live_…)")
+    stripe_webhook_secret: str = Field(default="", description="Stripe webhook signing secret (whsec_…)")
+    stripe_price_basic: str = Field(default="", description="Stripe price ID for the $9.99/mo Basic plan")
+    stripe_price_pro: str = Field(default="", description="Stripe price ID for the $15.99/mo Pro plan")
+    stripe_price_elite: str = Field(default="", description="Stripe price ID for the $45/mo Elite plan")
+
+    # --- Payments ---
+    payment_basic_checkout_url: str = Field(default="", description="Hosted checkout URL for Basic plan")
+    payment_pro_checkout_url: str = Field(default="", description="Hosted checkout URL for Pro plan")
+    payment_elite_checkout_url: str = Field(default="", description="Hosted checkout URL for Elite plan")
 
     # --- Email Digest (optional SMTP; scheduled from Cloud Scheduler/Run) ---
     smtp_host: str = Field(default="")
@@ -85,7 +134,7 @@ class Settings(BaseSettings):
     # --- Scraping Config ---
     scrape_interval_hours: int = Field(default=6)
     scrape_max_concurrency: int = Field(default=28, ge=4, le=200)
-    job_inactive_after_days: int = Field(default=12, description="Mark active jobs as inactive after N days without re-scrape")
+    job_inactive_after_days: int = Field(default=14, description="Mark active jobs as inactive after N days without re-scrape (2-week window, sweeper in app/workers/stale_jobs_sweeper.py)")
     proxy_url: Optional[str] = Field(default=None)
     scrapegraph_enabled: bool = Field(default=False)
     scrapegraph_max_enrich_per_run: int = Field(default=40, ge=0, le=500)
