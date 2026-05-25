@@ -99,7 +99,7 @@ def _to_prefs(raw: dict) -> UserPreferences:
         notification_marketing_emails=bool(raw.get("notification_marketing_emails", False)),
         visa_status=raw.get("visa_status"),
         experience_level=raw.get("experience_level"),
-        target_roles=list(raw.get("target_roles") or [])[:5],
+        target_roles=list(raw.get("target_roles") or [])[:25],
         target_locations=list(raw.get("target_locations") or []),
     )
 

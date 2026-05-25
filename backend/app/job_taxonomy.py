@@ -419,6 +419,8 @@ def all_taxonomy_scrape_search_terms() -> list[str]:
             add(role.name)
             for synonym in role.synonyms:
                 add(synonym)
+            for synonym in EXTRA_ROLE_SYNONYMS.get(role.name, ()):
+                add(synonym)
 
     coverage_terms = [
         "entry level visa sponsorship",
