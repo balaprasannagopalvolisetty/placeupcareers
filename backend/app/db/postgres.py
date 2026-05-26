@@ -289,6 +289,10 @@ class PostgresClient:
             stmt = stmt.where(Job.status == filters["status"])
         if filters.get("location"):
             stmt = stmt.where(Job.location.ilike(f"%{filters['location']}%"))
+        if filters.get("seen_since"):
+            stmt = stmt.where(Job.last_seen_at >= filters["seen_since"])
+        if filters.get("seen_before"):
+            stmt = stmt.where(Job.last_seen_at < filters["seen_before"])
         if filters.get("posted_since"):
             stmt = stmt.where(Job.posted_at >= filters["posted_since"])
         if filters.get("posted_before"):
@@ -323,6 +327,10 @@ class PostgresClient:
             stmt = stmt.where(MasterJob.status == filters["status"])
         if filters.get("location"):
             stmt = stmt.where(MasterJob.location.ilike(f"%{filters['location']}%"))
+        if filters.get("seen_since"):
+            stmt = stmt.where(MasterJob.last_seen_at >= filters["seen_since"])
+        if filters.get("seen_before"):
+            stmt = stmt.where(MasterJob.last_seen_at < filters["seen_before"])
         if filters.get("posted_since"):
             stmt = stmt.where(MasterJob.posted_at >= filters["posted_since"])
         if filters.get("posted_before"):

@@ -402,17 +402,20 @@ def _local_date(value: Any, tz_offset_minutes: int = 0):
 def _projection_sort_key(job: dict, tz_offset_minutes: int = 0) -> tuple:
     """Frontend projection: today high ATS, yesterday high ATS, then high-to-low."""
     today = (datetime.now(timezone.utc) + timedelta(minutes=-tz_offset_minutes)).date()
-    posted_day = _local_date(job.get("posted_at"), tz_offset_minutes=tz_offset_minutes)
-    if posted_day == today:
+    fresh_at = job.get("scraped_at") or job.get("last_seen_at") or job.get("posted_at")
+    fresh_day = _local_date(fresh_at, tz_offset_minutes=tz_offset_minutes)
+    if fresh_day == today:
         date_bucket = 0
-    elif posted_day == today - timedelta(days=1):
+    elif fresh_day == today - timedelta(days=1):
         date_bucket = 1
     else:
         date_bucket = 2
     score = int(job.get("match_score") or 0)
+    fresh = _coerce_datetime(fresh_at)
+    fresh_ts = fresh.timestamp() if fresh else 0
     posted = _coerce_datetime(job.get("posted_at"))
-    posted_ts = posted.timestamp() if posted else 0
-    return (date_bucket, -score, -posted_ts)
+    posted_ts = posted.timestamp() if posted else fresh_ts
+    return (date_bucket, -score, -fresh_ts, -posted_ts)
 
 
 def _taxonomy_terms(category: Optional[str], role: Optional[str]) -> list[str]:
@@ -768,14 +771,14 @@ async def list_jobs(
         filters["status"] = status
     if visa_only:
         filters["visa_only"] = True
-    posted_since, posted_before = _posted_window(time_filter, tz_offset_minutes=tz_offset)
+    fresh_since, fresh_before = _posted_window(time_filter, tz_offset_minutes=tz_offset)
     visible_cutoff = _visible_jobs_cutoff()
-    if posted_since:
-        filters["posted_since"] = max(posted_since, visible_cutoff)
+    if fresh_since:
+        filters["seen_since"] = max(fresh_since, visible_cutoff)
     else:
-        filters["posted_since"] = visible_cutoff
-    if posted_before:
-        filters["posted_before"] = posted_before
+        filters["seen_since"] = visible_cutoff
+    if fresh_before:
+        filters["seen_before"] = fresh_before
     title_terms = _taxonomy_terms(category, role)
     preferred_roles, preferred_locations = _preference_terms(user_id)
     if personalized and not title_terms and not search and preferred_roles:
@@ -1331,13 +1334,13 @@ async def get_top_matches(
         filters["location"] = location
     if visa_only:
         filters["visa_only"] = True
-    posted_since, posted_before = _posted_window(time_filter, tz_offset_minutes=tz_offset)
-    if posted_since:
-        filters["posted_since"] = max(posted_since, _visible_jobs_cutoff())
+    fresh_since, fresh_before = _posted_window(time_filter, tz_offset_minutes=tz_offset)
+    if fresh_since:
+        filters["seen_since"] = max(fresh_since, _visible_jobs_cutoff())
     else:
-        filters["posted_since"] = _visible_jobs_cutoff()
-    if posted_before:
-        filters["posted_before"] = posted_before
+        filters["seen_since"] = _visible_jobs_cutoff()
+    if fresh_before:
+        filters["seen_before"] = fresh_before
     resume_text = await _active_resume_text(user_id)
     preferred_roles, preferred_locations = _preference_terms(user_id)
     terms = _terms_for_role_names(preferred_roles)

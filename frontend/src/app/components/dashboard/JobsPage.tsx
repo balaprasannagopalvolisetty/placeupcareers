@@ -783,7 +783,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                   <div style={{ display: "flex", gap: 12, fontSize: 11, color: T.t3, fontFamily: F.sans, flexWrap: "wrap" }}>
                     <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}><MapPin size={11} />{job.location || "Remote"}</span>
                     <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}><DollarSign size={11} />{formatSalary(job.salary)}</span>
-                    <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}><Clock size={11} />{formatPosted(job.posted_at || (job as any).posted)}</span>
+                    <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}><Clock size={11} />Seen {formatPosted((job as any).scraped_at || job.posted_at || (job as any).posted)}</span>
                   </div>
                   {preview && (
                     <div style={{ fontSize: 12, color: T.t3, fontFamily: F.sans, lineHeight: 1.55, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
