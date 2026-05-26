@@ -207,35 +207,74 @@ def _fallback_score(resume_text: str, job_description: str) -> ATSResult:
 
 
 def score_resume_quality(resume_text: str) -> float:
-    """Compute a generic resume quality score for UI upload/ATS preview."""
+    """Compute a generic resume quality score for UI upload/ATS preview.
+
+    Strict scoring policy (rework after a bad resume reportedly scored 97):
+      - A resume cannot reach 80+ without ALL FOUR pillars present:
+        Experience section, Education section, real date ranges
+        ("Jan 2022 - Present", "2020-2023"), AND quantified achievements.
+      - A resume cannot reach 90+ without rich skill coverage (≥8 distinct
+        TECH_SKILLS matches).
+      - Buzzword dumps without sections or dates correctly score 30-55.
+    """
     if not resume_text or len(resume_text.strip()) < 50:
         return 0.0
 
     cleaned = clean_text(resume_text)
+    text_lower = cleaned.lower()
     words = cleaned.split()
     word_count = len(words)
-    skills = extract_skills_from_text(cleaned)
+    skills = set(extract_skills_from_text(cleaned))
     keywords = extract_relevant_keywords(cleaned, top_n=40)
 
-    sections = 0
-    for section in ("experience", "education", "skills", "projects", "certifications", "summary", "contact", "work history"):
-        if re.search(rf"\b{re.escape(section)}\b", cleaned.lower()):
-            sections += 1
+    # Section detection — REQUIRE experience + education explicitly.
+    has_experience = bool(re.search(r"\b(experience|work history|employment)\b", text_lower))
+    has_education = bool(re.search(r"\b(education|university|college|bachelor|master|b\.s\.|m\.s\.|phd)\b", text_lower))
+    OPTIONAL_SECTIONS = ("skills", "projects", "certifications", "summary", "contact", "achievements", "publications", "awards")
+    optional_hits = sum(1 for s in OPTIONAL_SECTIONS if re.search(rf"\b{re.escape(s)}\b", text_lower))
+    sections = (1 if has_experience else 0) + (1 if has_education else 0) + optional_hits
 
-    # Keep the generic resume score conservative. The previous baseline
-    # started at 40 and rewarded raw keyword volume too heavily, so weak
-    # resumes could look like 90+ just by containing common tech words.
-    score = 8.0
-    score += min(22.0, len(set(skills)) * 1.8)
-    score += min(10.0, len(set(keywords)) * 0.18)
-    score += min(24.0, sections * 3.0)
-    score += min(14.0, max(0.0, min(word_count, 1100) - 220) / 65.0)
-    if re.search(r"\b\d+(\.\d+)?%|\$\d+|\b\d+x\b|\b\d+\+\b", resume_text.lower()):
-        score += 8.0
-    if re.search(r"\b(github|linkedin|portfolio|certification|certified)\b", cleaned.lower()):
-        score += 6.0
-    if word_count < 180:
-        score -= 18.0
-    if sections < 3:
-        score -= 12.0
+    # Date / employment ranges — "Jan 2022 - Present", "2020-2023", "06/2019 - 08/2021".
+    date_ranges = len(re.findall(
+        r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s*\.?\s*\d{4}|"
+        r"\b\d{4}\s*[\-–—to]+\s*(\d{4}|present|current)|"
+        r"\b\d{1,2}/\d{4}\s*[\-–—]\s*(\d{1,2}/\d{4}|present|current)",
+        text_lower,
+    ))
+
+    # Quantified achievements — real metrics, not just any number.
+    metrics = len(re.findall(
+        r"\b\d+%|\$\d+[kKmMbB]?|\b\d+x\b(?!\d)|\bby\s+\d+|team\s+of\s+\d+|\bsaved\s+\d+|\breduced\s+\d+|\bincreased\s+\d+",
+        resume_text,
+    ))
+
+    # Professional signals.
+    has_email = bool(re.search(r"[a-z0-9._-]+@[a-z0-9.-]+\.[a-z]{2,}", text_lower))
+    has_links = bool(re.search(r"\b(github\.com|linkedin\.com|portfolio|gitlab\.com)\b", text_lower))
+
+    # Component scores — each capped so no single signal can dominate.
+    skills_pts  = min(20.0, len(skills) * 1.4)
+    keyword_pts = min(8.0,  len(set(keywords)) * 0.15)
+    section_pts = min(20.0, sections * 3.0)
+    length_pts  = min(12.0, max(0.0, min(word_count, 1100) - 280) / 70.0)
+    date_pts    = min(10.0, date_ranges * 2.5)
+    metrics_pts = min(10.0, metrics * 1.5)
+    contact_pts = (4.0 if has_email else 0.0) + (4.0 if has_links else 0.0)
+
+    score = 8.0 + skills_pts + keyword_pts + section_pts + length_pts + date_pts + metrics_pts + contact_pts
+
+    # Hard penalties for missing structural pillars.
+    if not has_experience: score -= 18.0
+    if not has_education:  score -= 10.0
+    if word_count < 200:   score -= 20.0
+    if date_ranges == 0:   score -= 12.0
+    if metrics == 0:       score -= 6.0
+
+    # Hard caps — cannot escape these without quality markers.
+    has_all_pillars = has_experience and has_education and date_ranges >= 2 and metrics >= 2
+    if not has_all_pillars:
+        score = min(score, 75.0)
+    if len(skills) < 8:
+        score = min(score, 78.0)
+
     return round(min(100.0, max(0.0, score)), 1)

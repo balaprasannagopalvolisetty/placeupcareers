@@ -90,6 +90,10 @@ export default function SignIn() {
   const { signIn } = useAuth();
   const { isMobile } = useViewportFlags();
   const [email, setEmail] = useState("");
+  // Optional phone field — accepts phone as an alternative identifier
+  // for accounts where phone signup was used. Backend resolves either
+  // by matching `users.email == identifier` OR `users.phone == identifier`.
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -182,6 +186,7 @@ export default function SignIn() {
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 16 }}>
               <StyledInput label="Email Address" type="email" value={email} onChange={setEmail} />
+              <StyledInput label="Phone Number (optional)" type="tel" value={phone} onChange={setPhone} />
               <StyledInput
                 label="Password"
                 type={showPass ? "text" : "password"}

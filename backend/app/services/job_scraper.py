@@ -29,6 +29,10 @@ from app.services.visa_classifier import classify_job
 from app.services.careers_ats import scrape_greenhouse_board
 from app.services.dice_scraper import scrape_dice
 from app.services.h1b_sponsor_pipeline import scrape_h1b_sponsor_boards
+from app.services.scrapling_job_discovery import (
+    build_scrapling_targets,
+    scrape_scrapling_targets,
+)
 from app.utils.terminal_table import render_table
 
 logger = logging.getLogger(__name__)
@@ -632,6 +636,25 @@ async def run_scrape_cycle(
                 sources_used.append("dice")
                 source_attempts["dice"] = source_attempts.get("dice", 0) + 1
 
+    scrapling_requested_sources = {
+        JobSource.MONSTER,
+        JobSource.JOOBLE,
+        JobSource.SCRAPLING_DISCOVERY,
+    }
+    if any(src in request.sources for src in scrapling_requested_sources):
+        include_discovery = JobSource.SCRAPLING_DISCOVERY in request.sources
+        targets = build_scrapling_targets(
+            search_terms=request.search_terms,
+            locations=request.locations,
+            include_monster=JobSource.MONSTER in request.sources,
+            include_jooble=JobSource.JOOBLE in request.sources,
+            include_discovery=include_discovery,
+        )
+        if targets:
+            tasks.append(("scrapling_discovery", scrape_scrapling_targets(targets)))
+            sources_used.append("scrapling_discovery")
+            source_attempts["scrapling_discovery"] = len(targets)
+
     greenhouse_tokens = _resolve_greenhouse_tokens(request)
     if JobSource.GREENHOUSE in request.sources:
         if greenhouse_tokens:
@@ -674,15 +697,25 @@ async def run_scrape_cycle(
         async def _guarded_capture(source_tag: str, awaitable_job):
             async with semaphore:
                 try:
+                    async def _with_timeout():
+                        return await asyncio.wait_for(
+                            awaitable_job,
+                            timeout=settings.scrape_source_timeout_seconds,
+                        )
+
                     if _normalize_source_name(source_tag) == "google":
                         async with google_semaphore:
                             await asyncio.sleep(2.5)
-                            return source_tag, await awaitable_job, None
+                            return source_tag, await _with_timeout(), None
                     if _normalize_source_name(source_tag) == "rapidapi":
                         async with rapidapi_semaphore:
                             await asyncio.sleep(1.0)
-                            return source_tag, await awaitable_job, None
-                    return source_tag, await awaitable_job, None
+                            return source_tag, await _with_timeout(), None
+                    return source_tag, await _with_timeout(), None
+                except asyncio.TimeoutError as exc:
+                    return source_tag, None, TimeoutError(
+                        f"timed out after {settings.scrape_source_timeout_seconds}s"
+                    )
                 except Exception as exc:
                     return source_tag, None, exc
 

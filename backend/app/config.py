@@ -72,6 +72,15 @@ class Settings(BaseSettings):
         default="",
         description="Optional comma-separated extra career page URLs to scrape (beyond the curated list).",
     )
+    scrapling_discovery_enabled: bool = Field(default=True)
+    scrapling_discovery_max_targets: int = Field(default=80, ge=0, le=2000)
+    scrapling_discovery_concurrency: int = Field(default=6, ge=1, le=30)
+    scrapling_h1b_excel_company_limit: int = Field(
+        default=100,
+        ge=0,
+        le=5000,
+        description="Top H1B Excel employers to convert into Scrapling company/Google Jobs discovery targets.",
+    )
 
     # --- Job Scraping APIs ---
     rapidapi_key: str = Field(default="")
@@ -134,6 +143,12 @@ class Settings(BaseSettings):
     # --- Scraping Config ---
     scrape_interval_hours: int = Field(default=6)
     scrape_max_concurrency: int = Field(default=28, ge=4, le=200)
+    scrape_source_timeout_seconds: int = Field(
+        default=300,
+        ge=30,
+        le=1800,
+        description="Per-source scrape task timeout so one blocked provider cannot stall a whole scheduled run.",
+    )
     job_inactive_after_days: int = Field(default=14, description="Mark active jobs as inactive after N days without re-scrape (2-week window, sweeper in app/workers/stale_jobs_sweeper.py)")
     proxy_url: Optional[str] = Field(default=None)
     scrapegraph_enabled: bool = Field(default=False)

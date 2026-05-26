@@ -17,7 +17,7 @@ themselves:
    the right scraper for each company in parallel, with a concurrency
    semaphore so we stay polite.
 2. **Taxonomy title filter** — drop any job whose title doesn't match
-   one of the 88 roles in `app.job_taxonomy.CATEGORIES`. The ops team
+   one of the expanded roles in `app.job_taxonomy.CATEGORIES`. The ops team
    asked specifically for "jobs from the taxonomy roles, nothing
    else"; without this filter every random role at every sponsored
    company would land in master_jobs.
@@ -134,7 +134,7 @@ async def scrape_tier1_ats(
                               endpoints don't rate-limit but we want to
                               be a good citizen.
         only_companies:       Restrict to an allow-list of canonical names.
-        apply_taxonomy_filter: Drop jobs whose title doesn't match the 88
+        apply_taxonomy_filter: Drop jobs whose title doesn't match the expanded
                               taxonomy roles. Defaults True — the user
                               explicitly asked for this behaviour.
 

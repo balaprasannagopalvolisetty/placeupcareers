@@ -22,6 +22,8 @@ class JobSource(str, Enum):
     USAJOBS = "usajobs"
     RAPIDAPI = "rapidapi"
     DICE = "dice"
+    MONSTER = "monster"
+    JOOBLE = "jooble"
     # ATS career boards (direct from company)
     GREENHOUSE = "greenhouse"
     LEVER = "lever"
@@ -43,6 +45,10 @@ class JobSource(str, Enum):
     # AI-assisted discovery for direct career pages, Google Jobs, and public
     # LinkedIn job search pages. Owned by app/services/scrapegraph_discovery.py.
     SCRAPEGRAPH_DISCOVERY = "scrapegraph_discovery"
+    # Scrapling-powered HTML discovery for direct company career/search pages.
+    # This is a best-effort fallback around blocked/JS-heavy sources and H1B
+    # sponsor pages not covered by structured ATS APIs.
+    SCRAPLING_DISCOVERY = "scrapling_discovery"
 
 
 class JobCategory(str, Enum):
@@ -246,6 +252,8 @@ class ScrapeRequest(BaseModel):
             JobSource.GOOGLE,
             JobSource.USAJOBS,
             JobSource.DICE,
+            JobSource.MONSTER,
+            JobSource.JOOBLE,
             JobSource.H1B_SPONSOR,
         ],
         description="Scraping sources to use. H1B_SPONSOR pulls every curated sponsor's ATS board.",

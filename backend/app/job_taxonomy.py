@@ -180,7 +180,7 @@ CATEGORIES: tuple[Category, ...] = (
 # can recognize them as the same role.
 #
 # We expand at call sites (not in CATEGORIES) so the UI role pickers
-# stay tidy with the 88 canonical names while the scraper still has
+# stay tidy with the canonical role names while the scraper still has
 # the full firehose of ~600+ matchable variants.
 
 SENIORITY_PREFIXES: tuple[str, ...] = (

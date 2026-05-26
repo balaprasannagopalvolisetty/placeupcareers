@@ -7,7 +7,7 @@ import asyncio
 import logging
 
 from app.etl.jobs_scraper import run
-from app.job_taxonomy import all_taxonomy_scrape_search_terms
+from app.job_taxonomy import all_role_backfill_search_terms
 
 
 def main() -> int:
@@ -16,22 +16,25 @@ def main() -> int:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
     args = argparse.Namespace(
-        queries="~".join(term.replace(" ", "_") for term in all_taxonomy_scrape_search_terms()),
+        # Focused role-by-role terms: every canonical position is included,
+        # with the most useful aliases, without exploding every fragile portal
+        # into thousands of requests.
+        queries="~".join(term.replace(" ", "_") for term in all_role_backfill_search_terms()),
         locations="United_States~Canada",
-        # LinkedIn guest scraping is currently rate-limiting heavily in Cloud
-        # Run. Keep the 6h job on reliable sources so each run finishes and
-        # writes fresh rows instead of spending hours retrying 429s.
+        # Attempt every requested source. Each provider is isolated so a WAF,
+        # quota, or selector change only marks that source as zero/errored;
+        # the rest of the 6h run still writes fresh rows.
         #
-        # tier1_ats hits Greenhouse/Lever/Ashby/SmartRecruiters/Workable/
-        # Recruitee directly (no auth, no rate limit, structured JSON) and
-        # filters results to the 88 taxonomy roles before they hit the DB.
-        # It runs in addition to h1b_sponsor (which covers Workday/BambooHR
-        # too) so we get the broadest possible coverage.
-        # ZipRecruiter currently blocks Cloud Run egress with Cloudflare WAF
-        # 403s. Leaving it in the 6h job wastes retries and pollutes logs,
-        # while the reliable sources below still cover broad job-board,
-        # verified sponsor ATS, direct career page, and Google Jobs discovery.
-        sources="indeed~google~h1b_sponsor~tier1_ats~scrapegraph_discovery",
+        # JobSpy covers LinkedIn, Indeed, ZipRecruiter, Glassdoor, and Google.
+        # Native/API sources cover USAJOBS and Dice. Scrapling adds HTML
+        # fallback coverage for Monster, Jooble, Google/LinkedIn public pages,
+        # and direct career pages from the H1B company list. H1B/tier1 ATS
+        # pulls complete company career boards where structured APIs exist.
+        sources=(
+            "linkedin~indeed~ziprecruiter~glassdoor~google~"
+            "usajobs~dice~monster~jooble~"
+            "h1b_sponsor~tier1_ats~scrapling_discovery~scrapegraph_discovery"
+        ),
         max_per_source=60,
         max_per_sponsor=400,
         h1b_sponsor_concurrency=10,
