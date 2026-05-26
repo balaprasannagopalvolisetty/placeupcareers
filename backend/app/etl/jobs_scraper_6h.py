@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 
 from app.etl.jobs_scraper import run
 from app.job_taxonomy import all_role_backfill_search_terms
@@ -16,7 +17,10 @@ PUBLIC_SOURCES = (
     "usajobs~dice~monster~jooble~scrapling_discovery"
 )
 BOARD_SOURCES = "h1b_sponsor~tier1_ats~scrapegraph_discovery"
-BATCH_SIZE = 12
+try:
+    BATCH_SIZE = max(2, int(os.getenv("SCRAPER_ROLE_BATCH_SIZE", "4")))
+except ValueError:
+    BATCH_SIZE = 4
 
 
 def _encoded_terms(terms: list[str]) -> str:
