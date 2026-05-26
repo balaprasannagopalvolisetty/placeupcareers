@@ -154,7 +154,7 @@ async def scrape_jobspy(
         logger.error("python-jobspy not installed. Run: pip install python-jobspy")
         return []
     except Exception as e:
-        logger.error(f"JobSpy scraping error: {e}")
+        logger.info(f"JobSpy provider skipped for {site_names}: {e}")
         return []
 
 
