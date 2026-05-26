@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 
 PUBLIC_SOURCES = (
     "linkedin~indeed~ziprecruiter~glassdoor~google~"
-    "usajobs~dice~monster~jooble~scrapling_discovery"
+    "usajobs~dice~monster~jooble"
 )
-BOARD_SOURCES = "h1b_sponsor~tier1_ats~scrapegraph_discovery"
+BOARD_SOURCES = "h1b_sponsor~tier1_ats~scrapling_discovery~scrapegraph_discovery"
 try:
     BATCH_SIZE = max(2, int(os.getenv("SCRAPER_ROLE_BATCH_SIZE", "4")))
 except ValueError:
