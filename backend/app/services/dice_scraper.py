@@ -110,6 +110,36 @@ async def scrape_dice(
 
     transport = httpx.AsyncHTTPTransport(retries=2, proxy=proxy) if proxy else None
 
+    def _build_params(*, simple: bool, page_number: int) -> dict[str, Any]:
+        params: dict[str, Any] = {
+            "q": search_term,
+            "countryCode2": "US",
+            "page": page_number,
+            "pageSize": page_size,
+            "fields": (
+                "id|jobId|guid|summary|title|postedDate|modifiedDate|jobLocation.displayName|"
+                "detailsPageUrl|salary|clientBrandId|companyPageUrl|companyLogoUrl|"
+                "positionId|companyName|employmentType|isHighlighted|score|easyApply|"
+                "employerType|workFromHomeAvailability|workplaceTypes|isRemote"
+            ),
+            "culture": "en",
+            "includeRemote": "true",
+        }
+        if not simple:
+            params.update({
+                "radius": "30",
+                "radiusUnit": "mi",
+                "facets": "employmentType|postedDate|workFromHomeAvailability|easyApply",
+                "recommendations": "true",
+                "interactionId": "0",
+                "fj": "true",
+            })
+            if posted_within_days:
+                params["filters.postedDate"] = f"LAST_{posted_within_days}_DAYS"
+        if location and location.lower() not in {"united states", "usa", "us", ""}:
+            params["location"] = location
+        return params
+
     async with httpx.AsyncClient(
         timeout=30.0,
         headers=DEFAULT_HEADERS,
@@ -121,35 +151,13 @@ async def scrape_dice(
         max_pages = max(1, (results_wanted + page_size - 1) // page_size)
 
         while len(jobs) < results_wanted and page <= max_pages:
-            params: dict[str, Any] = {
-                "q": search_term,
-                "countryCode2": "US",
-                "radius": "30",
-                "radiusUnit": "mi",
-                "page": page,
-                "pageSize": page_size,
-                "facets": "employmentType|postedDate|workFromHomeAvailability|easyApply",
-                "fields": (
-                    "id|jobId|guid|summary|title|postedDate|modifiedDate|jobLocation.displayName|"
-                    "detailsPageUrl|salary|clientBrandId|companyPageUrl|companyLogoUrl|"
-                    "positionId|companyName|employmentType|isHighlighted|score|easyApply|"
-                    "employerType|workFromHomeAvailability|workplaceTypes|isRemote"
-                ),
-                "culture": "en",
-                "recommendations": "true",
-                "interactionId": "0",
-                "fj": "true",
-                "includeRemote": "true",
-            }
-            if location and location.lower() not in {"united states", "usa", "us", ""}:
-                params["location"] = location
-            if posted_within_days:
-                params["filters.postedDate"] = f"LAST_{posted_within_days}_DAYS"
-
             try:
-                response = await client.get(DICE_SEARCH_URL, params=params)
+                response = await client.get(DICE_SEARCH_URL, params=_build_params(simple=False, page_number=page))
+                if response.status_code >= 500:
+                    logger.info("Dice page %s returned %s; retrying with simplified query", page, response.status_code)
+                    response = await client.get(DICE_SEARCH_URL, params=_build_params(simple=True, page_number=page))
                 if response.status_code == 401 or response.status_code == 403:
-                    logger.warning(
+                    logger.info(
                         "Dice: unauthorized/forbidden (status=%s). API key or anti-bot may have changed.",
                         response.status_code,
                     )
@@ -157,7 +165,7 @@ async def scrape_dice(
                 response.raise_for_status()
                 payload = response.json()
             except (httpx.HTTPError, ValueError) as exc:
-                logger.warning("Dice page %s failed (%s)", page, exc)
+                logger.info("Dice page %s unavailable after fallback (%s)", page, exc)
                 break
 
             items = payload.get("data") if isinstance(payload, dict) else None

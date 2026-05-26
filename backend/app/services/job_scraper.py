@@ -145,7 +145,7 @@ async def scrape_jobspy(
                 break
 
         if not jobs:
-            logger.warning(f"JobSpy: No results for '{search_term}' on {site_names}")
+            logger.info(f"JobSpy: No results for '{search_term}' on {site_names}")
 
         logger.info(f"JobSpy: Got {len(jobs)} jobs for '{search_term}' from {site_names}")
         return jobs
@@ -203,6 +203,15 @@ def _rapidapi_location_filter(location: str) -> str:
     if normalized in {"north america", "north_america", "us canada", "usa canada"}:
         return '"United States" OR "Canada"'
     return f'"{location or "United States"}"'
+
+
+def _jobspy_location_for_source(src: JobSource, location: str) -> str:
+    normalized = (location or "").strip().lower()
+    if src == JobSource.GLASSDOOR and normalized in {"united states", "usa", "us"}:
+        return "New York, NY"
+    if src == JobSource.GLASSDOOR and normalized == "canada":
+        return "Toronto, ON"
+    return location
 
 
 def _parse_datetime_cell(value: object) -> Optional[datetime]:
@@ -340,7 +349,7 @@ async def scrape_usajobs(
         or "example.com" in usajobs_email.lower()
         or usajobs_key.lower().startswith("your_")
     ):
-        logger.warning("USAJobs: API key or email not configured")
+        logger.info("USAJobs: API key or email not configured")
         return []
 
     try:
@@ -590,13 +599,17 @@ async def run_scrape_cycle(
                 if site_name:
                     if src == JobSource.GOOGLE and google_allowed_terms and search_term.lower() not in google_allowed_terms:
                         continue
+                    if src == JobSource.ZIPRECRUITER and not (settings.scrape_ziprecruiter_jobspy_enabled or settings.proxy_url):
+                        continue
+                    if src == JobSource.GLASSDOOR and not (settings.scrape_glassdoor_jobspy_enabled or settings.proxy_url):
+                        continue
                     normalized_source = _normalize_source_name(site_name)
                     source_results_wanted = min(request.results_per_source, 20) if src == JobSource.GOOGLE else request.results_per_source
                     source_page_size = min(request.jobspy_page_size, 10) if src == JobSource.GOOGLE else request.jobspy_page_size
                     source_max_pages = min(request.jobspy_max_pages, 3) if src == JobSource.GOOGLE else request.jobspy_max_pages
                     tasks.append((site_name, scrape_jobspy(
                         search_term=search_term,
-                        location=location,
+                        location=_jobspy_location_for_source(src, location),
                         results_wanted=source_results_wanted,
                         hours_old=request.jobspy_hours_old,
                         site_names=[site_name],
@@ -637,6 +650,8 @@ async def run_scrape_cycle(
                 source_attempts["dice"] = source_attempts.get("dice", 0) + 1
 
     scrapling_requested_sources = {
+        JobSource.GLASSDOOR,
+        JobSource.ZIPRECRUITER,
         JobSource.MONSTER,
         JobSource.JOOBLE,
         JobSource.SCRAPLING_DISCOVERY,
@@ -646,6 +661,8 @@ async def run_scrape_cycle(
         targets = build_scrapling_targets(
             search_terms=request.search_terms,
             locations=request.locations,
+            include_glassdoor=JobSource.GLASSDOOR in request.sources and not (settings.scrape_glassdoor_jobspy_enabled or settings.proxy_url),
+            include_ziprecruiter=JobSource.ZIPRECRUITER in request.sources and not (settings.scrape_ziprecruiter_jobspy_enabled or settings.proxy_url),
             include_monster=JobSource.MONSTER in request.sources,
             include_jooble=JobSource.JOOBLE in request.sources,
             include_discovery=include_discovery,

@@ -149,6 +149,14 @@ class Settings(BaseSettings):
         le=1800,
         description="Per-source scrape task timeout so one blocked provider cannot stall a whole scheduled run.",
     )
+    scrape_ziprecruiter_jobspy_enabled: bool = Field(
+        default=False,
+        description="ZipRecruiter blocks Cloud Run/anonymous JobSpy with Cloudflare 403; use Scrapling fallback unless a proxy is configured.",
+    )
+    scrape_glassdoor_jobspy_enabled: bool = Field(
+        default=False,
+        description="Glassdoor frequently rejects broad automated JobSpy searches; use Scrapling fallback unless a proxy is configured.",
+    )
     job_inactive_after_days: int = Field(default=14, description="Mark active jobs as inactive after N days without re-scrape (2-week window, sweeper in app/workers/stale_jobs_sweeper.py)")
     proxy_url: Optional[str] = Field(default=None)
     scrapegraph_enabled: bool = Field(default=False)

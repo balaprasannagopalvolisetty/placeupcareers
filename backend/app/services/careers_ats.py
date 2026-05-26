@@ -520,11 +520,12 @@ async def scrape_workday_board(
             while len(jobs) < max_jobs:
                 payload["offset"] = offset
                 response = await client.post(url, json=payload)
-                if response.status_code == 404:
-                    logger.warning(
-                        "Workday %s/%s: 404 (try base_host=wd1/wd3/wd5/wd103.myworkdayjobs.com)",
+                if response.status_code in (400, 401, 403, 404, 422):
+                    logger.info(
+                        "Workday %s/%s unavailable via public CXS endpoint (status=%s)",
                         tenant,
                         site,
+                        response.status_code,
                     )
                     return jobs
                 response.raise_for_status()
@@ -542,7 +543,7 @@ async def scrape_workday_board(
                 offset += got
                 await asyncio.sleep(0.4)
     except Exception as exc:
-        logger.warning("Workday %s/%s: %s", tenant, site, exc)
+        logger.info("Workday %s/%s unavailable: %s", tenant, site, exc)
 
     logger.info("Workday %s/%s: normalized %s jobs", tenant, site, len(jobs))
     return jobs[:max_jobs]

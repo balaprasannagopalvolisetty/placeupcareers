@@ -59,6 +59,10 @@ def _clean(text: Any) -> str:
 
 
 def _source_for_kind(kind: str) -> JobSource:
+    if kind == "glassdoor":
+        return JobSource.GLASSDOOR
+    if kind == "ziprecruiter":
+        return JobSource.ZIPRECRUITER
     if kind == "monster":
         return JobSource.MONSTER
     if kind == "jooble":
@@ -272,15 +276,33 @@ def jooble_search_url(search_term: str, location: str = "United States") -> str:
     )
 
 
+def ziprecruiter_search_url(search_term: str, location: str = "United States") -> str:
+    return (
+        "https://www.ziprecruiter.com/jobs-search"
+        f"?search={quote_plus(search_term)}&location={quote_plus(location)}"
+    )
+
+
+def glassdoor_search_url(search_term: str, location: str = "United States") -> str:
+    return (
+        "https://www.glassdoor.com/Job/jobs.htm"
+        f"?sc.keyword={quote_plus(search_term)}&locKeyword={quote_plus(location)}"
+    )
+
+
 def build_scrapling_targets(
     *,
     search_terms: Iterable[str] = (),
     locations: Iterable[str] = ("United States",),
+    include_glassdoor: bool = False,
+    include_ziprecruiter: bool = False,
     include_monster: bool = True,
     include_jooble: bool = True,
     include_discovery: bool = True,
 ) -> list[dict[str, Any]]:
     """Build bounded Scrapling targets from roles, H1B sponsors, and career pages."""
+    glassdoor_targets: list[dict[str, Any]] = []
+    ziprecruiter_targets: list[dict[str, Any]] = []
     monster_targets: list[dict[str, Any]] = []
     jooble_targets: list[dict[str, Any]] = []
     discovery_targets: list[dict[str, Any]] = []
@@ -289,6 +311,10 @@ def build_scrapling_targets(
 
     for term in terms:
         for location in locs:
+            if include_glassdoor:
+                glassdoor_targets.append({"kind": "glassdoor", "url": glassdoor_search_url(term, location), "query": term, "location": location})
+            if include_ziprecruiter:
+                ziprecruiter_targets.append({"kind": "ziprecruiter", "url": ziprecruiter_search_url(term, location), "query": term, "location": location})
             if include_monster:
                 monster_targets.append({"kind": "monster", "url": monster_search_url(term, location), "query": term, "location": location})
             if include_jooble:
@@ -308,7 +334,7 @@ def build_scrapling_targets(
                 discovery_targets.append({"kind": "google_jobs", "url": google_jobs_url(query), "query": query, "company": company})
 
     max_targets = settings.scrapling_discovery_max_targets
-    buckets = [bucket for bucket in (monster_targets, jooble_targets, discovery_targets) if bucket]
+    buckets = [bucket for bucket in (glassdoor_targets, ziprecruiter_targets, monster_targets, jooble_targets, discovery_targets) if bucket]
     targets: list[dict[str, Any]] = []
     if max_targets <= 0:
         for bucket in buckets:
