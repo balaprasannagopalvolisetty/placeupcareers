@@ -82,6 +82,16 @@ async def scrape_jobspy(
     try:
         from jobspy import scrape_jobs as jobspy_scrape
 
+        for noisy_logger in (
+            "JobSpy",
+            "JobSpy:Google",
+            "JobSpy:LinkedIn",
+            "JobSpy:Indeed",
+            "JobSpy:Glassdoor",
+            "JobSpy:ZipRecruiter",
+        ):
+            logging.getLogger(noisy_logger).setLevel(logging.CRITICAL)
+
         if site_names is None:
             site_names = ["indeed", "linkedin", "glassdoor", "zip_recruiter", "google"]
 
