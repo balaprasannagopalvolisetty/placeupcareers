@@ -18,6 +18,7 @@ from app.utils.deduplication import (
     generate_job_id,
     is_near_duplicate,
 )
+from app.utils.job_quality import clean_job_company, clean_job_description, infer_posted_at
 
 
 # ─── Text Processing Tests ────────────────────────────────────
@@ -115,6 +116,34 @@ def test_job_id_generation():
     """Job ID should be 12 characters."""
     job_id = generate_job_id("Engineer", "Google", "NYC")
     assert len(job_id) == 12
+
+
+def test_linkedin_company_is_extracted_from_description():
+    description = """
+Security Engineer, AWS Security
+LinkedIn
+United States
+Company logo for, Amazon Web Services (AWS).
+Amazon Web Services (AWS)
+About the job
+Description
+We're looking for a Security Engineer.
+"""
+    assert clean_job_company("LinkedIn", description) == "Amazon Web Services (AWS)"
+
+
+def test_relative_posted_date_is_inferred():
+    from datetime import datetime, timezone
+
+    now = datetime(2026, 5, 26, tzinfo=timezone.utc)
+    posted = infer_posted_at(None, "Seattle, WA · Reposted 6 days ago", now=now)
+    assert posted.date().isoformat() == "2026-05-20"
+
+
+def test_linkedin_description_chrome_is_trimmed():
+    description = "Header junk\nApply\nAbout the job\nDescription\nReal job description"
+    assert clean_job_description(description).startswith("About the job")
+    assert "Header junk" not in clean_job_description(description)
 
 
 if __name__ == "__main__":

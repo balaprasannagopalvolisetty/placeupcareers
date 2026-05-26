@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
 from app.db.schema import Company, Contact, H1BSponsor, Job, MasterJob, StagingRecord
+from app.utils.job_quality import clean_job_company, clean_job_description, infer_posted_at
 
 
 def json_default(value):
@@ -362,12 +363,16 @@ class PostgresClient:
 
     def _master_job_to_dict(self, job: MasterJob) -> dict:
         meta = job.extra_metadata or {}
+        raw_description = job.description or ""
+        company = clean_job_company(job.company or "", raw_description)
+        posted_at = infer_posted_at(job.posted_at, raw_description)
+        description = clean_job_description(raw_description)
         return {
             "id": job.id,
             "title": job.title,
-            "company": job.company or "",
+            "company": company,
             "location": job.location or "",
-            "description": job.description or "",
+            "description": description,
             "job_url": job.source_url or "",
             "category": meta.get("category") or "Other",
             "job_type": job.employment_type or "",
@@ -385,7 +390,7 @@ class PostgresClient:
             },
             "source": job.source_name,
             "source_job_id": job.source_job_id or "",
-            "posted_at": job.posted_at,
+            "posted_at": posted_at,
             "scraped_at": job.last_seen_at,
             "status": job.status,
             "content_hash": job.canonical_key,
@@ -394,12 +399,16 @@ class PostgresClient:
 
     def _master_job_mapping_to_dict(self, row) -> dict:
         meta = row.get("extra_metadata") or {}
+        raw_description = row.get("description") or ""
+        company = clean_job_company(row.get("company") or "", raw_description)
+        posted_at = infer_posted_at(row.get("posted_at"), raw_description)
+        description = clean_job_description(raw_description)
         return {
             "id": row.get("id"),
             "title": row.get("title"),
-            "company": row.get("company") or "",
+            "company": company,
             "location": row.get("location") or "",
-            "description": row.get("description") or "",
+            "description": description,
             "job_url": row.get("source_url") or "",
             "category": meta.get("category") or "Other",
             "job_type": row.get("employment_type") or "",
@@ -417,7 +426,7 @@ class PostgresClient:
             },
             "source": row.get("source_name"),
             "source_job_id": row.get("source_job_id") or "",
-            "posted_at": row.get("posted_at"),
+            "posted_at": posted_at,
             "scraped_at": row.get("last_seen_at"),
             "status": row.get("status"),
             "content_hash": row.get("canonical_key"),
@@ -425,12 +434,16 @@ class PostgresClient:
         }
 
     def _job_to_dict(self, job: Job, company: Company | None) -> dict:
+        raw_description = job.description or ""
+        company_name = clean_job_company(company.name if company else "", raw_description)
+        posted_at = infer_posted_at(job.posted_at, raw_description)
+        description = clean_job_description(raw_description)
         return {
             "id": job.id,
             "title": job.title,
-            "company": company.name if company else "",
+            "company": company_name,
             "location": job.location or "",
-            "description": job.description or "",
+            "description": description,
             "job_url": job.source_url or "",
             "category": job.category or "Other",
             "job_type": job.employment_type or "",
@@ -448,7 +461,7 @@ class PostgresClient:
             },
             "source": job.source_name,
             "source_job_id": job.source_job_id or "",
-            "posted_at": job.posted_at,
+            "posted_at": posted_at,
             "scraped_at": job.last_seen_at,
             "status": job.status,
             "content_hash": job.content_hash,
@@ -456,12 +469,16 @@ class PostgresClient:
         }
 
     def _job_mapping_to_dict(self, row) -> dict:
+        raw_description = row.get("description") or ""
+        company = clean_job_company(row.get("company") or "", raw_description)
+        posted_at = infer_posted_at(row.get("posted_at"), raw_description)
+        description = clean_job_description(raw_description)
         return {
             "id": row.get("id"),
             "title": row.get("title"),
-            "company": row.get("company") or "",
+            "company": company,
             "location": row.get("location") or "",
-            "description": row.get("description") or "",
+            "description": description,
             "job_url": row.get("source_url") or "",
             "category": row.get("category") or "Other",
             "job_type": row.get("employment_type") or "",
@@ -479,7 +496,7 @@ class PostgresClient:
             },
             "source": row.get("source_name"),
             "source_job_id": row.get("source_job_id") or "",
-            "posted_at": row.get("posted_at"),
+            "posted_at": posted_at,
             "scraped_at": row.get("last_seen_at"),
             "status": row.get("status"),
             "content_hash": row.get("content_hash"),

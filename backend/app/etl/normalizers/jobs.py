@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.db.postgres import normalize_text
+from app.utils.job_quality import clean_job_company, clean_job_description, infer_posted_at
 
 
 def normalize_job_payload(job: dict) -> dict:
@@ -15,10 +16,14 @@ def normalize_job_payload(job: dict) -> dict:
         source = source.value
     if hasattr(category, "value"):
         category = category.value
+    raw_description = job.get("description") or ""
+    company_name = clean_job_company(job.get("company") or "", raw_description)
+    posted_at = infer_posted_at(job.get("posted_at"), raw_description)
+    description = clean_job_description(raw_description)
 
     return {
         "id": job.get("id"),
-        "company_name": job.get("company") or "",
+        "company_name": company_name,
         "title": job.get("title") or "",
         "normalized_title": normalize_text(job.get("title") or ""),
         "location": job.get("location") or "",
@@ -27,7 +32,7 @@ def normalize_job_payload(job: dict) -> dict:
         "source_name": source,
         "source_job_id": job.get("source_job_id") or None,
         "source_url": job.get("job_url") or job.get("job_url_direct") or "",
-        "description": job.get("description") or "",
+        "description": description,
         "employment_type": job.get("job_type") or "",
         "remote_type": "remote" if job.get("is_remote") else "",
         "salary_min": salary.get("min_salary") if isinstance(salary, dict) else None,
@@ -40,7 +45,7 @@ def normalize_job_payload(job: dict) -> dict:
         "visa_score": int(visa.get("visa_score") or 0) if isinstance(visa, dict) else 0,
         "content_hash": job.get("content_hash") or "",
         "status": job.get("status") or "active",
-        "posted_at": job.get("posted_at"),
+        "posted_at": posted_at,
         "extra_metadata": job.get("extra_metadata") or {},
     }
 
