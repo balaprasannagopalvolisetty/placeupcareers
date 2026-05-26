@@ -289,6 +289,11 @@ class PostgresClient:
             stmt = stmt.where(Job.status == filters["status"])
         if filters.get("location"):
             stmt = stmt.where(Job.location.ilike(f"%{filters['location']}%"))
+        effective_job_date = func.coalesce(Job.posted_at, Job.last_seen_at)
+        if filters.get("effective_since"):
+            stmt = stmt.where(effective_job_date >= filters["effective_since"])
+        if filters.get("effective_before"):
+            stmt = stmt.where(effective_job_date < filters["effective_before"])
         if filters.get("seen_since"):
             stmt = stmt.where(Job.last_seen_at >= filters["seen_since"])
         if filters.get("seen_before"):
@@ -327,6 +332,11 @@ class PostgresClient:
             stmt = stmt.where(MasterJob.status == filters["status"])
         if filters.get("location"):
             stmt = stmt.where(MasterJob.location.ilike(f"%{filters['location']}%"))
+        effective_job_date = func.coalesce(MasterJob.posted_at, MasterJob.last_seen_at)
+        if filters.get("effective_since"):
+            stmt = stmt.where(effective_job_date >= filters["effective_since"])
+        if filters.get("effective_before"):
+            stmt = stmt.where(effective_job_date < filters["effective_before"])
         if filters.get("seen_since"):
             stmt = stmt.where(MasterJob.last_seen_at >= filters["seen_since"])
         if filters.get("seen_before"):

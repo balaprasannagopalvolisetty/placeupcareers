@@ -131,11 +131,20 @@ function formatPosted(value: unknown): string {
   const raw = String(value);
   const date = new Date(raw);
   if (Number.isNaN(date.getTime())) return raw.length > 18 ? raw.slice(0, 18) : raw;
-  const days = Math.max(0, Math.floor((Date.now() - date.getTime()) / 86400000));
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const then = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const days = Math.max(0, Math.floor((today - then) / 86400000));
   if (days === 0) return "Today";
   if (days === 1) return "Yesterday";
   if (days < 30) return `${days} days ago`;
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function jobDateLabel(job: api.JobPost): string {
+  const j: any = job;
+  if (job.posted_at) return `Posted ${formatPosted(job.posted_at)}`;
+  return `Seen ${formatPosted(j.scraped_at || j.last_seen_at || job.posted || "")}`;
 }
 
 function resolveJobUrl(job: api.JobPost): string {
@@ -783,7 +792,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                   <div style={{ display: "flex", gap: 12, fontSize: 11, color: T.t3, fontFamily: F.sans, flexWrap: "wrap" }}>
                     <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}><MapPin size={11} />{job.location || "Remote"}</span>
                     <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}><DollarSign size={11} />{formatSalary(job.salary)}</span>
-                    <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}><Clock size={11} />Seen {formatPosted((job as any).scraped_at || job.posted_at || (job as any).posted)}</span>
+                    <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}><Clock size={11} />{jobDateLabel(job)}</span>
                   </div>
                   {preview && (
                     <div style={{ fontSize: 12, color: T.t3, fontFamily: F.sans, lineHeight: 1.55, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
