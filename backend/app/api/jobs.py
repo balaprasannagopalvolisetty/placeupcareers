@@ -774,11 +774,14 @@ async def list_jobs(
     fresh_since, fresh_before = _posted_window(time_filter, tz_offset_minutes=tz_offset)
     visible_cutoff = _visible_jobs_cutoff()
     if fresh_since:
-        filters["effective_since"] = max(fresh_since, visible_cutoff)
+        # Time filters in the Jobs UI mean "scraped/seen in this local day".
+        # Many providers return older posted_at values for jobs collected today;
+        # using posted_at first made Today empty while the scraper was healthy.
+        filters["seen_since"] = max(fresh_since, visible_cutoff)
     else:
         filters["effective_since"] = visible_cutoff
     if fresh_before:
-        filters["effective_before"] = fresh_before
+        filters["seen_before"] = fresh_before
     title_terms = _taxonomy_terms(category, role)
     preferred_roles, preferred_locations = _preference_terms(user_id)
     if personalized and not title_terms and not search and preferred_roles:
@@ -1336,11 +1339,11 @@ async def get_top_matches(
         filters["visa_only"] = True
     fresh_since, fresh_before = _posted_window(time_filter, tz_offset_minutes=tz_offset)
     if fresh_since:
-        filters["effective_since"] = max(fresh_since, _visible_jobs_cutoff())
+        filters["seen_since"] = max(fresh_since, _visible_jobs_cutoff())
     else:
         filters["effective_since"] = _visible_jobs_cutoff()
     if fresh_before:
-        filters["effective_before"] = fresh_before
+        filters["seen_before"] = fresh_before
     resume_text = await _active_resume_text(user_id)
     preferred_roles, preferred_locations = _preference_terms(user_id)
     terms = _terms_for_role_names(preferred_roles)
