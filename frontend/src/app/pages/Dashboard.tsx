@@ -194,7 +194,7 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
   // matched subset and made the Overview look like there were only ~43 jobs.
   useEffect(() => {
     let active = true;
-    api.getTopMatches({ limit: 20 })
+    api.getTopMatches({ limit: 20, time_filter: "today", tz_offset: new Date().getTimezoneOffset() })
       .then((response) => {
         if (!active) return;
         setFeaturedJobs(response.jobs.map((job) => ({
@@ -256,7 +256,7 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
         <h2 style={{ fontFamily: F.sans, fontSize: 22, fontWeight: 700, color: T.text, marginBottom: 4 }}>{greeting}, {displayFirstName}! 👋</h2>
         <p style={{ fontSize: 14, color: T.t2, fontFamily: F.sans }}>
-          Showing your top {visibleJobs.length} resume-matched positions from the roles you selected.
+          Showing today's top {visibleJobs.length} resume-matched positions from the roles you selected.
         </p>
       </motion.div>
 
@@ -333,7 +333,7 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
       {/* Featured Jobs */}
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: T.red, fontFamily: F.sans }}>⭐ Featured Positions</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: T.red, fontFamily: F.sans }}>Featured Positions Today</span>
           <button onClick={() => navigate("/dashboard/jobs")} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: T.red, fontFamily: F.sans, background: "none", border: "none", cursor: "pointer" }}>
             View All <ChevronRight size={13} />
           </button>

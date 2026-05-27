@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router";
 import { motion } from "motion/react";
 import { Save, AlertTriangle, MailCheck, KeyRound, Trash2 } from "lucide-react";
 import * as api from "../../lib/api";
 import { clearStoredToken } from "../../lib/api";
 import { BillingPage } from "./BillingPage";
+import { LoadingLogo } from "../LoadingLogo";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif" };
 const T = {
@@ -13,6 +14,7 @@ const T = {
   grad: "linear-gradient(135deg, #8C3A27, #A6372D, #401212)", red: "#A6372D",
   input: "rgba(242,238,179,0.05)",
 };
+const SELECT_DARK_STYLE: CSSProperties = { background: "#401212", color: "#F2EEB3" };
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -57,8 +59,8 @@ function SelectField({ label, value, options, onChange }: {
         onChange={(e) => onChange(e.target.value)}
         style={{ height: 44, padding: "0 14px", borderRadius: 10, border: `1px solid ${T.border}`, background: T.input, color: T.text, fontSize: 13, fontFamily: F.sans, outline: "none" }}
       >
-        <option value="">Select</option>
-        {options.map((option) => <option key={option} value={option}>{option}</option>)}
+        <option style={SELECT_DARK_STYLE} value="">Select</option>
+        {options.map((option) => <option style={SELECT_DARK_STYLE} key={option} value={option}>{option}</option>)}
       </select>
     </div>
   );
@@ -163,7 +165,7 @@ export function SettingsPage() {
   };
 
   if (!profile || !prefs) {
-    return <div style={{ color: T.text, fontFamily: F.sans, padding: 40, textAlign: "center" }}>Loading settings...</div>;
+    return <LoadingLogo label="Loading settings" />;
   }
 
   return (
@@ -187,8 +189,8 @@ export function SettingsPage() {
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <select value={roleToAdd} onChange={(e) => setRoleToAdd(e.target.value)}
               style={{ flex: 1, height: 44, padding: "0 14px", borderRadius: 10, border: `1px solid ${T.border}`, background: T.input, color: T.text, fontSize: 13, fontFamily: F.sans, outline: "none" }}>
-              <option value="">Select one of the available roles</option>
-              {allRoles.map((role) => <option key={role} value={role}>{role}</option>)}
+              <option style={SELECT_DARK_STYLE} value="">Select one of the available roles</option>
+              {allRoles.map((role) => <option style={SELECT_DARK_STYLE} key={role} value={role}>{role}</option>)}
             </select>
             <button type="button" onClick={() => { if (roleToAdd) { addJobPreference(roleToAdd); setRoleToAdd(""); } }}
               style={{ height: 44, padding: "0 14px", borderRadius: 10, border: "none", background: T.grad, color: "#fff", fontSize: 12, fontWeight: 700, fontFamily: F.sans, cursor: "pointer" }}>

@@ -3,6 +3,7 @@ import { createElement, lazy, Suspense, type ComponentType } from "react";
 import Layout from "./components/Layout";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { LoadingLogo } from "./components/LoadingLogo";
 
 // ───────────────────────────────────────────────────────────────────
 // Lazy routes. Pre-split, the single bundle was 998 KB; routes that
@@ -68,23 +69,7 @@ const VerifyEmailPage = lazy(() =>
   import("./pages/PasswordReset").then((m) => ({ default: m.VerifyEmailPage }))
 );
 
-// Tiny inline loader so dashboard switches don't flash blank while
-// the chunk downloads. Matches the index.html bootstrap colors so the
-// transition feels intentional.
-const RouteLoader = () =>
-  createElement(
-    "div",
-    {
-      style: {
-        padding: "60px 20px",
-        textAlign: "center",
-        color: "rgba(242,238,179,0.55)",
-        fontFamily: "'Plus Jakarta Sans', sans-serif",
-        fontSize: 13,
-      },
-    },
-    "Loading…"
-  );
+const RouteLoader = () => createElement(LoadingLogo, { label: "Loading PlaceUp" });
 
 // Wrap each route component in our ErrorBoundary + Suspense so a
 // runtime error inside e.g. JobsRoute can't blank the dashboard, and
@@ -153,3 +138,4 @@ export const router = createBrowserRouter([
     ],
   },
 ]);
+

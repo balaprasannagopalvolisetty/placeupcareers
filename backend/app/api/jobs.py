@@ -25,7 +25,7 @@ from app.utils.terminal_table import render_table
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
-DEFAULT_VISIBLE_MAX_AGE_DAYS = 15
+DEFAULT_VISIBLE_MAX_AGE_DAYS = 14
 
 SPONSORSHIP_BLOCK_RE = re.compile(
     r"(?i)\b("

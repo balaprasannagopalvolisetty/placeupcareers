@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { motion } from "motion/react";
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from "recharts";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, CartesianGrid } from "recharts";
 import { TrendingUp, Award, ExternalLink } from "lucide-react";
+import { LoadingLogo } from "../LoadingLogo";
 
 function useViewportFlags() {
   const getWidth = () => (typeof window === "undefined" ? 1280 : window.innerWidth);
@@ -72,7 +73,7 @@ export function AnalyticsPage() {
 
         const scores = data.ats_score_history ?? data.resume_scores;
         if (Array.isArray(scores) && scores.length) setScoreData(scores as ScorePoint[]);
-        setApplications((appRows || []).filter((row) => row.status === "applied" || row.status === "interview"));
+        setApplications(appRows || []);
       })
       .catch((err) => {
         if (active) setError((err as Error).message || "Could not load analytics.");
@@ -87,7 +88,7 @@ export function AnalyticsPage() {
   }, []);
 
   if (loading) {
-    return <div style={{ color: T.text, fontFamily: F.sans, textAlign: "center", padding: 40 }}>Loading analytics...</div>;
+    return <LoadingLogo label="Loading analytics" />;
   }
 
   return (
@@ -149,18 +150,32 @@ export function AnalyticsPage() {
       {/* Charts */}
       <div style={{ display: "grid", gridTemplateColumns: isTablet ? "1fr" : "1.5fr 1fr", gap: 16 }}>
         <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: 24 }}>
-          <div style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 600, color: T.text, marginBottom: 20 }}>Applications Over Time</div>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 18 }}>
+            <div>
+              <div style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 700, color: T.text }}>Applications Over Time</div>
+              <div style={{ fontFamily: F.sans, fontSize: 12, color: T.t3, marginTop: 3 }}>Tracked applications and interviews by period.</div>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {[{ label: "Applications", value: timeSeries.reduce((sum, point) => sum + (point.apps || 0), 0), color: T.red }, { label: "Interviews", value: timeSeries.reduce((sum, point) => sum + (point.interviews || 0), 0), color: T.burnt }].map((item) => (
+                <div key={item.label} style={{ minWidth: 92, padding: "8px 10px", borderRadius: 10, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)" }}>
+                  <div style={{ fontFamily: F.mono, fontSize: 18, fontWeight: 700, color: item.color, lineHeight: 1 }}>{item.value}</div>
+                  <div style={{ fontFamily: F.sans, fontSize: 10, color: T.t3, marginTop: 3 }}>{item.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
           {timeSeries.length === 0 ? (
             <div style={{ height: 200, display: "flex", alignItems: "center", justifyContent: "center", color: T.t3, fontFamily: F.sans, fontSize: 13 }}>No application timeline yet.</div>
           ) : (
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={timeSeries} margin={{ top: 5, right: 10, bottom: 0, left: -20 }}>
+          <ResponsiveContainer width="100%" height={260}>
+            <AreaChart data={timeSeries} margin={{ top: 8, right: 10, bottom: 0, left: -18 }}>
               <defs>
                 <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#A6372D" stopOpacity={0.3} />
                   <stop offset="95%" stopColor="#A6372D" stopOpacity={0} />
                 </linearGradient>
               </defs>
+              <CartesianGrid stroke="rgba(242,238,179,0.08)" vertical={false} />
               <XAxis dataKey="month" tick={{ fill: T.t3, fontSize: 11, fontFamily: F.sans }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fill: T.t3, fontSize: 11, fontFamily: F.sans }} axisLine={false} tickLine={false} />
               <Tooltip contentStyle={{ background: "rgba(64,18,18,0.9)", border: "1px solid rgba(242,238,179,0.1)", borderRadius: 10, color: T.text, fontFamily: F.sans, fontSize: 12 }} />

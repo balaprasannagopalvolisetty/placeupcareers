@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { motion } from "motion/react";
-import { Search, Filter, X, MapPin, DollarSign, Clock, Bookmark, ExternalLink, Briefcase, ShieldCheck, Sparkles, RefreshCw } from "lucide-react";
+import { Search, Filter, X, MapPin, DollarSign, Clock, Bookmark, ExternalLink, ShieldCheck, RefreshCw } from "lucide-react";
 import * as api from "../../lib/api";
+import { LoadingLogo } from "../LoadingLogo";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 const T = {
@@ -11,13 +12,14 @@ const T = {
   red: "#A6372D", burnt: "#8C3A27", dark: "#401212",
 };
 
-const STATUS_CHIPS = ["All", "New", "Applied", "Interview", "Saved"];
 const TIME_OPTIONS = [
   { label: "Any time", value: "" },
   { label: "Today", value: "today" },
   { label: "Yesterday", value: "yesterday" },
   { label: "Week", value: "week" },
+  { label: "Month", value: "month" },
 ];
+const SELECT_DARK_STYLE: CSSProperties = { background: "#401212", color: "#F2EEB3" };
 const VISA_BADGES: Record<string, { bg: string; color: string; border: string }> = {
   "H-1B":   { bg: "rgba(140,58,39,0.15)", color: "#8C3A27", border: "rgba(140,58,39,0.35)" },
   "OPT":    { bg: "rgba(166,55,45,0.12)", color: "#A6372D", border: "rgba(166,55,45,0.3)" },
@@ -142,9 +144,9 @@ function formatPosted(value: unknown): string {
 }
 
 function jobDateLabel(job: api.JobPost): string {
-  const j: any = job;
   if (job.posted_at) return `Posted ${formatPosted(job.posted_at)}`;
-  return `Seen ${formatPosted(j.scraped_at || j.last_seen_at || job.posted || "")}`;
+  if (job.posted) return `Posted ${formatPosted(job.posted)}`;
+  return "Posted date unavailable";
 }
 
 function resolveJobUrl(job: api.JobPost): string {
@@ -238,7 +240,6 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const [search, setSearch] = useState("");
   const [locationRaw, setLocationRaw] = useState("");
   const [location, setLocation] = useState("");
-  const [statusFilter, setStatusFilter] = useState("All");
   const [timeFilter, setTimeFilter] = useState("");
   const [visaOnly, setVisaOnly] = useState(false);
   const [personalized, setPersonalized] = useState(true);
@@ -262,9 +263,8 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
     hasResume: false,
   });
   const [pipelineStatus, setPipelineStatus] = useState<{ total_jobs?: number; active_jobs?: number; last_scraped_at?: string | null } | null>(null);
-  const isLocalStatusFilter = statusFilter === "Saved" || statusFilter === "Applied" || statusFilter === "Interview";
   const hasServerFilters = Boolean(
-    activeCategory || activeRole || search || location || visaOnly || timeFilter || statusFilter === "New" ||
+    activeCategory || activeRole || search || location || visaOnly || timeFilter ||
     (personalized && (userPrefs?.target_roles?.length || 0) > 0)
   );
 
@@ -396,7 +396,6 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
     if (search) params.search = search;
     if (location) params.location = location;
     if (visaOnly) params.visa_only = true;
-    if (statusFilter === "New") params.status = "active";
     if (activeCategory && !activeRole) params.category = activeCategory;
     if (activeRole) params.role = activeRole;
     if (timeFilter) {
@@ -438,7 +437,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       .finally(() => { if (active) setLoading(false); });
 
     return () => { active = false; };
-  }, [activeCategory, activeRole, search, location, visaOnly, timeFilter, statusFilter, personalized, page, resumeVersion, reloadKey]);
+  }, [activeCategory, activeRole, search, location, visaOnly, timeFilter, personalized, page, resumeVersion, reloadKey]);
 
   // Debounce search/location so API is only called after typing stops.
   useEffect(() => {
@@ -459,19 +458,12 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
 
   useEffect(() => {
     setPage(1);
-  }, [activeCategory, activeRole, search, location, visaOnly, timeFilter, statusFilter, personalized]);
+  }, [activeCategory, activeRole, search, location, visaOnly, timeFilter, personalized]);
 
   const savedIds = useMemo(() => getSavedIds(), [savedVersion]);
   const trackedJobs = useMemo(() => ({ ...getTrackedJobs(), ...serverTrackedJobs }), [appliedVersion, serverTrackedJobs]);
 
-  const filtered = useMemo(() => {
-    if (statusFilter === "All") return jobs;
-    if (statusFilter === "Saved") return jobs.filter((j) => savedIds.has(String(j.id)));
-    if (statusFilter === "New") return jobs;
-    if (statusFilter === "Applied") return jobs.filter((j) => trackedJobs[String(j.id)] === "applied");
-    if (statusFilter === "Interview") return jobs.filter((j) => trackedJobs[String(j.id)] === "interview");
-    return jobs;
-  }, [jobs, statusFilter, savedIds, trackedJobs]);
+  const filtered = jobs;
 
   const allRoles = useMemo(
     () => Array.from(new Set(taxonomy.flatMap((cat) => cat.roles.map((role) => role.name)).filter(Boolean))),
@@ -508,78 +500,15 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          style={{
-            borderRadius: 18,
-            border: `1px solid ${T.border}`,
-            background: "linear-gradient(135deg, rgba(64,18,18,0.62), rgba(1,17,38,0.62))",
-            backdropFilter: "blur(20px)",
-            padding: isMobile ? 16 : 18,
-            display: "flex",
-            flexDirection: isMobile ? "column" : "row",
-            alignItems: isMobile ? "stretch" : "center",
-            justifyContent: "space-between",
-            gap: 14,
-          }}
+          style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 14, padding: isMobile ? "10px" : "12px 16px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}
         >
-          <div style={{ minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, color: T.red, fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: F.sans }}>
-              <Sparkles size={14} /> Live job board
-            </div>
-            <h2 style={{ margin: "5px 0 3px", color: T.text, fontSize: isMobile ? 20 : 24, fontWeight: 800, fontFamily: F.sans, lineHeight: 1.15 }}>
-              Visa-friendly positions matched to your profile
-            </h2>
-            <div style={{ color: T.t2, fontSize: 12, lineHeight: 1.55, fontFamily: F.sans }}>
-              Positions load automatically from your saved role preferences. Use the filters below to narrow by role, time, location, visa, or status.
-            </div>
-          </div>
-          <button
-            onClick={() => {
-              setReloadKey((value) => value + 1);
-              api.getJobPipelineStatus().then((status) => setPipelineStatus(status)).catch(() => {});
-            }}
-            style={{ height: 38, padding: "0 13px", borderRadius: 10, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.05)", color: T.text, cursor: "pointer", fontSize: 12, fontWeight: 800, fontFamily: F.sans, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, flexShrink: 0 }}
-          >
-            <RefreshCw size={13} />
-            Refresh
-          </button>
-        </motion.div>
-
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 10 }}>
-          {[
-            { label: "Open positions", value: openPositionsCount ? openPositionsCount.toLocaleString() : loading ? "..." : "0", icon: Briefcase },
-            { label: "Visible now", value: loading && jobs.length === 0 ? "..." : filtered.length.toLocaleString(), icon: Sparkles },
-            { label: "Personalized", value: personalized && targetRoleCount ? "On" : "Off", icon: ShieldCheck },
-          ].map((item) => {
-            const Icon = item.icon;
-            return (
-              <div key={item.label} style={{ background: "rgba(64,18,18,0.42)", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 14, padding: "13px 14px", display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ width: 32, height: 32, borderRadius: 9, background: "rgba(166,55,45,0.12)", border: "1px solid rgba(166,55,45,0.22)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <Icon size={15} color={T.red} />
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: T.text, fontFamily: F.mono, lineHeight: 1.1 }}>{item.value}</div>
-                  <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, marginTop: 2 }}>{item.label}</div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        {pipelineStatus && (
-          <div style={{ padding: "10px 12px", borderRadius: 12, background: "rgba(242,238,179,0.04)", border: `1px solid ${T.border}`, color: T.t3, fontSize: 11, fontFamily: F.sans }}>
-            Pipeline: {Number(pipelineStatus.active_jobs ?? total).toLocaleString()} active jobs
-            {pipelineStatus.last_scraped_at ? ` - last scraped ${formatPosted(pipelineStatus.last_scraped_at)}` : ""}
-          </div>
-        )}
-
-        {/* Search + filter bar */}
-        <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 14, padding: isMobile ? "10px" : "12px 16px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <select
             value={activeRole || ""}
             onChange={(e) => { setActiveRole(e.target.value || null); setActiveCategory(null); setPage(1); }}
             style={{ height: 36, minWidth: isMobile ? "100%" : 220, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", color: T.text, fontSize: 13, fontFamily: F.sans, outline: "none" }}
           >
-            <option value="">All saved roles</option>
-            {allRoles.map((role) => <option key={role} value={role}>{role}</option>)}
+            <option style={SELECT_DARK_STYLE} value="">All saved roles</option>
+            {allRoles.map((role) => <option style={SELECT_DARK_STYLE} key={role} value={role}>{role}</option>)}
           </select>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 240px", minWidth: isMobile ? "100%" : 200, height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)" }}>
             <Search size={13} color={T.t3} />
@@ -597,17 +526,25 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             onChange={(e) => { setTimeFilter(e.target.value); setPage(1); }}
             style={{ height: 36, width: isMobile ? "100%" : 136, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", color: T.text, fontSize: 12, fontFamily: F.sans, outline: "none" }}
           >
-            {TIME_OPTIONS.map((chip) => <option key={chip.label} value={chip.value}>{chip.label}</option>)}
+            {TIME_OPTIONS.map((chip) => <option style={SELECT_DARK_STYLE} key={chip.label} value={chip.value}>{chip.label}</option>)}
           </select>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {STATUS_CHIPS.map((s) => (
-                <button key={s} onClick={() => { setStatusFilter(s); setPage(1); }}
-                style={{ height: 32, padding: "0 12px", borderRadius: 9999, border: `1px solid ${statusFilter === s ? "transparent" : T.border}`, background: statusFilter === s ? T.grad : "transparent", color: statusFilter === s ? "#fff" : T.t2, fontSize: 12, cursor: "pointer", fontFamily: F.sans, fontWeight: statusFilter === s ? 600 : 400 }}>
-                {s}
-              </button>
-            ))}
+          <button
+            onClick={() => {
+              setReloadKey((value) => value + 1);
+              api.getJobPipelineStatus().then((status) => setPipelineStatus(status)).catch(() => {});
+            }}
+            style={{ height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.05)", color: T.text, cursor: "pointer", fontSize: 12, fontWeight: 800, fontFamily: F.sans, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}
+          >
+            <RefreshCw size={13} />
+            Refresh
+          </button>
+          <div style={{ flexBasis: "100%", color: T.t3, fontSize: 11, fontFamily: F.sans }}>
+            {filtered.length.toLocaleString()} visible
+            {openPositionsCount ? ` / ${openPositionsCount.toLocaleString()} open` : ""}
+            {personalized && targetRoleCount ? ` - personalized from ${targetRoleCount} saved roles` : ""}
+            {pipelineStatus?.last_scraped_at ? ` - refreshed ${formatPosted(pipelineStatus.last_scraped_at)}` : ""}
           </div>
-        </div>
+        </motion.div>
 
         {resumeLink.checked && (
           <div style={{
@@ -649,7 +586,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
         )}
 
         {/* Active filters strip */}
-        {(activeRole || activeCategory || search || location || visaOnly || timeFilter || statusFilter !== "All") && (
+        {(activeRole || activeCategory || search || location || visaOnly || timeFilter) && (
           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ fontSize: 11, color: T.t3, fontFamily: F.sans }}>{filtered.length} of {total} positions</span>
             {activeCategory && (
@@ -687,12 +624,6 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                 <button onClick={() => { setTimeFilter(""); setPage(1); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.red, padding: 0 }}><X size={10} /></button>
               </span>
             )}
-            {statusFilter !== "All" && (
-              <span style={{ display: "inline-flex", gap: 4, alignItems: "center", fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "rgba(166,55,45,0.08)", color: T.red, border: "1px solid rgba(166,55,45,0.25)", fontFamily: F.sans }}>
-                Status: {statusFilter}{isLocalStatusFilter ? " (current page)" : ""}
-                <button onClick={() => { setStatusFilter("All"); setPage(1); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.red, padding: 0 }}><X size={10} /></button>
-              </span>
-            )}
           </div>
         )}
 
@@ -713,16 +644,16 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
         {/* Job cards */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
           {loading && jobs.length === 0 && (
-            <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: 40, color: T.t2, fontFamily: F.sans, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 16 }}>
-              Loading jobs…
+            <div style={{ gridColumn: "1 / -1", background: T.glass, border: `1px solid ${T.border}`, borderRadius: 16 }}>
+              <LoadingLogo label="Loading jobs" />
             </div>
           )}
           {!loading && filtered.length === 0 && !error && (
             <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: 40, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 16, color: T.t2, fontFamily: F.sans }}>
               <div style={{ fontSize: 14, marginBottom: 6 }}>No jobs match the current filters.</div>
-              <div style={{ fontSize: 12, color: T.t3, marginBottom: 12 }}>Try clearing the search, location, or status filter.</div>
+              <div style={{ fontSize: 12, color: T.t3, marginBottom: 12 }}>Try clearing the search, location, or time filter.</div>
               <button
-                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setVisaOnly(false); setTimeFilter(""); setStatusFilter("All"); setActiveCategory(null); setActiveRole(null); setPersonalized(true); setPage(1); }}
+                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setVisaOnly(false); setTimeFilter(""); setActiveCategory(null); setActiveRole(null); setPersonalized(true); setPage(1); }}
                 style={{ padding: "8px 14px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.t2, fontSize: 12, fontFamily: F.sans, cursor: "pointer" }}
               >Reset filters</button>
             </div>

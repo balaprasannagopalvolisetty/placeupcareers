@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import { MapPin, Globe, Linkedin, Github, Briefcase, GraduationCap, Award, ExternalLink } from "lucide-react";
 import * as api from "../../lib/api";
+import { LoadingLogo } from "../LoadingLogo";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 const T = {
@@ -20,9 +21,18 @@ export function UserProfilePage() {
     Promise.all([
       api.getProfile(),
       api.getResumeList().catch(() => []),
-      api.getParsedActiveResume().catch(() => ({ skills: [] })),
+      api.getParsedActiveResume().catch(() => ({ skills: [], keywords: [] })),
     ])
-      .then(([p, rs, parsed]) => { if (active) { setProfile(p); setResumes(rs); setResumeSkills(parsed.skills || []); } })
+      .then(([p, rs, parsed]) => {
+        if (active) {
+          const parsedTerms = [...(parsed.skills || []), ...(parsed.keywords || [])]
+            .map((term) => String(term).trim())
+            .filter(Boolean);
+          setProfile(p);
+          setResumes(rs);
+          setResumeSkills(Array.from(new Set(parsedTerms)).slice(0, 40));
+        }
+      })
       .catch(() => {});
     return () => { active = false; };
   }, []);
@@ -36,6 +46,8 @@ export function UserProfilePage() {
   const location = profile?.location || "—";
   const visa = profile?.visa_status || "—";
   const exp = profile?.experience_years || "—";
+
+  if (!profile) return <LoadingLogo label="Loading profile" />;
 
   const activeResume = resumes.find((r) => r.active);
   const score = activeResume?.score ?? 0;
@@ -100,7 +112,8 @@ export function UserProfilePage() {
         ) : null}
 
         <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: 24 }}>
-          <div style={{ fontFamily: F.sans, fontSize: 14, fontWeight: 600, color: T.text, marginBottom: 14 }}>Skills</div>
+          <div style={{ fontFamily: F.sans, fontSize: 14, fontWeight: 600, color: T.text, marginBottom: 4 }}>Resume Skills & Keywords</div>
+          <div style={{ fontSize: 12, color: T.t3, fontFamily: F.sans, marginBottom: 14 }}>Pulled from your active resume so job match scoring uses the same terms shown here.</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {resumeSkills.length === 0 && (
               <span style={{ fontSize: 12, color: T.t3, fontFamily: F.sans }}>Upload a resume with a skills section to populate profile skills.</span>
