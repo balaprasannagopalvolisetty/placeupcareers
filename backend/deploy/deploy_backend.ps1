@@ -3,7 +3,7 @@ param(
   [string]$Region = "us-east1",
   [string]$DbInstance = "placeup-backend",
   [string]$UserDatabaseBackend = "firestore",
-  [string]$UserFirestoreProjectId = $ProjectId,
+  [string]$UserFirestoreProjectId = "placeup-firebase-641222668282",
   [string]$UserFirestoreDatabase = "(default)",
   [string]$FrontendUrl = ""
 )
