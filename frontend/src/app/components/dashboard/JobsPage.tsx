@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { motion } from "motion/react";
 import { Search, Filter, X, Bookmark, ExternalLink, ShieldCheck, RefreshCw, Globe2, Route, Languages, Building2, Sparkles } from "lucide-react";
 import * as api from "../../lib/api";
@@ -106,7 +106,6 @@ interface CountryOption { code: string; name: string }
 interface VisaProgramOption { country_code: string; code: string; name: string }
 
 const JOB_FETCH_RETRY_MS = 700;
-const JOB_FETCH_TIMEOUT_MS = 14500;
 
 function useResponsiveFlags() {
   const getWidth = () => (typeof window === "undefined" ? 1280 : window.innerWidth);
@@ -137,14 +136,7 @@ async function getJobsWithRetry(params: Record<string, string | number | boolean
   let lastError: unknown;
   for (let i = 0; i < attempts; i += 1) {
     try {
-      const controller = new AbortController();
-      const timeoutId = window.setTimeout(() => controller.abort(), JOB_FETCH_TIMEOUT_MS);
-      try {
-        const result = await api.getJobs(params, { signal: controller.signal });
-        return result;
-      } finally {
-        window.clearTimeout(timeoutId);
-      }
+      return await api.getJobs(params);
     } catch (err) {
       lastError = err;
       if (i < attempts - 1) {
@@ -411,6 +403,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   });
   const [pipelineStatus, setPipelineStatus] = useState<{ total_jobs?: number; active_jobs?: number; last_scraped_at?: string | null } | null>(null);
   const [taxonomyMeta, setTaxonomyMeta] = useState<TaxonomyMeta | null>(null);
+  const jobsRequestId = useRef(0);
   const hasServerFilters = Boolean(
     activeCategory || activeRole || search || location || countryFilter || visaProgramFilter || visaOnly || timeFilter ||
     (personalized && (userPrefs?.target_roles?.length || 0) > 0)
@@ -533,6 +526,8 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   // Reload jobs whenever filters or the active resume change.
   useEffect(() => {
     let active = true;
+    const requestId = jobsRequestId.current + 1;
+    jobsRequestId.current = requestId;
     setLoading(true);
     setError(null);
     if (page === 1) {
@@ -555,9 +550,9 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       params.tz_offset = new Date().getTimezoneOffset();
     }
 
-    getJobsWithRetry(params)
+    getJobsWithRetry(params, 2)
       .then((response: any) => {
-        if (!active) return;
+        if (!active || jobsRequestId.current !== requestId) return;
         // Be defensive: backends have historically returned either
         //   { jobs: [...], total }    (current) or
         //   [...]                     (legacy)
@@ -576,7 +571,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
         setTotal(typeof reportedTotal === "number" ? reportedTotal : incoming.length);
       })
       .catch((err) => {
-        if (active) {
+        if (active && jobsRequestId.current === requestId) {
           setError(friendlyJobError(err));
           if (page === 1) {
             setJobs([]);
@@ -585,7 +580,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
           // Keep failed first-page filters from showing stale All Jobs results.
         }
       })
-      .finally(() => { if (active) setLoading(false); });
+      .finally(() => { if (active && jobsRequestId.current === requestId) setLoading(false); });
 
     return () => { active = false; };
   }, [activeCategory, activeRole, search, location, countryFilter, visaProgramFilter, visaOnly, timeFilter, personalized, page, resumeVersion, resumeLink.hasResume, reloadKey]);

@@ -234,8 +234,10 @@ job into:
 `/api/jobs/taxonomy` returns `target_countries` and `visa_programs` for the
 frontend filters. `/api/jobs` accepts `country` and `visa_program` query
 parameters. The Jobs UI defaults to the 30-day active retention window ("All
-active") and keeps `time_filter=8h` as an optional freshness filter. The UI
-uses a 14.5s frontend request timeout.
+active") and keeps `time_filter=8h` as an optional freshness filter. The Jobs
+UI relies on API request dedupe/cache and a latest-request guard instead of a
+browser abort timer, so stale slow requests cannot clear successfully loaded
+results.
 
 2026-06-01 fix notes:
 
@@ -258,6 +260,10 @@ uses a 14.5s frontend request timeout.
 - The production `USAJOBS_API_KEY` and `USAJOBS_EMAIL` secrets currently contain
   empty placeholder values, so `placeup-job-scraper-6h` has
   `SCRAPER_PUBLIC_SOURCES=` in Cloud Run to skip broken USAJobs public batches.
+- 2026-06-01 live reliability hotfix: `placeup-api` runs with min instances 2,
+  max instances 20, and concurrency 5 to prevent request bursts from pinning a
+  single Cloud Run container. `/api/jobs` uses indexed `last_seen_at` freshness
+  for the broad All active view and avoids exact broad counts.
   Set real USAJobs credentials and redeploy before re-enabling `usajobs`.
 
 Important production boundary: this foundation removes the old US/Canada

@@ -81,7 +81,11 @@ gcloud.cmd run deploy placeup-api `
   --set-cloudsql-instances "$ProjectId`:$Region`:$DbInstance" `
   --set-env-vars $ApiEnv `
   --set-secrets $ApiSecrets `
-  --memory 2Gi
+  --memory 2Gi `
+  --cpu 1 `
+  --min-instances 2 `
+  --max-instances 20 `
+  --concurrency 5
 
 gcloud.cmd run jobs deploy placeup-job-scraper-6h `
   --image $Image `

@@ -46,6 +46,9 @@ Invoke-Gcloud run deploy placeup-frontend `
   --region $Region `
   --no-invoker-iam-check `
   --port 8080 `
+  --min-instances 1 `
+  --max-instances 20 `
+  --concurrency 200 `
   --set-env-vars "APP_ENV=production,BACKEND_ORIGIN=$ApiBase"
 
 $FrontendUrl = & gcloud.cmd run services describe placeup-frontend `
