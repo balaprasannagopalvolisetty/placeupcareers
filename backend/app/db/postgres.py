@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
 from app.db.schema import Company, Contact, H1BSponsor, Job, MasterJob, StagingRecord
+from app.services.global_visa_rules import COUNTRY_RULES, TARGET_COUNTRIES, in_target_country, resolve_country
 from app.utils.job_quality import clean_job_company, clean_job_description, infer_posted_at
 
 
@@ -82,9 +83,10 @@ class PostgresClient:
                     MasterJob.merged_sources,
                 )
                 stmt = self._apply_master_job_filters(stmt, filters)
-                stmt = stmt.order_by(MasterJob.last_seen_at.desc()).limit(limit).offset(offset)
+                fetch_limit = min(max(limit * 5, limit + 20), 500)
+                stmt = stmt.order_by(MasterJob.last_seen_at.desc()).limit(fetch_limit).offset(offset)
                 rows = db.execute(stmt).mappings().all()
-                return [self._master_job_mapping_to_dict(row) for row in rows]
+                return self._filter_target_jobs([self._master_job_mapping_to_dict(row) for row in rows])[:limit]
         with self.session() as db:
             stmt = select(
                 Job.id,
@@ -112,9 +114,10 @@ class PostgresClient:
                 Job.extra_metadata,
             ).join(Company, Job.company_id == Company.id, isouter=True)
             stmt = self._apply_job_filters(stmt, filters)
-            stmt = stmt.order_by(Job.last_seen_at.desc()).limit(limit).offset(offset)
+            fetch_limit = min(max(limit * 5, limit + 20), 500)
+            stmt = stmt.order_by(Job.last_seen_at.desc()).limit(fetch_limit).offset(offset)
             rows = db.execute(stmt).mappings().all()
-            return [self._job_mapping_to_dict(row) for row in rows]
+            return self._filter_target_jobs([self._job_mapping_to_dict(row) for row in rows])[:limit]
 
     async def get_job(self, job_id: str) -> Optional[dict]:
         if self._master_jobs_available():
@@ -380,14 +383,36 @@ class PostgresClient:
         h1b_verified: bool,
         visa_score: int,
         country: str | None = None,
+        location: str | None = None,
     ) -> dict:
-        visa_country = meta.get("visa_country") or country
+        location_country = resolve_country(location, default=country)
+        visa_country = location_country or meta.get("visa_country") or country
+        target_country = str(visa_country or "").upper() in TARGET_COUNTRIES
+        meta_country = str(meta.get("visa_country") or "").upper()
+        metadata_country_matches = not meta_country or meta_country == str(visa_country or "").upper()
         is_us_role = str(visa_country or "").upper() == "US"
-        if not is_us_role:
+        if not target_country or not is_us_role:
             visa_opt = False
             visa_stem_opt = False
             visa_h1b = False
             h1b_verified = False
+        visa_programs = meta.get("visa_programs") or []
+        visa_program_names = meta.get("visa_program_names") or []
+        if not target_country:
+            visa_score = 0
+            visa_programs = []
+            visa_program_names = []
+        elif not metadata_country_matches:
+            visa_programs = []
+            visa_program_names = []
+        elif not is_us_role:
+            legacy_us_codes = {"h1b", "stem_opt", "opt", "o1", "l1", "eb23"}
+            legacy_us_names = {"h-1b", "stem opt", "opt", "o-1", "l-1", "eb-2/eb-3"}
+            visa_programs = [code for code in visa_programs if str(code).lower() not in legacy_us_codes]
+            visa_program_names = [
+                name for name in visa_program_names
+                if str(name).strip().lower() not in legacy_us_names
+            ]
         return {
             "visa_opt": visa_opt,
             "visa_stem_opt": visa_stem_opt,
@@ -395,13 +420,21 @@ class PostgresClient:
             "h1b_verified": h1b_verified,
             "visa_score": visa_score,
             "visa_country": visa_country,
-            "visa_country_name": meta.get("visa_country_name"),
-            "visa_programs": meta.get("visa_programs") or [],
-            "visa_program_names": meta.get("visa_program_names") or [],
-            "sponsor_verified": bool(meta.get("sponsor_verified") or h1b_verified),
+            "visa_country_name": COUNTRY_RULES.get(str(visa_country or "").upper()).name if target_country else meta.get("visa_country_name"),
+            "visa_programs": visa_programs,
+            "visa_program_names": visa_program_names,
+            "sponsor_verified": bool(target_country and metadata_country_matches and (meta.get("sponsor_verified") or h1b_verified)),
             "sponsor_source": meta.get("sponsor_source"),
-            "english_friendly": bool(meta.get("english_friendly")),
+            "english_friendly": bool(target_country and meta.get("english_friendly")),
         }
+
+    def _filter_target_jobs(self, jobs: list[dict]) -> list[dict]:
+        filtered: list[dict] = []
+        for job in jobs:
+            ok, _country = in_target_country(job.get("location"), default=job.get("country"))
+            if ok:
+                filtered.append(job)
+        return filtered
 
     def _master_job_to_dict(self, job: MasterJob) -> dict:
         meta = job.extra_metadata or {}
@@ -427,6 +460,7 @@ class PostgresClient:
             "visa": self._visa_payload(
                 meta=meta,
                 country=job.country,
+                location=job.location,
                 visa_opt=job.visa_opt,
                 visa_stem_opt=job.visa_stem_opt,
                 visa_h1b=job.visa_h1b,
@@ -466,6 +500,7 @@ class PostgresClient:
             "visa": self._visa_payload(
                 meta=meta,
                 country=row.get("country"),
+                location=row.get("location"),
                 visa_opt=bool(row.get("visa_opt")),
                 visa_stem_opt=bool(row.get("visa_stem_opt")),
                 visa_h1b=bool(row.get("visa_h1b")),
@@ -503,6 +538,7 @@ class PostgresClient:
             "visa": self._visa_payload(
                 meta=job.extra_metadata or {},
                 country=getattr(job, "country", None),
+                location=job.location,
                 visa_opt=job.visa_opt,
                 visa_stem_opt=job.visa_stem_opt,
                 visa_h1b=job.visa_h1b,
@@ -540,6 +576,7 @@ class PostgresClient:
             "visa": self._visa_payload(
                 meta=row.get("extra_metadata") or {},
                 country=row.get("country"),
+                location=row.get("location"),
                 visa_opt=bool(row.get("visa_opt")),
                 visa_stem_opt=bool(row.get("visa_stem_opt")),
                 visa_h1b=bool(row.get("visa_h1b")),
