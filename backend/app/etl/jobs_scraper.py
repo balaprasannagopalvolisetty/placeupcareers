@@ -65,21 +65,13 @@ def build_request(args: argparse.Namespace) -> ScrapeRequest:
         sources = [JobSource(src.strip()) for src in split_cli_list(args.sources)]
     else:
         sources = [
-            JobSource.LINKEDIN,
-            JobSource.INDEED,
-            JobSource.GLASSDOOR,
-            JobSource.ZIPRECRUITER,
-            JobSource.GOOGLE,
             JobSource.USAJOBS,
             JobSource.DICE,
-            JobSource.MONSTER,
-            JobSource.JOOBLE,
             JobSource.H1B_SPONSOR,
             # Direct Tier-1 ATS pulls (Greenhouse/Lever/Ashby/SmartRecruiters/
             # Workable/Recruitee). Filtered to the expanded taxonomy roles before
             # they hit master_jobs. See app/etl/sources/tier1_ats.py.
             JobSource.TIER1_ATS,
-            JobSource.SCRAPLING_DISCOVERY,
         ]
     return ScrapeRequest(
         search_terms=queries,

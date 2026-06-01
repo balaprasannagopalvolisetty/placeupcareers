@@ -101,6 +101,12 @@ def _find_existing_job(db: Session, values: dict) -> Job | None:
         if existing:
             return existing
 
+    source_url = values.get("source_url")
+    if source_url:
+        existing = db.execute(select(Job).where(Job.source_url == source_url).limit(1)).scalar_one_or_none()
+        if existing:
+            return existing
+
     return None
 
 

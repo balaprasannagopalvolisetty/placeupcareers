@@ -39,7 +39,7 @@ if (@($repoName) -notcontains "placeup") {
 
 Invoke-Gcloud builds submit . `
   --config cloudbuild.yaml `
-  --substitutions "_IMAGE=$Image,_VITE_API_BASE="
+  --substitutions "_IMAGE=$Image,_VITE_API_BASE=$ApiBase"
 
 Invoke-Gcloud run deploy placeup-frontend `
   --image $Image `

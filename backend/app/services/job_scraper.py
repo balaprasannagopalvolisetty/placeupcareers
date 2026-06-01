@@ -762,8 +762,15 @@ async def run_scrape_cycle(
                 all_jobs.extend(outcome)
                 source_scraped[normalized_source] = source_scraped.get(normalized_source, 0) + len(outcome)
 
-    # Deduplicate + USA/Canada geo filter + years-of-experience tag.
-    from app.services.job_filters import is_us_or_canada, parse_years, is_entry_level, is_target_experience
+    try:
+        from app.services.linkedin_job_details import enrich_linkedin_jobs
+
+        await enrich_linkedin_jobs(all_jobs)
+    except Exception as exc:
+        logger.warning("LinkedIn detail enrichment step skipped: %s", exc)
+
+    # Deduplicate + target-country scope + years-of-experience tag.
+    from app.services.job_filters import is_target_country_scope, parse_years, is_entry_level, is_target_experience
     seen_hashes: set[str] = set(existing_hashes)
     unique_jobs: list[JobPost] = []
     duplicates_skipped = 0
@@ -774,11 +781,11 @@ async def run_scrape_cycle(
         if job.content_hash in seen_hashes:
             duplicates_skipped += 1
             continue
-        # USA + Canada only (PlaceUp targets international students in NA).
+        # Target-country scope across the configured global country set.
         metadata = getattr(job, "extra_metadata", None) or {}
         requested_location = metadata.get("requested_location", "") if isinstance(metadata, dict) else ""
         geo_text = f"{getattr(job, 'location', '') or ''} {requested_location} {getattr(job, 'title', '') or ''}"
-        if not is_us_or_canada(geo_text):
+        if not is_target_country_scope(geo_text):
             geo_filtered += 1
             continue
         # Tag years-of-experience heuristic onto the JobPost extras.
@@ -802,7 +809,7 @@ async def run_scrape_cycle(
         unique_jobs.append(job)
 
     if geo_filtered:
-        logger.info(f"Geo-filtered {geo_filtered} non-US/CA jobs from {len(all_jobs)} scraped")
+        logger.info(f"Geo-filtered {geo_filtered} non-target-country jobs from {len(all_jobs)} scraped")
     if experience_filtered:
         logger.info(f"Experience-filtered {experience_filtered} roles outside 0-10 years from {len(all_jobs)} scraped")
 
@@ -821,6 +828,8 @@ async def run_scrape_cycle(
                 title=job.title,
                 company=job.company,
                 description=job.description,
+                location=job.location,
+                country_code=(job.extra_metadata or {}).get("visa_country") if isinstance(job.extra_metadata, dict) else None,
             )
             existing = job.visa or VisaBadges()
             job.visa = VisaBadges(
@@ -829,7 +838,25 @@ async def run_scrape_cycle(
                 visa_h1b=existing.visa_h1b or visa_result.visa_h1b,
                 h1b_verified=existing.h1b_verified or visa_result.h1b_verified,
                 visa_score=max(existing.visa_score, visa_result.score),
+                visa_country=visa_result.country_code,
+                visa_country_name=visa_result.country_name,
+                visa_programs=visa_result.visa_programs,
+                visa_program_names=visa_result.visa_program_names,
+                sponsor_verified=existing.h1b_verified or visa_result.sponsor_verified,
+                sponsor_source=visa_result.sponsor_source,
+                english_friendly=visa_result.english_friendly,
             )
+            extras = dict(job.extra_metadata or {})
+            extras.update({
+                "visa_country": visa_result.country_code,
+                "visa_country_name": visa_result.country_name,
+                "visa_programs": visa_result.visa_programs,
+                "visa_program_names": visa_result.visa_program_names,
+                "sponsor_verified": existing.h1b_verified or visa_result.sponsor_verified,
+                "sponsor_source": visa_result.sponsor_source,
+                "english_friendly": visa_result.english_friendly,
+            })
+            job.extra_metadata = extras
         except Exception as e:
             logger.debug(f"Visa classification failed for {job.id}: {e}")
 

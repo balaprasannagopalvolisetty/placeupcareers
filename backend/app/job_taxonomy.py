@@ -501,7 +501,16 @@ def categorize(title: str) -> tuple[str, str]:
 
 def to_payload() -> dict:
     """Serialize the full taxonomy for the frontend."""
+    role_count = sum(len(cat.roles) for cat in CATEGORIES)
+    backfill_term_count = len(all_role_backfill_search_terms())
+    scrape_term_count = len(all_taxonomy_scrape_search_terms())
     return {
+        "meta": {
+            "category_count": len(CATEGORIES),
+            "role_count": role_count,
+            "backfill_term_count": backfill_term_count,
+            "scrape_term_count": scrape_term_count,
+        },
         "categories": [
             {
                 "name": cat.name,

@@ -114,7 +114,8 @@ export function invalidateApiCache(prefix?: string) {
 
 async function request<T>(path: string, init: RequestInit = {}, retryOnAuth = true): Promise<T> {
   const method = (init.method || "GET").toUpperCase();
-  const cacheable = method === "GET" && !init.body;
+  const hasAbortSignal = Boolean(init.signal);
+  const cacheable = method === "GET" && !init.body && !hasAbortSignal;
   const cacheKey = cacheable ? _readCacheKey(path, init) : "";
 
   if (cacheable) {
@@ -225,7 +226,20 @@ export interface JobPost {
   salary?: unknown;
   match_score?: number | null;
   match?: number;
-  visa?: string[] | Record<string, unknown> | string;
+  visa?: string[] | {
+    visa_opt?: boolean;
+    visa_stem_opt?: boolean;
+    visa_h1b?: boolean;
+    h1b_verified?: boolean;
+    visa_score?: number;
+    visa_country?: string;
+    visa_country_name?: string;
+    visa_programs?: string[];
+    visa_program_names?: string[];
+    sponsor_verified?: boolean;
+    sponsor_source?: string;
+    english_friendly?: boolean;
+  } | string;
   posted_at?: string;
   posted?: string;
   status?: string;
@@ -645,7 +659,17 @@ export async function getJobPipelineStatus() {
   }>("/api/jobs/pipeline-status");
 }
 export async function getJobTaxonomy() {
-  return request<{ categories: Array<{ name: string; roles: Array<Record<string, unknown>> }> }>("/api/jobs/taxonomy");
+  return request<{
+    meta?: {
+      category_count?: number;
+      role_count?: number;
+      backfill_term_count?: number;
+      scrape_term_count?: number;
+    };
+    categories: Array<{ name: string; roles: Array<Record<string, unknown>> }>;
+    target_countries?: Array<{ code: string; name: string }>;
+    visa_programs?: Array<{ country_code: string; code: string; name: string }>;
+  }>("/api/jobs/taxonomy");
 }
 export async function triggerScrape(payload?: Record<string, unknown>) {
   return request<Record<string, unknown>>("/api/jobs/scrape", { method: "POST", body: JSON.stringify(payload ?? {}) });

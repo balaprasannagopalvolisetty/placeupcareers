@@ -8,7 +8,7 @@ import math
 import re
 import html
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query
 from typing import Any, Optional
 
 from app.db import user_store
@@ -18,14 +18,58 @@ from app.models.job import (
     JobPost, JobFilter, JobListResponse, JobStats,
     ScrapeRequest, ScrapeResult, JobSource, JobCategory,
 )
-from app.security import optional_user_id, require_internal_api_key
+from app.security import decode_access_token, optional_user_id, require_internal_api_key
 from app.config import settings
 from app.services.job_exporter import export_jobs
+from app.services.global_visa_rules import COUNTRY_RULES, country_options, normalize_country_code, visa_program_options
 from app.utils.terminal_table import render_table
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
-DEFAULT_VISIBLE_MAX_AGE_DAYS = 14
+DEFAULT_VISIBLE_MAX_AGE_DAYS = 30
+DEFAULT_RECENT_JOB_HOURS = 8
+
+
+async def fast_optional_user_id(
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+) -> Optional[str]:
+    """Decode identity for optional/personalized reads without Firestore roundtrips."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return None
+    try:
+        claims = decode_access_token(authorization.split(" ", 1)[1].strip())
+        user_id = claims.get("sub")
+        return str(user_id) if user_id else None
+    except Exception:
+        return None
+
+
+def _description_quality(title: str, description: str) -> dict[str, Any]:
+    """Decide whether a posting has enough JD text for ATS scoring."""
+    title_clean = re.sub(r"\s+", " ", html.unescape(title or "")).strip().lower()
+    desc = html.unescape(description or "")
+    desc = re.sub(r"<[^>]+>", " ", desc)
+    desc = re.sub(r"\s+", " ", desc).strip()
+    stripped = desc.lower()
+    if title_clean:
+        stripped = re.sub(rf"^(?:{re.escape(title_clean)}\s*){{1,3}}", "", stripped).strip()
+    words = re.findall(r"\b[a-z][a-z0-9+#./-]*\b", stripped)
+    has_jd_marker = bool(re.search(
+        r"(?i)\b(about the job|description|responsibilities|qualifications|requirements|"
+        r"what you'?ll do|minimum requirements|basic qualifications|job duties)\b",
+        desc,
+    ))
+    has_action_content = len(re.findall(
+        r"(?i)\b(design|build|develop|manage|lead|implement|collaborate|monitor|"
+        r"secure|analyze|maintain|support|architect|drive|own|create)\b",
+        desc,
+    )) >= 3
+    scorable = len(words) >= 55 or (len(words) >= 35 and (has_jd_marker or has_action_content))
+    return {"scorable": scorable, "word_count": len(words), "char_count": len(desc)}
+
+
+def _can_score_job_text(title: str, description: str) -> bool:
+    return bool(_description_quality(title, description).get("scorable"))
 
 SPONSORSHIP_BLOCK_RE = re.compile(
     r"(?i)\b("
@@ -108,6 +152,9 @@ def _score_job_against_resume(resume_text: str, job_text: str, *, resume_cache: 
     is broken" because borderline matches were silently flooring to 0.)
     """
     if not resume_text or not job_text:
+        return 0
+    title, _, body = job_text.partition("\n")
+    if not _can_score_job_text(title, body):
         return 0
     try:
         from app.utils.text_processing import (
@@ -261,6 +308,15 @@ def score_breakdown(resume_text: str, job_text: str, *, resume_cache: Optional[d
     """
     if not resume_text or not job_text:
         return {"score": 0, "components": {}, "matched_skills": [], "applied_penalties": ["missing resume or job text"]}
+    title, _, body = job_text.partition("\n")
+    quality = _description_quality(title, body)
+    if not quality["scorable"]:
+        return {
+            "score": None,
+            "components": {"job_description_words": quality["word_count"]},
+            "matched_skills": [],
+            "applied_penalties": ["Job description too thin for ATS scoring"],
+        }
     try:
         from app.utils.text_processing import (
             clean_text, extract_keywords, extract_skills_from_text, compute_keyword_overlap,
@@ -337,6 +393,8 @@ def _posted_since(value: Optional[str], tz_offset_minutes: int = 0) -> Optional[
     user_offset = timedelta(minutes=-tz_offset_minutes)  # JS offset sign is inverted
     user_now = now + user_offset
     key = value.strip().lower()
+    if key in {"8h", "last_8h", "recent", "recent_8h"}:
+        return now - timedelta(hours=DEFAULT_RECENT_JOB_HOURS)
     if key == "today":
         local_midnight = user_now.replace(hour=0, minute=0, second=0, microsecond=0)
         return local_midnight - user_offset  # convert back to UTC
@@ -359,6 +417,8 @@ def _posted_window(value: Optional[str], tz_offset_minutes: int = 0) -> tuple[Op
     user_now = now + user_offset
     local_midnight = user_now.replace(hour=0, minute=0, second=0, microsecond=0)
     key = value.strip().lower()
+    if key in {"8h", "last_8h", "recent", "recent_8h"}:
+        return now - timedelta(hours=DEFAULT_RECENT_JOB_HOURS), None
     if key == "today":
         return local_midnight - user_offset, None
     if key == "yesterday":
@@ -377,6 +437,25 @@ def _visible_jobs_cutoff() -> datetime:
     frontend projections should not show positions posted more than 15 days ago.
     """
     return datetime.now(timezone.utc) - timedelta(days=DEFAULT_VISIBLE_MAX_AGE_DAYS)
+
+
+def _recent_jobs_cutoff() -> datetime:
+    return datetime.now(timezone.utc) - timedelta(hours=DEFAULT_RECENT_JOB_HOURS)
+
+
+def _country_is_english_native(country_code: str | None) -> bool:
+    rule = COUNTRY_RULES.get(country_code or "")
+    return bool(rule and rule.english_native)
+
+
+def _is_english_user_friendly(job: dict) -> bool:
+    visa = job.get("visa") or {}
+    if not isinstance(visa, dict):
+        return True
+    country = visa.get("visa_country")
+    if _country_is_english_native(country):
+        return True
+    return bool(visa.get("english_friendly"))
 
 
 def _coerce_datetime(value: Any) -> Optional[datetime]:
@@ -727,13 +806,18 @@ async def _visa_stats_for_company(company: str, db) -> dict:
 @router.get("/taxonomy")
 async def get_job_taxonomy():
     """Return the full category/role taxonomy for the Jobs page filter UI."""
-    return to_payload()
+    payload = to_payload()
+    payload["target_countries"] = country_options()
+    payload["visa_programs"] = visa_program_options()
+    return payload
 
 
 @router.get("")  # response_model dropped so taxonomy_category / role survive
 async def list_jobs(
     search: Optional[str] = Query(None, description="Search jobs by title, company, or description"),
     location: Optional[str] = Query(None, description="Filter by location"),
+    country: Optional[str] = Query(None, description="Filter by destination country ISO code, e.g. GB, DE, AU"),
+    visa_program: Optional[str] = Query(None, description="Filter by country-specific visa program code, e.g. skilled_worker"),
     category: Optional[str] = Query(None, description="Filter by category"),
     source: Optional[str] = Query(None, description="Filter by source"),
     status: Optional[str] = Query(None, description="Filter by job status"),
@@ -743,14 +827,15 @@ async def list_jobs(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Results per page"),
     role: Optional[str] = Query(None, description="Filter by taxonomy role name"),
-    time_filter: Optional[str] = Query(None, description="today, yesterday, week, month"),
+    time_filter: Optional[str] = Query(None, description="8h, today, yesterday, week, month"),
     sort: str = Query("match", description="match or recent"),
-    personalized: bool = Query(True, description="Use the caller's target roles/locations when no explicit role filter is selected"),
+    personalized: bool = Query(False, description="Use the caller's target roles/locations when no explicit role filter is selected"),
+    include_scores: bool = Query(False, description="Score jobs against the active resume; slower because it reads user resume data"),
     entry_level: bool = Query(True, description="Prioritize 0-10 yr roles (default true)"),
     max_years: int = Query(10, ge=0, le=50, description="Default max required years of experience"),
     tz_offset: int = Query(0, description="Client timezone offset in minutes from UTC (JS getTimezoneOffset)"),
     db=Depends(get_db),
-    user_id: Optional[str] = Depends(optional_user_id),
+    user_id: Optional[str] = Depends(fast_optional_user_id),
 ):
     """List job postings with filtering, pagination, and per-user ATS scores.
 
@@ -762,28 +847,34 @@ async def list_jobs(
         filters["search"] = search
     if location:
         filters["location"] = location
+    if country:
+        normalized_country = normalize_country_code(country)
+        if not normalized_country:
+            raise HTTPException(status_code=400, detail="Unsupported country filter")
+        filters["country"] = normalized_country
+    if visa_program:
+        filters["visa_program"] = visa_program.strip().lower()
     # NOTE: `category` (taxonomy name) and `role` (taxonomy role) are applied
     # post-fetch via in-memory filtering further down, since the DB column
     # uses the legacy JobCategory enum which doesn't match our taxonomy names.
     if source:
         filters["source"] = source
-    if status:
-        filters["status"] = status
+    filters["status"] = status or "active"
     if visa_only:
         filters["visa_only"] = True
     fresh_since, fresh_before = _posted_window(time_filter, tz_offset_minutes=tz_offset)
     visible_cutoff = _visible_jobs_cutoff()
     if fresh_since:
-        # Time filters in the Jobs UI mean "scraped/seen in this local day".
-        # Many providers return older posted_at values for jobs collected today;
-        # using posted_at first made Today empty while the scraper was healthy.
-        filters["seen_since"] = max(fresh_since, visible_cutoff)
+        filters["posted_since"] = max(fresh_since, visible_cutoff)
     else:
+        # The default "All active" view should show every live row we have
+        # seen inside the retention window, even when a source does not expose
+        # a reliable posted_at date. Explicit time filters still use posted_at.
         filters["effective_since"] = visible_cutoff
     if fresh_before:
-        filters["seen_before"] = fresh_before
+        filters["posted_before"] = fresh_before
     title_terms = _taxonomy_terms(category, role)
-    preferred_roles, preferred_locations = _preference_terms(user_id)
+    preferred_roles, preferred_locations = _preference_terms(user_id) if personalized else ([], [])
     if personalized and not title_terms and not search and preferred_roles:
         title_terms = _terms_for_role_names(preferred_roles)
     if title_terms:
@@ -803,7 +894,27 @@ async def list_jobs(
         # as the page query itself, so avoid doubling the work. The response
         # still reports enough total to keep pagination moving, then tightens it
         # once a short final page is reached.
-        total = 50000 if taxonomy_filter_active or free_text_search_active else await db.count_jobs(filters=filters)
+        exact_count_filters = {
+            "country",
+            "visa_program",
+            "source",
+            "visa_only",
+            "seen_before",
+            "posted_since",
+            "posted_before",
+        }
+        exact_count_active = any(key in filters for key in exact_count_filters)
+        # The live master_jobs table is large. Exact COUNT(*) on the broad
+        # All Jobs path can take longer than the frontend request timeout,
+        # even though fetching the first page is fast. Use a pagination-safe
+        # estimate for broad views and tighten totals on filtered/taxonomy
+        # paths where the exact count is meaningful to the user.
+        total = 50000 if (
+            taxonomy_filter_active
+            or free_text_search_active
+            or filters.get("title_terms")
+            or not exact_count_active
+        ) else await db.count_jobs(filters=filters)
         # Category and role are derived from titles in Python. Only those
         # filters need a full pool scan. The normal All Jobs path fetches the
         # requested page directly so the dashboard does not wait on thousands
@@ -812,12 +923,12 @@ async def list_jobs(
             fetch_limit = min(max(total, page_size), 12000)
             fetch_offset = 0
         else:
-            # Post-fetch filters (is_us_or_canada, is_target_experience) routinely
+            # Post-fetch filters (country scope, is_target_experience) routinely
             # drop ~50-70% of rows, which is why users were seeing ~16 cards even
             # though the API said "20 per page". Over-fetch ×4 so a full page still
             # renders after filtering, then bound to a safe ceiling.
-            fetch_limit = min(page_size * 4, 400)
-            fetch_offset = offset * 4 if offset else 0
+            fetch_limit = min(max(page_size * 3, 60), 120)
+            fetch_offset = offset * 3 if offset else 0
         jobs = await db.get_jobs(filters=filters, limit=fetch_limit, offset=fetch_offset)
         total_pages = math.ceil(total / page_size) if total > 0 else 1
 
@@ -826,7 +937,7 @@ async def list_jobs(
         from app.services.job_filters import (
             is_early_career_title,
             is_senior_title,
-            is_us_or_canada,
+            in_scope_country,
             is_target_experience,
         )
         decorated: list[dict] = []
@@ -835,7 +946,18 @@ async def list_jobs(
             if not isinstance(meta, dict):
                 meta = {}
             requested_location = meta.get("requested_location", "")
-            if not is_us_or_canada(f"{j.get('location') or ''} {requested_location} {j.get('title') or ''}"):
+            visa_payload = j.get("visa") or {}
+            default_country = (
+                j.get("country")
+                or meta.get("country")
+                or meta.get("location_country")
+                or visa_payload.get("visa_country")
+            )
+            location_scope, _ = in_scope_country(
+                f"{j.get('location') or ''} {requested_location} {j.get('title') or ''}",
+                default_country=default_country,
+            )
+            if not location_scope:
                 continue
             if not is_target_experience(
                 j.get("title") or "",
@@ -846,6 +968,13 @@ async def list_jobs(
                 continue
             cat, rname = categorize(f"{j.get('title') or ''} {j.get('company') or ''}")
             j = _apply_job_specific_visa_rules(dict(j))
+            visa_payload = j.get("visa") or {}
+            if filters.get("country") and visa_payload.get("visa_country") != filters["country"]:
+                continue
+            if filters.get("visa_program") and filters["visa_program"] not in (visa_payload.get("visa_programs") or []):
+                continue
+            if not _is_english_user_friendly(j):
+                continue
             j["taxonomy_category"] = cat
             j["role"] = rname
             decorated.append(j)
@@ -873,19 +1002,23 @@ async def list_jobs(
                 total = max(offset + len(decorated) + page_size, page * page_size + 1)
             total_pages = max(1, math.ceil(total / page_size))
 
-        resume_text = await _active_resume_text(user_id)
+        resume_text = await _active_resume_text(user_id) if include_scores else None
         resume_cache = _prepare_resume_tokens(resume_text) if resume_text else None
         def _score_visible_job(j: dict) -> None:
             jd = j.get("description") or ""
             jt = j.get("title") or ""
             if resume_text and (jd or jt):
-                j["match_score"] = _score_job_against_resume(
-                    resume_text, f"{jt}\n{jd}", resume_cache=resume_cache,
-                )
-                j["score_type"] = "resume_match"
+                if _can_score_job_text(jt, jd):
+                    j["match_score"] = _score_job_against_resume(
+                        resume_text, f"{jt}\n{jd}", resume_cache=resume_cache,
+                    )
+                    j["score_type"] = "resume_match"
+                else:
+                    j["match_score"] = _baseline_ats_score(j)
+                    j["score_type"] = "description_required"
             else:
-                j["match_score"] = None
-                j["score_type"] = "resume_required"
+                j["match_score"] = _baseline_ats_score(j)
+                j["score_type"] = "baseline_ats"
             pref_bonus = 0
             hay = f"{j.get('title') or ''} {j.get('role') or ''} {j.get('taxonomy_category') or ''}".lower()
             loc_hay = f"{j.get('location') or ''}".lower()
@@ -974,6 +1107,8 @@ async def list_jobs(
                 **filters,
                 **({"role": role} if role else {}),
                 **({"category": category} if category else {}),
+                **({"country": filters.get("country")} if filters.get("country") else {}),
+                **({"visa_program": filters.get("visa_program")} if filters.get("visa_program") else {}),
                 **({"time_filter": time_filter} if time_filter else {}),
                 **({"status": status} if status else {}),
                 **({"sort": sort} if sort else {}),
@@ -1025,7 +1160,7 @@ async def get_job_coverage(
     roles are missing, low, thin, or healthy without writing local audit files.
     """
     try:
-        from app.services.job_filters import is_target_experience, is_us_or_canada
+        from app.services.job_filters import in_scope_country, is_target_experience
 
         taxonomy = to_payload()["categories"]
         role_rows: dict[str, dict[str, Any]] = {}
@@ -1051,7 +1186,7 @@ async def get_job_coverage(
             if not isinstance(meta, dict):
                 meta = {}
             requested_location = meta.get("requested_location", "")
-            if not is_us_or_canada(f"{job.get('location') or ''} {requested_location} {job.get('title') or ''}"):
+            if not in_scope_country(f"{job.get('location') or ''} {requested_location} {job.get('title') or ''}")[0]:
                 skipped_geo += 1
                 continue
             if not is_target_experience(
@@ -1292,7 +1427,7 @@ async def get_job_detail(
         # complaints that the match number "feels random".
         breakdown = score_breakdown(resume_text, combined)
         payload["match_score"] = breakdown["score"]
-        payload["score_type"] = "resume_match"
+        payload["score_type"] = "resume_match" if breakdown["score"] is not None else "description_required"
         payload["score_breakdown"] = breakdown
     else:
         payload["match_score"] = None
@@ -1304,6 +1439,9 @@ async def get_job_detail(
         if value:
             payload[key] = value
     payload.update(_keyword_payload(resume_text, f"{title}\n{description}"))
+    if not _can_score_job_text(title, description):
+        payload["strongKeywords"] = []
+        payload["missingKeywords"] = []
     payload.update(await _visa_stats_for_company(payload.get("company") or "", db))
 
     try:
@@ -1339,11 +1477,11 @@ async def get_top_matches(
         filters["visa_only"] = True
     fresh_since, fresh_before = _posted_window(time_filter, tz_offset_minutes=tz_offset)
     if fresh_since:
-        filters["seen_since"] = max(fresh_since, _visible_jobs_cutoff())
+        filters["posted_since"] = max(fresh_since, _visible_jobs_cutoff())
     else:
-        filters["effective_since"] = _visible_jobs_cutoff()
+        filters["posted_since"] = _recent_jobs_cutoff()
     if fresh_before:
-        filters["seen_before"] = fresh_before
+        filters["posted_before"] = fresh_before
     resume_text = await _active_resume_text(user_id)
     preferred_roles, preferred_locations = _preference_terms(user_id)
     terms = _terms_for_role_names(preferred_roles)
@@ -1361,20 +1499,27 @@ async def get_top_matches(
         item["taxonomy_category"] = cat
         item["role"] = rname
         if resume_text:
-            item["match_score"] = _score_job_against_resume(
-                resume_text,
-                f"{item.get('title') or ''}\n{item.get('description') or ''}",
-                resume_cache=resume_cache,
-            )
+            title = item.get("title") or ""
+            description = item.get("description") or ""
+            if _can_score_job_text(title, description):
+                item["match_score"] = _score_job_against_resume(
+                    resume_text,
+                    f"{title}\n{description}",
+                    resume_cache=resume_cache,
+                )
+                item["score_type"] = "resume_match"
+            else:
+                item["match_score"] = _baseline_ats_score(item)
+                item["score_type"] = "description_required"
         else:
-            item["match_score"] = None
-            item["score_type"] = "resume_required"
+            item["match_score"] = _baseline_ats_score(item)
+            item["score_type"] = "baseline_ats"
         hay = f"{item.get('title') or ''} {rname} {cat}".lower()
         loc_hay = f"{item.get('location') or ''}".lower()
         if preferred_roles and any(term in hay for term in preferred_roles):
-            item["match_score"] = min(98, int(item["match_score"] or 0) + 6) if item.get("match_score") is not None else None
+            item["match_score"] = min(98, int(item["match_score"] or 0) + 6)
         if preferred_locations and any(term in loc_hay for term in preferred_locations):
-            item["match_score"] = min(98, int(item["match_score"] or 0) + 3) if item.get("match_score") is not None else None
+            item["match_score"] = min(98, int(item["match_score"] or 0) + 3)
         ranked.append(item)
     ranked.sort(key=lambda row: _projection_sort_key(row, tz_offset_minutes=tz_offset))
     return {

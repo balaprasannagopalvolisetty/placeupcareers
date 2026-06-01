@@ -88,6 +88,13 @@ class VisaScore(BaseModel):
     visa_h1b: bool = False
     h1b_verified: bool = False
     green_card: bool = False
+    country_code: Optional[str] = None
+    country_name: Optional[str] = None
+    visa_programs: list[str] = Field(default_factory=list)
+    visa_program_names: list[str] = Field(default_factory=list)
+    sponsor_verified: bool = False
+    sponsor_source: Optional[str] = None
+    english_friendly: bool = False
 
     # Scoring details
     keyword_hits: list[str] = Field(

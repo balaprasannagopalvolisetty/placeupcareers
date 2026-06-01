@@ -80,6 +80,13 @@ class VisaBadges(BaseModel):
     h1b_verified: bool = False
     no_sponsorship: bool = False
     visa_score: int = Field(default=0, ge=0, le=100)
+    visa_country: Optional[str] = None
+    visa_country_name: Optional[str] = None
+    visa_programs: list[str] = Field(default_factory=list)
+    visa_program_names: list[str] = Field(default_factory=list)
+    sponsor_verified: bool = False
+    sponsor_source: Optional[str] = None
+    english_friendly: bool = False
 
 
 class SalaryRange(BaseModel):
@@ -240,23 +247,17 @@ class ScrapeRequest(BaseModel):
         description="Job titles to search for",
     )
     locations: list[str] = Field(
-        default=["United States"],
-        description="Locations to search in"
+        default=["United States", "Canada"],
+        description="Locations to search in. Global expansion uses target-country codes/labels as source support is added."
     )
     sources: list[JobSource] = Field(
         default=[
-            JobSource.LINKEDIN,
-            JobSource.INDEED,
-            JobSource.GLASSDOOR,
-            JobSource.ZIPRECRUITER,
-            JobSource.GOOGLE,
             JobSource.USAJOBS,
             JobSource.DICE,
-            JobSource.MONSTER,
-            JobSource.JOOBLE,
             JobSource.H1B_SPONSOR,
+            JobSource.TIER1_ATS,
         ],
-        description="Scraping sources to use. H1B_SPONSOR pulls every curated sponsor's ATS board.",
+        description="Free/open scraping sources to use by default. H1B_SPONSOR and TIER1_ATS pull verified sponsors' public ATS boards.",
     )
     h1b_sponsor_tiers: list[str] = Field(
         default=["T1", "T2"],

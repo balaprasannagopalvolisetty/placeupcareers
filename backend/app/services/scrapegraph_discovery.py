@@ -25,7 +25,8 @@ description, posted_at, employment_type, salary_range, visa_notes.
 Only include real job postings or job search results visible on this page.
 Ignore navigation, cookie banners, unrelated recommendations, duplicate cards,
 talent communities, closed jobs, internships unrelated to OPT/CPT, and marketing
-text. Prefer United States and Canada roles. Keep descriptions concise.
+text. Prefer roles in PlaceUp target countries and English-friendly postings.
+Keep descriptions concise.
 """
 
 
@@ -110,7 +111,7 @@ def _parse_posted_at(value: Any) -> datetime | None:
 
 
 def _result_to_jobs(result: dict[str, Any], target: dict[str, Any]) -> list[JobPost]:
-    from app.services.job_filters import is_target_experience, is_us_or_canada, parse_years
+    from app.services.job_filters import is_target_country_scope, is_target_experience, parse_years
 
     jobs: list[JobPost] = []
     for raw in _as_list(result):
@@ -133,7 +134,7 @@ def _result_to_jobs(result: dict[str, Any], target: dict[str, Any]) -> list[JobP
             str(target.get("url") or ""),
         )
         geo_text = f"{location} {target.get('location') or ''} {title}"
-        if not is_us_or_canada(geo_text):
+        if not is_target_country_scope(geo_text):
             continue
         ymin, ymax = parse_years(f"{title}\n{description}")
         if not is_target_experience(title, ymin, ymax, max_years=10):

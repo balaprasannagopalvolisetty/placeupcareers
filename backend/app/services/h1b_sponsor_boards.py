@@ -144,10 +144,8 @@ H1B_SPONSOR_BOARDS: list[dict] = [
     {"company": "Bumble",            "ats": "greenhouse",      "token": "bumble",          "h1b_tier": "T2"},
     {"company": "Hinge",             "ats": "greenhouse",      "token": "matchgroup",      "h1b_tier": "T2"},
     {"company": "Roblox Corporation","ats": "greenhouse",      "token": "roblox",          "h1b_tier": "T1"},
-    {"company": "Patreon",           "ats": "greenhouse",      "token": "patreon",         "h1b_tier": "T2"},
     {"company": "Coursera",          "ats": "greenhouse",      "token": "coursera",        "h1b_tier": "T1"},
     {"company": "Udemy",             "ats": "greenhouse",      "token": "udemy",           "h1b_tier": "T2"},
-    {"company": "Chegg",             "ats": "greenhouse",      "token": "chegg",           "h1b_tier": "T2"},
     {"company": "Khan Academy",      "ats": "greenhouse",      "token": "khanacademy",     "h1b_tier": "T2"},
     {"company": "Discord",           "ats": "greenhouse",      "token": "discord",         "h1b_tier": "T1"},
 

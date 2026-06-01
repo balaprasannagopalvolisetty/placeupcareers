@@ -43,22 +43,67 @@ logger = logging.getLogger("placeup.workers.stale_jobs_sweeper")
 
 SWEEP_JOBS_SQL = """
 UPDATE jobs
-   SET status = 'inactive',
-       updated_at = NOW()
+   SET status = 'inactive'
  WHERE status = 'active'
    AND last_seen_at < NOW() - (:days || ' days')::interval
 """
 
 SWEEP_MASTER_SQL = """
 UPDATE master_jobs
-   SET status = 'inactive',
-       updated_at = NOW()
+   SET status = 'inactive'
  WHERE status = 'active'
    AND last_seen_at < NOW() - (:days || ' days')::interval
 """
 
+COUNT_RETENTION_JOBS_SQL = """
+SELECT count(*)
+  FROM jobs
+ WHERE last_seen_at < NOW() - (:retention_days || ' days')::interval
+"""
 
-def run(days: int, dry_run: bool = False) -> dict:
+COUNT_RETENTION_MASTER_SQL = """
+SELECT count(*)
+  FROM master_jobs
+ WHERE last_seen_at < NOW() - (:retention_days || ' days')::interval
+"""
+
+DELETE_RETENTION_CONTACT_LINKS_SQL = """
+UPDATE contacts
+   SET related_job_id = NULL
+ WHERE related_job_id IN (
+       SELECT id
+         FROM jobs
+        WHERE last_seen_at < NOW() - (:retention_days || ' days')::interval
+ )
+"""
+
+DELETE_RETENTION_JOBS_SQL = """
+DELETE FROM jobs
+ WHERE last_seen_at < NOW() - (:retention_days || ' days')::interval
+"""
+
+DELETE_RETENTION_MASTER_SQL = """
+DELETE FROM master_jobs
+ WHERE last_seen_at < NOW() - (:retention_days || ' days')::interval
+"""
+
+COUNT_RETENTION_SILVER_SQL = """
+SELECT count(*)
+  FROM silver_posts
+ WHERE silver_updated_at < NOW() - (:retention_days || ' days')::interval
+"""
+
+DELETE_RETENTION_SILVER_SQL = """
+DELETE FROM silver_posts
+ WHERE silver_updated_at < NOW() - (:retention_days || ' days')::interval
+"""
+
+
+def _silver_posts_exists(db) -> bool:
+    return bool(db.execute(text("SELECT to_regclass('public.silver_posts')")).scalar())
+
+
+def run(days: int, retention_days: int, dry_run: bool = False) -> dict:
     started = time.monotonic()
     client = PostgresClient()
 
@@ -77,18 +122,35 @@ def run(days: int, dry_run: bool = False) -> dict:
             ).scalar_one()
             jobs_updated = int(jobs_affected or 0)
             master_updated = int(master_affected or 0)
+            jobs_deleted = int(db.execute(text(COUNT_RETENTION_JOBS_SQL), {"retention_days": retention_days}).scalar() or 0)
+            master_deleted = int(db.execute(text(COUNT_RETENTION_MASTER_SQL), {"retention_days": retention_days}).scalar() or 0)
+            silver_deleted = int(db.execute(text(COUNT_RETENTION_SILVER_SQL), {"retention_days": retention_days}).scalar() or 0) if _silver_posts_exists(db) else 0
         else:
             jobs_result = db.execute(text(SWEEP_JOBS_SQL), {"days": days})
             master_result = db.execute(text(SWEEP_MASTER_SQL), {"days": days})
+            db.execute(text(DELETE_RETENTION_CONTACT_LINKS_SQL), {"retention_days": retention_days})
+            jobs_delete_result = db.execute(text(DELETE_RETENTION_JOBS_SQL), {"retention_days": retention_days})
+            master_delete_result = db.execute(text(DELETE_RETENTION_MASTER_SQL), {"retention_days": retention_days})
+            if _silver_posts_exists(db):
+                silver_deleted = int(db.execute(text(COUNT_RETENTION_SILVER_SQL), {"retention_days": retention_days}).scalar() or 0)
+                db.execute(text(DELETE_RETENTION_SILVER_SQL), {"retention_days": retention_days})
+            else:
+                silver_deleted = 0
             db.commit()
             jobs_updated = int(jobs_result.rowcount or 0)
             master_updated = int(master_result.rowcount or 0)
+            jobs_deleted = int(jobs_delete_result.rowcount or 0)
+            master_deleted = int(master_delete_result.rowcount or 0)
 
     summary = {
         "threshold_days": days,
+        "retention_days": retention_days,
         "dry_run": dry_run,
         "jobs_marked_inactive": jobs_updated,
         "master_jobs_marked_inactive": master_updated,
+        "jobs_deleted": jobs_deleted,
+        "master_jobs_deleted": master_deleted,
+        "silver_posts_deleted": silver_deleted,
         "duration_seconds": round(time.monotonic() - started, 2),
     }
     logger.info("Stale-jobs sweeper complete: %s", summary)
@@ -102,6 +164,11 @@ def main() -> int:
         default=getattr(settings, "job_inactive_after_days", 14),
         help="Mark jobs as inactive if last_seen_at is older than this many days.",
     )
+    parser.add_argument(
+        "--retention-days", type=int,
+        default=getattr(settings, "job_retention_days", 30),
+        help="Hard-delete job rows older than this many days.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Count without updating.")
     parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args()
@@ -110,7 +177,7 @@ def main() -> int:
         level=args.log_level.upper(),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
-    summary = run(days=args.days, dry_run=args.dry_run)
+    summary = run(days=args.days, retention_days=args.retention_days, dry_run=args.dry_run)
     print(json.dumps(summary))
     return 0
 

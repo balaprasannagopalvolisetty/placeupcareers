@@ -176,7 +176,11 @@ All data is currently mocked:
 See `/docs/backend-pipeline.md` for full details.
 
 - **Compute**: Google Cloud Run (serverless containers)
-- **Database**: **Firebase Firestore** (NoSQL document database — replaces PostgreSQL)
+- **Jobs database**: Cloud SQL PostgreSQL (`placeup-backend`, `jobssilverdb`) for
+  `jobs`, `companies`, `contacts`, `silver_posts`, and API-facing
+  `master_jobs`.
+- **User database**: Firebase Firestore (`placeup-firebase-641222668282`) for
+  users, profiles, preferences, alerts, and resume metadata.
 - **Firestore Security**: Firestore Security Rules (client-side) + Firebase Admin SDK (server-side)
 - **Cache**: Cloud Memorystore (Redis)
 - **Queue**: Cloud Tasks + Cloud Pub/Sub
@@ -191,6 +195,149 @@ See `/docs/backend-pipeline.md` for full details.
 - **Email**: Gmail API via Google Workspace (jobs@placeupcareer.com)
 - **Monitoring**: Cloud Monitoring + Cloud Logging + Security Command Center
 - **Search**: Algolia (full-text job search — Firestore extension)
+
+### Current Production ETL
+
+- `placeup-job-scraper-6h` runs every 6 hours as a Cloud Run Job using
+  `app.etl.jobs_scraper_6h`.
+- The scraper covers the current full taxonomy: 12 categories, 100 roles, and
+  533 scrape terms.
+- Production scraping is free/open-source only by default: `usajobs`, `dice`,
+  `h1b_sponsor`, and `tier1_ats`. Paid LinkedIn providers and blocked
+  aggregator scraping are not part of the scheduled path.
+- Production uses `SCRAPER_PUBLIC_BATCH_CONCURRENCY=8` to avoid public-board
+  throttling while still covering the full taxonomy.
+- The scraper takes a Postgres advisory lock, so a scheduled run skips safely if
+  a manual run is still active.
+- `placeup-linkedin-jd-repair` repairs existing LinkedIn rows where the company
+  is still `LinkedIn` or the JD is thin.
+- `placeup-stale-jobs-sweeper` enforces the 30-day job snapshot retention
+  window.
+
+### Global Visa Coverage Foundation
+
+The live job model is no longer hard-coded to USA/Canada or US-only visa
+labels. The global visa foundation is implemented for 31 target countries:
+
+`US, CA, GB, IE, DE, NL, AU, NZ, SG, AE, JP, PT, FR, ES, SE, DK, NO, CH, FI,
+BE, AT, PL, EE, QA, SA, IT, LU, KR, TW, HK, CZ`.
+
+The country and visa-route rules live in
+`backend/app/services/global_visa_rules.py`. The backend now classifies each
+job into:
+
+- `visa_country` / `visa_country_name`
+- `visa_programs` / `visa_program_names`
+- `sponsor_verified` / `sponsor_source`
+- `english_friendly`
+
+`/api/jobs/taxonomy` returns `target_countries` and `visa_programs` for the
+frontend filters. `/api/jobs` accepts `country` and `visa_program` query
+parameters. The Jobs UI defaults to the 30-day active retention window ("All
+active") and keeps `time_filter=8h` as an optional freshness filter. The UI
+uses a 14.5s frontend request timeout.
+
+2026-06-01 fix notes:
+
+- `/api/jobs` now returns a baseline ATS score for every visible job even when
+  `include_scores=false`; resume-based scoring still upgrades the score when
+  explicitly requested.
+- `frontend/src/app/components/dashboard/JobsPage.tsx` renders compact grid
+  cards with an ATS ring, country flag/location, country-specific visa pills,
+  category badge, and publish date. Country and visa-route filters are native
+  dropdowns covering the full taxonomy contract.
+- When an active resume is linked, the Jobs UI now requests
+  `include_scores=true` so cards use resume-based match scoring instead of only
+  baseline ATS scoring.
+- Job freshness filters now use actual `posted_at` windows. `time_filter=8h`
+  and `Today` no longer admit old postings merely because the scraper saw them
+  today.
+- `app.etl.jobs_scraper_6h` and `app.etl.external_api_ingest` now request all
+  `TARGET_COUNTRIES` instead of `United_States~Canada` / `North_America`, and
+  use `jobspy_hours_old=8` instead of `720`.
+- The production `USAJOBS_API_KEY` and `USAJOBS_EMAIL` secrets currently contain
+  empty placeholder values, so `placeup-job-scraper-6h` has
+  `SCRAPER_PUBLIC_SOURCES=` in Cloud Run to skip broken USAJobs public batches.
+  Set real USAJobs credentials and redeploy before re-enabling `usajobs`.
+
+Important production boundary: this foundation removes the old US/Canada
+filtering wall and labels jobs globally when sources provide them. Full
+country-by-country coverage still depends on adding the free/open official
+source importers and sponsor-registry importers for each country. Paid LinkedIn
+providers and blocked aggregator scraping remain outside the scheduled path.
+
+### Production Commands
+
+Deploy backend and jobs:
+
+```powershell
+gcloud auth login
+gcloud config set account operations@placeupcareer.com
+gcloud config set project steel-shine-492401-u6
+cd D:\Development_Projects\PlaceUp\backend
+.\deploy\deploy_backend.ps1 -ProjectId steel-shine-492401-u6 -Region us-east1 -DbInstance placeup-backend -UserDatabaseBackend firestore -UserFirestoreProjectId placeup-firebase-641222668282 -UserFirestoreDatabase "(default)" -FrontendUrl "https://placeup-frontend-rui2a74muq-ue.a.run.app"
+```
+
+Deploy frontend:
+
+```powershell
+cd D:\Development_Projects\PlaceUp\frontend
+.\deploy_frontend.ps1 -ProjectId steel-shine-492401-u6 -Region us-east1 -ApiBase "https://placeup-api-rui2a74muq-ue.a.run.app"
+```
+
+Deploy the custom-domain Firebase Hosting frontend:
+
+```powershell
+cd D:\Development_Projects\PlaceUp\frontend
+firebase login --reauth
+.\deploy_firebase_hosting.ps1 -ProjectId placeup-firebase-641222668282 -ApiBase "https://placeup-api-rui2a74muq-ue.a.run.app"
+```
+
+Firebase Hosting must be built with `-ApiBase`; otherwise
+`placeupcareer.com` calls same-origin `/api` from Firebase Hosting and can
+show stale 504/aborted job-load failures.
+
+Important: the live custom domain `placeupcareer.com` is mapped in project
+`placeup-firebase-641222668282`, not `steel-shine-492401-u6`. Deploy frontend
+updates to that project when validating the public website:
+
+```powershell
+cd D:\Development_Projects\PlaceUp\frontend
+.\deploy_frontend.ps1 -ProjectId placeup-firebase-641222668282 -Region us-east1 -ApiBase "https://placeup-api-rui2a74muq-ue.a.run.app"
+```
+
+The `steel-shine-492401-u6` frontend service is useful for staging/direct Cloud
+Run checks, but it is not what `placeupcareer.com` serves.
+
+2026-06-01 live UI update:
+- `placeupcareer.com` Jobs now uses the app-matching dark glass/violet theme
+  in `frontend/src/app/components/dashboard/JobsPage.tsx`, while keeping the
+  compact global card layout, ATS rings, country dropdown, and visa-route
+  filters.
+- The Dashboard shell stays on the same dark SaaS theme for `/dashboard/jobs`
+  and all other dashboard pages.
+- Latest public-domain frontend deploy target: project
+  `placeup-firebase-641222668282`, service `placeup-frontend`, region
+  `us-east1`, revision `placeup-frontend-00051-l8b`.
+- Latest backend deploy target: project `steel-shine-492401-u6`, service
+  `placeup-api`, region `us-east1`, revision `placeup-api-00148-grv`.
+- Latest verified public assets after deploy include `index-BoBaOXA_.js` and
+  `JobRoutes-Dd353y7r.js`.
+- Manual scraper execution started after this deploy:
+  `placeup-job-scraper-6h-k5fb7`.
+
+Start a manual 6-hour scraper run:
+
+```powershell
+gcloud.cmd run jobs execute placeup-job-scraper-6h --region us-east1 --project steel-shine-492401-u6
+```
+
+Verify the global taxonomy contract:
+
+```powershell
+$t = curl.exe -s https://placeup-api-rui2a74muq-ue.a.run.app/api/jobs/taxonomy | ConvertFrom-Json
+"countries=$($t.target_countries.Count) visa_programs=$($t.visa_programs.Count) roles=$($t.meta.role_count) terms=$($t.meta.scrape_term_count)"
+```
 
 ## Browser Support
 - Modern browsers (Chrome, Firefox, Safari, Edge)

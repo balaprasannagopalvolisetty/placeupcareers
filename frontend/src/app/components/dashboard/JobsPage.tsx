@@ -1,44 +1,70 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { motion } from "motion/react";
-import { Search, Filter, X, MapPin, DollarSign, Clock, Bookmark, ExternalLink, ShieldCheck, RefreshCw } from "lucide-react";
+import { Search, Filter, X, Bookmark, ExternalLink, ShieldCheck, RefreshCw, Globe2, Route, Languages, Building2, Sparkles } from "lucide-react";
 import * as api from "../../lib/api";
 import { LoadingLogo } from "../LoadingLogo";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 const T = {
-  text: "#F2EEB3", t2: "rgba(242,238,179,0.65)", t3: "rgba(242,238,179,0.45)",
-  border: "rgba(242,238,179,0.08)", glass: "rgba(64,18,18,0.55)",
-  grad: "linear-gradient(135deg, #8C3A27, #A6372D, #401212)",
-  red: "#A6372D", burnt: "#8C3A27", dark: "#401212",
+  text: "#F8FAFC", t2: "rgba(248,250,252,0.68)", t3: "rgba(248,250,252,0.44)",
+  border: "rgba(148,163,184,0.16)", glass: "rgba(15,23,42,0.72)",
+  grad: "linear-gradient(135deg, #7C3AED, #2563EB, #DB2777)",
+  panel: "linear-gradient(135deg, rgba(15,23,42,0.92), rgba(30,27,75,0.74), rgba(49,46,129,0.42))",
+  violet: "#A78BFA", blue: "#60A5FA", fuchsia: "#F0ABFC", red: "#F87171", burnt: "#F59E0B", dark: "#0F172A",
+};
+
+const J = {
+  page: "transparent",
+  card: "rgba(15,23,42,0.72)",
+  line: "rgba(148,163,184,0.16)",
+  text: "#F8FAFC",
+  t2: "rgba(248,250,252,0.68)",
+  t3: "rgba(248,250,252,0.44)",
+  blue: "#A78BFA",
+  blueBg: "rgba(124,58,237,0.12)",
+  green: "#16A34A",
+  greenBg: "rgba(34,197,94,0.10)",
+  shadow: "0 18px 44px rgba(1,17,38,0.28)",
 };
 
 const TIME_OPTIONS = [
-  { label: "Any time", value: "" },
+  { label: "All active", value: "" },
+  { label: "Last 8h", value: "8h" },
   { label: "Today", value: "today" },
   { label: "Yesterday", value: "yesterday" },
   { label: "Week", value: "week" },
   { label: "Month", value: "month" },
 ];
-const SELECT_DARK_STYLE: CSSProperties = { background: "#401212", color: "#F2EEB3" };
+const SELECT_DARK_STYLE: CSSProperties = { background: "#0F172A", color: "#F8FAFC" };
 const VISA_BADGES: Record<string, { bg: string; color: string; border: string }> = {
-  "H-1B":   { bg: "rgba(140,58,39,0.15)", color: "#8C3A27", border: "rgba(140,58,39,0.35)" },
-  "OPT":    { bg: "rgba(166,55,45,0.12)", color: "#A6372D", border: "rgba(166,55,45,0.3)" },
-  "STEM":   { bg: "rgba(64,18,18,0.15)",  color: "#A6372D", border: "rgba(64,18,18,0.3)" },
+  "H-1B":   { bg: "rgba(124,58,237,0.15)", color: "#C4B5FD", border: "rgba(167,139,250,0.35)" },
+  "OPT":    { bg: "rgba(37,99,235,0.12)", color: "#93C5FD", border: "rgba(96,165,250,0.3)" },
+  "STEM":   { bg: "rgba(219,39,119,0.12)",  color: "#F9A8D4", border: "rgba(240,171,252,0.3)" },
   "Vol":    { bg: "rgba(34,197,94,0.10)", color: "#22c55e", border: "rgba(34,197,94,0.3)" },
-  "No sponsorship": { bg: "rgba(242,238,179,0.06)", color: "rgba(242,238,179,0.65)", border: "rgba(242,238,179,0.14)" },
+  "No sponsorship": { bg: "rgba(148,163,184,0.08)", color: "rgba(248,250,252,0.62)", border: "rgba(148,163,184,0.18)" },
+  "English-friendly": { bg: "rgba(34,197,94,0.10)", color: "#86EFAC", border: "rgba(34,197,94,0.26)" },
 };
 
 function normalizeVisa(visa: unknown): string[] {
   if (Array.isArray(visa)) return visa.filter((v): v is string => typeof v === "string");
   if (visa && typeof visa === "object") {
+    const record = visa as Record<string, unknown>;
+    const programNames = Array.isArray(record.visa_program_names)
+      ? record.visa_program_names.filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+      : [];
+    const country = typeof record.visa_country === "string" ? record.visa_country : "";
+    const badges = programNames.map((name) => country ? `${country}: ${name}` : name);
     const map: Record<string, string> = {
       visa_h1b: "H-1B", visa_opt: "OPT", visa_stem_opt: "STEM",
       h1b_verified: "H-1B Verified", green_card: "Green Card",
       no_sponsorship: "No sponsorship",
     };
-    return Object.entries(visa as Record<string, unknown>)
-      .filter(([key, value]) => key !== "visa_score" && Boolean(value))
-      .map(([key]) => map[key] ?? key.replace(/_/g, " "));
+    Object.entries(record)
+      .filter(([key, value]) => !["visa_score", "visa_country", "visa_country_name", "visa_programs", "visa_program_names", "sponsor_source", "english_friendly", "sponsor_verified"].includes(key) && Boolean(value))
+      .forEach(([key]) => badges.push(map[key] ?? key.replace(/_/g, " ")));
+    if (record.sponsor_verified && country) badges.push(`${country} sponsor`);
+    if (record.english_friendly) badges.push("English-friendly");
+    return Array.from(new Set(badges));
   }
   if (typeof visa === "string") return visa.split(",").map((s) => s.trim()).filter(Boolean);
   return [];
@@ -70,9 +96,17 @@ function formatSalary(salary: unknown): string {
 
 interface TaxonomyRole { name: string; synonyms: string[] | string; visa: string[]; hot: boolean }
 interface TaxonomyCategory { name: string; icon: string; roles: TaxonomyRole[] }
+interface TaxonomyMeta {
+  category_count?: number;
+  role_count?: number;
+  backfill_term_count?: number;
+  scrape_term_count?: number;
+}
+interface CountryOption { code: string; name: string }
+interface VisaProgramOption { country_code: string; code: string; name: string }
 
 const JOB_FETCH_RETRY_MS = 700;
-const JOB_FETCH_TIMEOUT_MS = 30000;
+const JOB_FETCH_TIMEOUT_MS = 14500;
 
 function useResponsiveFlags() {
   const getWidth = () => (typeof window === "undefined" ? 1280 : window.innerWidth);
@@ -89,13 +123,17 @@ function useResponsiveFlags() {
 
 function friendlyJobError(err: unknown): string {
   const message = (err as Error)?.message || "Could not load jobs";
+  const name = (err as Error)?.name || "";
+  if (name === "AbortError" || message.toLowerCase().includes("aborted")) {
+    return "Jobs are taking longer than expected to load. Please retry in a moment.";
+  }
   if (message.toLowerCase().includes("failed to fetch")) {
     return "Network hiccup while loading jobs. Please retry, or refresh if this keeps happening.";
   }
   return message;
 }
 
-async function getJobsWithRetry(params: Record<string, string | number | boolean>, attempts = 2) {
+async function getJobsWithRetry(params: Record<string, string | number | boolean>, attempts = 1) {
   let lastError: unknown;
   for (let i = 0; i < attempts; i += 1) {
     try {
@@ -149,6 +187,112 @@ function jobDateLabel(job: api.JobPost): string {
   return "Posted date unavailable";
 }
 
+function compactNumber(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "0";
+  if (value >= 1000000) return `${(value / 1000000).toFixed(value >= 10000000 ? 0 : 1)}M`;
+  if (value >= 1000) return `${(value / 1000).toFixed(value >= 10000 ? 0 : 1)}K`;
+  return value.toLocaleString();
+}
+
+function countryName(code: string, countries: CountryOption[]): string {
+  return countries.find((country) => country.code === code)?.name || code;
+}
+
+const COUNTRY_FLAGS: Record<string, string> = {
+  AE: "🇦🇪", AT: "🇦🇹", AU: "🇦🇺", BE: "🇧🇪", CA: "🇨🇦", CH: "🇨🇭", CZ: "🇨🇿", DE: "🇩🇪",
+  DK: "🇩🇰", EE: "🇪🇪", ES: "🇪🇸", FI: "🇫🇮", FR: "🇫🇷", GB: "🇬🇧", HK: "🇭🇰", IE: "🇮🇪",
+  IT: "🇮🇹", JP: "🇯🇵", KR: "🇰🇷", LU: "🇱🇺", NL: "🇳🇱", NO: "🇳🇴", NZ: "🇳🇿", PL: "🇵🇱",
+  PT: "🇵🇹", QA: "🇶🇦", SA: "🇸🇦", SE: "🇸🇪", SG: "🇸🇬", TW: "🇹🇼", US: "🇺🇸",
+};
+
+function countryFlag(code: string): string {
+  return COUNTRY_FLAGS[code] || "🌐";
+}
+
+function publishDateLabel(job: api.JobPost): string {
+  const raw = job.posted_at || job.posted;
+  if (!raw) return "Publish date unavailable";
+  const date = new Date(String(raw));
+  if (Number.isNaN(date.getTime())) return `Publish date ${String(raw).slice(0, 18)}`;
+  const dd = String(date.getDate()).padStart(2, "0");
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  return `Publish date ${dd}-${mm}-${date.getFullYear()}`;
+}
+
+function getVisaRecord(job: api.JobPost): Record<string, unknown> {
+  return job.visa && typeof job.visa === "object" && !Array.isArray(job.visa) ? job.visa as Record<string, unknown> : {};
+}
+
+function routeLabel(program: VisaProgramOption): string {
+  const shortName = program.name.replace(/\s+Visa$/i, "").replace(/\s+Permit$/i, "");
+  return `${program.country_code} ${shortName}`;
+}
+
+function sourceLabel(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) return "Source pending";
+  return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function controlStyle(extra: CSSProperties = {}): CSSProperties {
+  return {
+    height: 38,
+    padding: "0 12px",
+    borderRadius: 7,
+    border: `1px solid ${J.line}`,
+    background: J.card,
+    color: J.text,
+    fontSize: 12,
+    fontFamily: F.sans,
+    outline: "none",
+    boxShadow: "0 1px 2px rgba(1,17,38,0.18)",
+    backdropFilter: "blur(16px)",
+    ...extra,
+  };
+}
+
+function filterPillStyle(active = false): CSSProperties {
+  return {
+    height: 30,
+    padding: "0 10px",
+    borderRadius: 999,
+    border: `1px solid ${active ? "rgba(34,197,94,0.30)" : J.line}`,
+    background: active ? J.greenBg : J.card,
+    color: active ? J.green : J.t2,
+    fontSize: 11,
+    fontWeight: 750,
+    fontFamily: F.sans,
+    cursor: "pointer",
+  };
+}
+
+function activeFilterChipStyle(): CSSProperties {
+  return {
+    display: "inline-flex",
+    gap: 5,
+    alignItems: "center",
+    fontSize: 11,
+    padding: "4px 9px",
+    borderRadius: 999,
+    background: J.blueBg,
+    color: J.blue,
+    border: "1px solid rgba(167,139,250,0.28)",
+    fontFamily: F.sans,
+    fontWeight: 750,
+  };
+}
+
+function clearChipButtonStyle(): CSSProperties {
+  return {
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    color: J.blue,
+    padding: 0,
+    display: "inline-flex",
+    alignItems: "center",
+  };
+}
+
 function resolveJobUrl(job: api.JobPost): string {
   const j: any = job;
   const candidates = [j.job_url, j.source_url, j.job_url_direct, j.apply_url, j.url, j.company_url, j.external_url];
@@ -190,20 +334,19 @@ function ATSRing({ score, size = 60 }: { score: number | null | undefined; size?
   const safeScore = hasScore ? Math.max(0, Math.min(100, score)) : 0;
   const r = (size/2) - 5, circ = 2*Math.PI*r;
   const offset = circ * (1 - safeScore/100);
-  // Avoid T.dark (#401212) for the ring — it blends into the card background.
-  const color = !hasScore ? T.t3 : safeScore >= 80 ? "#22c55e" : safeScore >= 60 ? T.red : safeScore >= 40 ? T.burnt : "#F2EEB3";
-  const textColor = safeScore >= 40 ? color : "#F2EEB3";
+  const color = !hasScore ? J.t3 : safeScore >= 80 ? "#22c55e" : safeScore >= 60 ? J.blue : safeScore >= 40 ? "#F59E0B" : "#F87171";
+  const textColor = hasScore ? color : J.t3;
   return (
     <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
       <svg viewBox={`0 0 ${size} ${size}`} style={{ width: "100%", height: "100%", transform: "rotate(-90deg)" }}>
-        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(242,238,179,0.14)" strokeWidth="5" />
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(148,163,184,0.20)" strokeWidth="5" />
         <motion.circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth="5" strokeLinecap="round"
           strokeDasharray={circ} initial={{ strokeDashoffset: circ }} animate={{ strokeDashoffset: offset }}
           transition={{ duration: 1.2, ease: "easeOut" }} />
       </svg>
       <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
         <span style={{ fontFamily: F.mono, fontSize: hasScore ? 13 : 11, fontWeight: 600, color: textColor }}>{hasScore ? safeScore : "--"}</span>
-        <span style={{ fontSize: 7, color: T.t2, fontFamily: F.sans, letterSpacing: "0.05em" }}>{hasScore ? "ATS" : "Resume"}</span>
+        <span style={{ fontSize: 7, color: J.t2, fontFamily: F.sans, letterSpacing: "0.05em" }}>{hasScore ? "ATS" : "Resume"}</span>
       </div>
     </div>
   );
@@ -215,14 +358,14 @@ function getScoreMeta(score: number | null | undefined) {
       label: "Resume needed",
       detail: "Upload resume for score",
       color: T.t3,
-      bg: "rgba(242,238,179,0.05)",
+      bg: "rgba(248,250,252,0.05)",
       border: T.border,
     };
   }
   if (score >= 80) return { label: "Strong match", detail: "High keyword overlap", color: "#22c55e", bg: "rgba(34,197,94,0.10)", border: "rgba(34,197,94,0.25)" };
-  if (score >= 60) return { label: "Good match", detail: "Review missing keywords", color: T.red, bg: "rgba(166,55,45,0.12)", border: "rgba(166,55,45,0.28)" };
-  if (score >= 40) return { label: "Partial match", detail: "Resume may need tailoring", color: T.burnt, bg: "rgba(140,58,39,0.12)", border: "rgba(140,58,39,0.28)" };
-  return { label: "Low match", detail: "Large skill gap detected", color: "#F2EEB3", bg: "rgba(242,238,179,0.06)", border: "rgba(242,238,179,0.12)" };
+  if (score >= 60) return { label: "Good match", detail: "Review missing keywords", color: T.violet, bg: "rgba(124,58,237,0.12)", border: "rgba(167,139,250,0.28)" };
+  if (score >= 40) return { label: "Partial match", detail: "Resume may need tailoring", color: T.burnt, bg: "rgba(245,158,11,0.12)", border: "rgba(245,158,11,0.28)" };
+  return { label: "Low match", detail: "Large skill gap detected", color: "#F8FAFC", bg: "rgba(248,250,252,0.06)", border: "rgba(248,250,252,0.12)" };
 }
 
 export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
@@ -240,9 +383,13 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const [search, setSearch] = useState("");
   const [locationRaw, setLocationRaw] = useState("");
   const [location, setLocation] = useState("");
+  const [targetCountries, setTargetCountries] = useState<CountryOption[]>([]);
+  const [visaPrograms, setVisaPrograms] = useState<VisaProgramOption[]>([]);
+  const [countryFilter, setCountryFilter] = useState("");
+  const [visaProgramFilter, setVisaProgramFilter] = useState("");
   const [timeFilter, setTimeFilter] = useState("");
   const [visaOnly, setVisaOnly] = useState(false);
-  const [personalized, setPersonalized] = useState(true);
+  const [personalized, setPersonalized] = useState(false);
 
   const [savedVersion, setSavedVersion] = useState(0);
   const [appliedVersion, setAppliedVersion] = useState(0);
@@ -263,8 +410,9 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
     hasResume: false,
   });
   const [pipelineStatus, setPipelineStatus] = useState<{ total_jobs?: number; active_jobs?: number; last_scraped_at?: string | null } | null>(null);
+  const [taxonomyMeta, setTaxonomyMeta] = useState<TaxonomyMeta | null>(null);
   const hasServerFilters = Boolean(
-    activeCategory || activeRole || search || location || visaOnly || timeFilter ||
+    activeCategory || activeRole || search || location || countryFilter || visaProgramFilter || visaOnly || timeFilter ||
     (personalized && (userPrefs?.target_roles?.length || 0) > 0)
   );
 
@@ -272,6 +420,9 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   useEffect(() => {
     api.getJobTaxonomy()
       .then((data) => {
+        setTaxonomyMeta(data?.meta || null);
+        setTargetCountries(Array.isArray(data?.target_countries) ? data.target_countries : []);
+        setVisaPrograms(Array.isArray(data?.visa_programs) ? data.visa_programs : []);
         if (Array.isArray(data?.categories)) {
           setTaxonomy(data.categories.map((cat: any) => ({
             ...cat,
@@ -300,13 +451,10 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
         const locations = (prefs.target_locations || []).filter(Boolean) as string[];
         setUserPrefs({ target_roles: roles, target_locations: locations });
         if (!prefsApplied && (roles.length || locations.length)) {
-          if (locations[0]) {
-            setLocationRaw(locations[0]);
-            setLocation(locations[0]);
-          }
-          // Don't pre-pick a category/role until we see the taxonomy
-          // (otherwise we set invalid values). The taxonomy-matching
-          // effect below handles that once `taxonomy` is loaded.
+          // Keep the first load broad and fast. Saved preferences are still
+          // available for personalization, but the global Jobs page should not
+          // silently narrow the user's current list before they choose filters.
+          setPersonalized(false);
           setPrefsApplied(true);
         }
       })
@@ -393,11 +541,14 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
     }
 
     const params: Record<string, string | number | boolean> = { page, page_size: pageSize, max_years: 10, sort: "recent", personalized };
+    if (resumeLink.hasResume) params.include_scores = true;
     if (search) params.search = search;
     if (location) params.location = location;
     if (visaOnly) params.visa_only = true;
     if (activeCategory && !activeRole) params.category = activeCategory;
     if (activeRole) params.role = activeRole;
+    if (countryFilter) params.country = countryFilter;
+    if (visaProgramFilter) params.visa_program = visaProgramFilter;
     if (timeFilter) {
       params.time_filter = timeFilter;
       // Pass timezone offset so backend calculates "today"/"yesterday" in the user's local time
@@ -437,7 +588,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       .finally(() => { if (active) setLoading(false); });
 
     return () => { active = false; };
-  }, [activeCategory, activeRole, search, location, visaOnly, timeFilter, personalized, page, resumeVersion, reloadKey]);
+  }, [activeCategory, activeRole, search, location, countryFilter, visaProgramFilter, visaOnly, timeFilter, personalized, page, resumeVersion, resumeLink.hasResume, reloadKey]);
 
   // Debounce search/location so API is only called after typing stops.
   useEffect(() => {
@@ -458,7 +609,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
 
   useEffect(() => {
     setPage(1);
-  }, [activeCategory, activeRole, search, location, visaOnly, timeFilter, personalized]);
+  }, [activeCategory, activeRole, search, location, countryFilter, visaProgramFilter, visaOnly, timeFilter, personalized]);
 
   const savedIds = useMemo(() => getSavedIds(), [savedVersion]);
   const trackedJobs = useMemo(() => ({ ...getTrackedJobs(), ...serverTrackedJobs }), [appliedVersion, serverTrackedJobs]);
@@ -469,8 +620,24 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
     () => Array.from(new Set(taxonomy.flatMap((cat) => cat.roles.map((role) => role.name)).filter(Boolean))),
     [taxonomy],
   );
+  const visibleVisaPrograms = useMemo(
+    () => visaPrograms.filter((program) => !countryFilter || program.country_code === countryFilter),
+    [visaPrograms, countryFilter],
+  );
+  const priorityCountries = useMemo(
+    () => ["US", "CA", "GB", "DE", "NL", "AU", "SG", "AE"]
+      .map((code) => targetCountries.find((country) => country.code === code))
+      .filter((country): country is CountryOption => Boolean(country)),
+    [targetCountries],
+  );
+  const priorityRoutes = useMemo(
+    () => visibleVisaPrograms.slice(0, isMobile ? 4 : 8),
+    [visibleVisaPrograms, isMobile],
+  );
   const allJobsCount = Number(pipelineStatus?.total_jobs || pipelineStatus?.active_jobs || total || 0);
   const openPositionsCount = hasServerFilters ? total : allJobsCount;
+  const taxonomyRoleCount = Number(taxonomyMeta?.role_count || allRoles.length || 0);
+  const scrapeTermCount = Number(taxonomyMeta?.scrape_term_count || 0);
   const targetRoleCount = userPrefs?.target_roles?.length || 0;
 
   const persistApplication = async (job: api.JobPost, status: "applied" | "interview" | "not_applied") => {
@@ -494,37 +661,116 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   };
 
   return (
-    <div style={{ width: "100%", minWidth: 0 }}>
+    <div style={{ width: "100%", minWidth: 0, background: J.page, color: J.text, margin: "-28px", padding: isMobile ? "14px 12px 32px" : "24px 28px 48px", minHeight: "calc(100vh - 64px)" }}>
       {/* JOBS LIST */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0, maxWidth: 1080, margin: "0 auto" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0, maxWidth: 1240, margin: "0 auto" }}>
+        <motion.div
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{
+            position: "relative",
+            overflow: "hidden",
+            borderRadius: 8,
+            padding: isMobile ? 14 : 18,
+            background: T.panel,
+            border: `1px solid ${J.line}`,
+            boxShadow: J.shadow,
+            backdropFilter: "blur(24px)",
+          }}
+        >
+          <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 12% 0%, rgba(124,58,237,0.20), transparent 36%), radial-gradient(circle at 88% 8%, rgba(219,39,119,0.16), transparent 32%)", pointerEvents: "none" }} />
+          <div style={{ position: "relative", display: "grid", gridTemplateColumns: isTablet ? "1fr" : "minmax(0, 1.3fr) minmax(310px, 0.7fr)", gap: 18, alignItems: "stretch" }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 8, height: 28, padding: "0 10px", borderRadius: 999, border: "1px solid rgba(167,139,250,0.30)", background: J.blueBg, color: J.blue, fontSize: 11, fontWeight: 800, fontFamily: F.sans }}>
+                <Sparkles size={13} />
+                Global visa search
+              </div>
+              <div style={{ marginTop: 10, color: J.text, fontSize: isMobile ? 22 : 30, fontWeight: 850, lineHeight: 1.08, letterSpacing: 0, fontFamily: F.sans }}>
+                English-friendly roles by country and visa route
+              </div>
+              <div style={{ marginTop: 9, color: J.t2, fontSize: 13, lineHeight: 1.55, maxWidth: 680, fontFamily: F.sans }}>
+                Search current roles across the 25-country target map, then narrow by local visa names like H-1B, LMIA, Skilled Worker, EU Blue Card, Employment Pass, and more.
+              </div>
+              <div style={{ marginTop: 14, display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {priorityCountries.map((country) => (
+                  <button
+                    key={country.code}
+                    onClick={() => { setCountryFilter(country.code === countryFilter ? "" : country.code); setVisaProgramFilter(""); setPage(1); }}
+                    style={filterPillStyle(countryFilter === country.code)}
+                  >
+                    {countryFlag(country.code)} {country.code}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              {[
+                { icon: Globe2, label: "Countries", value: targetCountries.length || 25, color: T.blue },
+                { icon: Route, label: "Visa routes", value: visaPrograms.length || 58, color: T.violet },
+                { icon: Building2, label: "Open roles", value: openPositionsCount, color: "#86EFAC" },
+                { icon: Languages, label: "English signals", value: "Active", color: T.fuchsia },
+              ].map((item) => {
+                const Icon = item.icon;
+                return (
+                  <div key={item.label} style={{ minHeight: 82, borderRadius: 12, border: `1px solid ${J.line}`, background: "rgba(15,23,42,0.54)", padding: 12, display: "flex", flexDirection: "column", justifyContent: "space-between", backdropFilter: "blur(18px)" }}>
+                    <div style={{ width: 30, height: 30, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(248,250,252,0.06)", border: `1px solid ${J.line}` }}>
+                      <Icon size={15} color={item.color} />
+                    </div>
+                    <div>
+                      <div style={{ color: J.text, fontSize: 20, fontWeight: 850, lineHeight: 1, fontFamily: F.sans }}>{typeof item.value === "number" ? compactNumber(item.value) : item.value}</div>
+                      <div style={{ color: J.t2, fontSize: 11, marginTop: 5, fontFamily: F.sans }}>{item.label}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </motion.div>
+
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 14, padding: isMobile ? "10px" : "12px 16px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}
+          style={{ background: J.card, border: `1px solid ${J.line}`, borderRadius: 16, padding: isMobile ? "10px" : "12px 14px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", boxShadow: J.shadow, backdropFilter: "blur(24px)" }}
         >
           <select
             value={activeRole || ""}
             onChange={(e) => { setActiveRole(e.target.value || null); setActiveCategory(null); setPage(1); }}
-            style={{ height: 36, minWidth: isMobile ? "100%" : 220, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", color: T.text, fontSize: 13, fontFamily: F.sans, outline: "none" }}
+            style={controlStyle({ minWidth: isMobile ? "100%" : 220, fontSize: 13 })}
           >
             <option style={SELECT_DARK_STYLE} value="">All saved roles</option>
             {allRoles.map((role) => <option style={SELECT_DARK_STYLE} key={role} value={role}>{role}</option>)}
           </select>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 240px", minWidth: isMobile ? "100%" : 200, height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)" }}>
-            <Search size={13} color={T.t3} />
+          <div style={controlStyle({ display: "flex", alignItems: "center", gap: 8, flex: "1 1 240px", minWidth: isMobile ? "100%" : 200 })}>
+            <Search size={13} color={J.t3} />
             <input value={searchRaw} onChange={(e) => setSearchRaw(e.target.value)} placeholder="Search title, company, JD..."
-              style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: T.text, fontSize: 13, fontFamily: F.sans }} />
+              style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: J.text, fontSize: 13, fontFamily: F.sans }} />
           </div>
           <input value={locationRaw} onChange={(e) => setLocationRaw(e.target.value)} placeholder="Location"
-            style={{ width: isMobile ? "100%" : 140, flex: isMobile ? "1 1 100%" : "0 0 auto", height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", color: T.text, fontSize: 13, outline: "none" }} />
+            style={controlStyle({ width: isMobile ? "100%" : 140, flex: isMobile ? "1 1 100%" : "0 0 auto", fontSize: 13 })} />
+          <select
+            value={countryFilter}
+            onChange={(e) => { setCountryFilter(e.target.value); setVisaProgramFilter(""); setPage(1); }}
+            style={controlStyle({ width: isMobile ? "100%" : 180 })}
+          >
+            <option style={SELECT_DARK_STYLE} value="">Country: All countries</option>
+            {targetCountries.map((country) => <option style={SELECT_DARK_STYLE} key={country.code} value={country.code}>{countryFlag(country.code)} {country.code} - {country.name}</option>)}
+          </select>
+          <select
+            value={visaProgramFilter}
+            onChange={(e) => { setVisaProgramFilter(e.target.value); setPage(1); }}
+            style={controlStyle({ width: isMobile ? "100%" : 230 })}
+          >
+            <option style={SELECT_DARK_STYLE} value="">Visa-friendly: All routes</option>
+            {visibleVisaPrograms.map((program) => <option style={SELECT_DARK_STYLE} key={`${program.country_code}-${program.code}`} value={program.code}>{program.country_code} - {program.name}</option>)}
+          </select>
           <button onClick={() => { setVisaOnly(!visaOnly); setPage(1); }}
-            style={{ height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${visaOnly ? "rgba(166,55,45,0.4)" : T.border}`, background: visaOnly ? "rgba(166,55,45,0.10)" : "transparent", color: visaOnly ? T.red : T.t2, fontSize: 12, fontFamily: F.sans, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+            style={{ ...controlStyle(), border: `1px solid ${visaOnly ? "rgba(34,197,94,0.32)" : J.line}`, background: visaOnly ? J.greenBg : J.card, color: visaOnly ? "#86EFAC" : J.t2, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
             <Filter size={12} /> Visa-friendly
           </button>
           <select
             value={timeFilter}
             onChange={(e) => { setTimeFilter(e.target.value); setPage(1); }}
-            style={{ height: 36, width: isMobile ? "100%" : 136, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", color: T.text, fontSize: 12, fontFamily: F.sans, outline: "none" }}
+            style={controlStyle({ width: isMobile ? "100%" : 136 })}
           >
             {TIME_OPTIONS.map((chip) => <option style={SELECT_DARK_STYLE} key={chip.label} value={chip.value}>{chip.label}</option>)}
           </select>
@@ -533,41 +779,68 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
               setReloadKey((value) => value + 1);
               api.getJobPipelineStatus().then((status) => setPipelineStatus(status)).catch(() => {});
             }}
-            style={{ height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.05)", color: T.text, cursor: "pointer", fontSize: 12, fontWeight: 800, fontFamily: F.sans, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}
+            style={{ ...controlStyle(), cursor: "pointer", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}
           >
             <RefreshCw size={13} />
             Refresh
           </button>
-          <div style={{ flexBasis: "100%", color: T.t3, fontSize: 11, fontFamily: F.sans }}>
+          <div style={{ flexBasis: "100%", color: J.t2, fontSize: 11, fontFamily: F.sans }}>
             {filtered.length.toLocaleString()} visible
             {openPositionsCount ? ` / ${openPositionsCount.toLocaleString()} open` : ""}
+            {taxonomyRoleCount ? ` - ${taxonomyRoleCount.toLocaleString()} current roles` : ""}
+            {scrapeTermCount ? ` / ${scrapeTermCount.toLocaleString()} scrape terms` : ""}
             {personalized && targetRoleCount ? ` - personalized from ${targetRoleCount} saved roles` : ""}
             {pipelineStatus?.last_scraped_at ? ` - refreshed ${formatPosted(pipelineStatus.last_scraped_at)}` : ""}
           </div>
+          {priorityRoutes.length > 0 && (
+            <div style={{ flexBasis: "100%", display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
+              <span style={{ color: J.t2, fontSize: 11, fontFamily: F.sans, marginRight: 2 }}>Popular routes</span>
+              {priorityRoutes.map((program) => (
+                <button
+                  key={`route-${program.country_code}-${program.code}`}
+                  onClick={() => { setCountryFilter(program.country_code); setVisaProgramFilter(program.code === visaProgramFilter ? "" : program.code); setPage(1); }}
+                  style={{
+                    height: 28,
+                    padding: "0 9px",
+                    borderRadius: 999,
+                    border: `1px solid ${visaProgramFilter === program.code ? "rgba(167,139,250,0.32)" : J.line}`,
+                    background: visaProgramFilter === program.code ? J.blueBg : J.card,
+                    color: visaProgramFilter === program.code ? J.blue : J.t2,
+                    fontSize: 11,
+                    fontWeight: 750,
+                    fontFamily: F.sans,
+                    cursor: "pointer",
+                  }}
+                >
+                  {routeLabel(program)}
+                </button>
+              ))}
+            </div>
+          )}
         </motion.div>
 
         {resumeLink.checked && (
           <div style={{
             display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: 12,
-            padding: "12px 14px", borderRadius: 14,
-            border: `1px solid ${resumeLink.hasResume ? "rgba(34,197,94,0.22)" : "rgba(166,55,45,0.28)"}`,
-            background: resumeLink.hasResume ? "rgba(34,197,94,0.07)" : "rgba(166,55,45,0.08)",
-            color: T.t2, fontFamily: F.sans,
+            padding: "12px 14px", borderRadius: 8,
+            border: `1px solid ${resumeLink.hasResume ? "rgba(34,197,94,0.28)" : "rgba(248,113,113,0.28)"}`,
+            background: resumeLink.hasResume ? "rgba(34,197,94,0.08)" : "rgba(248,113,113,0.08)",
+            color: J.t2, fontFamily: F.sans,
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
               <div style={{
                 width: 30, height: 30, borderRadius: 9, flexShrink: 0,
                 display: "flex", alignItems: "center", justifyContent: "center",
-                background: resumeLink.hasResume ? "rgba(34,197,94,0.10)" : "rgba(166,55,45,0.12)",
-                border: `1px solid ${resumeLink.hasResume ? "rgba(34,197,94,0.24)" : "rgba(166,55,45,0.24)"}`,
+                background: resumeLink.hasResume ? "rgba(34,197,94,0.12)" : "rgba(248,113,113,0.12)",
+                border: `1px solid ${resumeLink.hasResume ? "rgba(34,197,94,0.28)" : "rgba(248,113,113,0.28)"}`,
               }}>
                 <ShieldCheck size={14} color={resumeLink.hasResume ? "#22c55e" : T.red} />
               </div>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: T.text, lineHeight: 1.25 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: J.text, lineHeight: 1.25 }}>
                   {resumeLink.hasResume ? "Active resume linked to job matching" : "Resume is not linked to job matching"}
                 </div>
-                <div style={{ fontSize: 11, color: T.t3, lineHeight: 1.4, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <div style={{ fontSize: 11, color: J.t2, lineHeight: 1.4, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {resumeLink.hasResume
                     ? `${resumeLink.name || "Resume"}${resumeLink.score ? ` - Resume score ${resumeLink.score}` : ""}`
                     : resumeLink.error || "Upload or re-upload a resume from the Resumes tab."}
@@ -577,7 +850,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             {!resumeLink.hasResume && (
               <button
                 onClick={() => { window.location.href = "/dashboard/resumes"; }}
-                style={{ height: 32, padding: "0 12px", borderRadius: 8, border: "none", background: T.grad, color: "#fff", fontSize: 12, fontWeight: 700, fontFamily: F.sans, cursor: "pointer", flexShrink: 0, width: isMobile ? "100%" : "auto" }}
+                style={{ height: 32, padding: "0 12px", borderRadius: 8, border: "none", background: T.grad, color: "#fff", fontSize: 12, fontWeight: 800, fontFamily: F.sans, cursor: "pointer", flexShrink: 0, width: isMobile ? "100%" : "auto" }}
               >
                 Upload Resume
               </button>
@@ -586,54 +859,66 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
         )}
 
         {/* Active filters strip */}
-        {(activeRole || activeCategory || search || location || visaOnly || timeFilter) && (
+        {(activeRole || activeCategory || search || location || countryFilter || visaProgramFilter || visaOnly || timeFilter) && (
           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-            <span style={{ fontSize: 11, color: T.t3, fontFamily: F.sans }}>{filtered.length} of {total} positions</span>
+            <span style={{ fontSize: 11, color: J.t2, fontFamily: F.sans, fontWeight: 750 }}>{filtered.length} of {total} positions</span>
             {activeCategory && (
-              <span style={{ display: "inline-flex", gap: 4, alignItems: "center", fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "rgba(166,55,45,0.08)", color: T.red, border: "1px solid rgba(166,55,45,0.25)", fontFamily: F.sans }}>
+              <span style={activeFilterChipStyle()}>
                 Category: {activeCategory}
               </span>
             )}
             {activeRole && (
-              <span style={{ display: "inline-flex", gap: 4, alignItems: "center", fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "rgba(166,55,45,0.08)", color: T.red, border: "1px solid rgba(166,55,45,0.25)", fontFamily: F.sans }}>
+              <span style={activeFilterChipStyle()}>
                 Role: {activeRole}
-                <button onClick={() => { setActiveRole(null); setPage(1); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.red, padding: 0 }}><X size={10} /></button>
+                <button onClick={() => { setActiveRole(null); setPage(1); }} style={clearChipButtonStyle()}><X size={10} /></button>
               </span>
             )}
             {search && (
-              <span style={{ display: "inline-flex", gap: 4, alignItems: "center", fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "rgba(166,55,45,0.08)", color: T.red, border: "1px solid rgba(166,55,45,0.25)", fontFamily: F.sans }}>
+              <span style={activeFilterChipStyle()}>
                 Search: {search}
-                <button onClick={() => { setSearchRaw(""); setSearch(""); setPage(1); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.red, padding: 0 }}><X size={10} /></button>
+                <button onClick={() => { setSearchRaw(""); setSearch(""); setPage(1); }} style={clearChipButtonStyle()}><X size={10} /></button>
               </span>
             )}
             {location && (
-              <span style={{ display: "inline-flex", gap: 4, alignItems: "center", fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "rgba(166,55,45,0.08)", color: T.red, border: "1px solid rgba(166,55,45,0.25)", fontFamily: F.sans }}>
+              <span style={activeFilterChipStyle()}>
                 Location: {location}
-                <button onClick={() => { setLocationRaw(""); setLocation(""); setPage(1); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.red, padding: 0 }}><X size={10} /></button>
+                <button onClick={() => { setLocationRaw(""); setLocation(""); setPage(1); }} style={clearChipButtonStyle()}><X size={10} /></button>
               </span>
             )}
             {visaOnly && (
-              <span style={{ display: "inline-flex", gap: 4, alignItems: "center", fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "rgba(166,55,45,0.08)", color: T.red, border: "1px solid rgba(166,55,45,0.25)", fontFamily: F.sans }}>
+              <span style={{ ...activeFilterChipStyle(), background: J.greenBg, color: "#86EFAC", border: "1px solid rgba(34,197,94,0.30)" }}>
                 Visa-friendly
-                <button onClick={() => { setVisaOnly(false); setPage(1); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.red, padding: 0 }}><X size={10} /></button>
+                <button onClick={() => { setVisaOnly(false); setPage(1); }} style={{ ...clearChipButtonStyle(), color: "#86EFAC" }}><X size={10} /></button>
+              </span>
+            )}
+            {countryFilter && (
+              <span style={activeFilterChipStyle()}>
+                Country: {countryFlag(countryFilter)} {countryFilter}
+                <button onClick={() => { setCountryFilter(""); setVisaProgramFilter(""); setPage(1); }} style={clearChipButtonStyle()}><X size={10} /></button>
+              </span>
+            )}
+            {visaProgramFilter && (
+              <span style={activeFilterChipStyle()}>
+                Visa: {visibleVisaPrograms.find((program) => program.code === visaProgramFilter)?.name || visaProgramFilter}
+                <button onClick={() => { setVisaProgramFilter(""); setPage(1); }} style={clearChipButtonStyle()}><X size={10} /></button>
               </span>
             )}
             {timeFilter && (
-              <span style={{ display: "inline-flex", gap: 4, alignItems: "center", fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "rgba(166,55,45,0.08)", color: T.red, border: "1px solid rgba(166,55,45,0.25)", fontFamily: F.sans }}>
+              <span style={activeFilterChipStyle()}>
                 Time: {TIME_OPTIONS.find((chip) => chip.value === timeFilter)?.label || timeFilter}
-                <button onClick={() => { setTimeFilter(""); setPage(1); }} style={{ background: "none", border: "none", cursor: "pointer", color: T.red, padding: 0 }}><X size={10} /></button>
+                <button onClick={() => { setTimeFilter(""); setPage(1); }} style={clearChipButtonStyle()}><X size={10} /></button>
               </span>
             )}
           </div>
         )}
 
         {error && (
-          <div style={{ padding: "14px 16px", borderRadius: 12, background: "rgba(166,55,45,0.08)", border: "1px solid rgba(166,55,45,0.25)", color: T.text, fontFamily: F.sans, fontSize: 13 }}>
-            <div style={{ fontWeight: 700, marginBottom: 4, color: T.red }}>Couldn't load jobs</div>
-            <div style={{ color: T.t2, marginBottom: 10 }}>{error}</div>
+          <div style={{ padding: "14px 16px", borderRadius: 12, background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.28)", color: J.text, fontFamily: F.sans, fontSize: 13 }}>
+            <div style={{ fontWeight: 800, marginBottom: 4, color: T.red }}>Couldn't load jobs</div>
+            <div style={{ color: J.t2, marginBottom: 10 }}>{error}</div>
             <button
               onClick={() => setReloadKey((value) => value + 1)}
-              style={{ height: 32, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.05)", color: T.text, fontSize: 12, fontFamily: F.sans, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}
+              style={{ height: 32, padding: "0 12px", borderRadius: 8, border: `1px solid ${J.line}`, background: "rgba(248,250,252,0.05)", color: J.text, fontSize: 12, fontWeight: 800, fontFamily: F.sans, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}
             >
               <RefreshCw size={12} />
               Retry
@@ -642,31 +927,35 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
         )}
 
         {/* Job cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(270px, 1fr))", gap: 14 }}>
           {loading && jobs.length === 0 && (
-            <div style={{ gridColumn: "1 / -1", background: T.glass, border: `1px solid ${T.border}`, borderRadius: 16 }}>
+            <div style={{ gridColumn: "1 / -1", background: J.card, border: `1px solid ${J.line}`, borderRadius: 16, boxShadow: J.shadow, backdropFilter: "blur(24px)" }}>
               <LoadingLogo label="Loading jobs" />
             </div>
           )}
           {!loading && filtered.length === 0 && !error && (
-            <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: 40, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 16, color: T.t2, fontFamily: F.sans }}>
-              <div style={{ fontSize: 14, marginBottom: 6 }}>No jobs match the current filters.</div>
-              <div style={{ fontSize: 12, color: T.t3, marginBottom: 12 }}>Try clearing the search, location, or time filter.</div>
+            <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: 40, background: J.card, border: `1px solid ${J.line}`, borderRadius: 16, color: J.t2, fontFamily: F.sans, boxShadow: J.shadow, backdropFilter: "blur(24px)" }}>
+              <div style={{ fontSize: 14, fontWeight: 850, color: J.text, marginBottom: 6 }}>No jobs match the current filters.</div>
+              <div style={{ fontSize: 12, color: J.t2, marginBottom: 12 }}>Try clearing the search, location, or time filter.</div>
               <button
-                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setVisaOnly(false); setTimeFilter(""); setActiveCategory(null); setActiveRole(null); setPersonalized(true); setPage(1); }}
-                style={{ padding: "8px 14px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.t2, fontSize: 12, fontFamily: F.sans, cursor: "pointer" }}
+                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setCountryFilter(""); setVisaProgramFilter(""); setVisaOnly(false); setTimeFilter(""); setActiveCategory(null); setActiveRole(null); setPersonalized(true); setPage(1); }}
+                style={{ padding: "8px 14px", borderRadius: 8, border: `1px solid ${J.line}`, background: "rgba(248,250,252,0.05)", color: J.blue, fontSize: 12, fontWeight: 800, fontFamily: F.sans, cursor: "pointer" }}
               >Reset filters</button>
             </div>
           )}
           {filtered.map((job, i) => {
             const visaBadges = normalizeVisa(job.visa);
             const match = job.match_score ?? job.match ?? null;
-            const scoreMeta = getScoreMeta(match);
             const id = String(job.id || "");
             const preview = cleanPreview(job.description).slice(0, 260);
             const role = (job as any).role || (job as any).taxonomy_category || job.status || "Active";
             const jobUrl = resolveJobUrl(job);
             const logo = companyLogoUrl(job);
+            const visaRecord = getVisaRecord(job);
+            const visaCountry = typeof visaRecord.visa_country === "string" && visaRecord.visa_country ? visaRecord.visa_country : "";
+            const visaCountryName = typeof visaRecord.visa_country_name === "string" && visaRecord.visa_country_name ? visaRecord.visa_country_name : countryName(visaCountry, targetCountries);
+            const sponsorVerified = Boolean(visaRecord.sponsor_verified || visaRecord.h1b_verified);
+            const englishFriendly = Boolean(visaRecord.english_friendly);
             return (
               <motion.div
                 key={id}
@@ -674,14 +963,23 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                 whileHover={{ y: -4, boxShadow: "0 16px 36px rgba(1,17,38,0.35)" }}
                 onClick={() => onJobClick(id)}
                 style={{
-                  background: "linear-gradient(135deg, rgba(64,18,18,0.62), rgba(25,18,32,0.72))", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`,
-                  borderLeft: `4px solid ${scoreMeta.color}`,
-                  borderRadius: 16, padding: 16, cursor: "pointer", display: "grid",
-                  gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) 138px", gap: 14, alignItems: "stretch",
+                  minHeight: 258,
+                  background: "linear-gradient(135deg, rgba(15,23,42,0.86), rgba(30,27,75,0.58))",
+                  border: `1px solid ${J.line}`,
+                  boxShadow: "0 12px 28px rgba(1,17,38,0.24)",
+                  borderRadius: 16,
+                  padding: 14,
+                  cursor: "pointer",
+                  display: "grid",
+                  gridTemplateColumns: "1fr",
+                  gap: 12,
+                  alignItems: "stretch",
+                  color: J.text,
+                  backdropFilter: "blur(24px)",
                 }}
               >
                 <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 9 }}>
-                  <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", gap: 10, alignItems: isMobile ? "stretch" : "flex-start" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", minHeight: 54 }}>
                     <div style={{ display: "flex", gap: 12, alignItems: "flex-start", minWidth: 0, flex: 1 }}>
                       {/* Company avatar — first-letter gradient circle.
                           Cheaper than fetching real logos and looks consistent
@@ -695,11 +993,11 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                           display: "flex", alignItems: "center", justifyContent: "center",
                           fontFamily: F.sans, fontWeight: 700, fontSize: 17, color: "#fff",
                           background: `linear-gradient(135deg, ${
-                            ["#8C3A27", "#A6372D", "#7c2d12", "#9a3412", "#6b21a8", "#475569"][
+                            ["#7C3AED", "#2563EB", "#DB2777", "#0891B2", "#059669", "#475569"][
                               Math.abs((job.company || "X").charCodeAt(0)) % 6
                             ]
-                          }, #401212)`,
-                          boxShadow: "0 4px 12px rgba(64,18,18,0.45)",
+                          }, #0F172A)`,
+                          boxShadow: "0 4px 14px rgba(124,58,237,0.26)",
                         }}
                       >
                         {(job.company || "?").trim().charAt(0).toUpperCase()}
@@ -709,49 +1007,55 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                             alt=""
                             loading="lazy"
                             onError={(e) => { e.currentTarget.style.display = "none"; }}
-                            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", padding: 6, background: "rgba(255,255,255,0.92)" }}
+                            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", padding: 6, background: "rgba(248,250,252,0.92)" }}
                           />
                         )}
                       </div>
                       <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ fontSize: 16, fontWeight: 700, color: T.text, fontFamily: F.sans, lineHeight: 1.25, marginBottom: 4 }}>{job.title || "Untitled role"}</div>
-                        <div style={{ fontSize: 13, color: T.t2, fontFamily: F.sans, fontWeight: 600 }}>{job.company || "Unknown"}</div>
+                        <div style={{ fontSize: 14, fontWeight: 850, color: J.text, fontFamily: F.sans, lineHeight: 1.28, marginBottom: 6, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{job.title || "Untitled role"}</div>
+                        <div style={{ fontSize: 12, color: J.t2, fontFamily: F.sans, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{job.company || "Unknown"}</div>
                       </div>
                     </div>
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: "4px 8px", borderRadius: 999, background: "rgba(242,238,179,0.05)", color: T.t2, border: `1px solid ${T.border}`, fontFamily: F.sans, whiteSpace: "nowrap", alignSelf: isMobile ? "flex-start" : "auto" }}>{role}</span>
+                    <ATSRing score={match} size={48} />
                   </div>
-                  <div style={{ display: "flex", gap: 12, fontSize: 11, color: T.t3, fontFamily: F.sans, flexWrap: "wrap" }}>
-                    <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}><MapPin size={11} />{job.location || "Remote"}</span>
-                    <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}><DollarSign size={11} />{formatSalary(job.salary)}</span>
-                    <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}><Clock size={11} />{jobDateLabel(job)}</span>
+                  <div style={{ height: 1, background: "rgba(167,139,250,0.22)", marginTop: 2 }} />
+                  <div style={{ display: "flex", gap: 8, fontSize: 11, color: J.t2, fontFamily: F.sans, flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{ display: "inline-flex", gap: 5, alignItems: "center", minWidth: 0 }}><span style={{ fontSize: 15 }}>{countryFlag(visaCountry)}</span><span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{job.location || visaCountryName || "Remote"}</span></span>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 750, padding: "4px 8px", borderRadius: 999, background: J.blueBg, color: J.blue, fontFamily: F.sans }}><Building2 size={11} />{role}</span>
+                    {englishFriendly && <span style={{ fontSize: 11, fontWeight: 750, padding: "4px 8px", borderRadius: 999, background: J.greenBg, color: "#86EFAC", fontFamily: F.sans }}>English-friendly</span>}
+                    {sponsorVerified && <span style={{ fontSize: 11, fontWeight: 750, padding: "4px 8px", borderRadius: 999, background: "rgba(34,197,94,0.08)", color: "#86EFAC", fontFamily: F.sans }}>{sourceLabel(visaRecord.sponsor_source)}</span>}
                   </div>
                   {preview && (
-                    <div style={{ fontSize: 12, color: T.t3, fontFamily: F.sans, lineHeight: 1.55, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                    <div style={{ fontSize: 11, color: J.t2, fontFamily: F.sans, lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
                       {preview}
                     </div>
                   )}
-                  <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", gap: 10, alignItems: isMobile ? "stretch" : "center", borderTop: `1px solid ${T.border}`, paddingTop: 10 }}>
+                  <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 10, marginTop: "auto" }}>
                     <div style={{ display: "flex", gap: 5, flexWrap: "wrap", minWidth: 0 }}>
                       {visaBadges.slice(0, 4).map((v) => {
-                        const s = VISA_BADGES[v] ?? { bg: "rgba(64,18,18,0.1)", color: T.t2, border: T.border };
-                        return <span key={v} style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 4, background: s.bg, color: s.color, border: `1px solid ${s.border}`, fontFamily: F.sans }}>{v}</span>;
+                        const s = VISA_BADGES[v] ?? { bg: "#DCFCE7", color: "#15803D", border: "#BBF7D0" };
+                        return <span key={v} style={{ fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 999, background: s.bg, color: s.color, border: `1px solid ${s.border}`, fontFamily: F.sans }}>{v.replace(`${visaCountry}: `, "")}</span>;
                       })}
-                      {visaBadges.length === 0 && <span style={{ fontSize: 10, color: T.t3, fontFamily: F.sans }}>Visa not verified</span>}
+                      {visaBadges.length === 0 && <span style={{ fontSize: 10, color: J.t3, fontFamily: F.sans }}>Visa not verified</span>}
                     </div>
-                    <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap", justifyContent: isMobile ? "flex-start" : "flex-end" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, borderTop: `1px solid ${J.line}`, paddingTop: 9 }}>
+                      <span style={{ color: J.t3, fontSize: 10, fontFamily: F.sans }}>{publishDateLabel(job)}</span>
+                      <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
                       <button onClick={(e) => {
                         e.stopPropagation();
                         const saved = Array.from(savedIds);
                         const next = savedIds.has(id) ? saved.filter((item) => item !== id) : [...saved, id];
                         localStorage.setItem("placeup_saved_jobs", JSON.stringify(next));
                         setSavedVersion((v) => v + 1);
-                      }} style={{ width: 32, height: 30, borderRadius: 8, border: `1px solid ${savedIds.has(id) ? "rgba(166,55,45,0.4)" : T.border}`, background: savedIds.has(id) ? "rgba(166,55,45,0.08)" : "transparent", color: savedIds.has(id) ? T.red : T.t2, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }} title={savedIds.has(id) ? "Unsave" : "Save job"}><Bookmark size={13} fill={savedIds.has(id) ? T.red : "none"}/></button>
+                      }} style={{ width: 30, height: 28, borderRadius: 7, border: `1px solid ${savedIds.has(id) ? "rgba(248,113,113,0.35)" : J.line}`, background: savedIds.has(id) ? "rgba(248,113,113,0.10)" : "rgba(248,250,252,0.05)", color: savedIds.has(id) ? T.red : J.t2, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }} title={savedIds.has(id) ? "Unsave" : "Save job"}><Bookmark size={13} fill={savedIds.has(id) ? T.red : "none"}/></button>
                       <button onClick={async (e) => {
                         e.stopPropagation();
                         const cur = trackedJobs[id];
                         const nextStatus = cur === "applied" ? "interview" : "applied";
                         await persistApplication(job, nextStatus);
-                      }} style={{ height: 30, padding: "0 10px", borderRadius: 8, border: `1px solid ${trackedJobs[id] === "interview" ? "rgba(59,130,246,0.4)" : trackedJobs[id] === "applied" ? "rgba(34,197,94,0.4)" : T.border}`, background: trackedJobs[id] === "interview" ? "rgba(59,130,246,0.08)" : trackedJobs[id] === "applied" ? "rgba(34,197,94,0.08)" : "transparent", color: trackedJobs[id] === "interview" ? "#3b82f6" : trackedJobs[id] === "applied" ? "#22c55e" : T.t3, fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: F.sans, whiteSpace: "nowrap" }} title={trackedJobs[id] === "interview" ? "Interview stage" : trackedJobs[id] === "applied" ? "Applied - click to move to Interview" : "Track application status"}>
+                      }} style={{ height: 28, padding: "0 9px", borderRadius: 7, border: `1px solid ${trackedJobs[id] === "interview" ? "rgba(96,165,250,0.35)" : trackedJobs[id] === "applied" ? "rgba(34,197,94,0.35)" : J.line}`, background: trackedJobs[id] === "interview" ? "rgba(96,165,250,0.10)" : trackedJobs[id] === "applied" ? "rgba(34,197,94,0.10)" : "rgba(248,250,252,0.05)", color: trackedJobs[id] === "interview" ? "#93C5FD" : trackedJobs[id] === "applied" ? "#86EFAC" : J.t2, fontSize: 10, fontWeight: 800, cursor: "pointer", fontFamily: F.sans, whiteSpace: "nowrap" }} title={trackedJobs[id] === "interview" ? "Interview stage" : trackedJobs[id] === "applied" ? "Applied - click to move to Interview" : "Track application status"}>
                         {trackedJobs[id] === "interview" ? "Interview" : trackedJobs[id] === "applied" ? "Applied" : "Track"}
                       </button>
                       <button
@@ -761,17 +1065,11 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                           const url = jobUrl || `https://www.google.com/search?q=${encodeURIComponent(`${job.company || ""} ${job.title || ""} apply`)}`;
                           window.open(url, "_blank", "noopener,noreferrer");
                         }}
-                        style={{ height: 30, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.05)", color: T.t2, fontSize: 11, cursor: "pointer", fontFamily: F.sans, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}
+                        style={{ height: 28, padding: "0 10px", borderRadius: 7, border: `1px solid ${J.line}`, background: "rgba(248,250,252,0.05)", color: J.t2, fontSize: 10, cursor: "pointer", fontFamily: F.sans, fontWeight: 800, display: "flex", alignItems: "center", gap: 4 }}
                       ><ExternalLink size={11}/> Apply</button>
-                      <button onClick={(e) => { e.stopPropagation(); onJobClick(id); }} style={{ height: 30, padding: "0 12px", borderRadius: 8, border: "none", background: T.grad, color: "#fff", fontSize: 11, cursor: "pointer", fontFamily: F.sans, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}><ExternalLink size={11}/> View</button>
+                      <button onClick={(e) => { e.stopPropagation(); onJobClick(id); }} style={{ height: 28, padding: "0 10px", borderRadius: 7, border: "none", background: T.grad, color: "#fff", fontSize: 10, cursor: "pointer", fontFamily: F.sans, fontWeight: 800, display: "flex", alignItems: "center", gap: 4 }}><ExternalLink size={11}/> View</button>
+                      </div>
                     </div>
-                  </div>
-                </div>
-                <div style={{ borderRadius: 14, border: `1px solid ${scoreMeta.border}`, background: scoreMeta.bg, padding: 12, display: "flex", flexDirection: isMobile ? "row" : "column", alignItems: "center", justifyContent: "center", gap: 10 }}>
-                  <ATSRing score={match} size={70} />
-                  <div style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: scoreMeta.color, fontFamily: F.sans, lineHeight: 1.2 }}>{scoreMeta.label}</div>
-                    <div style={{ fontSize: 10, color: T.t3, fontFamily: F.sans, lineHeight: 1.35, marginTop: 3 }}>{scoreMeta.detail}</div>
                   </div>
                 </div>
               </motion.div>
@@ -781,7 +1079,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
         {!loading && jobs.length < total && (
           <button
             onClick={() => setPage((p) => p + 1)}
-            style={{ alignSelf: "center", marginTop: 6, padding: "10px 18px", borderRadius: 10, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", color: T.t2, fontSize: 13, fontFamily: F.sans, cursor: "pointer" }}
+            style={{ alignSelf: "center", marginTop: 6, padding: "10px 18px", borderRadius: 10, border: `1px solid ${J.line}`, background: "rgba(248,250,252,0.05)", color: J.blue, fontSize: 13, fontWeight: 850, fontFamily: F.sans, cursor: "pointer", boxShadow: J.shadow }}
           >
             Load more jobs ({jobs.length.toLocaleString()} of {total.toLocaleString()})
           </button>

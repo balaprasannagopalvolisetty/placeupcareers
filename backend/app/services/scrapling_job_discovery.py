@@ -25,6 +25,7 @@ from app.job_taxonomy import all_role_names, all_taxonomy_scrape_search_terms, c
 from app.models.job import JobCategory, JobPost, JobSource, VisaBadges
 from app.services.visa_classifier import classify_job
 from app.utils.deduplication import generate_content_hash, generate_job_id
+from app.utils.job_quality import is_probably_job_search_page
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +134,7 @@ def _infer_location(text: str, target: dict[str, Any]) -> str:
 
 
 def _html_to_jobs(html: str, target: dict[str, Any]) -> list[JobPost]:
-    from app.services.job_filters import is_target_experience, is_us_or_canada, parse_years
+    from app.services.job_filters import is_target_country_scope, is_target_experience, parse_years
 
     if not html:
         return []
@@ -157,8 +158,10 @@ def _html_to_jobs(html: str, target: dict[str, Any]) -> list[JobPost]:
 
         parent_text = _clean(anchor.parent.get_text(" ", strip=True) if anchor.parent else title)
         company = _infer_company(parent_text or title, target, host)
+        if is_probably_job_search_page(title, company, parent_text, source.value):
+            continue
         location = _infer_location(parent_text, target)
-        if not is_us_or_canada(f"{location} {target.get('location') or ''} {title}"):
+        if not is_target_country_scope(f"{location} {target.get('location') or ''} {title}"):
             continue
         ymin, ymax = parse_years(f"{title}\n{parent_text}")
         if not is_target_experience(title, ymin, ymax, max_years=10):

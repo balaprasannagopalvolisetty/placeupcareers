@@ -5,37 +5,45 @@
 > what's broken, what's planned, and exactly how to start work without
 > re-discovering the whole codebase.
 >
-> **Last updated**: 2026-05-09 (matches the code in this repo, not an
+> **Last updated**: 2026-05-31 (matches the code in this repo, not an
 > aspirational roadmap).
 
 ---
 
 ## 1. What this product is
 
-PlaceUp Career is a **career platform for international students and
-visa-seeking tech talent in the US + Canada**. The user uploads a resume
-once, and the platform:
+PlaceUp Career is a **global career platform for English-speaking
+international students and visa-seeking talent**. The product direction is
+worldwide coverage: collect positions country-by-country only when the company
+is a verified visa sponsor in that role's country, or the posting is clearly
+labeled as sponsorship-indicated for countries without a public sponsor
+registry. The user uploads a resume once, and the platform:
 
-1. Scrapes job postings from major boards (LinkedIn, Indeed, Glassdoor,
-   USAJobs, Greenhouse, Dice, etc.) every 8 hours.
-2. Filters them down to USA + Canada only.
-3. Tags each job into a 12-category × 88-role taxonomy that matches the
-   roles international students actually search for (Software Engineer,
-   Data Engineer, Mechanical Engineer, Financial Analyst, etc.) with
-   visa eligibility tags (OPT / STEM / H-1B / Vol).
-4. Scores every job against the user's active resume (keyword overlap,
+1. Scrapes jobs on a free/open-source-first basis from official job APIs,
+   government portals, and public company ATS endpoints. The scheduled
+   production path does not use paid LinkedIn providers or blocked anonymous
+   aggregator scraping.
+2. Verifies employers against country-specific visa sponsor registries where
+   those registries exist (USCIS/DOL for US, UK licensed sponsors, IND
+   Netherlands, LMIA/Job Bank Canada, etc.).
+3. Filters and labels jobs by destination country, sponsor source,
+   English-friendliness, and eligible visa programs for that country.
+4. Tags each job into the current 12-category × 100-role taxonomy, using 533
+   scrape terms so all current role families are covered.
+5. Scores every job against the user's active resume (keyword overlap,
    per-request, fast — no LLM in the hot path).
-5. Surfaces visa sponsorship signal from a 23,429-row H1B Excel import.
-6. Discovers up to 3 recruiter contacts per job via the bulk
+6. Surfaces visa sponsorship signal from H1B/USCIS data today and the
+   generalized `visa_sponsors` model as global sponsor importers are added.
+7. Discovers up to 3 recruiter contacts per job via the bulk
    enrichment pipeline (FinalScout / Apollo / Hunter / DOL LCA / team
    pages / GitHub).
 
 The end-state user flow:
 
-> "I sign up. I upload a resume. The dashboard shows me the freshest
-> matched jobs every morning, with my ATS score for each, the
-> sponsorship history of each company, and 3 recruiter emails I can
-> draft outreach to. Filters work. No mock data. No stale results."
+> "I sign up. I upload a resume. The dashboard shows me fresh
+> English-friendly roles across target countries, with my ATS score for each,
+> the country's visa/sponsor proof for that employer, and 3 recruiter emails I
+> can draft outreach to. Filters work. No mock data. No stale results."
 
 ---
 
@@ -74,6 +82,13 @@ The end-state user flow:
                                                   └──────────────────────────────────────┘
 ```
 
+Current production note: the diagram above is historical in a few labels. The
+live Cloud Run ETL now uses Cloud SQL/Postgres for job data, runs the
+`placeup-job-scraper-6h` Cloud Run Job, and the scheduled scrape path is
+free/open only: `usajobs`, `dice`, `h1b_sponsor`, and `tier1_ats`. LinkedIn
+repair is a one-off/legacy cleanup worker for existing rows; it is not part of
+the default scheduled global ingestion policy.
+
 ---
 
 ## 3. Tech stack (versions, not aspirations)
@@ -82,7 +97,8 @@ The end-state user flow:
 - Python 3.12 (Windows venv at `backend/.venv`)
 - FastAPI + uvicorn
 - SQLite 3 (file at `backend/data/placeup.db`)
-- `python-jobspy` for board scraping
+- `python-jobspy` remains installed, but scheduled production scraping defaults
+  to free/open official sources and public ATS endpoints.
 - `bcrypt` 4.x (called directly, not via passlib — passlib 1.7 is broken on bcrypt 4)
 - `PyJWT` for HS256 access tokens
 - `apscheduler` for the 8h scrape loop
@@ -107,7 +123,7 @@ backend/
 │   ├── main.py                    # FastAPI entry point + lifespan + scheduler
 │   ├── config.py                  # Settings loaded from .env (Pydantic Settings)
 │   ├── security.py                # bcrypt + JWT + current_user_id dependency
-│   ├── job_taxonomy.py            # 12 categories × 88 roles × 236 search terms
+│   ├── job_taxonomy.py            # 12 categories × 100 roles × 533 scrape terms
 │   ├── scrape_constants.py        # Re-exports taxonomy synonyms as scrape queries
 │   ├── api/                       # FastAPI routers (one per resource)
 │   │   ├── auth.py                # /signin /signup /demo (auto-seed)
@@ -126,8 +142,8 @@ backend/
 │   │   └── firebase.py            # Firestore alternative (not active by default)
 │   ├── models/                    # Pydantic models per resource
 │   ├── services/
-│   │   ├── job_scraper.py         # Multi-source orchestrator (JobSpy + USAJobs + …)
-│   │   ├── job_filters.py         # is_us_or_canada(), parse_years(), is_entry_level()
+│   │   ├── job_scraper.py         # Multi-source orchestrator (free/open defaults)
+│   │   ├── job_filters.py         # country scope, parse_years(), is_entry_level()
 │   │   ├── job_exporter.py        # Single rolling placeup_jobs.csv + xlsx
 │   │   ├── h1b_excel_importer.py  # Loads H1b_US_DataLIst.xlsx → h1b_sponsors
 │   │   ├── ats_scorer.py          # Resume quality scoring + LLM-based ATS
@@ -288,22 +304,23 @@ All require auth. Backed by `user_alerts` and `user_alert_settings`.
 5. `_seed_demo_user()` runs on startup; `/api/auth/demo` returns
    `demo@placeup.dev / Password123!` (dev only).
 
-### Scrape cycle (every 8h)
-1. APScheduler triggers `_start_scheduler.background_scrape` in
-   `app/main.py`.
-2. `run_scrape_cycle` in `app/services/job_scraper.py` fans out to
-   JobSpy (LinkedIn/Indeed/Glassdoor/Google), USAJobs, Dice, Greenhouse
-   tokens, and the H1B sponsor pipeline.
-3. Results pass through `is_us_or_canada()` (drops India/UK/etc.) and
-   `parse_years()` (tags `years_min/max/entry_level` on
-   `extra_metadata`).
-4. Dedup by `content_hash`.
-5. Visa classification on the survivors.
-6. Persist via `db.upsert_jobs_batch`.
-7. `db.deactivate_old_jobs(days_old=12)` marks stale jobs inactive.
-8. `bulk_enrich_jobs(max_per_job=3)` writes up to 3 contacts per new
-   job to the `contacts` table.
-9. Single rolling CSV/XLSX written to `data/exports/placeup_jobs.csv`.
+### Scrape cycle (Cloud Run every 6h)
+1. Cloud Scheduler triggers the `placeup-job-scraper-6h` Cloud Run Job,
+   which runs `app.etl.jobs_scraper_6h`.
+2. The 6h job covers the current full taxonomy: 12 categories, 100 roles,
+   and 533 scrape terms.
+3. Scheduled production sources are free/open only: `usajobs`, `dice`,
+   `h1b_sponsor`, and `tier1_ats`. Do not add paid LinkedIn providers or
+   blocked anonymous aggregator scraping to this default path.
+4. Public board terms are batched, then direct sponsor/ATS boards run once
+   across all role names.
+5. Records are staged, normalized, deduped, loaded into Cloud SQL/Postgres,
+   and synced into `master_jobs`.
+6. Visa classification and sponsor verification run on survivors.
+7. `placeup-stale-jobs-sweeper` enforces the 30-day job snapshot retention
+   window.
+8. LinkedIn JD repair is a separate legacy cleanup worker for existing
+   LinkedIn rows with thin descriptions or company=`LinkedIn`.
 
 ### Per-user ATS scoring on Jobs
 1. Every `/api/jobs` call inspects the JWT.
@@ -332,9 +349,9 @@ All require auth. Backed by `user_alerts` and `user_alert_settings`.
 
 - ✅ Sign-up / sign-in / demo auto-seed.
 - ✅ JWT-protected routes; password change.
-- ✅ Job taxonomy: 12 categories, 88 roles, 236 scrape queries — single
+- ✅ Job taxonomy: 12 categories, 100 roles, 533 scrape queries — single
   source of truth in `app/job_taxonomy.py`.
-- ✅ Geo filter (US + Canada only).
+- ✅ Production free/open scheduled source policy.
 - ✅ 0-5 yr experience bubbling to top of `/api/jobs`.
 - ✅ Per-active-resume ATS scoring on every `/api/jobs` row.
 - ✅ Visa Tracker: 23,429 real H1B records with search by company + state.
@@ -665,11 +682,22 @@ quick local dev without Docker.
 
 ```powershell
 cd backend
-.\deploy\setup_gcp.ps1     -ProjectId YOUR_PROJECT_ID -DbPassword "STRONG_PASSWORD"
-.\deploy\deploy_backend.ps1 -ProjectId YOUR_PROJECT_ID
-.\deploy\run_migrations.ps1 -ProjectId YOUR_PROJECT_ID
-.\deploy\schedule_jobs.ps1  -ProjectId YOUR_PROJECT_ID
+.\deploy\setup_gcp.ps1 -ProjectId YOUR_PROJECT_ID -DbPassword "STRONG_PASSWORD"
+.\deploy\deploy_backend.ps1 `
+  -ProjectId steel-shine-492401-u6 `
+  -Region us-east1 `
+  -DbInstance placeup-backend `
+  -UserDatabaseBackend firestore `
+  -UserFirestoreProjectId placeup-firebase-641222668282 `
+  -UserFirestoreDatabase "(default)" `
+  -FrontendUrl "https://placeup-frontend-76tybrmgya-ue.a.run.app"
+.\deploy\run_migrations.ps1 -ProjectId steel-shine-492401-u6 -Region us-east1 -DbInstance placeup-backend
+.\deploy\schedule_jobs.ps1 -ProjectId steel-shine-492401-u6 -Region us-east1 -TimeZone America/Chicago
 ```
+
+Run `deploy_backend.ps1` from `backend/`, not from the repo root. The backend
+Dockerfile lives in `backend/`; running the script from the wrong directory can
+skip the image build and redeploy an old `latest` image.
 
 `setup_gcp.ps1` creates:
 - Cloud SQL Postgres instance + database + user
@@ -687,6 +715,76 @@ the API service):
 
 The API service stays up continuously and serves requests. Heavy ETL
 runs in batch jobs so the API never slows down during a scrape.
+
+### Current production scraper behavior
+
+As of 2026-05-28, production scraping uses the Cloud Run job
+`placeup-job-scraper-6h` with entrypoint `python -m app.etl.jobs_scraper_6h`.
+It covers the full current taxonomy: 12 categories, 100 roles, and 533 scrape
+terms. The old "64 batches" number came from 255 focused backfill terms divided
+into groups of 4; it was not the number of jobs or roles.
+
+Default production scraping is free/open-source only. The 6-hour scheduled
+pipeline does not use paid LinkedIn providers or broad anonymous aggregator
+scraping that commonly blocks Cloud Run. Current scheduled sources are
+`usajobs`, `dice`, `h1b_sponsor`, and `tier1_ats`.
+
+Future global ingestion sources must follow the same rule: official government
+APIs/downloads, EURES, or public company ATS JSON endpoints. Do not add
+Fantastic.jobs, paid LinkedIn pulls, or blocked aggregator scraping to the
+default scheduled pipeline.
+
+Production uses:
+
+- `SCRAPER_PUBLIC_BATCH_CONCURRENCY=8`
+- `SCRAPER_ROLE_BATCH_SIZE=4`
+- `SCRAPE_MAX_CONCURRENCY=10`
+- `SCRAPEGRAPH_DISCOVERY_MAX_URLS=220`
+- `JOB_RETENTION_DAYS=30`
+- Cloud Run job `--max-retries=0`
+
+`jobs_scraper_6h.py` takes a Postgres advisory lock at startup. If Scheduler
+fires while a manual scrape is still active, the second run exits successfully
+instead of overlapping and flooding public boards.
+Retries are disabled for the 6-hour scraper job so public-board failures do not
+create a second long-running Cloud Run retry that holds the lock.
+
+Manual run:
+
+```powershell
+gcloud run jobs execute placeup-job-scraper-6h `
+  --region us-east1 `
+  --project steel-shine-492401-u6
+```
+
+Check status:
+
+```powershell
+gcloud run jobs executions list `
+  --job placeup-job-scraper-6h `
+  --region us-east1 `
+  --project steel-shine-492401-u6 `
+  --limit=5
+```
+
+Check batch summaries:
+
+```powershell
+gcloud logging read 'resource.type="cloud_run_job" AND resource.labels.job_name="placeup-job-scraper-6h" AND textPayload:"Fetched"' `
+  --project steel-shine-492401-u6 `
+  --limit=20 `
+  --format='value(timestamp,textPayload)'
+```
+
+After a scrape, run the live repair and retention jobs:
+
+```powershell
+gcloud run jobs execute placeup-linkedin-jd-repair --region us-east1 --project steel-shine-492401-u6 --wait
+gcloud run jobs execute placeup-stale-jobs-sweeper --region us-east1 --project steel-shine-492401-u6 --wait
+```
+
+If `gcloud` says reauthentication failed, run `gcloud auth login` and confirm
+the active account is `operations@placeupcareer.com`.
 
 ### Adding a new ETL source — recipe
 

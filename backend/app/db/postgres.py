@@ -60,6 +60,7 @@ class PostgresClient:
                     MasterJob.title,
                     MasterJob.company,
                     MasterJob.location,
+                    MasterJob.country,
                     func.substr(MasterJob.description, 1, 900).label("description"),
                     MasterJob.source_url,
                     MasterJob.employment_type,
@@ -290,6 +291,8 @@ class PostgresClient:
             stmt = stmt.where(Job.status == filters["status"])
         if filters.get("location"):
             stmt = stmt.where(Job.location.ilike(f"%{filters['location']}%"))
+        if filters.get("country"):
+            stmt = stmt.where(func.upper(Job.country) == str(filters["country"]).upper())
         effective_job_date = func.coalesce(Job.posted_at, Job.last_seen_at)
         if filters.get("effective_since"):
             stmt = stmt.where(effective_job_date >= filters["effective_since"])
@@ -316,6 +319,8 @@ class PostgresClient:
             stmt = stmt.where(or_(Job.title.ilike(q), Company.name.ilike(q), Job.description.ilike(q)))
         if filters.get("visa_only"):
             stmt = stmt.where(Job.visa_score >= 30)
+        if filters.get("visa_program"):
+            stmt = stmt.where(Job.extra_metadata.op("->")("visa_programs").op("?")(filters["visa_program"]))
         return stmt
 
     def _master_jobs_available(self) -> bool:
@@ -333,6 +338,8 @@ class PostgresClient:
             stmt = stmt.where(MasterJob.status == filters["status"])
         if filters.get("location"):
             stmt = stmt.where(MasterJob.location.ilike(f"%{filters['location']}%"))
+        if filters.get("country"):
+            stmt = stmt.where(func.upper(MasterJob.country) == str(filters["country"]).upper())
         effective_job_date = func.coalesce(MasterJob.posted_at, MasterJob.last_seen_at)
         if filters.get("effective_since"):
             stmt = stmt.where(effective_job_date >= filters["effective_since"])
@@ -359,12 +366,30 @@ class PostgresClient:
             stmt = stmt.where(or_(MasterJob.title.ilike(q), MasterJob.company.ilike(q), MasterJob.description.ilike(q)))
         if filters.get("visa_only"):
             stmt = stmt.where(MasterJob.visa_score >= 30)
+        if filters.get("visa_program"):
+            stmt = stmt.where(MasterJob.extra_metadata.op("->")("visa_programs").op("?")(filters["visa_program"]))
         return stmt
+
+    def _visa_payload(self, *, meta: dict, visa_opt: bool, visa_stem_opt: bool, visa_h1b: bool, h1b_verified: bool, visa_score: int) -> dict:
+        return {
+            "visa_opt": visa_opt,
+            "visa_stem_opt": visa_stem_opt,
+            "visa_h1b": visa_h1b,
+            "h1b_verified": h1b_verified,
+            "visa_score": visa_score,
+            "visa_country": meta.get("visa_country"),
+            "visa_country_name": meta.get("visa_country_name"),
+            "visa_programs": meta.get("visa_programs") or [],
+            "visa_program_names": meta.get("visa_program_names") or [],
+            "sponsor_verified": bool(meta.get("sponsor_verified") or h1b_verified),
+            "sponsor_source": meta.get("sponsor_source"),
+            "english_friendly": bool(meta.get("english_friendly")),
+        }
 
     def _master_job_to_dict(self, job: MasterJob) -> dict:
         meta = job.extra_metadata or {}
         raw_description = job.description or ""
-        company = clean_job_company(job.company or "", raw_description)
+        company = clean_job_company(job.company or "", raw_description, job.title)
         posted_at = infer_posted_at(job.posted_at, raw_description)
         description = clean_job_description(raw_description)
         return {
@@ -372,6 +397,7 @@ class PostgresClient:
             "title": job.title,
             "company": company,
             "location": job.location or "",
+            "country": job.country,
             "description": description,
             "job_url": job.source_url or "",
             "category": meta.get("category") or "Other",
@@ -381,13 +407,14 @@ class PostgresClient:
                 "max_salary": float(job.salary_max) if job.salary_max is not None else None,
                 "currency": job.currency or "USD",
             },
-            "visa": {
-                "visa_opt": job.visa_opt,
-                "visa_stem_opt": job.visa_stem_opt,
-                "visa_h1b": job.visa_h1b,
-                "h1b_verified": job.h1b_verified,
-                "visa_score": job.visa_score,
-            },
+            "visa": self._visa_payload(
+                meta=meta,
+                visa_opt=job.visa_opt,
+                visa_stem_opt=job.visa_stem_opt,
+                visa_h1b=job.visa_h1b,
+                h1b_verified=job.h1b_verified,
+                visa_score=job.visa_score,
+            ),
             "source": job.source_name,
             "source_job_id": job.source_job_id or "",
             "posted_at": posted_at,
@@ -400,7 +427,7 @@ class PostgresClient:
     def _master_job_mapping_to_dict(self, row) -> dict:
         meta = row.get("extra_metadata") or {}
         raw_description = row.get("description") or ""
-        company = clean_job_company(row.get("company") or "", raw_description)
+        company = clean_job_company(row.get("company") or "", raw_description, row.get("title"))
         posted_at = infer_posted_at(row.get("posted_at"), raw_description)
         description = clean_job_description(raw_description)
         return {
@@ -408,6 +435,7 @@ class PostgresClient:
             "title": row.get("title"),
             "company": company,
             "location": row.get("location") or "",
+            "country": row.get("country"),
             "description": description,
             "job_url": row.get("source_url") or "",
             "category": meta.get("category") or "Other",
@@ -417,13 +445,14 @@ class PostgresClient:
                 "max_salary": float(row.get("salary_max")) if row.get("salary_max") is not None else None,
                 "currency": row.get("currency") or "USD",
             },
-            "visa": {
-                "visa_opt": row.get("visa_opt"),
-                "visa_stem_opt": row.get("visa_stem_opt"),
-                "visa_h1b": row.get("visa_h1b"),
-                "h1b_verified": row.get("h1b_verified"),
-                "visa_score": row.get("visa_score"),
-            },
+            "visa": self._visa_payload(
+                meta=meta,
+                visa_opt=bool(row.get("visa_opt")),
+                visa_stem_opt=bool(row.get("visa_stem_opt")),
+                visa_h1b=bool(row.get("visa_h1b")),
+                h1b_verified=bool(row.get("h1b_verified")),
+                visa_score=int(row.get("visa_score") or 0),
+            ),
             "source": row.get("source_name"),
             "source_job_id": row.get("source_job_id") or "",
             "posted_at": posted_at,
@@ -435,7 +464,7 @@ class PostgresClient:
 
     def _job_to_dict(self, job: Job, company: Company | None) -> dict:
         raw_description = job.description or ""
-        company_name = clean_job_company(company.name if company else "", raw_description)
+        company_name = clean_job_company(company.name if company else "", raw_description, job.title)
         posted_at = infer_posted_at(job.posted_at, raw_description)
         description = clean_job_description(raw_description)
         return {
@@ -452,13 +481,14 @@ class PostgresClient:
                 "max_salary": float(job.salary_max) if job.salary_max is not None else None,
                 "currency": job.currency or "USD",
             },
-            "visa": {
-                "visa_opt": job.visa_opt,
-                "visa_stem_opt": job.visa_stem_opt,
-                "visa_h1b": job.visa_h1b,
-                "h1b_verified": job.h1b_verified,
-                "visa_score": job.visa_score,
-            },
+            "visa": self._visa_payload(
+                meta=job.extra_metadata or {},
+                visa_opt=job.visa_opt,
+                visa_stem_opt=job.visa_stem_opt,
+                visa_h1b=job.visa_h1b,
+                h1b_verified=job.h1b_verified,
+                visa_score=job.visa_score,
+            ),
             "source": job.source_name,
             "source_job_id": job.source_job_id or "",
             "posted_at": posted_at,
@@ -470,7 +500,7 @@ class PostgresClient:
 
     def _job_mapping_to_dict(self, row) -> dict:
         raw_description = row.get("description") or ""
-        company = clean_job_company(row.get("company") or "", raw_description)
+        company = clean_job_company(row.get("company") or "", raw_description, row.get("title"))
         posted_at = infer_posted_at(row.get("posted_at"), raw_description)
         description = clean_job_description(raw_description)
         return {
@@ -487,13 +517,14 @@ class PostgresClient:
                 "max_salary": float(row.get("salary_max")) if row.get("salary_max") is not None else None,
                 "currency": row.get("currency") or "USD",
             },
-            "visa": {
-                "visa_opt": row.get("visa_opt"),
-                "visa_stem_opt": row.get("visa_stem_opt"),
-                "visa_h1b": row.get("visa_h1b"),
-                "h1b_verified": row.get("h1b_verified"),
-                "visa_score": row.get("visa_score"),
-            },
+            "visa": self._visa_payload(
+                meta=row.get("extra_metadata") or {},
+                visa_opt=bool(row.get("visa_opt")),
+                visa_stem_opt=bool(row.get("visa_stem_opt")),
+                visa_h1b=bool(row.get("visa_h1b")),
+                h1b_verified=bool(row.get("h1b_verified")),
+                visa_score=int(row.get("visa_score") or 0),
+            ),
             "source": row.get("source_name"),
             "source_job_id": row.get("source_job_id") or "",
             "posted_at": posted_at,

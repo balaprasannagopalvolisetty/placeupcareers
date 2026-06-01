@@ -3,13 +3,21 @@
 This deployment runs:
 
 - `placeup-api`: FastAPI backend on Cloud Run.
-- `placeup-job-scraper-6h`: Cloud Run Job scheduled every 6 hours.
+- `placeup-job-scraper-6h`: Cloud Run Job scheduled every 6 hours. It runs
+  `app.etl.jobs_scraper_6h`, covers the full current job taxonomy, and uses a
+  Postgres advisory lock so scheduled/manual runs do not overlap.
 - `placeup-job-scraper-6h` includes the bounded `scrapegraph_discovery`
   source for direct career pages, Google Jobs pages, and public LinkedIn job
   search pages. It uses ScrapeGraphAI with OpenRouter (`OPENROUTER_API_KEY`)
   and is capped by `SCRAPEGRAPH_DISCOVERY_MAX_URLS` to control cost. Production
   uses a 220-URL cap so the run can cover direct career pages plus Google Jobs
   and LinkedIn discovery for every Jobs-page taxonomy role.
+- `placeup-linkedin-jd-repair`: Cloud Run Job that repairs existing LinkedIn
+  rows with board-company names (`LinkedIn`) or thin job descriptions by fetching
+  the public LinkedIn detail URL, extracting company/JD metadata, and rebuilding
+  `master_jobs`.
+- `placeup-stale-jobs-sweeper`: Cloud Run Job that marks stale jobs inactive
+  and hard-deletes jobs/master rows after the 30-day retention window.
 - `clean-and-load-jobs`: Gen2 Cloud Run Function scheduled every 12 hours for Firestore bronze to Cloud SQL silver.
 - `master_jobs`: deduplicated master table combining normalized scraper jobs and `silver_posts`.
 - `placeup-frontend`: Vite React app on Firebase Hosting or Cloud Run.
@@ -124,7 +132,8 @@ cd backend
   -DbInstance placeup-backend `
   -UserDatabaseBackend firestore `
   -UserFirestoreProjectId placeup-firebase-641222668282 `
-  -UserFirestoreDatabase "(default)"
+  -UserFirestoreDatabase "(default)" `
+  -FrontendUrl "https://placeup-frontend-76tybrmgya-ue.a.run.app"
 
 .\deploy\run_migrations.ps1 `
   -ProjectId steel-shine-492401-u6 `
@@ -140,6 +149,27 @@ cd backend
 The migration creates `jobs`, `silver_posts`, and `master_jobs`.
 
 The 6-hour scraper writes normalized jobs into `jobs`, then rebuilds `master_jobs`.
+Important production details:
+
+- Run `deploy_backend.ps1` from `backend/`, not the repo root. The backend
+  Dockerfile lives in `backend/`; running from the repo root can reuse an old
+  `latest` image and make it look like a deploy happened when the new code was
+  not rebuilt.
+- Current scraper taxonomy is 12 categories, 100 roles, and 533 scrape terms.
+  The old "64 batches" number was `255` focused backfill terms split by 4, not
+  the number of jobs or roles.
+- The default production scraper is free/open-source only. It does not use paid
+  LinkedIn providers or broad anonymous aggregator scraping in the scheduled
+  path. Current scheduled sources are:
+  - Public/free APIs: `usajobs`, `dice`
+  - Verified-sponsor public ATS boards: `h1b_sponsor`, `tier1_ats`
+- `SCRAPER_PUBLIC_BATCH_CONCURRENCY=8` is set in production. This still runs the
+  full taxonomy, but avoids flooding LinkedIn/Indeed with 100+ simultaneous
+  batches.
+- The scraper Cloud Run Job uses `--max-retries 0`; failed public-board batches
+  should be handled by the next scheduled run instead of a long Cloud Run retry
+  that can hold the advisory lock.
+- `JOB_RETENTION_DAYS=30` is set for the stale jobs sweeper.
 
 ## 5. Silver Loader
 
@@ -441,7 +471,56 @@ gcloud scheduler jobs list --location us-east1
 Manual job run:
 
 ```powershell
-gcloud run jobs execute placeup-job-scraper-6h --region us-east1 --wait --project steel-shine-492401-u6
+gcloud run jobs execute placeup-job-scraper-6h `
+  --region us-east1 `
+  --project steel-shine-492401-u6
+```
+
+Use `--wait` only when you intentionally want the terminal to stay attached for
+the whole Cloud Run execution:
+
+```powershell
+gcloud run jobs execute placeup-job-scraper-6h `
+  --region us-east1 `
+  --project steel-shine-492401-u6 `
+  --wait
+```
+
+Check the active scraper execution:
+
+```powershell
+gcloud run jobs executions list `
+  --job placeup-job-scraper-6h `
+  --region us-east1 `
+  --project steel-shine-492401-u6 `
+  --limit=5
+```
+
+Check recent scraper batch summaries:
+
+```powershell
+gcloud logging read 'resource.type="cloud_run_job" AND resource.labels.job_name="placeup-job-scraper-6h" AND textPayload:"Fetched"' `
+  --project steel-shine-492401-u6 `
+  --limit=20 `
+  --format='value(timestamp,textPayload)'
+```
+
+Manual LinkedIn repair after a scrape:
+
+```powershell
+gcloud run jobs execute placeup-linkedin-jd-repair `
+  --region us-east1 `
+  --project steel-shine-492401-u6 `
+  --wait
+```
+
+Manual 30-day retention cleanup:
+
+```powershell
+gcloud run jobs execute placeup-stale-jobs-sweeper `
+  --region us-east1 `
+  --project steel-shine-492401-u6 `
+  --wait
 ```
 
 Manual silver loader run:
@@ -475,6 +554,20 @@ Jobs will be empty until at least one of these has run successfully:
 Also confirm the API service points to the same Cloud SQL database where `master_jobs` is populated.
 
 ## 10. Operational Notes
+
+- If `gcloud` reports `Reauthentication failed. cannot prompt during
+  non-interactive execution`, run `gcloud auth login`, confirm the account is
+  `operations@placeupcareer.com`, then rerun the deploy/run command.
+- A scraper execution should show only one `RUNNING: 1` execution at a time. If
+  older executions are still running from before the advisory lock deploy, cancel
+  them with:
+
+```powershell
+gcloud run jobs executions cancel EXECUTION_NAME `
+  --region us-east1 `
+  --project steel-shine-492401-u6 `
+  --quiet
+```
 
 - Frontend security headers include CSP, HSTS, frame denial, nosniff, referrer policy, and restricted permissions policy.
 - Access tokens are short-lived bearer JWTs held in browser memory only. Refresh tokens are rotating, hashed server-side, and sent as `HttpOnly; Secure; SameSite=Strict` cookies through same-origin `/api`.

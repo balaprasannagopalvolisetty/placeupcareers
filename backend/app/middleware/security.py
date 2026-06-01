@@ -40,11 +40,11 @@ log = logging.getLogger(__name__)
 # (max_requests, window_seconds) per bucket.
 RATE_LIMITS: Dict[str, Tuple[int, int]] = {
     # Strict bucket: login / signup / password / OAuth. Brute-force surface.
-    "auth": (10, 60),
+    "auth": (60, 60),
     # Moderate bucket: writes that mutate user data.
     "write": (60, 60),
     # Generous bucket: reads. Job listings, taxonomy, dashboard summary.
-    "read": (240, 60),
+    "read": (1200, 60),
 }
 
 MAX_REQUEST_BODY_BYTES = 12 * 1024 * 1024
@@ -69,6 +69,12 @@ PUBLIC_WRITE_PATHS = {
     "/api/auth/refresh",
     "/api/auth/logout",
 }
+
+RATE_LIMIT_EXEMPT_GET_PREFIXES = (
+    "/api/jobs",
+    "/api/visa",
+    "/api/user/dashboard",
+)
 
 
 def _bucket_for(path: str, method: str) -> str:
@@ -117,6 +123,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Don't rate-limit health checks or static schema. Cloud Run pings
         # /api/health constantly; throttling those is wasted CPU.
         if path in {"/api/health", "/api/health/", "/", "/docs", "/openapi.json", "/redoc"}:
+            return await call_next(request)
+        if request.method.upper() == "GET" and any(path.startswith(prefix) for prefix in RATE_LIMIT_EXEMPT_GET_PREFIXES):
             return await call_next(request)
 
         bucket = _bucket_for(path, request.method)

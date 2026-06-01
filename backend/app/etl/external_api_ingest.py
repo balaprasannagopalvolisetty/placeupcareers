@@ -8,6 +8,7 @@ import logging
 
 from app.etl.jobs_scraper import run as run_job_scraper
 from app.job_taxonomy import all_taxonomy_scrape_search_terms
+from app.services.global_visa_rules import COUNTRY_RULES, TARGET_COUNTRIES
 
 logger = logging.getLogger("placeup.etl.external_api_ingest")
 
@@ -32,15 +33,23 @@ def _provider_sources(provider: str) -> str:
     return "rapidapi~usajobs~dice"
 
 
+def _target_locations() -> str:
+    names: list[str] = []
+    for country_code in sorted(TARGET_COUNTRIES):
+        rule = COUNTRY_RULES.get(country_code)
+        names.append((rule.name if rule else country_code).replace(" ", "_"))
+    return "~".join(names)
+
+
 async def run(args: argparse.Namespace) -> int:
     scraper_args = argparse.Namespace(
         queries="~".join(term.replace(" ", "_") for term in all_taxonomy_scrape_search_terms()),
-        locations="North_America",
+        locations=_target_locations(),
         sources=_provider_sources(args.provider),
         max_per_source=60,
         max_per_sponsor=10,
         h1b_sponsor_concurrency=1,
-        jobspy_hours_old=720,
+        jobspy_hours_old=8,
         jobspy_page_size=50,
         jobspy_max_pages=25,
         tiers="",

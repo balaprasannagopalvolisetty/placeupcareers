@@ -12,6 +12,8 @@ FastAPI API service (Cloud Run)
 Cloud Scheduler
   -> Cloud Run Job: placeup-job-scraper-6h
   -> Cloud Run Job: placeup-external-api-12h
+  -> Cloud Run Job: placeup-linkedin-jd-repair
+  -> Cloud Run Job: placeup-stale-jobs-sweeper
   -> Cloud Run Function: clean-and-load-jobs (Firestore bronze -> silver_posts every 12h)
 
 ETL path
@@ -83,3 +85,72 @@ Do not write scraper output directly to final tables without staging it first.
 Deduplication uses a canonical hash of title, company, and location. The
 scraper source wins when the same role appears in both sources because it
 usually has richer visa and salary metadata.
+
+## Current 6-Hour Scraper Contract
+
+`placeup-job-scraper-6h` runs `python -m app.etl.jobs_scraper_6h`.
+
+Production settings:
+
+- `SCRAPER_PUBLIC_BATCH_CONCURRENCY=8`
+- `SCRAPER_ROLE_BATCH_SIZE=4` by default
+- `SCRAPE_MAX_CONCURRENCY=10`
+- `SCRAPEGRAPH_DISCOVERY_MAX_URLS=220`
+- `SCRAPEGRAPH_DISCOVERY_CONCURRENCY=3`
+- Cloud Run job `--max-retries=0`
+
+The scraper covers the full current taxonomy: 12 categories, 100 roles, and 533
+scrape terms. The older "64 batches" number was from 255 focused backfill terms
+split into groups of 4; it was not the number of positions in the app.
+
+Scheduled production scraping is free/open-source only. The 6-hour job no longer
+uses paid LinkedIn providers or broad anonymous aggregator scraping sources that
+commonly block Cloud Run. Current scheduled sources are:
+
+- `usajobs`
+- `dice`
+- `h1b_sponsor`
+- `tier1_ats`
+
+Future global sources should follow the same rule: official government APIs,
+official downloadable registries, EURES, or public company ATS JSON endpoints.
+Do not add Fantastic.jobs, paid LinkedIn pulls, or blocked aggregator scraping
+to the default scheduled pipeline.
+
+`jobs_scraper_6h.py` takes a Postgres advisory lock before scraping. If a
+scheduled run starts while a manual run is still active, the second execution
+logs that another run is active and exits successfully without overlapping.
+Retries are disabled for the 6-hour scraper job so a failed public-board run
+does not hold the lock through a second Cloud Run retry cycle.
+
+After a scrape finishes, run the LinkedIn repair job to fix existing/present
+LinkedIn rows that still have company=`LinkedIn` or thin descriptions:
+
+```powershell
+gcloud run jobs execute placeup-linkedin-jd-repair `
+  --region us-east1 `
+  --project steel-shine-492401-u6 `
+  --wait
+```
+
+The repair worker fetches the canonical LinkedIn detail URL, extracts JSON-LD
+and page metadata, replaces board company names with the actual company, updates
+short descriptions with full JDs when available, then rebuilds `master_jobs`.
+
+## Job Retention
+
+`placeup-stale-jobs-sweeper` marks stale jobs inactive and deletes job snapshots
+older than the retention window.
+
+Production retention is 30 days:
+
+```powershell
+gcloud run jobs execute placeup-stale-jobs-sweeper `
+  --region us-east1 `
+  --project steel-shine-492401-u6 `
+  --wait
+```
+
+The sweeper deletes matching rows from `jobs`, `master_jobs`, and `silver_posts`
+when that table exists. It also nulls `contacts.related_job_id` before deleting
+jobs so foreign keys do not block cleanup.

@@ -7,7 +7,7 @@ import hashlib
 from difflib import SequenceMatcher
 
 
-def generate_content_hash(title: str, company: str, location: str) -> str:
+def generate_content_hash(title: str, company: str, location: str, visa_country: str | None = None) -> str:
     """Generate a SHA256 hash for deduplication.
 
     Creates a unique fingerprint from the core job identifiers.
@@ -17,11 +17,14 @@ def generate_content_hash(title: str, company: str, location: str) -> str:
         title: Job title
         company: Company name
         location: Job location
+        visa_country: Optional ISO country code for global duplicate separation.
 
     Returns:
         SHA256 hex digest string
     """
     normalized = f"{title.lower().strip()}|{company.lower().strip()}|{location.lower().strip()}"
+    if visa_country:
+        normalized = f"{normalized}|{visa_country.lower().strip()}"
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
 
 
@@ -51,7 +54,7 @@ def is_near_duplicate(
     return ratio >= threshold
 
 
-def generate_job_id(title: str, company: str, location: str) -> str:
+def generate_job_id(title: str, company: str, location: str, visa_country: str | None = None) -> str:
     """Generate a unique job ID from core identifiers.
 
     Uses the first 12 characters of the content hash as a short ID.
@@ -65,4 +68,4 @@ def generate_job_id(title: str, company: str, location: str) -> str:
     Returns:
         12-character hex string
     """
-    return generate_content_hash(title, company, location)[:12]
+    return generate_content_hash(title, company, location, visa_country=visa_country)[:12]

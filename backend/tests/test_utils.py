@@ -18,7 +18,12 @@ from app.utils.deduplication import (
     generate_job_id,
     is_near_duplicate,
 )
-from app.utils.job_quality import clean_job_company, clean_job_description, infer_posted_at
+from app.utils.job_quality import (
+    clean_job_company,
+    clean_job_description,
+    infer_posted_at,
+    is_probably_job_search_page,
+)
 
 
 # ─── Text Processing Tests ────────────────────────────────────
@@ -130,6 +135,20 @@ Description
 We're looking for a Security Engineer.
 """
     assert clean_job_company("LinkedIn", description) == "Amazon Web Services (AWS)"
+
+
+def test_linkedin_company_is_extracted_from_short_snippet():
+    description = "Security Engineer Security Engineer Google Atlanta, GA 5 hours ago"
+    assert clean_job_company("LinkedIn", description, "Security Engineer") == "Google"
+
+
+def test_linkedin_search_page_titles_are_rejected():
+    assert is_probably_job_search_page(
+        "Senior Security Engineer jobs",
+        "LinkedIn",
+        "Senior Security Engineer jobs",
+        "linkedin",
+    )
 
 
 def test_relative_posted_date_is_inferred():

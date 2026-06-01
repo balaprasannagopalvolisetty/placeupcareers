@@ -14,7 +14,7 @@ $ApiEnv = "APP_ENV=production,DATABASE_BACKEND=postgres,USER_DATABASE_BACKEND=$U
 if ($FrontendUrl) {
   $ApiEnv = "$ApiEnv,FRONTEND_URL=$FrontendUrl"
 }
-$ScraperEnv = "APP_ENV=production,DATABASE_BACKEND=postgres,SCRAPEGRAPH_ENABLED=false,SCRAPEGRAPH_DISCOVERY_ENABLED=true,SCRAPEGRAPH_DISCOVERY_MAX_URLS=220,SCRAPEGRAPH_DISCOVERY_CONCURRENCY=3,SCRAPE_MAX_CONCURRENCY=10"
+$ScraperEnv = "APP_ENV=production,DATABASE_BACKEND=postgres,SCRAPEGRAPH_ENABLED=false,SCRAPEGRAPH_DISCOVERY_ENABLED=true,SCRAPEGRAPH_DISCOVERY_MAX_URLS=220,SCRAPEGRAPH_DISCOVERY_CONCURRENCY=3,SCRAPE_MAX_CONCURRENCY=10,SCRAPER_PUBLIC_BATCH_CONCURRENCY=8"
 $ApiSecrets = "DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,RAPIDAPI_KEY=RAPIDAPI_KEY:latest,USAJOBS_API_KEY=USAJOBS_API_KEY:latest,USAJOBS_EMAIL=USAJOBS_EMAIL:latest,HUNTER_API_KEY=HUNTER_API_KEY:latest,FINALSCOUT_API_KEY=FINALSCOUT_API_KEY:latest"
 $ScraperSecrets = "DATABASE_URL=DATABASE_URL:latest,RAPIDAPI_KEY=RAPIDAPI_KEY:latest,USAJOBS_API_KEY=USAJOBS_API_KEY:latest,USAJOBS_EMAIL=USAJOBS_EMAIL:latest,HUNTER_API_KEY=HUNTER_API_KEY:latest,FINALSCOUT_API_KEY=FINALSCOUT_API_KEY:latest"
 $ExternalSecrets = "DATABASE_URL=DATABASE_URL:latest,RAPIDAPI_KEY=RAPIDAPI_KEY:latest,USAJOBS_API_KEY=USAJOBS_API_KEY:latest,USAJOBS_EMAIL=USAJOBS_EMAIL:latest"
@@ -94,7 +94,7 @@ gcloud.cmd run jobs deploy placeup-job-scraper-6h `
   --set-secrets $ScraperSecrets `
   --memory 2Gi `
   --cpu 2 `
-  --max-retries 1 `
+  --max-retries 0 `
   --task-timeout 21600
 
 gcloud.cmd run jobs deploy placeup-external-api-12h `
@@ -148,6 +148,34 @@ gcloud.cmd run jobs deploy placeup-daily-match-digest `
   --cpu 1 `
   --max-retries 1 `
   --task-timeout 1800
+
+gcloud.cmd run jobs deploy placeup-linkedin-jd-repair `
+  --image $Image `
+  --region $Region `
+  --service-account "placeup-etl-sa@$ProjectId.iam.gserviceaccount.com" `
+  --command python `
+  --args="-m,app.workers.linkedin_jd_repair,--limit,1000" `
+  --set-cloudsql-instances "$ProjectId`:$Region`:$DbInstance" `
+  --set-env-vars "APP_ENV=production,DATABASE_BACKEND=postgres" `
+  --set-secrets "DATABASE_URL=DATABASE_URL:latest" `
+  --memory 1Gi `
+  --cpu 1 `
+  --max-retries 1 `
+  --task-timeout 3600
+
+gcloud.cmd run jobs deploy placeup-stale-jobs-sweeper `
+  --image $Image `
+  --region $Region `
+  --service-account "placeup-etl-sa@$ProjectId.iam.gserviceaccount.com" `
+  --command python `
+  --args="-m,app.workers.stale_jobs_sweeper,--retention-days,30" `
+  --set-cloudsql-instances "$ProjectId`:$Region`:$DbInstance" `
+  --set-env-vars "APP_ENV=production,DATABASE_BACKEND=postgres,JOB_RETENTION_DAYS=30" `
+  --set-secrets "DATABASE_URL=DATABASE_URL:latest" `
+  --memory 512Mi `
+  --cpu 1 `
+  --max-retries 1 `
+  --task-timeout 600
 
 $DigestScheduleUri = "https://$Region-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/$ProjectId/jobs/placeup-daily-match-digest:run"
 $DigestScheduleJob = gcloud.cmd scheduler jobs describe placeup-daily-match-digest-9am `

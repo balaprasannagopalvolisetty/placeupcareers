@@ -158,6 +158,7 @@ class Settings(BaseSettings):
         description="Glassdoor frequently rejects broad automated JobSpy searches; use Scrapling fallback unless a proxy is configured.",
     )
     job_inactive_after_days: int = Field(default=14, description="Mark active jobs as inactive after N days without re-scrape (2-week window, sweeper in app/workers/stale_jobs_sweeper.py)")
+    job_retention_days: int = Field(default=30, ge=1, description="Hard-delete jobs not seen within this many days from cloud job tables.")
     proxy_url: Optional[str] = Field(default=None)
     scrapegraph_enabled: bool = Field(default=False)
     scrapegraph_max_enrich_per_run: int = Field(default=40, ge=0, le=500)

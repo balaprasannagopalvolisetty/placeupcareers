@@ -11,6 +11,7 @@ import logging
 from typing import Optional
 
 from app.models.visa import VisaScore
+from app.services.global_visa_rules import classify_global_visa
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,8 @@ def classify_job(
     company: str,
     description: str,
     uscis_data: Optional[dict] = None,
+    location: str = "",
+    country_code: str | None = None,
 ) -> VisaScore:
     """Classify a job posting for visa sponsorship compatibility.
 
@@ -207,6 +210,17 @@ def classify_job(
         visa_h1b = False
         h1b_verified = False
 
+    global_visa = classify_global_visa(
+        title=title,
+        company=company,
+        description=description,
+        location=location,
+        country_code=country_code,
+        sponsor_verified=h1b_verified,
+        sponsor_source="uscis_h1b" if h1b_verified else None,
+    )
+    score = max(score, int(global_visa.get("score") or 0))
+
     # ─── Step 5: Normalize score ───────────────────────────
     score = max(0, min(100, score))
 
@@ -229,8 +243,15 @@ def classify_job(
         visa_h1b=visa_h1b,
         h1b_verified=h1b_verified,
         green_card=green_card,
-        keyword_hits=keyword_hits,
-        negative_hits=negative_hits,
+        country_code=global_visa.get("country_code"),
+        country_name=global_visa.get("country_name"),
+        visa_programs=global_visa.get("visa_programs") or [],
+        visa_program_names=global_visa.get("visa_program_names") or [],
+        sponsor_verified=bool(global_visa.get("sponsor_verified")),
+        sponsor_source=global_visa.get("sponsor_source"),
+        english_friendly=bool(global_visa.get("english_friendly")),
+        keyword_hits=list(dict.fromkeys(keyword_hits + (global_visa.get("keyword_hits") or []))),
+        negative_hits=list(dict.fromkeys(negative_hits + (global_visa.get("negative_hits") or []))),
         uscis_match=uscis_petition_count > 0,
         uscis_petition_count=uscis_petition_count,
         should_discard=should_discard,
