@@ -84,14 +84,14 @@ H1B_SPONSOR_BOARDS: list[dict] = [
     {"company": "Spotify",           "ats": "lever",           "token": "spotify",         "h1b_tier": "T1"},
     {"company": "Shopify",           "ats": "lever",           "token": "shopify",         "h1b_tier": "T1", "active": False},
     {"company": "Twitch",            "ats": "lever",           "token": "twitch",          "h1b_tier": "T1", "active": False},
-    {"company": "KKR",               "ats": "lever",           "token": "kkr",             "h1b_tier": "T2"},
+    {"company": "KKR",               "ats": "lever",           "token": "kkr",             "h1b_tier": "T2", "active": False},
 
     # ─── Ashby ────────────────────────────────────────────────
     {"company": "Ramp",              "ats": "ashby",           "token": "Ramp",            "h1b_tier": "T1"},
     {"company": "Linear",            "ats": "ashby",           "token": "Linear",          "h1b_tier": "T2"},
     {"company": "Mercury",           "ats": "ashby",           "token": "MercuryTechnologies", "h1b_tier": "T1", "active": False},
     {"company": "Vercel",            "ats": "greenhouse",      "token": "vercel",          "h1b_tier": "T1"},
-    {"company": "Anysphere (Cursor)","ats": "ashby",           "token": "Anysphere",       "h1b_tier": "T2"},
+    {"company": "Anysphere (Cursor)","ats": "ashby",           "token": "Anysphere",       "h1b_tier": "T2", "active": False},
     {"company": "Perplexity",        "ats": "ashby",           "token": "Perplexity",      "h1b_tier": "T1"},
 
     # ─── SmartRecruiters ──────────────────────────────────────
@@ -101,7 +101,7 @@ H1B_SPONSOR_BOARDS: list[dict] = [
     {"company": "Bosch",             "ats": "smartrecruiters", "token": "BoschGroup",      "h1b_tier": "T2"},
 
     # ─── Recruitee ────────────────────────────────────────────
-    {"company": "HelloFresh",        "ats": "recruitee",       "token": "hellofresh",      "h1b_tier": "T2"},
+    {"company": "HelloFresh",        "ats": "recruitee",       "token": "hellofresh",      "h1b_tier": "T2", "active": False},
 
     # ─── Teamtailor ───────────────────────────────────────────
     {"company": "Klarna",            "ats": "teamtailor",      "token": "klarna",          "h1b_tier": "T1", "active": False},
@@ -111,7 +111,7 @@ H1B_SPONSOR_BOARDS: list[dict] = [
     {"company": "Discord",           "ats": "greenhouse",      "token": "discord",         "h1b_tier": "T1"},
     {"company": "Duolingo",          "ats": "greenhouse",      "token": "duolingo",        "h1b_tier": "T1"},
     {"company": "Twilio",            "ats": "greenhouse",      "token": "twilio",          "h1b_tier": "T1"},
-    {"company": "Yelp",              "ats": "greenhouse",      "token": "yelp",            "h1b_tier": "T2"},
+    {"company": "Yelp",              "ats": "greenhouse",      "token": "yelp",            "h1b_tier": "T2", "active": False},
     {"company": "Wayfair",           "ats": "greenhouse",      "token": "wayfair",         "h1b_tier": "T1", "active": False},
     {"company": "Etsy",              "ats": "greenhouse",      "token": "etsy",            "h1b_tier": "T1", "active": False},
     {"company": "Compass",           "ats": "greenhouse",      "token": "urbancompass",    "h1b_tier": "T2"},
@@ -119,7 +119,7 @@ H1B_SPONSOR_BOARDS: list[dict] = [
     {"company": "Carvana",           "ats": "greenhouse",      "token": "carvana",         "h1b_tier": "T2"},
     {"company": "Toast",             "ats": "greenhouse",      "token": "toast",           "h1b_tier": "T1"},
     {"company": "Block (Cash App)",  "ats": "greenhouse",      "token": "cashapp",         "h1b_tier": "T1", "active": False},
-    {"company": "BetterUp",          "ats": "greenhouse",      "token": "betterup",        "h1b_tier": "T2"},
+    {"company": "BetterUp",          "ats": "greenhouse",      "token": "betterup",        "h1b_tier": "T2", "active": False},
     {"company": "Discord",           "ats": "greenhouse",      "token": "discord",         "h1b_tier": "T1"},
     {"company": "Roku",              "ats": "greenhouse",      "token": "roku",            "h1b_tier": "T1"},
     {"company": "Pure Storage",      "ats": "greenhouse",      "token": "purestorage",     "h1b_tier": "T1"},
@@ -133,16 +133,16 @@ H1B_SPONSOR_BOARDS: list[dict] = [
     {"company": "Rivian",            "ats": "greenhouse",      "token": "rivian",          "h1b_tier": "T1", "active": False},
     {"company": "Lucid Motors",      "ats": "greenhouse",      "token": "lucidmotors",     "h1b_tier": "T1"},
     {"company": "Tesla",             "ats": "greenhouse",      "token": "tesla",           "h1b_tier": "T1", "active": False},
-    {"company": "Wish",              "ats": "greenhouse",      "token": "wish",            "h1b_tier": "T2"},
-    {"company": "Rappi",             "ats": "greenhouse",      "token": "rappi",           "h1b_tier": "T2"},
-    {"company": "Grab",              "ats": "greenhouse",      "token": "grab",            "h1b_tier": "T2"},
+    {"company": "Wish",              "ats": "greenhouse",      "token": "wish",            "h1b_tier": "T2", "active": False},
+    {"company": "Rappi",             "ats": "greenhouse",      "token": "rappi",           "h1b_tier": "T2", "active": False},
+    {"company": "Grab",              "ats": "greenhouse",      "token": "grab",            "h1b_tier": "T2", "active": False},
     {"company": "Squarespace",       "ats": "greenhouse",      "token": "squarespace",     "h1b_tier": "T1"},
-    {"company": "Warby Parker",      "ats": "greenhouse",      "token": "warbyparker",     "h1b_tier": "T2"},
+    {"company": "Warby Parker",      "ats": "greenhouse",      "token": "warbyparker",     "h1b_tier": "T2", "active": False},
     {"company": "ZipRecruiter",      "ats": "greenhouse",      "token": "ziprecruiter",    "h1b_tier": "T2"},
     {"company": "Glassdoor",         "ats": "greenhouse",      "token": "glassdoor",       "h1b_tier": "T2"},
     {"company": "Indeed",            "ats": "smartrecruiters", "token": "Indeed",          "h1b_tier": "T1"},
-    {"company": "Bumble",            "ats": "greenhouse",      "token": "bumble",          "h1b_tier": "T2"},
-    {"company": "Hinge",             "ats": "greenhouse",      "token": "matchgroup",      "h1b_tier": "T2"},
+    {"company": "Bumble",            "ats": "greenhouse",      "token": "bumble",          "h1b_tier": "T2", "active": False},
+    {"company": "Hinge",             "ats": "greenhouse",      "token": "matchgroup",      "h1b_tier": "T2", "active": False},
     {"company": "Roblox Corporation","ats": "greenhouse",      "token": "roblox",          "h1b_tier": "T1"},
     {"company": "Coursera",          "ats": "greenhouse",      "token": "coursera",        "h1b_tier": "T1"},
     {"company": "Udemy",             "ats": "greenhouse",      "token": "udemy",           "h1b_tier": "T2"},

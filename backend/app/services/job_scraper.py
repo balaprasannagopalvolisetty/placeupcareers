@@ -12,6 +12,7 @@ Inspired by: github.com/speedyapply/JobSpy, github.com/PaulMcInnis/JobFunnel
 
 import asyncio
 import logging
+import os
 import time
 from datetime import datetime
 from typing import Optional
@@ -38,6 +39,17 @@ from app.utils.terminal_table import render_table
 logger = logging.getLogger(__name__)
 
 _rapidapi_disabled_until = 0.0
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+RAPIDAPI_REQUEST_DELAY_SECONDS = _env_float("RAPIDAPI_REQUEST_DELAY_SECONDS", 3.0)
+RAPIDAPI_RATE_LIMIT_COOLDOWN_SECONDS = _env_float("RAPIDAPI_RATE_LIMIT_COOLDOWN_SECONDS", 900.0)
 
 
 def _normalize_source_name(source: str) -> str:
@@ -498,10 +510,11 @@ async def scrape_linkedin_rapidapi(
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(url, headers=headers, params=params)
-            if response.status_code == 429:
-                _rapidapi_disabled_until = time.monotonic() + 300
+            if response.status_code in {403, 429}:
+                _rapidapi_disabled_until = time.monotonic() + RAPIDAPI_RATE_LIMIT_COOLDOWN_SECONDS
                 logger.warning(
-                    "LinkedIn RapidAPI rate limited; pausing remaining RapidAPI requests for this run"
+                    "LinkedIn RapidAPI returned %s; pausing remaining RapidAPI requests for this run",
+                    response.status_code,
                 )
                 return []
             response.raise_for_status()
@@ -651,13 +664,14 @@ async def run_scrape_cycle(
 
             # Dice — tech-focused, per query × location
             if JobSource.DICE in request.sources:
-                tasks.append(("dice", scrape_dice(
-                    search_term=search_term,
-                    location=location,
-                    results_wanted=request.results_per_source,
-                )))
-                sources_used.append("dice")
-                source_attempts["dice"] = source_attempts.get("dice", 0) + 1
+                if (location or "").strip().lower() in {"united states", "usa", "us"}:
+                    tasks.append(("dice", scrape_dice(
+                        search_term=search_term,
+                        location=location,
+                        results_wanted=request.results_per_source,
+                    )))
+                    sources_used.append("dice")
+                    source_attempts["dice"] = source_attempts.get("dice", 0) + 1
 
     scrapling_requested_sources = {
         JobSource.GLASSDOOR,
@@ -736,7 +750,7 @@ async def run_scrape_cycle(
                             return source_tag, await _with_timeout(), None
                     if _normalize_source_name(source_tag) == "rapidapi":
                         async with rapidapi_semaphore:
-                            await asyncio.sleep(1.0)
+                            await asyncio.sleep(RAPIDAPI_REQUEST_DELAY_SECONDS)
                             return source_tag, await _with_timeout(), None
                     return source_tag, await _with_timeout(), None
                 except asyncio.TimeoutError as exc:

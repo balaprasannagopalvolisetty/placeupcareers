@@ -338,6 +338,45 @@ Start a manual 6-hour scraper run:
 gcloud.cmd run jobs execute placeup-job-scraper-6h --region us-east1 --project steel-shine-492401-u6
 ```
 
+2026-06-01 live scraper/JD repair update:
+- Latest backend deploy target after scraper fixes: project
+  `steel-shine-492401-u6`, service `placeup-api`, region `us-east1`,
+  revision `placeup-api-00160-zhq`.
+- The 6-hour scraper now runs public batches across `rapidapi~usajobs~dice`,
+  but Dice is constrained to `United States` only because Dice's public API
+  uses `countryCode2=US` and returns noisy errors for global locations.
+- RapidAPI calls are paced with `RAPIDAPI_REQUEST_DELAY_SECONDS=3` and
+  `RAPIDAPI_RATE_LIMIT_COOLDOWN_SECONDS=900`; 403/429 responses pause the
+  provider for the current run instead of retrying every role/country.
+- LinkedIn JD repair now treats descriptions under 1200 chars as thin,
+  processes up to 5000 rows per run, and uses single-request concurrency to
+  reduce guest-page 429s:
+  `LINKEDIN_REQUESTS_PER_MINUTE=4`,
+  `LINKEDIN_ENRICH_CONCURRENCY=1`,
+  `LINKEDIN_REPAIR_CONCURRENCY=1`.
+- Known-stale curated ATS board tokens are marked `active: False` in
+  `backend/app/services/h1b_sponsor_boards.py` so future runs do not keep
+  hitting 404s for dead Greenhouse/Lever/Ashby/Recruitee boards.
+- Current live 6-hour execution started after clearing the stale advisory lock:
+  `placeup-job-scraper-6h-jc8ct`. Early logs showed 8,865 raw jobs and
+  5,303 unique normalized jobs before the DB load phase.
+- Operational caveat: the USAJobs secrets currently contain placeholder values,
+  so USAJobs is disabled until real `USAJOBS_API_KEY` and `USAJOBS_EMAIL`
+  Secret Manager versions are installed. RapidAPI returned 403 for the current
+  LinkedIn endpoint/key, so LinkedIn API collection depends on fixing that
+  subscription/key outside code. LinkedIn full-JD guest-page repair is
+  best-effort and can still be limited by LinkedIn 429s.
+
+Useful live commands:
+
+```powershell
+gcloud.cmd run services describe placeup-api --region us-east1 --project steel-shine-492401-u6 --format="value(status.latestReadyRevisionName,status.traffic[0].percent)"
+gcloud.cmd run jobs execute placeup-job-scraper-6h --region us-east1 --project steel-shine-492401-u6 --async
+gcloud.cmd run jobs execute placeup-taxonomy-role-backfill --region us-east1 --project steel-shine-492401-u6 --async
+gcloud.cmd run jobs execute placeup-linkedin-jd-repair --region us-east1 --project steel-shine-492401-u6 --async
+gcloud.cmd beta run jobs executions logs read placeup-job-scraper-6h-jc8ct --region us-east1 --project steel-shine-492401-u6 --limit 100
+```
+
 Verify the global taxonomy contract:
 
 ```powershell

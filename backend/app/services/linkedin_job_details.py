@@ -93,6 +93,7 @@ COOLDOWN_SECONDS    = _env_int("LINKEDIN_COOLDOWN_SECONDS", 600)
 MAX_BACKOFF_SECONDS = _env_float("LINKEDIN_MAX_BACKOFF_SECONDS", 90.0)
 THIN_DESCRIPTION_CHARS = _env_int("LINKEDIN_THIN_DESCRIPTION_CHARS", 1200)
 ENRICH_MAX_JOBS_PER_RUN = _env_int("LINKEDIN_ENRICH_MAX_JOBS_PER_RUN", 500)
+ENRICH_CONCURRENCY = _env_int("LINKEDIN_ENRICH_CONCURRENCY", 1)
 USE_STEALTH_FALLBACK = os.getenv("LINKEDIN_USE_STEALTH_FALLBACK", "true").strip().lower() in {"1", "true", "yes", "on"}
 
 
@@ -197,7 +198,7 @@ async def enrich_linkedin_jobs(
     jobs: list[JobPost],
     *,
     max_jobs: int = ENRICH_MAX_JOBS_PER_RUN,
-    concurrency: int = 4,
+    concurrency: int = ENRICH_CONCURRENCY,
 ) -> int:
     """Enrich job descriptions/companies by fetching their canonical
     LinkedIn detail pages.

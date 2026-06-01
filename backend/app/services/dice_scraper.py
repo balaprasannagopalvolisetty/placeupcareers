@@ -107,6 +107,9 @@ async def scrape_dice(
     """Scrape Dice for the given query, paginating through results."""
     if not search_term:
         return []
+    if (location or "").strip().lower() not in {"united states", "usa", "us", ""}:
+        logger.info("Dice skipped for unsupported non-US location '%s'", location)
+        return []
 
     transport = httpx.AsyncHTTPTransport(retries=2, proxy=proxy) if proxy else None
 

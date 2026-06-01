@@ -20,6 +20,7 @@ from app.services.linkedin_job_details import BOARD_COMPANIES, enrich_linkedin_j
 
 logger = logging.getLogger("placeup.workers.linkedin_jd_repair")
 THIN_DESCRIPTION_CHARS = int(os.getenv("LINKEDIN_REPAIR_THIN_DESCRIPTION_CHARS", "1200"))
+REPAIR_CONCURRENCY = int(os.getenv("LINKEDIN_REPAIR_CONCURRENCY", "1"))
 
 
 def _job_to_payload(job: Job, company: Company | None) -> dict:
@@ -79,7 +80,7 @@ async def run(limit: int, dry_run: bool = False) -> dict:
         except Exception as exc:
             logger.debug("Skipping invalid LinkedIn repair candidate %s: %s", payload.get("id"), exc)
 
-    repaired = await enrich_linkedin_jobs(jobs, max_jobs=limit, concurrency=4)
+    repaired = await enrich_linkedin_jobs(jobs, max_jobs=limit, concurrency=REPAIR_CONCURRENCY)
     write_count = 0
     if repaired and not dry_run:
         normalized = [normalize_job_payload(job.model_dump(mode="json")) for job in jobs]
