@@ -91,6 +91,8 @@ BREAKER_THRESHOLD   = _env_int("LINKEDIN_BREAKER_THRESHOLD", 5)
 BREAKER_WINDOW      = _env_int("LINKEDIN_BREAKER_WINDOW_SECONDS", 120)
 COOLDOWN_SECONDS    = _env_int("LINKEDIN_COOLDOWN_SECONDS", 600)
 MAX_BACKOFF_SECONDS = _env_float("LINKEDIN_MAX_BACKOFF_SECONDS", 90.0)
+THIN_DESCRIPTION_CHARS = _env_int("LINKEDIN_THIN_DESCRIPTION_CHARS", 1200)
+ENRICH_MAX_JOBS_PER_RUN = _env_int("LINKEDIN_ENRICH_MAX_JOBS_PER_RUN", 500)
 USE_STEALTH_FALLBACK = os.getenv("LINKEDIN_USE_STEALTH_FALLBACK", "true").strip().lower() in {"1", "true", "yes", "on"}
 
 
@@ -188,13 +190,13 @@ def needs_linkedin_enrichment(job: JobPost) -> bool:
         return False
     company = (getattr(job, "company", "") or "").strip().lower()
     description = (getattr(job, "description", "") or "").strip()
-    return company in BOARD_COMPANIES or len(description) < 450
+    return company in BOARD_COMPANIES or len(description) < THIN_DESCRIPTION_CHARS
 
 
 async def enrich_linkedin_jobs(
     jobs: list[JobPost],
     *,
-    max_jobs: int = 120,
+    max_jobs: int = ENRICH_MAX_JOBS_PER_RUN,
     concurrency: int = 4,
 ) -> int:
     """Enrich job descriptions/companies by fetching their canonical

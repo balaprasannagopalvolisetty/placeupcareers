@@ -17,14 +17,17 @@ from app.services.global_visa_rules import COUNTRY_RULES, TARGET_COUNTRIES
 
 logger = logging.getLogger(__name__)
 
-FREE_OPEN_PUBLIC_SOURCES = os.getenv("SCRAPER_PUBLIC_SOURCES", "usajobs")
+# Public/API pass must cover every taxonomy role, not just USAJobs. Keep this
+# env-tunable because RapidAPI/Dice quotas are operational limits, but the
+# production default should collect from all currently wired public sources.
+FREE_OPEN_PUBLIC_SOURCES = os.getenv("SCRAPER_PUBLIC_SOURCES", "rapidapi~usajobs~dice")
 FREE_OPEN_BOARD_SOURCES = "h1b_sponsor~tier1_ats"
 try:
-    BATCH_SIZE = max(2, int(os.getenv("SCRAPER_ROLE_BATCH_SIZE", "20")))
+    BATCH_SIZE = max(2, int(os.getenv("SCRAPER_ROLE_BATCH_SIZE", "8")))
 except ValueError:
     BATCH_SIZE = 20
 try:
-    PUBLIC_BATCH_CONCURRENCY = max(0, int(os.getenv("SCRAPER_PUBLIC_BATCH_CONCURRENCY", "0")))
+    PUBLIC_BATCH_CONCURRENCY = max(0, int(os.getenv("SCRAPER_PUBLIC_BATCH_CONCURRENCY", "2")))
 except ValueError:
     PUBLIC_BATCH_CONCURRENCY = 0
 ADVISORY_LOCK_KEY = 6412226682826

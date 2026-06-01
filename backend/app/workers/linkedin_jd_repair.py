@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import time
 
 from sqlalchemy import func, select
@@ -18,6 +19,7 @@ from app.models.job import JobPost
 from app.services.linkedin_job_details import BOARD_COMPANIES, enrich_linkedin_jobs
 
 logger = logging.getLogger("placeup.workers.linkedin_jd_repair")
+THIN_DESCRIPTION_CHARS = int(os.getenv("LINKEDIN_REPAIR_THIN_DESCRIPTION_CHARS", "1200"))
 
 
 def _job_to_payload(job: Job, company: Company | None) -> dict:
@@ -59,7 +61,7 @@ def _candidate_payloads(limit: int) -> list[dict]:
                 (Company.normalized_name.in_(board_names))
                 | (Job.description.is_(None))
                 | (Job.description == "")
-                | (func.length(Job.description) < 450)
+                | (func.length(Job.description) < THIN_DESCRIPTION_CHARS)
             )
             .order_by(Job.last_seen_at.desc())
             .limit(limit)
@@ -105,7 +107,7 @@ async def run(limit: int, dry_run: bool = False) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Repair existing LinkedIn rows with missing company/JD details.")
-    parser.add_argument("--limit", type=int, default=500)
+    parser.add_argument("--limit", type=int, default=2500)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args()

@@ -14,7 +14,7 @@ $ApiEnv = "APP_ENV=production,DATABASE_BACKEND=postgres,USER_DATABASE_BACKEND=$U
 if ($FrontendUrl) {
   $ApiEnv = "$ApiEnv,FRONTEND_URL=$FrontendUrl"
 }
-$ScraperEnv = "APP_ENV=production,DATABASE_BACKEND=postgres,SCRAPEGRAPH_ENABLED=false,SCRAPEGRAPH_DISCOVERY_ENABLED=true,SCRAPEGRAPH_DISCOVERY_MAX_URLS=220,SCRAPEGRAPH_DISCOVERY_CONCURRENCY=3,SCRAPE_MAX_CONCURRENCY=10,SCRAPER_PUBLIC_BATCH_CONCURRENCY=8"
+$ScraperEnv = "APP_ENV=production,DATABASE_BACKEND=postgres,SCRAPEGRAPH_ENABLED=false,SCRAPEGRAPH_DISCOVERY_ENABLED=true,SCRAPEGRAPH_DISCOVERY_MAX_URLS=220,SCRAPEGRAPH_DISCOVERY_CONCURRENCY=3,SCRAPE_MAX_CONCURRENCY=10,SCRAPER_PUBLIC_SOURCES=rapidapi~usajobs~dice,SCRAPER_ROLE_BATCH_SIZE=8,SCRAPER_PUBLIC_BATCH_CONCURRENCY=2,LINKEDIN_THIN_DESCRIPTION_CHARS=1200,LINKEDIN_ENRICH_MAX_JOBS_PER_RUN=500"
 $ApiSecrets = "DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,RAPIDAPI_KEY=RAPIDAPI_KEY:latest,USAJOBS_API_KEY=USAJOBS_API_KEY:latest,USAJOBS_EMAIL=USAJOBS_EMAIL:latest,HUNTER_API_KEY=HUNTER_API_KEY:latest,FINALSCOUT_API_KEY=FINALSCOUT_API_KEY:latest"
 $ScraperSecrets = "DATABASE_URL=DATABASE_URL:latest,RAPIDAPI_KEY=RAPIDAPI_KEY:latest,USAJOBS_API_KEY=USAJOBS_API_KEY:latest,USAJOBS_EMAIL=USAJOBS_EMAIL:latest,HUNTER_API_KEY=HUNTER_API_KEY:latest,FINALSCOUT_API_KEY=FINALSCOUT_API_KEY:latest"
 $ExternalSecrets = "DATABASE_URL=DATABASE_URL:latest,RAPIDAPI_KEY=RAPIDAPI_KEY:latest,USAJOBS_API_KEY=USAJOBS_API_KEY:latest,USAJOBS_EMAIL=USAJOBS_EMAIL:latest"
@@ -108,12 +108,12 @@ gcloud.cmd run jobs deploy placeup-external-api-12h `
   --command python `
   --args="-m,app.etl.external_api_ingest,--schedule-type,12h" `
   --set-cloudsql-instances "$ProjectId`:$Region`:$DbInstance" `
-  --set-env-vars "APP_ENV=production,DATABASE_BACKEND=postgres" `
+  --set-env-vars "APP_ENV=production,DATABASE_BACKEND=postgres,LINKEDIN_THIN_DESCRIPTION_CHARS=1200,LINKEDIN_REPAIR_THIN_DESCRIPTION_CHARS=1200,LINKEDIN_ENRICH_MAX_JOBS_PER_RUN=500" `
   --set-secrets $ExternalSecrets `
   --memory 1Gi `
   --cpu 1 `
   --max-retries 1 `
-  --task-timeout 7200
+  --task-timeout 21600
 
 gcloud.cmd run jobs deploy placeup-taxonomy-role-backfill `
   --image $Image `
@@ -122,12 +122,12 @@ gcloud.cmd run jobs deploy placeup-taxonomy-role-backfill `
   --command python `
   --args="-m,app.etl.taxonomy_role_backfill" `
   --set-cloudsql-instances "$ProjectId`:$Region`:$DbInstance" `
-  --set-env-vars "APP_ENV=production,DATABASE_BACKEND=postgres" `
+  --set-env-vars "APP_ENV=production,DATABASE_BACKEND=postgres,LINKEDIN_THIN_DESCRIPTION_CHARS=1200,LINKEDIN_REPAIR_THIN_DESCRIPTION_CHARS=1200,LINKEDIN_ENRICH_MAX_JOBS_PER_RUN=500" `
   --set-secrets $ExternalSecrets `
   --memory 2Gi `
   --cpu 2 `
   --max-retries 1 `
-  --task-timeout 7200
+  --task-timeout 21600
 
 gcloud.cmd run jobs deploy placeup-h1b-import `
   --image $Image `
@@ -158,14 +158,14 @@ gcloud.cmd run jobs deploy placeup-linkedin-jd-repair `
   --region $Region `
   --service-account "placeup-etl-sa@$ProjectId.iam.gserviceaccount.com" `
   --command python `
-  --args="-m,app.workers.linkedin_jd_repair,--limit,1000" `
+  --args="-m,app.workers.linkedin_jd_repair,--limit,5000" `
   --set-cloudsql-instances "$ProjectId`:$Region`:$DbInstance" `
-  --set-env-vars "APP_ENV=production,DATABASE_BACKEND=postgres" `
+  --set-env-vars "APP_ENV=production,DATABASE_BACKEND=postgres,LINKEDIN_THIN_DESCRIPTION_CHARS=1200,LINKEDIN_REPAIR_THIN_DESCRIPTION_CHARS=1200,LINKEDIN_ENRICH_MAX_JOBS_PER_RUN=500" `
   --set-secrets "DATABASE_URL=DATABASE_URL:latest" `
   --memory 1Gi `
   --cpu 1 `
   --max-retries 1 `
-  --task-timeout 3600
+  --task-timeout 7200
 
 gcloud.cmd run jobs deploy placeup-stale-jobs-sweeper `
   --image $Image `
