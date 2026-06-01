@@ -176,15 +176,19 @@ def update_preferences(user_id: str, fields: dict[str, Any]) -> dict:
 
 
 def list_alerts(user_id: str, limit: int = 100) -> list[dict]:
+    # Avoid requiring a composite Firestore index for (user_id, created_at).
+    # Alerts are small per user, so query by user and sort locally; this keeps
+    # the dashboard from hanging on first-load if the index is not provisioned.
     rows = (
         _client()
         .collection("user_alerts")
         .where("user_id", "==", user_id)
-        .order_by("created_at", direction=firestore.Query.DESCENDING)
-        .limit(limit)
+        .limit(max(limit * 5, limit))
         .stream()
     )
-    return [snap.to_dict() | {"id": snap.id} for snap in rows]
+    alerts = [snap.to_dict() | {"id": snap.id} for snap in rows]
+    alerts.sort(key=lambda row: str(row.get("created_at") or ""), reverse=True)
+    return alerts[:limit]
 
 
 def create_alert(user_id: str, payload: dict) -> dict:

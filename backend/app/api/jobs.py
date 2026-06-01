@@ -867,10 +867,10 @@ async def list_jobs(
     if fresh_since:
         filters["posted_since"] = max(fresh_since, visible_cutoff)
     else:
-        # The default "All active" view should show every live row we have
-        # seen inside the retention window, even when a source does not expose
-        # a reliable posted_at date. Explicit time filters still use posted_at.
-        filters["effective_since"] = visible_cutoff
+        # The default "All active" view should use the indexed freshness field.
+        # A COALESCE(posted_at,last_seen_at) predicate forced broad scans on
+        # master_jobs and was hitting Cloud Run's 45s timeout.
+        filters["seen_since"] = visible_cutoff
     if fresh_before:
         filters["posted_before"] = fresh_before
     title_terms = _taxonomy_terms(category, role)
