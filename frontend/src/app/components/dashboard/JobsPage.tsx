@@ -54,16 +54,14 @@ function normalizeVisa(visa: unknown): string[] {
       : [];
     const country = typeof record.visa_country === "string" ? record.visa_country : "";
     const badges = programNames.map((name) => country ? `${country}: ${name}` : name);
-    const map: Record<string, string> = {
-      visa_h1b: "H-1B", visa_opt: "OPT", visa_stem_opt: "STEM",
-      h1b_verified: "H-1B Verified", green_card: "Green Card",
-      no_sponsorship: "No sponsorship",
-    };
-    Object.entries(record)
-      .filter(([key, value]) => !["visa_score", "visa_country", "visa_country_name", "visa_programs", "visa_program_names", "sponsor_source", "english_friendly", "sponsor_verified"].includes(key) && Boolean(value))
-      .forEach(([key]) => badges.push(map[key] ?? key.replace(/_/g, " ")));
-    if (record.sponsor_verified && country) badges.push(`${country} sponsor`);
-    if (record.english_friendly) badges.push("English-friendly");
+    if (country === "US") {
+      if (record.visa_h1b) badges.push("H-1B");
+      if (record.visa_opt) badges.push("OPT");
+      if (record.visa_stem_opt) badges.push("STEM OPT");
+      if (record.h1b_verified) badges.push("H-1B Verified");
+      if (record.green_card) badges.push("Green Card");
+    }
+    if (record.no_sponsorship) badges.push("No sponsorship");
     return Array.from(new Set(badges));
   }
   if (typeof visa === "string") return visa.split(",").map((s) => s.trim()).filter(Boolean);

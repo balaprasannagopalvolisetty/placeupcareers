@@ -175,6 +175,15 @@ COUNTRY_ALIASES: dict[str, tuple[str, ...]] = {
     "CZ": ("czech republic", "czechia", "prague", "brno"),
 }
 
+NON_TARGET_COUNTRY_ALIASES: dict[str, tuple[str, ...]] = {
+    "IN": ("india", "bangalore", "bengaluru", "coimbatore", "hyderabad", "pune", "mumbai", "chennai", "gurgaon", "gurugram", "noida"),
+    "MX": ("mexico", "mexico city", "ciudad de mexico", "guadalajara"),
+    "CO": ("colombia", "bogota", "medellin"),
+    "BR": ("brazil", "sao paulo", "rio de janeiro"),
+    "AR": ("argentina", "buenos aires"),
+    "CL": ("chile", "santiago"),
+}
+
 
 STATE_OR_PROVINCE_TO_COUNTRY = {
     **{code: "US" for code in (
@@ -232,16 +241,30 @@ def normalize_country_code(value: str | None) -> str | None:
     return text if text in TARGET_COUNTRIES else None
 
 
+def _contains_alias(haystack: str, aliases: tuple[str, ...]) -> bool:
+    return any(re.search(rf"\b{re.escape(alias)}\b", haystack) for alias in aliases)
+
+
 def resolve_country(text: str | None, *, default: str | None = None) -> str | None:
     haystack = f" {(text or '').lower()} "
     explicit = normalize_country_code((text or "").strip())
     if explicit:
         return explicit
+    for code, aliases in NON_TARGET_COUNTRY_ALIASES.items():
+        if _contains_alias(haystack, aliases):
+            return code
+    m_any_country = re.search(r"(?:,\s*|\s)([A-Z]{2})\b\s*$", (text or "").strip(), re.I)
+    if m_any_country:
+        suffix = m_any_country.group(1).upper()
+        if suffix in TARGET_COUNTRIES:
+            return suffix
+        if suffix not in STATE_OR_PROVINCE_TO_COUNTRY:
+            return suffix
     m = re.search(r"\b([A-Z]{2})\b\s*$", (text or "").strip())
     if m and m.group(1) in STATE_OR_PROVINCE_TO_COUNTRY:
         return STATE_OR_PROVINCE_TO_COUNTRY[m.group(1)]
     for code, aliases in COUNTRY_ALIASES.items():
-        if any(alias in haystack for alias in aliases):
+        if _contains_alias(haystack, aliases):
             return code
     return normalize_country_code(default)
 

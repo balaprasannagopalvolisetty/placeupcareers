@@ -370,14 +370,31 @@ class PostgresClient:
             stmt = stmt.where(MasterJob.extra_metadata.op("->")("visa_programs").op("?")(filters["visa_program"]))
         return stmt
 
-    def _visa_payload(self, *, meta: dict, visa_opt: bool, visa_stem_opt: bool, visa_h1b: bool, h1b_verified: bool, visa_score: int) -> dict:
+    def _visa_payload(
+        self,
+        *,
+        meta: dict,
+        visa_opt: bool,
+        visa_stem_opt: bool,
+        visa_h1b: bool,
+        h1b_verified: bool,
+        visa_score: int,
+        country: str | None = None,
+    ) -> dict:
+        visa_country = meta.get("visa_country") or country
+        is_us_role = str(visa_country or "").upper() == "US"
+        if not is_us_role:
+            visa_opt = False
+            visa_stem_opt = False
+            visa_h1b = False
+            h1b_verified = False
         return {
             "visa_opt": visa_opt,
             "visa_stem_opt": visa_stem_opt,
             "visa_h1b": visa_h1b,
             "h1b_verified": h1b_verified,
             "visa_score": visa_score,
-            "visa_country": meta.get("visa_country"),
+            "visa_country": visa_country,
             "visa_country_name": meta.get("visa_country_name"),
             "visa_programs": meta.get("visa_programs") or [],
             "visa_program_names": meta.get("visa_program_names") or [],
@@ -409,6 +426,7 @@ class PostgresClient:
             },
             "visa": self._visa_payload(
                 meta=meta,
+                country=job.country,
                 visa_opt=job.visa_opt,
                 visa_stem_opt=job.visa_stem_opt,
                 visa_h1b=job.visa_h1b,
@@ -447,6 +465,7 @@ class PostgresClient:
             },
             "visa": self._visa_payload(
                 meta=meta,
+                country=row.get("country"),
                 visa_opt=bool(row.get("visa_opt")),
                 visa_stem_opt=bool(row.get("visa_stem_opt")),
                 visa_h1b=bool(row.get("visa_h1b")),
@@ -483,6 +502,7 @@ class PostgresClient:
             },
             "visa": self._visa_payload(
                 meta=job.extra_metadata or {},
+                country=getattr(job, "country", None),
                 visa_opt=job.visa_opt,
                 visa_stem_opt=job.visa_stem_opt,
                 visa_h1b=job.visa_h1b,
@@ -519,6 +539,7 @@ class PostgresClient:
             },
             "visa": self._visa_payload(
                 meta=row.get("extra_metadata") or {},
+                country=row.get("country"),
                 visa_opt=bool(row.get("visa_opt")),
                 visa_stem_opt=bool(row.get("visa_stem_opt")),
                 visa_h1b=bool(row.get("visa_h1b")),
