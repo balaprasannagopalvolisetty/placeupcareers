@@ -63,6 +63,40 @@ def test_jobtech_parser_rejects_incomplete():
     assert op.jobtech_hit_to_jobpost("not a dict") is None
 
 
+def test_ba_jobsuche_parser_maps_germany():
+    job = op.ba_item_to_jobpost({
+        "beruf": "Softwareentwickler/in",
+        "titel": "Software Engineer",
+        "refnr": "10001-ABC-S",
+        "arbeitgeber": "Acme GmbH",
+        "arbeitsort": {"ort": "Berlin", "region": "Berlin", "land": "Deutschland"},
+        "aktuelleVeroeffentlichungsdatum": "2026-06-02",
+    })
+    assert job is not None
+    assert job.source.value == "ba_jobsuche"
+    assert job.company == "Acme GmbH"
+    assert job.location == "Berlin, Berlin, Germany"
+    assert job.extra_metadata["visa_country"] == "DE"
+
+
+def test_mycareersfuture_parser_maps_singapore():
+    job = op.mcf_item_to_jobpost({
+        "uuid": "sg-1",
+        "title": "Data Engineer",
+        "description": "<p>We are looking for a data engineer to join our team.</p>",
+        "postedCompany": {"name": "Acme SG"},
+        "address": {"districts": [{"location": "Central"}]},
+        "metadata": {"newPostingDate": "2026-06-02T08:00:00Z", "jobDetailsUrl": "/job/data-engineer"},
+        "salary": {"minimum": 5000, "maximum": 8000},
+    })
+    assert job is not None
+    assert job.source.value == "mycareersfuture"
+    assert job.company == "Acme SG"
+    assert job.location == "Central"
+    assert job.extra_metadata["visa_country"] == "SG"
+    assert job.job_url.startswith("https://www.mycareersfuture.gov.sg")
+
+
 def test_english_only_filter_drops_local_language(monkeypatch):
     """run_all_clean_sources(english_only=True) keeps EN, drops SV."""
     en = op.jobtech_hit_to_jobpost(_HIT_EN)

@@ -703,6 +703,15 @@ async def run_scrape_cycle(
         JobSource.JOBICY: "jobicy",
         JobSource.WEWORKREMOTELY: "weworkremotely",
         JobSource.JOBTECH: "jobtech",
+        JobSource.EURES: "eures",
+        JobSource.UK_FIND_A_JOB: "uk_findajob",
+        JobSource.NHS_JOBS: "nhs_jobs",
+        JobSource.JOBBANK_CA: "jobbank_ca",
+        JobSource.BA_JOBSUCHE: "ba_jobsuche",
+        JobSource.FRANCE_TRAVAIL: "france_travail",
+        JobSource.MYCAREERSFUTURE: "mycareersfuture",
+        JobSource.TYOMARKKINATORI: "tyomarkkinatori",
+        JobSource.NAV_ARBEIDSPLASSEN: "nav_arbeidsplassen",
     }
     clean_sources = {
         clean_source_map[src]

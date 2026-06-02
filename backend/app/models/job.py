@@ -35,6 +35,15 @@ class JobSource(str, Enum):
     # Official government job-portal APIs (clean 200, country-tagged).
     # Owned by app/etl/sources/official_portals.py.
     JOBTECH = "jobtech"            # Sweden — Platsbanken / JobTech Dev open API
+    EURES = "eures"
+    UK_FIND_A_JOB = "uk_findajob"
+    NHS_JOBS = "nhs_jobs"
+    JOBBANK_CA = "jobbank_ca"
+    BA_JOBSUCHE = "ba_jobsuche"
+    FRANCE_TRAVAIL = "france_travail"
+    MYCAREERSFUTURE = "mycareersfuture"
+    TYOMARKKINATORI = "tyomarkkinatori"
+    NAV_ARBEIDSPLASSEN = "nav_arbeidsplassen"
     # ATS career boards (direct from company)
     GREENHOUSE = "greenhouse"
     LEVER = "lever"
