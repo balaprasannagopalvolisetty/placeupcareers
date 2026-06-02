@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { motion } from "motion/react";
-import { Search, Filter, X, Bookmark, ExternalLink, ShieldCheck, RefreshCw, Globe2, Route, Languages, Building2, Sparkles } from "lucide-react";
+import { Search, Filter, X, Bookmark, ExternalLink, ShieldCheck, RefreshCw, Globe2, Route, Languages, Building2, Sparkles, Clock } from "lucide-react";
 import * as api from "../../lib/api";
 import { LoadingLogo } from "../LoadingLogo";
 
@@ -379,7 +379,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const [visaProgramFilter, setVisaProgramFilter] = useState("");
   const [timeFilter, setTimeFilter] = useState("");
   const [visaOnly, setVisaOnly] = useState(false);
-  const [personalized, setPersonalized] = useState(false);
+  const [personalized, setPersonalized] = useState(true);
 
   const [savedVersion, setSavedVersion] = useState(0);
   const [appliedVersion, setAppliedVersion] = useState(0);
@@ -442,10 +442,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
         const locations = (prefs.target_locations || []).filter(Boolean) as string[];
         setUserPrefs({ target_roles: roles, target_locations: locations });
         if (!prefsApplied && (roles.length || locations.length)) {
-          // Keep the first load broad and fast. Saved preferences are still
-          // available for personalization, but the global Jobs page should not
-          // silently narrow the user's current list before they choose filters.
-          setPersonalized(false);
+          setPersonalized(true);
           setPrefsApplied(true);
         }
       })
@@ -533,7 +530,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       setTotal(0);
     }
 
-    const params: Record<string, string | number | boolean> = { page, page_size: pageSize, max_years: 10, sort: "recent", personalized };
+    const params: Record<string, string | number | boolean> = { page, page_size: pageSize, max_years: 10, sort: "match", personalized };
     if (resumeLink.hasResume) params.include_scores = true;
     if (search) params.search = search;
     if (location) params.location = location;
@@ -624,7 +621,22 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
     [targetCountries],
   );
   const priorityRoutes = useMemo(
-    () => visibleVisaPrograms.slice(0, isMobile ? 4 : 8),
+    () => {
+      const preferred = [
+        "US:h1b", "US:stem_opt", "US:opt", "CA:lmia_work_permit", "CA:global_talent_stream",
+        "GB:skilled_worker", "IE:critical_skills", "DE:eu_blue_card", "NL:highly_skilled_migrant",
+        "AU:skills_in_demand_482", "NZ:aewv", "SG:employment_pass", "AE:standard_work_permit",
+        "JP:engineer_specialist", "FR:eu_blue_card", "ES:eu_blue_card", "SE:eu_blue_card",
+      ];
+      const ranked = [...visibleVisaPrograms].sort((a, b) => {
+        const ak = `${a.country_code}:${a.code}`;
+        const bk = `${b.country_code}:${b.code}`;
+        const ai = preferred.indexOf(ak);
+        const bi = preferred.indexOf(bk);
+        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+      });
+      return ranked.slice(0, isMobile ? 5 : 12);
+    },
     [visibleVisaPrograms, isMobile],
   );
   const allJobsCount = Number(pipelineStatus?.total_jobs || pipelineStatus?.active_jobs || total || 0);
@@ -1014,6 +1026,10 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                   <div style={{ height: 1, background: "rgba(167,139,250,0.22)", marginTop: 2 }} />
                   <div style={{ display: "flex", gap: 8, fontSize: 11, color: J.t2, fontFamily: F.sans, flexWrap: "wrap", alignItems: "center" }}>
                     <span style={{ display: "inline-flex", gap: 5, alignItems: "center", minWidth: 0 }}><span style={{ fontSize: 15 }}>{countryFlag(visaCountry)}</span><span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{job.location || visaCountryName || "Remote"}</span></span>
+                    <span style={{ display: "inline-flex", gap: 5, alignItems: "center", padding: "3px 8px", borderRadius: 999, background: "rgba(96,165,250,0.08)", color: "#BFDBFE", border: "1px solid rgba(96,165,250,0.18)", whiteSpace: "nowrap" }}>
+                      <Clock size={11} />
+                      {publishDateLabel(job).replace("Publish date ", "")}
+                    </span>
                   </div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 750, padding: "4px 8px", borderRadius: 999, background: J.blueBg, color: J.blue, fontFamily: F.sans }}><Building2 size={11} />{role}</span>
@@ -1034,7 +1050,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                       {visaBadges.length === 0 && <span style={{ fontSize: 10, color: J.t3, fontFamily: F.sans }}>Visa not verified</span>}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, borderTop: `1px solid ${J.line}`, paddingTop: 9 }}>
-                      <span style={{ color: J.t3, fontSize: 10, fontFamily: F.sans }}>{publishDateLabel(job)}</span>
+                      <span style={{ color: J.t3, fontSize: 10, fontFamily: F.sans }}>{getScoreMeta(match).label}</span>
                       <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
                       <button onClick={(e) => {
                         e.stopPropagation();

@@ -35,6 +35,10 @@ interface SponsorListResponse {
   page: number;
   page_size: number;
   total_pages: number;
+  country?: string;
+  country_name?: string;
+  official_source?: { name: string; url: string; route: string };
+  message?: string;
   sponsors: SponsorRow[];
 }
 
@@ -71,7 +75,10 @@ export function VisaTrackerPage() {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(50);
   const [search, setSearch] = useState("");
+  const [countryFilter, setCountryFilter] = useState("US");
   const [stateFilter, setStateFilter] = useState("");
+  const [officialSource, setOfficialSource] = useState<SponsorListResponse["official_source"] | null>(null);
+  const [sourceMessage, setSourceMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -92,13 +99,16 @@ export function VisaTrackerPage() {
     const handle = setTimeout(() => {
       const params = new URLSearchParams();
       if (search.trim()) params.set("company", search.trim());
-      if (stateFilter.trim()) params.set("state", stateFilter.trim());
+      params.set("country", countryFilter);
+      if (countryFilter === "US" && stateFilter.trim()) params.set("state", stateFilter.trim());
       params.set("page", String(page));
       params.set("page_size", String(pageSize));
       api.getVisaSponsors(Object.fromEntries(params.entries()))
         .then((data) => data as SponsorListResponse)
         .then((data) => {
           if (!active) return;
+          setOfficialSource(data?.official_source || null);
+          setSourceMessage(data?.message || "");
           setSponsors((data?.sponsors || []).map((row) => ({
             ...row,
             city: row.city || row.location || "Multiple",
@@ -114,7 +124,7 @@ export function VisaTrackerPage() {
         .finally(() => { if (active) setLoading(false); });
     }, 300);
     return () => { active = false; clearTimeout(handle); };
-  }, [search, stateFilter, page, pageSize]);
+  }, [search, countryFilter, stateFilter, page, pageSize]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
@@ -153,10 +163,21 @@ export function VisaTrackerPage() {
           />
         </div>
         <input
+          value={countryFilter}
+          onChange={(e) => { setCountryFilter(e.target.value); setStateFilter(""); setPage(1); }}
+          list="visa-country-options"
+          placeholder="Country"
+          style={{ width: isMobile ? "100%" : 130, height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", color: T.text, fontSize: 13, outline: "none", fontFamily: F.sans, textTransform: "uppercase" }}
+        />
+        <datalist id="visa-country-options">
+          {["US", "GB", "CA", "NL", "IE", "NZ", "AU", "SG", "DE", "FR", "ES", "SE", "AE", "JP"].map((code) => <option key={code} value={code} />)}
+        </datalist>
+        <input
           value={stateFilter}
           onChange={(e) => { setStateFilter(e.target.value.toUpperCase()); setPage(1); }}
           placeholder="State (CA, NY...)"
           maxLength={2}
+          disabled={countryFilter !== "US"}
           style={{ width: isMobile ? "100%" : 110, height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", color: T.text, fontSize: 13, outline: "none", fontFamily: F.sans, textTransform: "uppercase" }}
         />
         <span style={{ fontSize: 12, color: T.t3, fontFamily: F.sans, whiteSpace: "nowrap" }}>
@@ -165,9 +186,22 @@ export function VisaTrackerPage() {
       </div>
 
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, color: T.t3, fontFamily: F.sans, fontSize: 12 }}>
-        <span>Verified sponsor records with location, fiscal year, petition counts, approval rate, and status.</span>
+        <span>{countryFilter === "US" ? "Verified sponsor records with location, fiscal year, petition counts, approval rate, and status." : sourceMessage || "Official sponsor source selected for this country."}</span>
         <span style={{ color: T.t2 }}>{total ? `${((page - 1) * pageSize + 1).toLocaleString()}-${Math.min(page * pageSize, total).toLocaleString()} of ${total.toLocaleString()}` : "0 records"}</span>
       </div>
+      {officialSource && (
+        <div style={{ background: "rgba(242,238,179,0.04)", border: `1px solid ${T.border}`, borderRadius: 12, padding: "12px 14px", display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", gap: 10, alignItems: isMobile ? "stretch" : "center" }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 750, color: T.text, fontFamily: F.sans }}>{officialSource.route}</div>
+            <div style={{ fontSize: 11, color: T.t2, fontFamily: F.sans, marginTop: 2 }}>{officialSource.name}</div>
+          </div>
+          {officialSource.url && (
+            <a href={officialSource.url} target="_blank" rel="noreferrer" style={{ color: T.red, fontSize: 12, fontWeight: 750, fontFamily: F.sans, textDecoration: "none" }}>
+              Official source
+            </a>
+          )}
+        </div>
+      )}
 
       {/* Sponsor table */}
       <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 16, overflow: "hidden" }}>

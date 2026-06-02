@@ -261,11 +261,9 @@ async def get_dashboard_summary(
         except Exception as exc:
             log.warning("Dashboard summary resume score fallback failed for %s: %s", user_id, exc)
 
-    try:
-        total_jobs = int(await db.count_jobs())
-    except Exception as exc:
-        log.warning("Dashboard summary job count failed: %s", exc)
-        total_jobs = 0
+    # Keep the overview fast. A broad COUNT(*) over the production jobs table
+    # can delay resume/application cards even though those cards are user data.
+    total_jobs = 0
 
     try:
         total_applications = user_store.count_user_applications(user_id)

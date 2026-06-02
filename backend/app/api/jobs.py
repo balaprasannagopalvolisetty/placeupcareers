@@ -139,6 +139,162 @@ def _prepare_resume_tokens(resume_text: str) -> dict:
         return {}
 
 
+_SENIORITY_WORDS = {
+    "intern": 0, "internship": 0, "entry": 1, "junior": 1, "associate": 2,
+    "mid": 4, "senior": 6, "sr": 6, "staff": 8, "principal": 9, "lead": 8,
+    "manager": 7, "director": 10, "head": 10,
+}
+
+
+def _extract_years_required(text: str) -> int | None:
+    matches = re.findall(
+        r"(?i)\b(\d{1,2})\+?\s*(?:-\s*\d{1,2})?\s*(?:years?|yrs?)\s+(?:of\s+)?(?:professional\s+)?(?:experience|exp)\b",
+        text or "",
+    )
+    if not matches:
+        return None
+    try:
+        return max(int(v) for v in matches)
+    except ValueError:
+        return None
+
+
+def _resume_years_hint(resume_text: str) -> int | None:
+    matches = re.findall(
+        r"(?i)\b(\d{1,2})\+?\s*(?:years?|yrs?)\s+(?:of\s+)?(?:professional\s+)?(?:experience|exp)\b",
+        resume_text or "",
+    )
+    if not matches:
+        return None
+    try:
+        return max(int(v) for v in matches)
+    except ValueError:
+        return None
+
+
+def _seniority_level(text: str) -> int:
+    low = f" {html.unescape(text or '').lower()} "
+    level = 3
+    for word, value in _SENIORITY_WORDS.items():
+        if re.search(rf"\b{re.escape(word)}\b", low):
+            level = max(level, value)
+    years = _extract_years_required(low)
+    if years is not None:
+        level = max(level, min(10, years))
+    return level
+
+
+def _required_text(text: str) -> str:
+    clean = html.unescape(text or "")
+    sections = re.split(
+        r"(?i)\b(preferred qualifications|nice to have|benefits|perks|about us|equal opportunity)\b",
+        clean,
+        maxsplit=1,
+    )[0]
+    match = re.search(
+        r"(?is)\b(requirements?|qualifications?|minimum qualifications?|basic qualifications?|must have|what you bring)\b[:\s-]*(.+)",
+        sections,
+    )
+    return match.group(2) if match else sections
+
+
+def _role_title_score(resume_text: str, title: str) -> float:
+    title_tokens = [
+        token for token in re.findall(r"\b[a-z][a-z+#./-]{2,}\b", (title or "").lower())
+        if token not in {"senior", "staff", "lead", "principal", "junior", "associate", "manager", "remote", "engineer", "analyst"}
+    ][:8]
+    if not title_tokens:
+        return 50.0
+    resume = html.unescape(resume_text or "").lower()
+    hits = sum(1 for token in title_tokens if re.search(rf"\b{re.escape(token)}\b", resume))
+    return hits / len(title_tokens) * 100
+
+
+def _ats_score_v2(resume_text: str, job_text: str, *, resume_cache: Optional[dict] = None) -> dict[str, Any]:
+    from app.utils.text_processing import (
+        clean_text,
+        compute_keyword_overlap,
+        extract_relevant_keywords,
+        extract_skills_from_text,
+    )
+
+    title, _, _body = job_text.partition("\n")
+    r_skills = list(dict.fromkeys((resume_cache.get("skills") or []) if resume_cache else extract_skills_from_text(resume_text)))
+    r_kw = list(dict.fromkeys((resume_cache.get("keywords") or []) if resume_cache else (r_skills + extract_relevant_keywords(resume_text, top_n=80))))
+    required = _required_text(job_text)
+
+    jd_skills = list(dict.fromkeys(extract_skills_from_text(job_text)))
+    required_skills = list(dict.fromkeys(extract_skills_from_text(required))) or jd_skills[:12]
+    jd_keywords = [kw for kw in extract_relevant_keywords(job_text, top_n=55) if _is_real_skill(kw)]
+    required_keywords = [kw for kw in extract_relevant_keywords(required, top_n=28) if _is_real_skill(kw)]
+
+    matched_skills, missing_skills, skill_pct = compute_keyword_overlap(r_skills, jd_skills) if jd_skills else ([], [], 0)
+    required_pool = list(dict.fromkeys(required_skills + required_keywords))
+    matched_required, missing_required, required_pct = compute_keyword_overlap(r_kw, required_pool) if required_pool else ([], [], skill_pct)
+    _, _, keyword_pct = compute_keyword_overlap(r_kw, list(dict.fromkeys(jd_skills + jd_keywords))) if (jd_skills or jd_keywords) else ([], [], 0)
+    title_pct = _role_title_score(resume_text, title)
+
+    resume_years = _resume_years_hint(resume_text)
+    required_years = _extract_years_required(job_text)
+    seniority_gap = 0
+    if required_years is not None and resume_years is not None and resume_years + 1 < required_years:
+        seniority_gap = min(22, (required_years - resume_years) * 4)
+    elif _seniority_level(title) >= 7 and _seniority_level(resume_text[:1200]) <= 3:
+        seniority_gap = 16
+
+    hard_requirement_penalty = 0
+    if required_skills and len(matched_required) == 0:
+        hard_requirement_penalty += 18
+    if skill_pct < 20 and required_pct < 25:
+        hard_requirement_penalty += 12
+    authorization_penalty = 10 if SPONSORSHIP_BLOCK_RE.search(job_text.lower()) else 0
+
+    score = (
+        title_pct * 0.18
+        + skill_pct * 0.30
+        + required_pct * 0.28
+        + keyword_pct * 0.14
+        + min(10, len(matched_required) * 2.0)
+        + min(6, len(matched_skills))
+        - seniority_gap
+        - hard_requirement_penalty
+        - authorization_penalty
+    )
+    if len(jd_skills) >= 4 and len(matched_skills) <= 1:
+        score = min(score, 38)
+    if title_pct < 20 and required_pct < 30:
+        score = min(score, 42)
+    if seniority_gap >= 16:
+        score = min(score, 48)
+    if skill_pct >= 70 and required_pct >= 65:
+        score += 8
+    if title_pct >= 70 and required_pct >= 55:
+        score += 5
+
+    return {
+        "score": int(round(max(6, min(98, score)))),
+        "components": {
+            "title_match_pct": round(title_pct, 1),
+            "skill_match_pct": round(skill_pct, 1),
+            "required_terms_pct": round(required_pct, 1),
+            "keyword_overlap_pct": round(keyword_pct, 1),
+            "required_years": required_years,
+            "resume_years": resume_years,
+        },
+        "matched_skills": matched_skills[:15],
+        "missing_skills": missing_skills[:15],
+        "matched_required": matched_required[:15],
+        "missing_required": missing_required[:15],
+        "applied_penalties": [
+            label for label, active in (
+                ("Seniority/years gap", seniority_gap > 0),
+                ("Hard requirement gap", hard_requirement_penalty > 0),
+                ("Work authorization warning", authorization_penalty > 0),
+            ) if active
+        ],
+    }
+
+
 def _score_job_against_resume(resume_text: str, job_text: str, *, resume_cache: Optional[dict] = None) -> int:
     """
     Lightweight per-job ATS-style match score (0-100).
@@ -157,6 +313,7 @@ def _score_job_against_resume(resume_text: str, job_text: str, *, resume_cache: 
     if not _can_score_job_text(title, body):
         return 0
     try:
+        return int(_ats_score_v2(resume_text, job_text, resume_cache=resume_cache)["score"])
         from app.utils.text_processing import (
             clean_text, extract_relevant_keywords, extract_skills_from_text, compute_keyword_overlap,
         )
@@ -318,6 +475,7 @@ def score_breakdown(resume_text: str, job_text: str, *, resume_cache: Optional[d
             "applied_penalties": ["Job description too thin for ATS scoring"],
         }
     try:
+        return _ats_score_v2(resume_text, job_text, resume_cache=resume_cache)
         from app.utils.text_processing import (
             clean_text, extract_keywords, extract_skills_from_text, compute_keyword_overlap,
         )
@@ -494,7 +652,18 @@ def _projection_sort_key(job: dict, tz_offset_minutes: int = 0) -> tuple:
     effective_ts = effective.timestamp() if effective else 0
     posted = _coerce_datetime(job.get("posted_at"))
     posted_ts = posted.timestamp() if posted else effective_ts
-    return (date_bucket, -score, -effective_ts, -posted_ts)
+    preference_bucket = 0 if job.get("preference_match") else 1
+    return (preference_bucket, date_bucket, -score, -effective_ts, -posted_ts)
+
+
+def _job_matches_preferences(job: dict, preferred_roles: list[str], preferred_locations: list[str]) -> bool:
+    if not preferred_roles and not preferred_locations:
+        return False
+    hay = f"{job.get('title') or ''} {job.get('role') or ''} {job.get('taxonomy_category') or ''}".lower()
+    loc_hay = f"{job.get('location') or ''}".lower()
+    role_match = bool(preferred_roles and any(term in hay for term in preferred_roles))
+    loc_match = bool(preferred_locations and any(term in loc_hay for term in preferred_locations))
+    return role_match or loc_match
 
 
 def _taxonomy_terms(category: Optional[str], role: Optional[str]) -> list[str]:
@@ -1028,6 +1197,7 @@ async def list_jobs(
                 pref_bonus += 3
             if pref_bonus and isinstance(j.get("match_score"), int):
                 j["match_score"] = min(98, int(j["match_score"]) + pref_bonus)
+            j["preference_match"] = _job_matches_preferences(j, preferred_roles, preferred_locations)
 
         # Score the filtered candidate pool before slicing so the frontend
         # projection can be genuinely ATS-ranked, not just baseline-ranked.
@@ -1487,7 +1657,8 @@ async def get_top_matches(
     terms = _terms_for_role_names(preferred_roles)
     if terms:
         filters["title_terms"] = terms
-    jobs = await db.get_jobs(filters=filters, limit=400, offset=0)
+    candidate_limit = min(max(limit * 8, 80), 180)
+    jobs = await db.get_jobs(filters=filters, limit=candidate_limit, offset=0)
     resume_cache = _prepare_resume_tokens(resume_text) if resume_text else None
     ranked: list[dict] = []
     for job in jobs:
@@ -1520,6 +1691,7 @@ async def get_top_matches(
             item["match_score"] = min(98, int(item["match_score"] or 0) + 6)
         if preferred_locations and any(term in loc_hay for term in preferred_locations):
             item["match_score"] = min(98, int(item["match_score"] or 0) + 3)
+        item["preference_match"] = _job_matches_preferences(item, preferred_roles, preferred_locations)
         ranked.append(item)
     ranked.sort(key=lambda row: _projection_sort_key(row, tz_offset_minutes=tz_offset))
     return {

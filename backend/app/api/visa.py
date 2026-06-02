@@ -14,9 +14,22 @@ from app.models.visa import (
     H1BSearchResponse, H1BSponsor, H1BSalaryData,
     VisaClassifyRequest, VisaScore,
 )
+from app.services.global_visa_rules import COUNTRY_RULES, normalize_country_code
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/visa", tags=["Visa & H1B"])
+
+
+OFFICIAL_SPONSOR_SOURCES = {
+    "US": {"name": "USCIS H-1B Employer Data Hub / DOL LCA", "url": "https://www.uscis.gov/tools/reports-and-studies/h-1b-employer-data-hub", "route": "H-1B"},
+    "GB": {"name": "GOV.UK Register of licensed sponsors: workers", "url": "https://www.gov.uk/government/publications/register-of-licensed-sponsors-workers", "route": "Skilled Worker"},
+    "NL": {"name": "IND Public Register Recognised Sponsors", "url": "https://ind.nl/en/public-register-recognised-sponsors/public-register-work", "route": "Highly Skilled Migrant"},
+    "NZ": {"name": "Immigration New Zealand accredited employer check", "url": "https://www.immigration.govt.nz/new-zealand-visas/preparing-a-visa-application/working-in-nz/check-if-an-employer-is-accredited", "route": "AEWV"},
+    "IE": {"name": "Ireland Employment Permit Statistics", "url": "https://www.gov.ie/en/department-of-enterprise-tourism-and-employment/collections/employment-permit-statistics/", "route": "Critical Skills / General Employment Permit"},
+    "CA": {"name": "Government of Canada positive LMIA employer data", "url": "https://open.canada.ca/data/en/dataset/90fed587-1364-4f33-a9ee-208181dc0b97", "route": "LMIA Work Permit"},
+    "SG": {"name": "Singapore MOM Employment Pass", "url": "https://www.mom.gov.sg/passes-and-permits/employment-pass", "route": "Employment Pass"},
+    "AU": {"name": "Australian sponsor sanctions and sponsorship obligations", "url": "https://www.abf.gov.au/about-us/what-we-do/sponsor-sanctions/register-of-sanctioned-sponsors", "route": "Skills in Demand / ENS"},
+}
 
 
 def _sponsor_row_to_card(r: dict) -> dict:
@@ -101,11 +114,32 @@ async def get_visa_dashboard(db=Depends(get_db)):
 async def list_visa_sponsors(
     company: Optional[str] = Query(None, description="Filter by company name (substring match)"),
     state: Optional[str] = Query(None, description="Filter by state code"),
+    country: Optional[str] = Query("US", description="Country code. US uses imported H-1B employer records; other countries return official source metadata until imported."),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=500),
     db=Depends(get_db),
 ):
     """Searchable sponsor directory backed by the H1B Excel import."""
+    country_code = normalize_country_code(country) or "US"
+    official_source = OFFICIAL_SPONSOR_SOURCES.get(country_code)
+    if country_code != "US":
+        rule = COUNTRY_RULES.get(country_code)
+        source = official_source or {
+            "name": f"{rule.name if rule else country_code} official immigration sponsor source",
+            "url": "",
+            "route": ", ".join(program.name for program in (rule.programs if rule else ())) or "Work visa",
+        }
+        return {
+            "total": 0,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": 1,
+            "country": country_code,
+            "country_name": rule.name if rule else country_code,
+            "official_source": source,
+            "sponsors": [],
+            "message": "Official country sponsor source is ready. Company-level import for this country is pending.",
+        }
     try:
         total = await db.count_h1b_sponsors(employer=company, state=state)
         offset = (page - 1) * page_size
@@ -120,6 +154,8 @@ async def list_visa_sponsors(
         "page": page,
         "page_size": page_size,
         "total_pages": max(1, (total + page_size - 1) // page_size),
+        "country": country_code,
+        "official_source": official_source,
         "sponsors": sponsors,
     }
 
