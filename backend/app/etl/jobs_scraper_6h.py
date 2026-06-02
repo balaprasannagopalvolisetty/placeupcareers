@@ -1,4 +1,8 @@
-"""Production-sized 6-hour job scraper entrypoint for Cloud Run Jobs."""
+"""Production-sized 8-hour job scraper entrypoint for the existing Cloud Run Job.
+
+The Cloud Run job intentionally keeps the historical name
+`placeup-job-scraper-6h`; only its schedule/behavior changed to 8 hours.
+"""
 
 from __future__ import annotations
 
@@ -11,6 +15,7 @@ from sqlalchemy import text
 
 from app.db.postgres import PostgresClient
 from app.etl.jobs_scraper import run
+from app.etl.api_sources.runner import run_api_connectors_to_postgres
 from app.config import settings
 from app.job_taxonomy import all_role_names, all_taxonomy_scrape_search_terms
 from app.services.global_visa_rules import COUNTRY_RULES, TARGET_COUNTRIES
@@ -64,7 +69,7 @@ def _base_args(**overrides) -> argparse.Namespace:
         "jobspy_page_size": 50,
         "jobspy_max_pages": 25,
         "tiers": "T1~T2",
-        "schedule_type": "6h",
+        "schedule_type": "8h",
         "dry_run": False,
     }
     values.update(overrides)
@@ -79,25 +84,31 @@ async def _run_batched() -> int:
     semaphore = asyncio.Semaphore(public_concurrency)
     failures = 0
 
-    logger.info("6h scraper running direct H1B/ATS/discovery board pass")
+    logger.info("8h scraper running direct H1B/ATS board pass")
+    api_connector_count = await run_api_connectors_to_postgres(
+        queries=terms,
+        countries=list(sorted(TARGET_COUNTRIES)),
+        sources=os.getenv("API_CONNECTOR_SOURCES", "adzuna~greenhouse"),
+    )
+    logger.info("8h official API/ATS connectors loaded %s jobs", api_connector_count)
     board_code = await run(_base_args(
         queries=_encoded_terms(roles),
         sources=FREE_OPEN_BOARD_SOURCES,
-        schedule_type="6h-boards",
+        schedule_type="8h-boards",
     ))
     if board_code:
         failures += 1
-        logger.warning("6h scraper board pass failed with code %s", board_code)
+        logger.warning("8h scraper board pass failed with code %s", board_code)
 
     public_sources = _configured_public_sources()
     if not public_sources:
-        logger.info("6h scraper public source pass disabled")
+        logger.info("8h scraper public source pass disabled")
         return 1 if board_code else 0
 
     async def _run_public_batch(index: int, batch: list[str]) -> int:
         async with semaphore:
             logger.info(
-                "6h scraper batch %s/%s publishing %s role terms",
+                "8h scraper batch %s/%s publishing %s role terms",
                 index,
                 len(batches),
                 len(batch),
@@ -105,14 +116,14 @@ async def _run_batched() -> int:
             code = await run(_base_args(
                 queries=_encoded_terms(batch),
                 sources=public_sources,
-                schedule_type=f"6h-public-{index:02d}",
+                schedule_type=f"8h-public-{index:02d}",
             ))
             if code:
-                logger.warning("6h scraper public batch %s/%s failed with code %s", index, len(batches), code)
+                logger.warning("8h scraper public batch %s/%s failed with code %s", index, len(batches), code)
             return code
 
     logger.info(
-        "6h scraper launching %s public batches for %s current roles / %s search terms with concurrency %s",
+        "8h scraper launching %s public batches for %s current roles / %s search terms with concurrency %s",
         len(batches),
         len(roles),
         len(terms),
@@ -139,7 +150,7 @@ def main() -> int:
             {"lock_key": ADVISORY_LOCK_KEY},
         ).scalar())
         if not locked:
-            logger.warning("Another 6h scraper execution is already running; skipping this run.")
+            logger.warning("Another 8h scraper execution is already running; skipping this run.")
             return 0
         try:
             return asyncio.run(_run_batched())

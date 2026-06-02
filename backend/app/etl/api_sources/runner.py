@@ -1,0 +1,164 @@
+from __future__ import annotations
+
+import argparse
+import asyncio
+import logging
+from datetime import datetime
+from typing import Iterable
+
+from sqlalchemy.orm import Session
+
+from app.db.postgres import PostgresClient
+from app.etl.api_sources.connectors import adzuna, greenhouse
+from app.etl.api_sources.firestore_sink import upsert_jobs as upsert_firestore_jobs
+from app.etl.api_sources.registry import ADZUNA_COUNTRIES, load_registry
+from app.etl.api_sources.schema import FetchParams, NormalizedJob
+from app.etl.loaders.jobs import load_normalized_jobs
+from app.etl.master_jobs import rebuild_master_jobs
+from app.etl.normalizers.jobs import infer_country
+from app.job_taxonomy import all_role_names
+from app.utils.deduplication import generate_content_hash
+
+logger = logging.getLogger(__name__)
+
+
+async def fetch_all(
+    *,
+    queries: list[str],
+    countries: list[str] | None = None,
+    sources: str = "adzuna~greenhouse",
+    per_page: int = 50,
+) -> list[NormalizedJob]:
+    enabled = {item.strip().lower() for item in sources.replace(",", "~").split("~") if item.strip()}
+    jobs: list[NormalizedJob] = []
+    tasks: list[tuple[str, asyncio.Task[list[NormalizedJob]]]] = []
+
+    if "adzuna" in enabled:
+        requested_countries = countries or ADZUNA_COUNTRIES
+        adzuna_countries = []
+        for country in requested_countries:
+            normalized_country = adzuna.COUNTRY_ALIASES.get(country.upper(), country.lower())
+            if normalized_country in ADZUNA_COUNTRIES:
+                adzuna_countries.append(normalized_country)
+        for country in list(dict.fromkeys(adzuna_countries)):
+            for query in queries:
+                tasks.append((f"adzuna:{country}:{query}", asyncio.create_task(
+                    adzuna.fetch(FetchParams(query=query, country=country, per_page=per_page))
+                )))
+
+    if "greenhouse" in enabled:
+        registry = load_registry()
+        for token in registry.greenhouse:
+            tasks.append((f"greenhouse:{token}", asyncio.create_task(greenhouse.fetch_board(token))))
+
+    for label, task in tasks:
+        try:
+            rows = await task
+            logger.info("api_source fetched source=%s count=%s", label, len(rows))
+            jobs.extend(rows)
+        except Exception as exc:
+            logger.warning("api_source failed source=%s error=%s", label, exc)
+    return _dedupe(jobs)
+
+
+async def run_api_connectors_to_postgres(
+    *,
+    queries: list[str],
+    countries: list[str] | None = None,
+    sources: str = "adzuna~greenhouse",
+) -> int:
+    jobs = await fetch_all(queries=queries, countries=countries, sources=sources)
+    if not jobs:
+        return 0
+    normalized = [_to_existing_normalized(job) for job in jobs]
+    client = PostgresClient()
+    with client.session() as db:
+        loaded = load_normalized_jobs(db, normalized)
+        rebuild_master_jobs(db=db)
+        db.commit()
+        return loaded
+
+
+async def run_api_connectors_to_firestore(
+    *,
+    queries: list[str],
+    countries: list[str] | None = None,
+    sources: str = "adzuna~greenhouse",
+) -> dict[str, int]:
+    jobs = await fetch_all(queries=queries, countries=countries, sources=sources)
+    return upsert_firestore_jobs(jobs)
+
+
+def _dedupe(jobs: Iterable[NormalizedJob]) -> list[NormalizedJob]:
+    out: list[NormalizedJob] = []
+    seen: set[str] = set()
+    for job in jobs:
+        if job.job_id in seen:
+            continue
+        seen.add(job.job_id)
+        out.append(job)
+    return out
+
+
+def _to_existing_normalized(job: NormalizedJob) -> dict:
+    posted = None
+    if job.posted_date:
+        try:
+            posted = datetime.fromisoformat(job.posted_date.replace("Z", "+00:00"))
+        except ValueError:
+            posted = None
+    return {
+        "id": job.job_id,
+        "company_name": job.company,
+        "title": job.title,
+        "normalized_title": " ".join(job.title.lower().split()),
+        "location": job.location,
+        "country": job.country or infer_country(job.location),
+        "category": "Other",
+        "source_name": job.source,
+        "source_job_id": job.source_job_id,
+        "source_url": job.url,
+        "description": job.description,
+        "employment_type": "",
+        "remote_type": "remote" if job.remote else "",
+        "salary_min": job.salary_min,
+        "salary_max": job.salary_max,
+        "currency": "USD",
+        "visa_opt": False,
+        "visa_stem_opt": False,
+        "visa_h1b": False,
+        "h1b_verified": job.sponsor_signal == "confirmed",
+        "visa_score": 50 if job.sponsor_signal == "confirmed" else 25 if job.sponsor_signal == "likely" else 0,
+        "content_hash": generate_content_hash(job.title, job.company, job.location),
+        "status": "active",
+        "posted_at": posted,
+        "extra_metadata": {
+            "api_source_schema": True,
+            "raw_tags": job.raw_tags,
+            "sponsor_signal": job.sponsor_signal,
+            "ingested_at": job.ingested_at,
+        },
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Run official API/ATS job connectors.")
+    parser.add_argument("--sink", choices=["postgres", "firestore"], default="postgres")
+    parser.add_argument("--sources", default="adzuna~greenhouse")
+    parser.add_argument("--queries", default="")
+    parser.add_argument("--countries", default="")
+    args = parser.parse_args()
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    queries = [q.strip() for q in args.queries.replace("~", ",").split(",") if q.strip()] or all_role_names()
+    countries = [c.strip() for c in args.countries.replace("~", ",").split(",") if c.strip()] or None
+    if args.sink == "firestore":
+        result = asyncio.run(run_api_connectors_to_firestore(queries=queries, countries=countries, sources=args.sources))
+        logger.info("api_sources firestore result=%s", result)
+    else:
+        loaded = asyncio.run(run_api_connectors_to_postgres(queries=queries, countries=countries, sources=args.sources))
+        logger.info("api_sources postgres loaded=%s", loaded)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

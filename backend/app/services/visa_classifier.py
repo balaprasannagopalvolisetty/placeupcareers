@@ -160,12 +160,26 @@ def classify_job(
             "authorized to work in the us without sponsorship",
         )
     )
+    hard_clearance_block = any(
+        phrase in full_text
+        for phrase in (
+            "clearance required",
+            "security clearance",
+            "secret clearance",
+            "top secret",
+            "must be a u.s. person",
+            "itar",
+            "export controlled",
+            "citizenship required",
+            "us citizens only",
+        )
+    )
 
     # ─── Step 3: USCIS cross-reference ─────────────────────
     h1b_verified = False
     uscis_petition_count = 0
 
-    if uscis_data and not hard_sponsorship_block:
+    if uscis_data and not hard_sponsorship_block and not hard_clearance_block:
         uscis_petition_count = uscis_data.get("total_petitions", 0)
         if uscis_petition_count >= 5:
             score += 30
@@ -198,13 +212,13 @@ def classify_job(
         "jpmorgan", "goldman sachs", "morgan stanley", "citadel",
     ]
     company_lower = company.lower()
-    if any(sponsor in company_lower for sponsor in major_sponsors) and not hard_sponsorship_block:
+    if any(sponsor in company_lower for sponsor in major_sponsors) and not hard_sponsorship_block and not hard_clearance_block:
         score += 25
         h1b_verified = True
         visa_h1b = True
         keyword_hits.append(f"Known major H1B sponsor: {company}")
 
-    if hard_sponsorship_block:
+    if hard_sponsorship_block or hard_clearance_block:
         visa_opt = False
         visa_stem_opt = False
         visa_h1b = False
@@ -220,6 +234,8 @@ def classify_job(
         sponsor_source="uscis_h1b" if h1b_verified else None,
     )
     score = max(score, int(global_visa.get("score") or 0))
+    if hard_sponsorship_block or hard_clearance_block:
+        score = min(score, 5)
 
     # ─── Step 5: Normalize score ───────────────────────────
     score = max(0, min(100, score))

@@ -112,7 +112,7 @@ if (-not $FrontendUrl) {
 Write-Host "Frontend URL: $FrontendUrl"
 
 if (-not $SkipCorsUpdate) {
-  $apiEnv = "FRONTEND_URL=$FrontendUrl,APP_ENV=production,DATABASE_BACKEND=postgres,USER_DATABASE_BACKEND=firestore,USER_FIRESTORE_PROJECT_ID=$UserFirestoreProjectId,USER_FIRESTORE_DATABASE=$UserFirestoreDatabase,SCRAPE_INTERVAL_HOURS=6"
+  $apiEnv = "FRONTEND_URL=$FrontendUrl,APP_ENV=production,DATABASE_BACKEND=postgres,USER_DATABASE_BACKEND=firestore,USER_FIRESTORE_PROJECT_ID=$UserFirestoreProjectId,USER_FIRESTORE_DATABASE=$UserFirestoreDatabase,SCRAPE_INTERVAL_HOURS=8"
 
   gcloud.cmd run services update placeup-api `
     --region $Region `

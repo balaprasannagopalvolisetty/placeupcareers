@@ -87,6 +87,9 @@ class Settings(BaseSettings):
     usajobs_api_key: str = Field(default="")
     usajobs_email: str = Field(default="")
     greenhouse_board_tokens: str = Field(default="")
+    adzuna_app_id: str = Field(default="")
+    adzuna_app_key: str = Field(default="")
+    adzuna_countries: str = Field(default="us,gb,de,nl,fr,ca,au,it,es,pl")
 
     # --- Contact / Recruiter Enrichment APIs ---
     apollo_api_key: str = Field(default="", description="Apollo.io API key (free: 60 credits/mo)")
@@ -141,7 +144,7 @@ class Settings(BaseSettings):
     )
 
     # --- Scraping Config ---
-    scrape_interval_hours: int = Field(default=6)
+    scrape_interval_hours: int = Field(default=8)
     scrape_max_concurrency: int = Field(default=28, ge=4, le=200)
     scrape_source_timeout_seconds: int = Field(
         default=300,

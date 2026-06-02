@@ -47,7 +47,7 @@ function Upsert-SchedulerJob {
 
 Upsert-SchedulerJob `
   -Name "placeup-job-scraper-6h" `
-  -Schedule "0 */6 * * *" `
+  -Schedule "0 */8 * * *" `
   -Uri "$JobRunBase/placeup-job-scraper-6h:run"
 
 Upsert-SchedulerJob `

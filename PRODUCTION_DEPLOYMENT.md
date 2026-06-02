@@ -3,15 +3,15 @@
 This deployment runs:
 
 - `placeup-api`: FastAPI backend on Cloud Run.
-- `placeup-job-scraper-6h`: Cloud Run Job scheduled every 6 hours. It runs
-  `app.etl.jobs_scraper_6h`, covers the full current job taxonomy, and uses a
-  Postgres advisory lock so scheduled/manual runs do not overlap.
-- `placeup-job-scraper-6h` includes the bounded `scrapegraph_discovery`
-  source for direct career pages, Google Jobs pages, and public LinkedIn job
-  search pages. It uses ScrapeGraphAI with OpenRouter (`OPENROUTER_API_KEY`)
-  and is capped by `SCRAPEGRAPH_DISCOVERY_MAX_URLS` to control cost. Production
-  uses a 220-URL cap so the run can cover direct career pages plus Google Jobs
-  and LinkedIn discovery for every Jobs-page taxonomy role.
+- `placeup-job-scraper-6h`: Cloud Run Job scheduled every 8 hours. The resource
+  name stays `placeup-job-scraper-6h` for compatibility; do not create a
+  separate 8-hour duplicate. It runs `app.etl.jobs_scraper_6h`, covers the full
+  current job taxonomy, and uses a Postgres advisory lock so scheduled/manual
+  runs do not overlap.
+- `placeup-job-scraper-6h` uses official job APIs and public ATS JSON endpoints
+  in the scheduled production path. `SCRAPEGRAPH_DISCOVERY_ENABLED=false` in
+  production so prohibited anonymous HTML scraping is not part of the recurring
+  run.
 - `placeup-linkedin-jd-repair`: Cloud Run Job that repairs existing LinkedIn
   rows with board-company names (`LinkedIn`) or thin job descriptions by fetching
   the public LinkedIn detail URL, extracting company/JD metadata, and rebuilding
@@ -148,7 +148,7 @@ cd backend
 
 The migration creates `jobs`, `silver_posts`, and `master_jobs`.
 
-The 6-hour scraper writes normalized jobs into `jobs`, then rebuilds `master_jobs`.
+The 8-hour scraper writes normalized jobs into `jobs`, then rebuilds `master_jobs`.
 Important production details:
 
 - Run `deploy_backend.ps1` from `backend/`, not the repo root. The backend
@@ -158,14 +158,14 @@ Important production details:
 - Current scraper taxonomy is 12 categories, 100 roles, and 533 scrape terms.
   The old "64 batches" number was `255` focused backfill terms split by 4, not
   the number of jobs or roles.
-- The default production scraper is free/open-source only. It does not use paid
-  LinkedIn providers or broad anonymous aggregator scraping in the scheduled
-  path. Current scheduled sources are:
-  - Public/free APIs: `usajobs`, `dice`
-  - Verified-sponsor public ATS boards: `h1b_sponsor`, `tier1_ats`
-- `SCRAPER_PUBLIC_BATCH_CONCURRENCY=8` is set in production. This still runs the
-  full taxonomy, but avoids flooding LinkedIn/Indeed with 100+ simultaneous
-  batches.
+- The default production scraper avoids prohibited anonymous HTML scraping in
+  the scheduled path. Current scheduled sources are:
+  - Official/public APIs: `adzuna`, `usajobs`, `dice`
+  - Public ATS JSON boards: `greenhouse`, `h1b_sponsor`, `tier1_ats`
+  - Optional RapidAPI connectors only when enabled by production secrets/env
+- `SCRAPER_PUBLIC_BATCH_CONCURRENCY=2` is set in production. The full taxonomy
+  still runs, but each source fails independently and backoff protects provider
+  limits.
 - The scraper Cloud Run Job uses `--max-retries 0`; failed public-board batches
   should be handled by the next scheduled run instead of a long Cloud Run retry
   that can hold the advisory lock.
