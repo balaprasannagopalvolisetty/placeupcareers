@@ -31,7 +31,7 @@ def load_normalized_jobs(db: Session, jobs: list[dict]) -> int:
             "category": _clip(normalized.get("category"), 120),
             "source_name": _clip(normalized.get("source_name") or "unknown", 120),
             "source_job_id": _clip(normalized.get("source_job_id"), 240),
-            "source_url": _clip(normalized.get("source_url"), 300),
+            "source_url": _text_or_none(normalized.get("source_url")),
             "description": normalized.get("description"),
             "employment_type": _clip(normalized.get("employment_type"), 120),
             "remote_type": _clip(normalized.get("remote_type"), 120),
@@ -73,6 +73,13 @@ def _clip(value: object, max_len: int) -> str | None:
     if not text:
         return None
     return text[:max_len]
+
+
+def _text_or_none(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _source_key(values: dict) -> tuple[str, str] | None:

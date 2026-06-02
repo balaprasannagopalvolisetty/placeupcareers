@@ -181,6 +181,20 @@ gcloud.cmd run jobs deploy placeup-linkedin-jd-repair `
   --max-retries 1 `
   --task-timeout 7200
 
+gcloud.cmd run jobs deploy placeup-job-description-repair `
+  --image $Image `
+  --region $Region `
+  --service-account "placeup-etl-sa@$ProjectId.iam.gserviceaccount.com" `
+  --command python `
+  --args="-m,app.workers.job_description_repair,--limit,5000,--concurrency,6" `
+  --set-cloudsql-instances "$ProjectId`:$Region`:$DbInstance" `
+  --set-env-vars "APP_ENV=production,DATABASE_BACKEND=postgres" `
+  --set-secrets "DATABASE_URL=DATABASE_URL:latest" `
+  --memory 1Gi `
+  --cpu 1 `
+  --max-retries 1 `
+  --task-timeout 7200
+
 gcloud.cmd run jobs deploy placeup-stale-jobs-sweeper `
   --image $Image `
   --region $Region `
