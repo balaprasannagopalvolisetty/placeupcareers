@@ -22,9 +22,7 @@ const T = {
   input: "rgba(242,238,179,0.05)",
 };
 
-const API_BASE =
-  (import.meta.env.VITE_API_BASE as string | undefined) ||
-  "https://placeup-api-rui2a74muq-ue.a.run.app";
+const API_BASE = ((import.meta.env.VITE_API_BASE as string | undefined) || "").replace(/\/+$/, "");
 
 function Shell({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
   return (

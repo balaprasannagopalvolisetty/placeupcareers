@@ -1,7 +1,8 @@
 param(
   [Parameter(Mandatory=$true)][string]$ProjectId,
   [string]$Region = "us-east1",
-  [string]$ApiBase = "https://placeup-api-rui2a74muq-ue.a.run.app"
+  [string]$ApiBase = "",
+  [string]$BackendOrigin = "https://placeup-api-641222668282.us-east1.run.app"
 )
 
 $ErrorActionPreference = "Stop"
@@ -49,7 +50,7 @@ Invoke-Gcloud run deploy placeup-frontend `
   --min-instances 1 `
   --max-instances 20 `
   --concurrency 200 `
-  --set-env-vars "APP_ENV=production,BACKEND_ORIGIN=$ApiBase"
+  --set-env-vars "APP_ENV=production,BACKEND_ORIGIN=$BackendOrigin"
 
 $FrontendUrl = & gcloud.cmd run services describe placeup-frontend `
   --region $Region `

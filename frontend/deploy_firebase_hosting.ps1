@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory=$true)][string]$ProjectId,
-  [string]$ApiBase = "https://placeup-api-rui2a74muq-ue.a.run.app",
+  [string]$ApiBase = "https://placeup-api-641222668282.us-east1.run.app",
   [switch]$AllowRelativeApi
 )
 
