@@ -24,6 +24,17 @@ class JobSource(str, Enum):
     DICE = "dice"
     MONSTER = "monster"
     JOOBLE = "jooble"
+    # Free, clean-200 global job boards (remote / English-friendly / international).
+    # Public JSON or RSS endpoints — no auth, no anti-bot. Owned by
+    # app/etl/sources/free_boards.py.
+    REMOTEOK = "remoteok"
+    REMOTIVE = "remotive"
+    ARBEITNOW = "arbeitnow"
+    JOBICY = "jobicy"
+    WEWORKREMOTELY = "weworkremotely"
+    # Official government job-portal APIs (clean 200, country-tagged).
+    # Owned by app/etl/sources/official_portals.py.
+    JOBTECH = "jobtech"            # Sweden — Platsbanken / JobTech Dev open API
     # ATS career boards (direct from company)
     GREENHOUSE = "greenhouse"
     LEVER = "lever"

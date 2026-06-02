@@ -26,7 +26,9 @@ logger = logging.getLogger(__name__)
 # env-tunable because RapidAPI/Dice quotas are operational limits, but the
 # production default should collect from all currently wired public sources.
 FREE_OPEN_PUBLIC_SOURCES = os.getenv("SCRAPER_PUBLIC_SOURCES", "rapidapi~usajobs~dice")
-FREE_OPEN_BOARD_SOURCES = "h1b_sponsor~tier1_ats"
+FREE_OPEN_BOARD_SOURCES = (
+    "h1b_sponsor~tier1_ats~remoteok~remotive~arbeitnow~jobicy~weworkremotely~jobtech"
+)
 try:
     BATCH_SIZE = max(2, int(os.getenv("SCRAPER_ROLE_BATCH_SIZE", "8")))
 except ValueError:

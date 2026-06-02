@@ -696,6 +696,36 @@ async def run_scrape_cycle(
             sources_used.append("scrapling_discovery")
             source_attempts["scrapling_discovery"] = len(targets)
 
+    clean_source_map = {
+        JobSource.REMOTEOK: "remoteok",
+        JobSource.REMOTIVE: "remotive",
+        JobSource.ARBEITNOW: "arbeitnow",
+        JobSource.JOBICY: "jobicy",
+        JobSource.WEWORKREMOTELY: "weworkremotely",
+        JobSource.JOBTECH: "jobtech",
+    }
+    clean_sources = {
+        clean_source_map[src]
+        for src in request.sources
+        if src in clean_source_map
+    }
+    if clean_sources:
+        async def _scrape_clean_sources() -> list[JobPost]:
+            from app.etl.sources.global_sources import run_all_clean_sources
+
+            clean_jobs, clean_status = await run_all_clean_sources(
+                hours=request.jobspy_hours_old,
+                max_jobs_per_source=max(500, request.results_per_source * 10),
+                only=clean_sources,
+                english_only=True,
+            )
+            logger.info("clean_sources status: %s", clean_status)
+            return clean_jobs
+
+        tasks.append(("clean_sources", _scrape_clean_sources()))
+        sources_used.append("clean_sources")
+        source_attempts["clean_sources"] = len(clean_sources)
+
     greenhouse_tokens = _resolve_greenhouse_tokens(request)
     if JobSource.GREENHOUSE in request.sources:
         if greenhouse_tokens:
