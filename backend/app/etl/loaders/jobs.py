@@ -17,6 +17,8 @@ def load_normalized_jobs(db: Session, jobs: list[dict]) -> int:
 
     for job in jobs:
         normalized = job if "company_name" in job else _compat_normalize(job)
+        if _validation_errors(normalized):
+            continue
         if not normalized.get("id") or not normalized.get("title") or not normalized.get("company_name"):
             continue
 
@@ -88,6 +90,14 @@ def _source_key(values: dict) -> tuple[str, str] | None:
     if not source_name or not source_job_id:
         return None
     return (source_name, source_job_id)
+
+
+def _validation_errors(normalized: dict) -> list[str]:
+    metadata = normalized.get("extra_metadata") or {}
+    if not isinstance(metadata, dict):
+        return []
+    errors = metadata.get("validation_errors") or []
+    return [str(error) for error in errors if str(error).strip()] if isinstance(errors, list) else []
 
 
 def _find_existing_job(db: Session, values: dict) -> Job | None:

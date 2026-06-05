@@ -6,7 +6,9 @@ from app.db.postgres import normalize_text
 from app.utils.job_quality import (
     clean_job_company,
     clean_job_description,
+    has_usable_job_description,
     infer_posted_at,
+    is_probably_fake_or_scam_job,
     is_probably_job_search_page,
 )
 from app.services.global_visa_rules import classify_global_visa, resolve_country
@@ -50,6 +52,10 @@ def normalize_job_payload(job: dict) -> dict:
     if is_probably_job_search_page(title, job.get("company") or "", raw_description, source):
         validation_errors.append("search/category page, not a job posting")
         company_name = ""
+    if is_probably_fake_or_scam_job(title, company_name or job.get("company") or "", description, job.get("job_url") or job.get("job_url_direct") or ""):
+        validation_errors.append("high-confidence fake/scam or non-posting artifact")
+    if not has_usable_job_description(description):
+        validation_errors.append("thin or missing job description")
 
     return {
         "id": job.get("id"),

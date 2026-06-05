@@ -183,8 +183,8 @@ async def run(args: argparse.Namespace) -> int:
             "record_hash": stable_hash(payload),
             "payload": payload,
             "normalized_payload": normalized_payload,
-            "validation_status": "valid" if normalized_payload.get("title") else "invalid",
-            "validation_errors": [] if normalized_payload.get("title") else ["missing title"],
+            "validation_status": "valid" if normalized_payload.get("title") and not _normalization_errors(normalized_payload) else "invalid",
+            "validation_errors": _normalization_errors(normalized_payload) or ([] if normalized_payload.get("title") else ["missing title"]),
         }
         for payload, normalized_payload in zip(job_payloads, normalized)
     ]
@@ -250,6 +250,14 @@ async def run(args: argparse.Namespace) -> int:
         logger.exception("ETL run %s failed", run_id)
         return 1
     return 0
+
+
+def _normalization_errors(normalized_payload: dict) -> list[str]:
+    metadata = normalized_payload.get("extra_metadata") or {}
+    if not isinstance(metadata, dict):
+        return []
+    errors = metadata.get("validation_errors") or []
+    return [str(error) for error in errors if str(error).strip()] if isinstance(errors, list) else []
 
 
 def main() -> int:

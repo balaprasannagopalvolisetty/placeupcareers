@@ -36,6 +36,7 @@ async def scrape_h1b_sponsor_boards(
     max_jobs_per_sponsor: int = 500,
     concurrency: int = 8,
     only_companies: Optional[set[str]] = None,
+    sponsor_timeout_seconds: int = 90,
 ) -> list[JobPost]:
     """Scrape every configured H1B sponsor's ATS board in parallel.
 
@@ -67,12 +68,21 @@ async def scrape_h1b_sponsor_boards(
     async def _scrape_one(entry: dict) -> tuple[dict, list[JobPost]]:
         async with semaphore:
             try:
-                jobs = await scrape_ats(
-                    ats_name=entry["ats"],
-                    board_token=entry["token"],
-                    max_jobs=max_jobs_per_sponsor,
+                jobs = await asyncio.wait_for(
+                    scrape_ats(
+                        ats_name=entry["ats"],
+                        board_token=entry["token"],
+                        max_jobs=max_jobs_per_sponsor,
+                    ),
+                    timeout=sponsor_timeout_seconds,
                 )
                 return entry, jobs
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "H1B sponsor %s (%s/%s) timed out after %ss",
+                    entry["company"], entry["ats"], entry["token"], sponsor_timeout_seconds,
+                )
+                return entry, []
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "H1B sponsor %s (%s/%s) failed: %s",

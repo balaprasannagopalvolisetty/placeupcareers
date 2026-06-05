@@ -30,6 +30,12 @@ from app.services.visa_classifier import classify_job
 from app.services.careers_ats import scrape_greenhouse_board
 from app.services.dice_scraper import scrape_dice
 from app.services.h1b_sponsor_pipeline import scrape_h1b_sponsor_boards
+from app.services.job_description_details import (
+    clean_description_text,
+    fetch_full_job_description,
+    is_html_fetch_allowed,
+    is_thin_description,
+)
 from app.services.scrapling_job_discovery import (
     build_scrapling_targets,
     scrape_scrapling_targets,
@@ -778,10 +784,16 @@ async def run_scrape_cycle(
         async def _guarded_capture(source_tag: str, awaitable_job):
             async with semaphore:
                 try:
+                    def _task_timeout_seconds() -> int:
+                        normalized = _normalize_source_name(source_tag.split(":", 1)[0])
+                        if normalized in {"h1b_sponsor", "clean_sources"}:
+                            return max(settings.scrape_source_timeout_seconds, 7200)
+                        return settings.scrape_source_timeout_seconds
+
                     async def _with_timeout():
                         return await asyncio.wait_for(
                             awaitable_job,
-                            timeout=settings.scrape_source_timeout_seconds,
+                            timeout=_task_timeout_seconds(),
                         )
 
                     if _normalize_source_name(source_tag) == "google":
@@ -795,7 +807,7 @@ async def run_scrape_cycle(
                     return source_tag, await _with_timeout(), None
                 except asyncio.TimeoutError as exc:
                     return source_tag, None, TimeoutError(
-                        f"timed out after {settings.scrape_source_timeout_seconds}s"
+                        f"timed out after {_task_timeout_seconds()}s"
                     )
                 except Exception as exc:
                     return source_tag, None, exc
@@ -822,6 +834,8 @@ async def run_scrape_cycle(
         await enrich_linkedin_jobs(all_jobs)
     except Exception as exc:
         logger.warning("LinkedIn detail enrichment step skipped: %s", exc)
+
+    await _hydrate_thin_job_descriptions(all_jobs)
 
     # Deduplicate + target-country scope + years-of-experience tag.
     from app.services.job_filters import is_target_country_scope, parse_years, is_entry_level, is_target_experience
@@ -954,3 +968,67 @@ async def run_scrape_cycle(
         sources_used=list(set(sources_used)),
         source_breakdown=source_breakdown,
     ), unique_jobs
+
+
+async def _hydrate_thin_job_descriptions(jobs: list[JobPost]) -> None:
+    """Best-effort full JD fetch for direct career pages before persistence."""
+    if not jobs:
+        return
+
+    max_jobs = _env_int("SCRAPER_JD_HYDRATE_MAX_JOBS", 350)
+    concurrency = max(1, _env_int("SCRAPER_JD_HYDRATE_CONCURRENCY", 6))
+    timeout = max(8.0, _env_float("SCRAPER_JD_HYDRATE_TIMEOUT_SECONDS", 22.0))
+    if max_jobs <= 0:
+        return
+
+    candidates: list[JobPost] = []
+    for job in jobs:
+        if len(candidates) >= max_jobs:
+            break
+        description = clean_description_text(getattr(job, "description", "") or "")
+        if not is_thin_description(description, min_chars=1200, min_words=120):
+            continue
+        url = (getattr(job, "job_url_direct", "") or getattr(job, "job_url", "") or "").strip()
+        if url and is_html_fetch_allowed(url):
+            candidates.append(job)
+
+    if not candidates:
+        return
+
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def _hydrate_one(job: JobPost) -> bool:
+        url = (getattr(job, "job_url_direct", "") or getattr(job, "job_url", "") or "").strip()
+        current = clean_description_text(getattr(job, "description", "") or "")
+        async with semaphore:
+            details = await fetch_full_job_description(url, timeout=timeout, expand_links=True)
+        if not details:
+            return False
+        replacement = clean_description_text(details.description)
+        if len(replacement) <= len(current) + 300:
+            return False
+        job.description = replacement
+        job.job_url = details.source_url or job.job_url
+        extras = dict(job.extra_metadata or {})
+        extras["description_hydrated"] = True
+        extras["description_hydrated_from"] = details.source_url
+        extras["description_extractor"] = details.extractor
+        job.extra_metadata = extras
+        return True
+
+    results = await asyncio.gather(*[_hydrate_one(job) for job in candidates], return_exceptions=True)
+    hydrated = sum(1 for result in results if result is True)
+    logger.info(
+        "JD hydration: upgraded %s/%s thin direct-page descriptions (cap=%s concurrency=%s)",
+        hydrated,
+        len(candidates),
+        max_jobs,
+        concurrency,
+    )
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default

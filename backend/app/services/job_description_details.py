@@ -7,12 +7,13 @@ fetches for boards where our ingestion policy requires official APIs only.
 from __future__ import annotations
 
 import html
+import asyncio
 import json
 import logging
 import re
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -52,20 +53,40 @@ def is_thin_description(description: str | None, *, min_chars: int = 1200, min_w
     return len(text) < min_chars or len(text.split()) < min_words
 
 
-async def fetch_full_job_description(url: str, *, timeout: float = 25.0) -> JobDescriptionDetails | None:
+async def fetch_full_job_description(url: str, *, timeout: float = 25.0, expand_links: bool = True) -> JobDescriptionDetails | None:
     if not url or not is_html_fetch_allowed(url):
         return None
 
+    async def _fetch() -> JobDescriptionDetails | None:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout, connect=min(8.0, timeout), read=timeout, write=8.0, pool=8.0),
+            follow_redirects=True,
+            headers=DEFAULT_HEADERS,
+        ) as client:
+            return await _fetch_full_job_description(client, url, expand_links=expand_links)
+
     try:
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, headers=DEFAULT_HEADERS) as client:
-            response = await client.get(url)
-            if response.status_code in (401, 403, 404, 410):
-                logger.debug("JD fetch skipped %s status=%s", url, response.status_code)
-                return None
-            response.raise_for_status()
+        return await asyncio.wait_for(_fetch(), timeout=timeout + 5.0)
+    except asyncio.TimeoutError:
+        logger.debug("JD fetch timed out for %s", url)
+        return None
     except Exception as exc:  # noqa: BLE001
         logger.debug("JD fetch failed for %s: %s", url, exc)
         return None
+
+
+async def _fetch_full_job_description(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    expand_links: bool,
+    _depth: int = 0,
+) -> JobDescriptionDetails | None:
+    response = await client.get(url)
+    if response.status_code != 200:
+        logger.debug("JD fetch skipped %s status=%s", url, response.status_code)
+        return None
+    response.raise_for_status()
 
     content_type = response.headers.get("content-type", "")
     body = response.text or ""
@@ -81,6 +102,19 @@ async def fetch_full_job_description(url: str, *, timeout: float = 25.0) -> JobD
         return JobDescriptionDetails(extracted, str(response.url), "json_ld")
 
     extracted = _extract_dom_job_description(soup)
+    if extracted and not is_thin_description(extracted, min_chars=1400, min_words=140):
+        return JobDescriptionDetails(extracted, str(response.url), "dom")
+
+    if expand_links and _depth < 1:
+        for detail_url in _candidate_detail_links(soup, str(response.url)):
+            try:
+                nested = await _fetch_full_job_description(client, detail_url, expand_links=False, _depth=_depth + 1)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("JD nested fetch failed for %s: %s", detail_url, exc)
+                continue
+            if nested and (not extracted or len(nested.description) > len(extracted) + 300):
+                return nested
+
     if extracted:
         return JobDescriptionDetails(extracted, str(response.url), "dom")
 
@@ -192,6 +226,45 @@ def _extract_dom_job_description(soup: BeautifulSoup) -> str:
     return candidates[0][2]
 
 
+def _candidate_detail_links(soup: BeautifulSoup, base_url: str) -> list[str]:
+    base_host = (urlparse(base_url).hostname or "").lower()
+    seen: set[str] = set()
+    candidates: list[tuple[int, str]] = []
+    link_re = re.compile(
+        r"(?i)\b("
+        r"job|jobs|career|careers|opening|position|posting|detail|description|"
+        r"req|requisition|apply|view"
+        r")\b"
+    )
+    bad_re = re.compile(r"(?i)\b(login|signin|privacy|terms|cookie|mailto:|tel:|share|saved)\b")
+    for anchor in soup.find_all("a", href=True):
+        href = str(anchor.get("href") or "").strip()
+        label = clean_description_text(anchor.get_text(" "))
+        if not href or bad_re.search(href) or bad_re.search(label):
+            continue
+        absolute = urljoin(base_url, href)
+        parsed = urlparse(absolute)
+        host = (parsed.hostname or "").lower()
+        if not host or host != base_host or not is_html_fetch_allowed(absolute):
+            continue
+        if absolute in seen:
+            continue
+        hay = f"{absolute} {label}"
+        if not link_re.search(hay):
+            continue
+        score = 0
+        if re.search(r"(?i)\b(job|jobs|career|careers|posting|position|opening)\b", absolute):
+            score += 8
+        if re.search(r"(?i)\b(apply|view|details?|description|req|requisition)\b", hay):
+            score += 5
+        if len(label.split()) <= 12:
+            score += 2
+        seen.add(absolute)
+        candidates.append((score, absolute))
+    candidates.sort(key=lambda row: row[0], reverse=True)
+    return [url for _, url in candidates[:4]]
+
+
 def _description_score(text: str) -> int:
     words = text.split()
     if len(words) < 80:
@@ -209,4 +282,14 @@ def _description_score(text: str) -> int:
         "salary",
     )
     marker_score = sum(80 for marker in markers if marker in lowered)
+    scam_noise = (
+        "gift card",
+        "wire transfer",
+        "processing fee",
+        "training fee",
+        "whatsapp",
+        "telegram",
+    )
+    if any(term in lowered for term in scam_noise):
+        return 0
     return min(len(text), 20000) + marker_score

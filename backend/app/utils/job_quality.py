@@ -14,6 +14,25 @@ _GENERIC_JOB_TITLE_RE = re.compile(
     r"view all|search results"
     r")\b"
 )
+_SCAM_RE = re.compile(
+    r"(?i)\b("
+    r"pay\s+(?:a\s+)?(?:fee|deposit|training fee)|"
+    r"send\s+money|wire\s+transfer|western\s+union|moneygram|"
+    r"crypto(?:currency)?|bitcoin|gift\s+cards?|"
+    r"whatsapp|telegram|signal\s+only|"
+    r"no\s+interview\s+required|guaranteed\s+(?:job|offer|placement)|"
+    r"work\s+from\s+home\s+and\s+earn|earn\s+\$?\d+.*(?:daily|weekly)|"
+    r"processing\s+fee|background\s+check\s+fee|equipment\s+fee|"
+    r"upload\s+(?:your\s+)?(?:ssn|social security|passport|bank details)"
+    r")\b"
+)
+_JOB_DETAIL_MARKER_RE = re.compile(
+    r"(?i)\b("
+    r"responsibilities|requirements|qualifications|about the job|job description|"
+    r"what you'?ll do|what you will do|minimum qualifications|basic qualifications|"
+    r"job duties|preferred qualifications|benefits"
+    r")\b"
+)
 
 
 def clean_job_company(company: Any, description: Any = "", title: Any = "") -> str:
@@ -78,6 +97,40 @@ def is_probably_job_search_page(title: Any, company: Any = "", description: Any 
     if board_company and not _company_from_linkedin_snippet(title_text, str(description or "")):
         return True
     return False
+
+
+def is_probably_fake_or_scam_job(title: Any, company: Any = "", description: Any = "", url: Any = "") -> bool:
+    """Reject obvious scam/fake postings before they reach master_jobs.
+
+    This is intentionally conservative. It only catches high-confidence scam
+    language and board/search artifacts, so legitimate early-career postings
+    with short descriptions are not discarded just because they are concise.
+    """
+    title_text = str(title or "").strip()
+    company_text = str(company or "").strip()
+    desc_text = str(description or "").strip()
+    url_text = str(url or "").strip().lower()
+    combined = f"{title_text}\n{company_text}\n{desc_text}\n{url_text}"
+    if _SCAM_RE.search(combined):
+        return True
+    if not title_text or not company_text:
+        return True
+    lowered_title = title_text.lower()
+    if lowered_title in {"job", "jobs", "careers", "open positions", "job openings"}:
+        return True
+    if _GENERIC_JOB_TITLE_RE.search(title_text) and len(desc_text.split()) < 40:
+        return True
+    return False
+
+
+def has_usable_job_description(description: Any, *, min_words: int = 35) -> bool:
+    text = str(description or "").strip()
+    if not text:
+        return False
+    words = re.findall(r"\b[a-zA-Z][a-zA-Z0-9+#./-]*\b", text)
+    if len(words) >= min_words:
+        return True
+    return len(words) >= 20 and bool(_JOB_DETAIL_MARKER_RE.search(text))
 
 
 def infer_posted_at(posted_at: Any, description: Any = "", *, now: datetime | None = None) -> Any:
