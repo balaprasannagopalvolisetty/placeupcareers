@@ -119,6 +119,65 @@ class PostgresClient:
             rows = db.execute(stmt).mappings().all()
             return self._filter_target_jobs([self._job_mapping_to_dict(row) for row in rows])[:limit]
 
+    async def get_jobs_source_balanced(
+        self,
+        filters: dict = None,
+        limit: int = 200,
+        offset: int = 0,
+        per_source: int = 80,
+    ) -> list[dict]:
+        """Return a fresh candidate pool without letting one source dominate.
+
+        The Jobs page does additional role/visa/quality filtering in Python.
+        A newest-first query can be overwhelmed by a high-volume source like
+        Dice, so this query first caps each source, then lets the API rank the
+        mixed pool for the user.
+        """
+        if not self._master_jobs_available():
+            return await self.get_jobs(filters=filters, limit=limit, offset=offset)
+        filters = filters or {}
+        with self.session() as db:
+            base = select(
+                MasterJob.id,
+                MasterJob.title,
+                MasterJob.company,
+                MasterJob.location,
+                MasterJob.country,
+                func.substr(MasterJob.description, 1, 900).label("description"),
+                MasterJob.source_url,
+                MasterJob.employment_type,
+                MasterJob.salary_min,
+                MasterJob.salary_max,
+                MasterJob.currency,
+                MasterJob.visa_opt,
+                MasterJob.visa_stem_opt,
+                MasterJob.visa_h1b,
+                MasterJob.h1b_verified,
+                MasterJob.visa_score,
+                MasterJob.source_name,
+                MasterJob.source_job_id,
+                MasterJob.posted_at,
+                MasterJob.last_seen_at,
+                MasterJob.status,
+                MasterJob.canonical_key,
+                MasterJob.extra_metadata,
+                MasterJob.merged_sources,
+                func.row_number().over(
+                    partition_by=MasterJob.source_name,
+                    order_by=MasterJob.last_seen_at.desc(),
+                ).label("source_rank"),
+            )
+            base = self._apply_master_job_filters(base, filters).subquery()
+            stmt = (
+                select(base)
+                .where(base.c.source_rank <= per_source)
+                .order_by(base.c.last_seen_at.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+            rows = db.execute(stmt).mappings().all()
+            return self._filter_target_jobs([self._master_job_mapping_to_dict(row) for row in rows])[:limit]
+
     async def get_job(self, job_id: str) -> Optional[dict]:
         if self._master_jobs_available():
             with self.session() as db:

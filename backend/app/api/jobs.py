@@ -622,6 +622,36 @@ def _job_matches_preferences(job: dict, preferred_roles: list[str], preferred_lo
     return role_match or loc_match
 
 
+def _source_diverse_page(jobs: list[dict], page_size: int) -> list[dict]:
+    """Keep one high-volume source from taking over the visible Jobs page."""
+    if len(jobs) <= page_size:
+        return jobs
+    max_per_source = max(2, math.ceil(page_size * 0.45))
+    selected: list[dict] = []
+    leftovers: list[dict] = []
+    counts: dict[str, int] = {}
+    for job in jobs:
+        source = str(job.get("source") or job.get("source_name") or "unknown").lower()
+        if counts.get(source, 0) < max_per_source:
+            selected.append(job)
+            counts[source] = counts.get(source, 0) + 1
+        else:
+            leftovers.append(job)
+        if len(selected) >= page_size:
+            return selected[:page_size]
+    seen_ids = {str(job.get("id") or "") for job in selected}
+    for job in leftovers:
+        job_id = str(job.get("id") or "")
+        if job_id and job_id in seen_ids:
+            continue
+        selected.append(job)
+        if job_id:
+            seen_ids.add(job_id)
+        if len(selected) >= page_size:
+            break
+    return selected[:page_size]
+
+
 def _taxonomy_terms(category: Optional[str], role: Optional[str]) -> list[str]:
     if not (category or role):
         return []
@@ -1064,7 +1094,20 @@ async def list_jobs(
             # renders after filtering, then bound to a safe ceiling.
             fetch_limit = min(max(page_size * 3, 60), 120)
             fetch_offset = offset * 3 if offset else 0
-        jobs = await db.get_jobs(filters=filters, limit=fetch_limit, offset=fetch_offset)
+        source_balanced_fetch = (
+            not filters.get("source")
+            and hasattr(db, "get_jobs_source_balanced")
+            and (filters.get("title_terms") or personalized or free_text_search_active or not taxonomy_filter_active)
+        )
+        if source_balanced_fetch:
+            jobs = await db.get_jobs_source_balanced(
+                filters=filters,
+                limit=max(fetch_limit, 360),
+                offset=0 if fetch_offset == 0 else fetch_offset,
+                per_source=90,
+            )
+        else:
+            jobs = await db.get_jobs(filters=filters, limit=fetch_limit, offset=fetch_offset)
         total_pages = math.ceil(total / page_size) if total > 0 else 1
 
         # Tag each job with taxonomy category + role under sibling fields so we
@@ -1223,7 +1266,7 @@ async def list_jobs(
         if taxonomy_filter_active:
             page_jobs = decorated[offset:offset + page_size]
         else:
-            page_jobs = decorated[:page_size]
+            page_jobs = decorated[:page_size] if filters.get("source") else _source_diverse_page(decorated, page_size)
 
         # Convert to JobPost models for the response. Stash the taxonomy
         # extras and re-attach them post-validation so the strict JobPost
