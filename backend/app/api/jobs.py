@@ -314,126 +314,6 @@ def _score_job_against_resume(resume_text: str, job_text: str, *, resume_cache: 
         return 0
     try:
         return int(_ats_score_v2(resume_text, job_text, resume_cache=resume_cache)["score"])
-        from app.utils.text_processing import (
-            clean_text, extract_relevant_keywords, extract_skills_from_text, compute_keyword_overlap,
-        )
-        job_text = html.unescape(job_text)
-        if resume_cache:
-            resume_clean = resume_cache.get("clean", "")
-            r_kw = resume_cache.get("keywords") or []
-            r_skills = resume_cache.get("skills") or []
-        else:
-            resume_text = html.unescape(resume_text)
-            resume_clean = clean_text(resume_text).lower()
-            r_skills = list(dict.fromkeys(extract_skills_from_text(resume_text)))
-            r_kw = list(dict.fromkeys(r_skills + extract_relevant_keywords(resume_text, top_n=70)))
-        job_clean = clean_text(job_text).lower()
-
-        title = job_text.split("\n", 1)[0].lower()
-        title = clean_text(title)[:160]
-        title_tokens = [
-            token for token in re.findall(r"\b[a-z][a-z+#.-]{2,}\b", title)
-            if token not in {"senior", "staff", "lead", "principal", "junior", "associate", "manager", "remote"}
-        ][:8]
-        title_hits = [
-            token for token in title_tokens
-            if re.search(rf"\b{re.escape(token)}\b", resume_clean)
-        ]
-        title_pct = (len(title_hits) / len(title_tokens) * 100) if title_tokens else 0.0
-
-        domain_terms = [
-            "python", "java", "javascript", "typescript", "react", "node", "sql", "postgresql",
-            "aws", "azure", "gcp", "docker", "kubernetes", "fastapi", "rest", "graphql",
-            "machine learning", "data pipeline", "etl", "tableau", "power bi", "spark",
-            "helpdesk", "help desk", "service desk", "desktop support", "technical support",
-            "windows", "windows 10", "windows 11", "macos", "active directory", "azure ad",
-            "office 365", "microsoft 365", "intune", "sccm", "jamf", "okta", "vpn",
-            "ticketing", "tickets", "servicenow", "jira service management", "hardware",
-            "troubleshooting", "imaging", "printer", "network connectivity", "lan", "wan",
-            "cad", "catia", "solidworks", "ansys", "fea", "gd&t", "thermal", "battery",
-            "high voltage", "automotive", "manufacturing", "injection molding", "sheet metal",
-            "root cause", "civil", "structural", "electrical", "mechanical", "chemical",
-            "aerospace", "environmental", "clinical", "regulatory", "bioinformatics",
-            "financial modeling", "risk", "audit", "compliance", "treasury", "quantitative",
-            "marketing analytics", "seo", "content strategy", "figma", "ux", "ui",
-        ]
-        job_terms = [term for term in domain_terms if term in job_clean]
-        resume_terms = [term for term in domain_terms if term in resume_clean]
-        term_hits = sorted(set(job_terms) & set(resume_terms))
-        term_pct = (len(term_hits) / len(set(job_terms)) * 100) if job_terms else title_pct
-
-        role_groups = {
-            "it_support": [
-                "helpdesk", "help desk", "service desk", "desktop support", "technical support",
-                "it support", "troubleshooting", "hardware", "windows", "macos",
-                "active directory", "office 365", "microsoft 365", "intune", "sccm",
-                "ticketing", "servicenow", "vpn", "printer", "imaging", "network connectivity",
-            ],
-            "software": [
-                "software engineer", "software developer", "backend", "frontend", "full stack",
-                "api", "microservices", "react", "node", "python", "java", "typescript",
-                "docker", "kubernetes", "cloud", "database",
-            ],
-            "data": [
-                "data engineer", "data scientist", "data analyst", "etl", "pipeline",
-                "warehouse", "spark", "sql", "python", "tableau", "power bi", "machine learning",
-            ],
-        }
-        role_coverage = 0.0
-        role_penalty = 0
-        role_hits: list[str] = []
-        for group_terms in role_groups.values():
-            jd_group_terms = [term for term in group_terms if term in job_clean]
-            if len(jd_group_terms) < 2:
-                continue
-            resume_group_hits = [term for term in jd_group_terms if term in resume_clean]
-            coverage = len(set(resume_group_hits)) / len(set(jd_group_terms)) * 100
-            if coverage > role_coverage:
-                role_coverage = coverage
-                role_hits = resume_group_hits
-        if role_coverage and role_coverage < 25:
-            role_penalty = 14
-        elif role_coverage and role_coverage < 45:
-            role_penalty = 7
-
-        jd_skills = list(dict.fromkeys(extract_skills_from_text(job_text)))
-        jd_kw = list(dict.fromkeys(jd_skills + extract_relevant_keywords(job_text, top_n=45)))
-        # r_skills / r_kw already provided via resume_cache when caller pre-warmed.
-        if not jd_kw:
-            # Don't return 0 — fall back to a baseline so the user
-            # doesn't see "0%" when the issue is actually a thin
-            # job description, not a non-matching resume.
-            return _baseline_ats_score({"title": "", "description": job_text})
-        matched, _, keyword_pct = compute_keyword_overlap(r_kw, jd_kw)
-        skill_matched, _, skill_pct = compute_keyword_overlap(r_skills, jd_skills) if jd_skills else ([], [], keyword_pct)
-        required_markers = re.findall(r"(?i)(?:required|requirements?|qualifications?|must have|experience with)\s+([^.;\n]{4,100})", job_text)
-        required_terms = list(dict.fromkeys(extract_skills_from_text(" ".join(required_markers)) + extract_relevant_keywords(" ".join(required_markers), top_n=18)))
-        required_hit_pct = keyword_pct
-        if required_terms:
-            req_hits, _, required_hit_pct = compute_keyword_overlap(r_kw, required_terms)
-        density_bonus = min(8, len(matched) // 3)
-        skill_bonus = min(10, len(skill_matched) * 2)
-        title_bonus = 6 if title_pct >= 60 else 0
-        score = (
-            title_pct * 0.22
-            + term_pct * 0.24
-            + keyword_pct * 0.14
-            + skill_pct * 0.16
-            + required_hit_pct * 0.18
-            + role_coverage * 0.06
-            + density_bonus
-            + skill_bonus
-            + title_bonus
-            - role_penalty
-        )
-        # HR-style matching should not hand out medium scores from generic text alone.
-        if skill_pct < 25 and required_hit_pct < 25 and len(role_hits) < 2:
-            score = min(score, 42)
-        if title_pct < 25 and term_pct < 25:
-            score = min(score, 38)
-        if role_coverage and role_coverage < 25:
-            score = min(score, 45)
-        return int(round(min(98, max(8, score))))
     except Exception as exc:
         # Log so we can spot scoring regressions, then fall back to a
         # baseline. Returning 0 here is what made the "ATS match score
@@ -634,6 +514,17 @@ def _local_date(value: Any, tz_offset_minutes: int = 0):
     if not dt:
         return None
     return (dt + timedelta(minutes=-tz_offset_minutes)).date()
+
+
+def _in_datetime_window(value: Any, since: Optional[datetime], before: Optional[datetime]) -> bool:
+    dt = _coerce_datetime(value)
+    if not dt:
+        return False
+    if since and dt < since:
+        return False
+    if before and dt >= before:
+        return False
+    return True
 
 
 def _projection_sort_key(job: dict, tz_offset_minutes: int = 0) -> tuple:
@@ -1033,15 +924,22 @@ async def list_jobs(
         filters["visa_only"] = True
     fresh_since, fresh_before = _posted_window(time_filter, tz_offset_minutes=tz_offset)
     visible_cutoff = _visible_jobs_cutoff()
+    post_filter_since: Optional[datetime] = None
+    post_filter_before: Optional[datetime] = None
     if fresh_since:
-        filters["posted_since"] = max(fresh_since, visible_cutoff)
+        # Avoid pushing posted_at into Postgres for frontend time chips. The
+        # live master_jobs table is large and posted_at is not the fast path;
+        # exact posted_at scans were causing Cloud Run 504s for Today/Yesterday.
+        # Pull recent, indexed last_seen rows and enforce the posted window
+        # below before rendering.
+        filters["seen_since"] = visible_cutoff
+        post_filter_since = max(fresh_since, visible_cutoff)
+        post_filter_before = fresh_before
     else:
         # The default "All active" view should use the indexed freshness field.
         # A COALESCE(posted_at,last_seen_at) predicate forced broad scans on
         # master_jobs and was hitting Cloud Run's 45s timeout.
         filters["seen_since"] = visible_cutoff
-    if fresh_before:
-        filters["posted_before"] = fresh_before
     title_terms = _taxonomy_terms(category, role)
     preferred_roles, preferred_locations = _preference_terms(user_id) if personalized else ([], [])
     if personalized and not title_terms and not search and preferred_roles:
@@ -1069,8 +967,6 @@ async def list_jobs(
             "source",
             "visa_only",
             "seen_before",
-            "posted_since",
-            "posted_before",
         }
         exact_count_active = any(key in filters for key in exact_count_filters)
         # The live master_jobs table is large. Exact COUNT(*) on the broad
@@ -1082,6 +978,8 @@ async def list_jobs(
             taxonomy_filter_active
             or free_text_search_active
             or filters.get("title_terms")
+            or post_filter_since
+            or post_filter_before
             or not exact_count_active
         ) else await db.count_jobs(filters=filters)
         # Category and role are derived from titles in Python. Only those
@@ -1091,6 +989,9 @@ async def list_jobs(
         if taxonomy_filter_active:
             fetch_limit = min(max(total, page_size), 12000)
             fetch_offset = 0
+        elif post_filter_since or post_filter_before:
+            fetch_limit = 500
+            fetch_offset = 0 if page == 1 else min(offset * 3, 1000)
         else:
             # Post-fetch filters (country scope, is_target_experience) routinely
             # drop ~50-70% of rows, which is why users were seeing ~16 cards even
@@ -1141,6 +1042,12 @@ async def list_jobs(
             if filters.get("country") and visa_payload.get("visa_country") != filters["country"]:
                 continue
             if filters.get("visa_program") and filters["visa_program"] not in (visa_payload.get("visa_programs") or []):
+                continue
+            if (post_filter_since or post_filter_before) and not _in_datetime_window(
+                j.get("posted_at"),
+                post_filter_since,
+                post_filter_before,
+            ):
                 continue
             if not _is_english_user_friendly(j):
                 continue
@@ -1461,22 +1368,27 @@ async def get_scraper_status(limit: int = Query(10, ge=1, le=50), db=Depends(get
 async def get_pipeline_status(db=Depends(get_db)):
     """Return lightweight job pipeline health for dashboard/UI diagnostics."""
     try:
-        total_jobs = int(await db.count_jobs())
-        active_jobs = int(await db.count_jobs({"status": "active"}))
-        inactive_jobs = int(await db.count_jobs({"status": "inactive"}))
         payload: dict[str, Any] = {
-            "total_jobs": total_jobs,
-            "active_jobs": active_jobs,
-            "inactive_jobs": inactive_jobs,
+            "total_jobs": 0,
+            "active_jobs": 0,
+            "inactive_jobs": 0,
             "last_scraped_at": None,
             "last_run": None,
             "backend": db.__class__.__name__,
         }
         if hasattr(db, "session"):
-            from sqlalchemy import func, select
+            from sqlalchemy import func, select, text
             from app.db.schema import IngestRun, Job, MasterJob
 
             with db.session() as session:
+                table_name = "master_jobs" if hasattr(db, "_master_jobs_available") and db._master_jobs_available() else "jobs"
+                estimated_total = session.execute(
+                    text("SELECT GREATEST(reltuples::bigint, 0) FROM pg_class WHERE oid = to_regclass(:table_name)"),
+                    {"table_name": table_name},
+                ).scalar()
+                payload["total_jobs"] = int(estimated_total or 0)
+                payload["active_jobs"] = int(estimated_total or 0)
+                payload["inactive_jobs"] = 0
                 run = session.execute(
                     select(IngestRun).order_by(IngestRun.started_at.desc()).limit(1)
                 ).scalar_one_or_none()
@@ -1494,12 +1406,16 @@ async def get_pipeline_status(db=Depends(get_db)):
                         "records_failed": run.records_failed,
                     }
                     payload["last_scraped_at"] = run.finished_at or run.started_at
-                if hasattr(db, "_master_jobs_available") and db._master_jobs_available():
+                if table_name == "master_jobs":
                     latest_seen = session.execute(select(func.max(MasterJob.last_seen_at))).scalar()
                 else:
                     latest_seen = session.execute(select(func.max(Job.last_seen_at))).scalar()
                 if latest_seen:
                     payload["last_scraped_at"] = latest_seen
+        else:
+            payload["total_jobs"] = int(await db.count_jobs())
+            payload["active_jobs"] = int(await db.count_jobs({"status": "active"}))
+            payload["inactive_jobs"] = int(await db.count_jobs({"status": "inactive"}))
         return payload
     except Exception as e:
         logger.error(f"Error getting pipeline status: {e}")
@@ -1646,18 +1562,20 @@ async def get_top_matches(
     if visa_only:
         filters["visa_only"] = True
     fresh_since, fresh_before = _posted_window(time_filter, tz_offset_minutes=tz_offset)
+    post_filter_since: Optional[datetime] = None
+    post_filter_before: Optional[datetime] = None
     if fresh_since:
-        filters["posted_since"] = max(fresh_since, _visible_jobs_cutoff())
+        filters["seen_since"] = _visible_jobs_cutoff()
+        post_filter_since = max(fresh_since, _visible_jobs_cutoff())
+        post_filter_before = fresh_before
     else:
-        filters["posted_since"] = _recent_jobs_cutoff()
-    if fresh_before:
-        filters["posted_before"] = fresh_before
+        filters["seen_since"] = _recent_jobs_cutoff()
     resume_text = await _active_resume_text(user_id)
     preferred_roles, preferred_locations = _preference_terms(user_id)
     terms = _terms_for_role_names(preferred_roles)
     if terms:
         filters["title_terms"] = terms
-    candidate_limit = min(max(limit * 8, 80), 180)
+    candidate_limit = 500 if (post_filter_since or post_filter_before) else min(max(limit * 8, 80), 180)
     jobs = await db.get_jobs(filters=filters, limit=candidate_limit, offset=0)
     resume_cache = _prepare_resume_tokens(resume_text) if resume_text else None
     ranked: list[dict] = []
@@ -1667,6 +1585,12 @@ async def get_top_matches(
             meta = {}
         cat, rname = categorize(f"{job.get('title') or ''} {job.get('company') or ''}")
         item = _apply_job_specific_visa_rules(dict(job))
+        if (post_filter_since or post_filter_before) and not _in_datetime_window(
+            item.get("posted_at"),
+            post_filter_since,
+            post_filter_before,
+        ):
+            continue
         item["taxonomy_category"] = cat
         item["role"] = rname
         if resume_text:
