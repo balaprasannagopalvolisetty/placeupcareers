@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.db.postgres import upsert_company
 from app.db.schema import Job
+from app.utils.deduplication import generate_content_hash
+from app.utils.text_processing import extract_relevant_keywords, extract_skills_from_text
 
 
 def load_normalized_jobs(db: Session, jobs: list[dict]) -> int:
@@ -23,6 +25,11 @@ def load_normalized_jobs(db: Session, jobs: list[dict]) -> int:
             continue
 
         company = upsert_company(db, normalized["company_name"])
+        extra_metadata = dict(normalized.get("extra_metadata") or {})
+        extra_metadata["jd_analysis"] = _jd_analysis(
+            title=normalized.get("title") or "",
+            description=normalized.get("description") or "",
+        )
         values = {
             "id": _clip(normalized["id"], 80),
             "company_id": company.id if company else None,
@@ -48,7 +55,7 @@ def load_normalized_jobs(db: Session, jobs: list[dict]) -> int:
             "content_hash": _clip(normalized.get("content_hash") or normalized["id"], 128),
             "status": _clip(normalized.get("status") or "active", 30),
             "posted_at": normalized.get("posted_at"),
-            "extra_metadata": normalized.get("extra_metadata") or {},
+            "extra_metadata": extra_metadata,
         }
 
         source_key = _source_key(values)
@@ -82,6 +89,22 @@ def _text_or_none(value: object) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _jd_analysis(*, title: str, description: str) -> dict:
+    jd_text = f"{title}\n{description or ''}".strip()
+    skills = list(dict.fromkeys(extract_skills_from_text(jd_text)))
+    keywords = [
+        kw for kw in extract_relevant_keywords(jd_text, top_n=50)
+        if kw not in skills
+    ]
+    return {
+        "schema": "placeup_jd_analysis_v1",
+        "description_hash": generate_content_hash(title or "", "", description or ""),
+        "skills": skills[:80],
+        "keywords": keywords[:80],
+        "word_count": len((description or "").split()),
+    }
 
 
 def _source_key(values: dict) -> tuple[str, str] | None:

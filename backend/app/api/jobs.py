@@ -278,67 +278,100 @@ def _ats_score_v2(resume_text: str, job_text: str, *, resume_cache: Optional[dic
         extract_skills_from_text,
     )
 
-    title, _, _body = job_text.partition("\n")
+    title, _, body = job_text.partition("\n")
     r_skills = list(dict.fromkeys((resume_cache.get("skills") or []) if resume_cache else extract_skills_from_text(resume_text)))
     r_kw = list(dict.fromkeys((resume_cache.get("keywords") or []) if resume_cache else (r_skills + extract_relevant_keywords(resume_text, top_n=80))))
+    resume_clean = clean_text(resume_text).lower()
+    job_clean = clean_text(job_text).lower()
     required = _required_text(job_text)
 
     jd_skills = list(dict.fromkeys(extract_skills_from_text(job_text)))
     required_skills = list(dict.fromkeys(extract_skills_from_text(required))) or jd_skills[:12]
-    jd_keywords = [kw for kw in extract_relevant_keywords(job_text, top_n=55) if _is_real_skill(kw)]
-    required_keywords = [kw for kw in extract_relevant_keywords(required, top_n=28) if _is_real_skill(kw)]
+    preferred_text = re.split(r"(?i)\b(preferred qualifications|nice to have|bonus|preferred skills)\b", job_text, maxsplit=1)
+    preferred = preferred_text[2] if len(preferred_text) >= 3 else ""
+    preferred_skills = [skill for skill in extract_skills_from_text(preferred) if skill not in required_skills]
+    jd_keywords = [kw for kw in extract_relevant_keywords(job_text, top_n=60) if _is_real_skill(kw)]
+    required_keywords = [kw for kw in extract_relevant_keywords(required, top_n=32) if _is_real_skill(kw)]
 
     matched_skills, missing_skills, skill_pct = compute_keyword_overlap(r_skills, jd_skills) if jd_skills else ([], [], 0)
     required_pool = list(dict.fromkeys(required_skills + required_keywords))
     matched_required, missing_required, required_pct = compute_keyword_overlap(r_kw, required_pool) if required_pool else ([], [], skill_pct)
-    _, _, keyword_pct = compute_keyword_overlap(r_kw, list(dict.fromkeys(jd_skills + jd_keywords))) if (jd_skills or jd_keywords) else ([], [], 0)
+    matched_keywords, missing_keywords, keyword_pct = compute_keyword_overlap(r_kw, list(dict.fromkeys(jd_skills + jd_keywords))) if (jd_skills or jd_keywords) else ([], [], 0)
     title_pct = _role_title_score(resume_text, title)
 
     resume_years = _resume_years_hint(resume_text)
     required_years = _extract_years_required(job_text)
-    seniority_gap = 0
+    seniority_gap = 0.0
     if required_years is not None and resume_years is not None and resume_years + 1 < required_years:
-        seniority_gap = min(22, (required_years - resume_years) * 4)
+        seniority_gap = min(45.0, (required_years - resume_years) * 10.0)
     elif _seniority_level(title) >= 7 and _seniority_level(resume_text[:1200]) <= 3:
-        seniority_gap = 16
+        seniority_gap = 35.0
 
-    hard_requirement_penalty = 0
-    if required_skills and len(matched_required) == 0:
-        hard_requirement_penalty += 18
-    if skill_pct < 20 and required_pct < 25:
-        hard_requirement_penalty += 12
+    hard_skill_score = required_pct
+    if required_skills or preferred_skills:
+        required_weight = max(1, len(required_skills)) * 2
+        preferred_weight = max(0, len(preferred_skills))
+        required_hits = sum(1 for skill in required_skills if skill in matched_required or skill in matched_skills)
+        preferred_hits = sum(1 for skill in preferred_skills if skill in r_skills or skill in r_kw)
+        hard_skill_score = ((required_hits * 2 + preferred_hits) / max(1, required_weight + preferred_weight)) * 100
+
+    experience_score = max(0.0, min(100.0, (title_pct * 0.45) + 55.0 - seniority_gap))
+    if required_years is not None and resume_years is None:
+        experience_score = min(experience_score, 58.0)
+    elif required_years is not None and resume_years is not None and resume_years >= required_years:
+        experience_score = max(experience_score, 75.0)
+
+    degree_terms = ("bachelor", "master", "phd", "degree", "computer science", "engineering", "statistics", "mba")
+    cert_terms = ("certification", "certified", "cissp", "security+", "aws certified", "pmp", "cpa", "rn")
+    jd_education_terms = [term for term in degree_terms + cert_terms if term in job_clean]
+    matched_education = [term for term in jd_education_terms if term in resume_clean]
+    if not jd_education_terms or "equivalent experience" in job_clean:
+        education_score = 80.0 if any(term in resume_clean for term in degree_terms) else 60.0
+    else:
+        education_score = len(matched_education) / len(jd_education_terms) * 100
+
+    soft_terms = ("communication", "leadership", "collaborat", "stakeholder", "mentor", "cross-functional", "agile", "scrum", "customer")
+    jd_soft_terms = [term for term in soft_terms if term in job_clean]
+    matched_soft_terms = [term for term in jd_soft_terms if term in resume_clean]
+    soft_score = 70.0 if not jd_soft_terms else len(matched_soft_terms) / len(jd_soft_terms) * 100
+
+    resume_words = len(clean_text(resume_text).split())
+    has_sections = sum(1 for section in ("experience", "education", "skills", "projects", "certifications") if section in resume_clean)
+    has_metrics = bool(re.search(r"\b\d+%|\$\d+|\b\d+x\b|team of \d+|reduced \d+|increased \d+", resume_text, re.I))
+    resume_quality = min(100.0, has_sections * 14.0 + (22.0 if has_metrics else 0.0) + (8.0 if 350 <= resume_words <= 1200 else 0.0))
+
     authorization_blocked = bool(SPONSORSHIP_BLOCK_RE.search(job_text.lower()))
-    authorization_penalty = 35 if authorization_blocked else 0
 
     score = (
-        title_pct * 0.18
-        + skill_pct * 0.30
-        + required_pct * 0.28
-        + keyword_pct * 0.14
-        + min(10, len(matched_required) * 2.0)
-        + min(6, len(matched_skills))
-        - seniority_gap
-        - hard_requirement_penalty
-        - authorization_penalty
+        hard_skill_score * 0.30
+        + experience_score * 0.25
+        + keyword_pct * 0.15
+        + education_score * 0.10
+        + soft_score * 0.10
+        + resume_quality * 0.10
     )
+    if required_skills and not matched_required:
+        score = min(score, 42)
     if len(jd_skills) >= 4 and len(matched_skills) <= 1:
-        score = min(score, 38)
+        score = min(score, 45)
     if title_pct < 20 and required_pct < 30:
         score = min(score, 42)
-    if seniority_gap >= 16:
+    if seniority_gap >= 35:
         score = min(score, 48)
     if authorization_blocked:
         score = min(score, 34)
-    if skill_pct >= 70 and required_pct >= 65:
-        score += 8
-    if title_pct >= 70 and required_pct >= 55:
-        score += 5
-    if authorization_blocked:
-        score = min(score, 34)
+    if hard_skill_score >= 80 and experience_score >= 75:
+        score = min(98, score + 5)
 
     return {
         "score": int(round(max(6, min(98, score)))),
         "components": {
+            "hard_skills": round(hard_skill_score, 1),
+            "experience_relevance": round(experience_score, 1),
+            "keyword_alignment": round(keyword_pct, 1),
+            "education_certs": round(education_score, 1),
+            "soft_skills_domain": round(soft_score, 1),
+            "resume_quality": round(resume_quality, 1),
             "title_match_pct": round(title_pct, 1),
             "skill_match_pct": round(skill_pct, 1),
             "required_terms_pct": round(required_pct, 1),
@@ -350,10 +383,12 @@ def _ats_score_v2(resume_text: str, job_text: str, *, resume_cache: Optional[dic
         "missing_skills": missing_skills[:15],
         "matched_required": matched_required[:15],
         "missing_required": missing_required[:15],
+        "matched_keywords": matched_keywords[:15],
+        "missing_keywords": missing_keywords[:15],
         "applied_penalties": [
             label for label, active in (
                 ("Seniority/years gap", seniority_gap > 0),
-                ("Hard requirement gap", hard_requirement_penalty > 0),
+                ("Hard requirement gap", required_skills and not matched_required),
                 ("Work authorization / clearance block", authorization_blocked),
             ) if active
         ],

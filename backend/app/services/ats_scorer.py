@@ -131,35 +131,64 @@ def _fallback_parse(resume_text: str) -> ParsedResume:
 
 
 def _fallback_score(resume_text: str, job_description: str) -> ATSResult:
-    """Fallback ATS scoring using keyword analysis only (no LLM).
-
-    Provides a basic score based on keyword overlap when the LLM
-    is unavailable or the API call fails.
-    """
+    """Strict deterministic ATS score using 6 weighted dimensions."""
     keyword_analysis = _enhance_keyword_analysis(resume_text, job_description)
-    density = keyword_analysis.keyword_density_score
     jd_skills = extract_skills_from_text(job_description)
     resume_skills = extract_skills_from_text(resume_text)
     matched_skills, missing_skills, skill_pct = compute_keyword_overlap(resume_skills, jd_skills)
+    jd_keywords = extract_relevant_keywords(job_description, top_n=45)
+    resume_keywords = extract_relevant_keywords(resume_text, top_n=60)
+    matched_keywords, missing_keywords, keyword_pct = compute_keyword_overlap(resume_keywords + resume_skills, jd_keywords + jd_skills)
 
-    resume_words = len(clean_text(resume_text).split())
+    resume_clean = clean_text(resume_text).lower()
+    jd_clean = clean_text(job_description).lower()
+    resume_words = len(resume_clean.split())
     sections = 0
     for section in ("experience", "education", "skills", "projects", "certifications", "summary"):
-        if re.search(rf"\b{re.escape(section)}\b", resume_text.lower()):
+        if re.search(rf"\b{re.escape(section)}\b", resume_clean):
             sections += 1
-    completeness_pct = min(100.0, sections * 16.7)
-    length_pct = 100.0 if 350 <= resume_words <= 1200 else max(30.0, min(100.0, resume_words / 350 * 100))
+    resume_quality = min(100.0, sections * 12.0)
+    if 350 <= resume_words <= 1200:
+        resume_quality += 10
+    if re.search(r"\b\d+%|\$\d+|\b\d+x\b|team of \d+|reduced \d+|increased \d+", resume_text, re.I):
+        resume_quality += 18
+    resume_quality = min(100.0, resume_quality)
 
-    overall = (
-        density * 0.45
-        + skill_pct * 0.35
-        + completeness_pct * 0.12
-        + length_pct * 0.08
+    required_years = _years_hint(job_description)
+    resume_years = _years_hint(resume_text)
+    title_score = 60.0
+    if required_years and resume_years is not None:
+        title_score = 100.0 if resume_years >= required_years else max(20.0, 100.0 - (required_years - resume_years) * 14.0)
+    elif required_years and resume_years is None:
+        title_score = 50.0
+
+    degree_terms = ("bachelor", "master", "phd", "degree", "computer science", "engineering", "statistics", "mba")
+    cert_terms = ("certification", "certified", "cissp", "security+", "aws certified", "pmp", "cpa")
+    jd_education_terms = [term for term in degree_terms + cert_terms if term in jd_clean]
+    education_score = 80.0 if not jd_education_terms or "equivalent experience" in jd_clean else (
+        sum(1 for term in jd_education_terms if term in resume_clean) / len(jd_education_terms) * 100
     )
 
+    soft_terms = ("communication", "leadership", "collaborat", "stakeholder", "mentor", "cross-functional", "agile", "scrum", "customer")
+    jd_soft_terms = [term for term in soft_terms if term in jd_clean]
+    soft_score = 70.0 if not jd_soft_terms else sum(1 for term in jd_soft_terms if term in resume_clean) / len(jd_soft_terms) * 100
+
+    overall = (
+        skill_pct * 0.30
+        + title_score * 0.25
+        + keyword_pct * 0.15
+        + education_score * 0.10
+        + soft_score * 0.10
+        + resume_quality * 0.10
+    )
+    if jd_skills and len(matched_skills) <= 1:
+        overall = min(overall, 45.0)
+    if required_years and resume_years is None:
+        overall = min(overall, 65.0)
+
     recommendation = "Strong Match" if overall >= 80 else \
-                     "Potential Match" if overall >= 60 else \
-                     "Weak Match" if overall >= 40 else "Not Recommended"
+                     "Good Match" if overall >= 65 else \
+                     "Partial Match" if overall >= 45 else "Weak Match"
 
     from app.utils.text_processing import TECH_SKILLS
 
@@ -171,7 +200,7 @@ def _fallback_score(resume_text: str, job_description: str) -> ATSResult:
         strengths.append(f"Technical skills present: {', '.join(tech_matched[:6])}")
     if general_matched:
         strengths.append(f"Keyword alignment: {', '.join(general_matched[:5])}")
-    if completeness_pct >= 50:
+    if resume_quality >= 60:
         strengths.append(f"Resume covers {sections} of 6 key sections")
     if not strengths:
         strengths.append("Add more targeted skills and keywords to improve match")
@@ -192,18 +221,30 @@ def _fallback_score(resume_text: str, job_description: str) -> ATSResult:
         skill_match=SkillMatch(
             matched_skills=matched_skills or keyword_analysis.strong_keywords,
             missing_skills=missing_skills or [kw.keyword for kw in keyword_analysis.missing_keywords],
-            match_percentage=round(skill_pct or density, 1),
+            match_percentage=round(skill_pct or keyword_pct, 1),
         ),
-        experience_score=round(min(100.0, completeness_pct + 20), 1),
-        education_score=100.0 if re.search(r"\beducation\b", resume_text.lower()) else 45.0,
+        experience_score=round(title_score, 1),
+        education_score=round(education_score, 1),
         projects_score=100.0 if re.search(r"\b(project|projects)\b", resume_text.lower()) else 45.0,
         certifications_score=100.0 if re.search(r"\b(certification|certifications)\b", resume_text.lower()) else 45.0,
-        cultural_fit_score=round(min(100.0, (density + skill_pct) / 2), 1),
+        cultural_fit_score=round(soft_score, 1),
         keyword_analysis=keyword_analysis,
         strengths=strengths,
         concerns=concerns,
-        improvement_suggestions=[kw.suggestion for kw in keyword_analysis.missing_keywords[:5]],
+        improvement_suggestions=[kw.suggestion for kw in keyword_analysis.missing_keywords[:5]] or [
+            f"Add evidence for {kw}" for kw in missing_keywords[:3]
+        ],
     )
+
+
+def _years_hint(text: str) -> int | None:
+    matches = re.findall(r"(?i)\b(\d{1,2})\+?\s*(?:years?|yrs?)\s+(?:of\s+)?(?:professional\s+)?(?:experience|exp)\b", text or "")
+    if not matches:
+        return None
+    try:
+        return max(int(v) for v in matches)
+    except ValueError:
+        return None
 
 
 def score_resume_quality(resume_text: str) -> float:

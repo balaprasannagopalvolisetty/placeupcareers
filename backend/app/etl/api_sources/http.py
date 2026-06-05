@@ -21,7 +21,7 @@ async def get_json(
     """GET JSON with small exponential backoff.
 
     Failures bubble to the source runner, where they are logged per source so
-    one provider cannot crash the full 8-hour job.
+    one provider cannot crash the full 6-hour job.
     """
     last_exc: Exception | None = None
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, headers=headers) as client:
@@ -40,4 +40,3 @@ async def get_json(
                 logger.info("Retrying %s after %s", url, exc)
                 await asyncio.sleep(backoff_seconds * (2 ** attempt))
     raise last_exc or RuntimeError(f"GET failed: {url}")
-

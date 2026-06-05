@@ -1,7 +1,7 @@
 # Official API / ATS Connectors
 
 This package is used by the existing `placeup-job-scraper-6h` Cloud Run Job,
-whose schedule is now 8 hours. Do not create a separate 8-hour scraper job.
+whose schedule is every 6 hours. Do not create a separate 8-hour scraper job.
 
 ## Structure
 

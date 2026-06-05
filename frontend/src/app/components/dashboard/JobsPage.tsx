@@ -1070,7 +1070,6 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                       <button
                         onClick={async (e) => {
                           e.stopPropagation();
-                          await persistApplication(job, "applied");
                           const url = jobUrl || `https://www.google.com/search?q=${encodeURIComponent(`${job.company || ""} ${job.title || ""} apply`)}`;
                           window.open(url, "_blank", "noopener,noreferrer");
                         }}
