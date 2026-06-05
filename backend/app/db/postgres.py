@@ -376,7 +376,7 @@ class PostgresClient:
     def stage_records(self, db: Session, ingest_run_id, source_name: str, records: list[dict]) -> int:
         count = 0
         for record in records:
-            payload = record.get("payload", record)
+            payload = self._json_safe(record.get("payload", record))
             record_hash = record.get("record_hash") or stable_hash(payload)
             stmt = insert(StagingRecord).values(
                 ingest_run_id=ingest_run_id,
@@ -385,9 +385,9 @@ class PostgresClient:
                 source_url=record.get("source_url"),
                 record_hash=record_hash,
                 payload=payload,
-                normalized_payload=record.get("normalized_payload"),
+                normalized_payload=self._json_safe(record.get("normalized_payload")),
                 validation_status=record.get("validation_status", "pending"),
-                validation_errors=record.get("validation_errors", []),
+                validation_errors=self._json_safe(record.get("validation_errors", [])),
             )
             stmt = stmt.on_conflict_do_update(
                 index_elements=[StagingRecord.source_name, StagingRecord.record_hash],
@@ -403,6 +403,9 @@ class PostgresClient:
             db.execute(stmt)
             count += 1
         return count
+
+    def _json_safe(self, value):
+        return json.loads(json.dumps(value, default=json_default))
 
     def _apply_job_filters(self, stmt, filters: dict | None):
         filters = filters or {}
