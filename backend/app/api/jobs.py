@@ -8,7 +8,7 @@ import math
 import re
 import html
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, Header, HTTPException, Query
 from typing import Any, Optional
 
 from app.db import user_store
@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 DEFAULT_VISIBLE_MAX_AGE_DAYS = 30
 DEFAULT_RECENT_JOB_HOURS = 8
+_detail_repair_recent: dict[str, datetime] = {}
 
 
 async def fast_optional_user_id(
@@ -121,41 +122,53 @@ def _apply_job_specific_visa_rules(job: dict) -> dict:
     return updated
 
 
-async def _repair_detail_description_if_thin(job: dict, db) -> dict:
-    """Try to expand a thin direct-company JD while rendering details."""
+def _should_schedule_detail_repair(job: dict) -> bool:
     description = clean_description_text(job.get("description") or "")
     if not is_thin_description(description, min_chars=1200, min_words=120):
-        return job
+        return False
     url = str(job.get("job_url") or job.get("source_url") or job.get("job_url_direct") or "").strip()
     if not url or not is_html_fetch_allowed(url):
-        return job
+        return False
+    job_id = str(job.get("id") or "")
+    now = datetime.now(timezone.utc)
+    last = _detail_repair_recent.get(job_id)
+    if last and (now - last).total_seconds() < 900:
+        return False
+    _detail_repair_recent[job_id] = now
+    if len(_detail_repair_recent) > 5000:
+        cutoff = now - timedelta(hours=2)
+        for key, value in list(_detail_repair_recent.items()):
+            if value < cutoff:
+                _detail_repair_recent.pop(key, None)
+    return True
+
+
+async def _repair_detail_description_background(job: dict, db) -> None:
+    """Expand a thin direct-company JD after the user-facing response."""
+    description = clean_description_text(job.get("description") or "")
+    url = str(job.get("job_url") or job.get("source_url") or job.get("job_url_direct") or "").strip()
     details = await fetch_full_job_description(url, timeout=12.0, expand_links=True)
     if not details:
-        return job
+        return
     repaired = clean_description_text(details.description)
     if len(repaired) <= len(description) + 300:
-        return job
-    updated = dict(job)
-    updated["description"] = repaired
-    updated["job_url"] = details.source_url or updated.get("job_url") or url
-    meta = dict(updated.get("extra_metadata") or {})
+        return
+    meta = dict(job.get("extra_metadata") or {})
     meta["description_hydrated"] = True
     meta["description_hydrated_from"] = details.source_url
     meta["description_extractor"] = details.extractor
     meta["description_hydrated_on_detail"] = True
-    updated["extra_metadata"] = meta
     try:
         update_description = getattr(db, "update_job_description", None)
         if update_description:
             await update_description(
-                str(updated.get("id") or ""),
+                str(job.get("id") or ""),
                 repaired,
                 source_url=details.source_url or url,
                 extra_metadata=meta,
             )
     except Exception as exc:
-        logger.debug("Unable to persist repaired JD for %s: %s", updated.get("id"), exc)
-    return updated
+        logger.debug("Unable to persist repaired JD for %s: %s", job.get("id"), exc)
 
 
 def _prepare_resume_tokens(resume_text: str) -> dict:
@@ -1551,6 +1564,7 @@ async def export_all_jobs(_: None = Depends(require_internal_api_key), db=Depend
 @router.get("/detail/{job_id}")
 async def get_job_detail(
     job_id: str,
+    background_tasks: BackgroundTasks,
     db=Depends(get_db),
     user_id: Optional[str] = Depends(optional_user_id),
 ):
@@ -1559,7 +1573,8 @@ async def get_job_detail(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    job = await _repair_detail_description_if_thin(job, db)
+    if _should_schedule_detail_repair(job):
+        background_tasks.add_task(_repair_detail_description_background, dict(job), db)
     title = job.get("title") or ""
     description = job.get("description") or ""
     cat, rname = categorize(title)
