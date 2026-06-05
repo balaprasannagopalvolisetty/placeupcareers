@@ -138,6 +138,53 @@ class PostgresClient:
     async def upsert_job(self, job_id: str, job_data: dict) -> None:
         await self.upsert_jobs_batch([job_data | {"id": job_id}])
 
+    async def update_job_description(
+        self,
+        job_id: str,
+        description: str,
+        *,
+        source_url: str | None = None,
+        extra_metadata: dict | None = None,
+    ) -> int:
+        if not job_id or not description:
+            return 0
+        params = {
+            "job_id": job_id,
+            "description": description,
+            "source_url": source_url,
+            "extra_metadata": json.dumps(extra_metadata or {}, default=json_default),
+        }
+        with self.session() as db:
+            total = 0
+            if self._master_jobs_available():
+                result = db.execute(
+                    text(
+                        """
+                        update master_jobs
+                           set description = :description,
+                               source_url = coalesce(:source_url, source_url),
+                               extra_metadata = coalesce(extra_metadata, '{}'::jsonb) || cast(:extra_metadata as jsonb)
+                         where id = :job_id
+                        """
+                    ),
+                    params,
+                )
+                total += int(result.rowcount or 0)
+            result = db.execute(
+                text(
+                    """
+                    update jobs
+                       set description = :description,
+                           source_url = coalesce(:source_url, source_url),
+                           extra_metadata = coalesce(extra_metadata, '{}'::jsonb) || cast(:extra_metadata as jsonb)
+                     where id = :job_id
+                    """
+                ),
+                params,
+            )
+            total += int(result.rowcount or 0)
+            return total
+
     async def upsert_jobs_batch(self, jobs: list[dict]) -> int:
         from app.etl.loaders.jobs import load_normalized_jobs
 

@@ -21,6 +21,12 @@ from app.models.job import (
 from app.security import decode_access_token, optional_user_id, require_internal_api_key
 from app.config import settings
 from app.services.job_exporter import export_jobs
+from app.services.job_description_details import (
+    clean_description_text,
+    fetch_full_job_description,
+    is_html_fetch_allowed,
+    is_thin_description,
+)
 from app.services.global_visa_rules import COUNTRY_RULES, country_options, normalize_country_code, visa_program_options
 from app.utils.job_quality import has_usable_job_description, is_probably_fake_or_scam_job
 from app.utils.terminal_table import render_table
@@ -86,7 +92,10 @@ SPONSORSHIP_BLOCK_RE = re.compile(
     r"authorized\s+to\s+work\s+.*without\s+sponsorship|"
     r"u\.?s\.?\s+citizens?\s+only|"
     r"citizenship\s+required|"
-    r"(?:secret|top\s+secret)\s+clearance\s+required"
+    r"(?:secret|top\s+secret|ts[./\-\s]*sci|sci)\s+clearance\s+required|"
+    r"minimum\s+clearance\s+required\s*:\s*(?:secret|top\s+secret|ts[./\-\s]*sci)|"
+    r"clearance\s+level\s+must\s+be\s+able\s+to\s+obtain\s*:\s*(?:secret|top\s+secret|ts[./\-\s]*sci)|"
+    r"active\s+(?:dod\s+)?(?:secret|top\s+secret|ts[./\-\s]*sci)\s+clearance"
     r")\b"
 )
 
@@ -109,6 +118,43 @@ def _apply_job_specific_visa_rules(job: dict) -> dict:
         "visa_score": 0,
         "no_sponsorship": True,
     }
+    return updated
+
+
+async def _repair_detail_description_if_thin(job: dict, db) -> dict:
+    """Try to expand a thin direct-company JD while rendering details."""
+    description = clean_description_text(job.get("description") or "")
+    if not is_thin_description(description, min_chars=1200, min_words=120):
+        return job
+    url = str(job.get("job_url") or job.get("source_url") or job.get("job_url_direct") or "").strip()
+    if not url or not is_html_fetch_allowed(url):
+        return job
+    details = await fetch_full_job_description(url, timeout=12.0, expand_links=True)
+    if not details:
+        return job
+    repaired = clean_description_text(details.description)
+    if len(repaired) <= len(description) + 300:
+        return job
+    updated = dict(job)
+    updated["description"] = repaired
+    updated["job_url"] = details.source_url or updated.get("job_url") or url
+    meta = dict(updated.get("extra_metadata") or {})
+    meta["description_hydrated"] = True
+    meta["description_hydrated_from"] = details.source_url
+    meta["description_extractor"] = details.extractor
+    meta["description_hydrated_on_detail"] = True
+    updated["extra_metadata"] = meta
+    try:
+        update_description = getattr(db, "update_job_description", None)
+        if update_description:
+            await update_description(
+                str(updated.get("id") or ""),
+                repaired,
+                source_url=details.source_url or url,
+                extra_metadata=meta,
+            )
+    except Exception as exc:
+        logger.debug("Unable to persist repaired JD for %s: %s", updated.get("id"), exc)
     return updated
 
 
@@ -248,7 +294,8 @@ def _ats_score_v2(resume_text: str, job_text: str, *, resume_cache: Optional[dic
         hard_requirement_penalty += 18
     if skill_pct < 20 and required_pct < 25:
         hard_requirement_penalty += 12
-    authorization_penalty = 10 if SPONSORSHIP_BLOCK_RE.search(job_text.lower()) else 0
+    authorization_blocked = bool(SPONSORSHIP_BLOCK_RE.search(job_text.lower()))
+    authorization_penalty = 35 if authorization_blocked else 0
 
     score = (
         title_pct * 0.18
@@ -267,10 +314,14 @@ def _ats_score_v2(resume_text: str, job_text: str, *, resume_cache: Optional[dic
         score = min(score, 42)
     if seniority_gap >= 16:
         score = min(score, 48)
+    if authorization_blocked:
+        score = min(score, 34)
     if skill_pct >= 70 and required_pct >= 65:
         score += 8
     if title_pct >= 70 and required_pct >= 55:
         score += 5
+    if authorization_blocked:
+        score = min(score, 34)
 
     return {
         "score": int(round(max(6, min(98, score)))),
@@ -290,7 +341,7 @@ def _ats_score_v2(resume_text: str, job_text: str, *, resume_cache: Optional[dic
             label for label, active in (
                 ("Seniority/years gap", seniority_gap > 0),
                 ("Hard requirement gap", hard_requirement_penalty > 0),
-                ("Work authorization warning", authorization_penalty > 0),
+                ("Work authorization / clearance block", authorization_blocked),
             ) if active
         ],
     }
@@ -1508,6 +1559,7 @@ async def get_job_detail(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
+    job = await _repair_detail_description_if_thin(job, db)
     title = job.get("title") or ""
     description = job.get("description") or ""
     cat, rname = categorize(title)
