@@ -9,7 +9,7 @@ from typing import Iterable
 from sqlalchemy.orm import Session
 
 from app.db.postgres import PostgresClient
-from app.etl.api_sources.connectors import adzuna, greenhouse
+from app.etl.api_sources.connectors import adzuna, greenhouse, remoteok, remotive, jobicy
 from app.etl.api_sources.firestore_sink import upsert_jobs as upsert_firestore_jobs
 from app.etl.api_sources.registry import ADZUNA_COUNTRIES, load_registry
 from app.etl.api_sources.schema import FetchParams, NormalizedJob
@@ -50,6 +50,12 @@ async def fetch_all(
         registry = load_registry()
         for token in registry.greenhouse:
             tasks.append((f"greenhouse:{token}", asyncio.create_task(greenhouse.fetch_board(token))))
+
+    # Free, clean-200 global feeds (no auth, no query/country needed — they are
+    # whole-feed pulls of remote, English-language roles).
+    for name, module in (("remoteok", remoteok), ("remotive", remotive), ("jobicy", jobicy)):
+        if name in enabled:
+            tasks.append((name, asyncio.create_task(module.fetch())))
 
     for label, task in tasks:
         try:

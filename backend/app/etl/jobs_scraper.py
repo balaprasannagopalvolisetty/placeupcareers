@@ -65,13 +65,30 @@ def build_request(args: argparse.Namespace) -> ScrapeRequest:
         sources = [JobSource(src.strip()) for src in split_cli_list(args.sources)]
     else:
         sources = [
+            JobSource.RAPIDAPI,
             JobSource.USAJOBS,
             JobSource.DICE,
+            JobSource.REMOTEOK,
+            JobSource.REMOTIVE,
+            JobSource.ARBEITNOW,
+            JobSource.JOBICY,
+            JobSource.WEWORKREMOTELY,
+            JobSource.JOBTECH,
+            JobSource.EURES,
+            JobSource.UK_FIND_A_JOB,
+            JobSource.NHS_JOBS,
+            JobSource.JOBBANK_CA,
+            JobSource.BA_JOBSUCHE,
+            JobSource.FRANCE_TRAVAIL,
+            JobSource.MYCAREERSFUTURE,
+            JobSource.TYOMARKKINATORI,
+            JobSource.NAV_ARBEIDSPLASSEN,
             JobSource.H1B_SPONSOR,
             # Direct Tier-1 ATS pulls (Greenhouse/Lever/Ashby/SmartRecruiters/
             # Workable/Recruitee). Filtered to the expanded taxonomy roles before
             # they hit master_jobs. See app/etl/sources/tier1_ats.py.
             JobSource.TIER1_ATS,
+            JobSource.SCRAPLING_DISCOVERY,
         ]
     return ScrapeRequest(
         search_terms=queries,

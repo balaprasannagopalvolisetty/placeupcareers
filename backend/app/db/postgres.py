@@ -54,6 +54,7 @@ class PostgresClient:
             db.close()
 
     async def get_jobs(self, filters: dict = None, limit: int = 20, offset: int = 0) -> list[dict]:
+        filters = filters or {}
         if self._master_jobs_available():
             with self.session() as db:
                 stmt = select(
@@ -83,7 +84,7 @@ class PostgresClient:
                     MasterJob.merged_sources,
                 )
                 stmt = self._apply_master_job_filters(stmt, filters)
-                fetch_limit = min(max(limit * 5, limit + 20), 500)
+                fetch_limit = self._job_fetch_limit(limit, filters)
                 stmt = stmt.order_by(MasterJob.last_seen_at.desc()).limit(fetch_limit).offset(offset)
                 rows = db.execute(stmt).mappings().all()
                 return self._filter_target_jobs([self._master_job_mapping_to_dict(row) for row in rows])[:limit]
@@ -114,7 +115,7 @@ class PostgresClient:
                 Job.extra_metadata,
             ).join(Company, Job.company_id == Company.id, isouter=True)
             stmt = self._apply_job_filters(stmt, filters)
-            fetch_limit = min(max(limit * 5, limit + 20), 500)
+            fetch_limit = self._job_fetch_limit(limit, filters)
             stmt = stmt.order_by(Job.last_seen_at.desc()).limit(fetch_limit).offset(offset)
             rows = db.execute(stmt).mappings().all()
             return self._filter_target_jobs([self._job_mapping_to_dict(row) for row in rows])[:limit]
@@ -177,6 +178,19 @@ class PostgresClient:
             )
             rows = db.execute(stmt).mappings().all()
             return self._filter_target_jobs([self._master_job_mapping_to_dict(row) for row in rows])[:limit]
+
+    def _job_fetch_limit(self, limit: int, filters: dict | None) -> int:
+        """Bound broad pages tightly, but let taxonomy filters scan enough rows.
+
+        Role/category/search filters are finalized in the API after taxonomy,
+        visa, language, scam, and JD-quality checks. A hard 500-row DB cap made
+        some dropdown selections look empty even when matching jobs existed
+        deeper in master_jobs.
+        """
+        filters = filters or {}
+        if filters.get("coverage_scan") or limit > 500:
+            return min(max(limit, 500), 12000)
+        return min(max(limit * 5, limit + 20), 500)
 
     async def get_job(self, job_id: str) -> Optional[dict]:
         if self._master_jobs_available():

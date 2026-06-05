@@ -1084,6 +1084,7 @@ async def list_jobs(
         if taxonomy_filter_active:
             fetch_limit = min(max(total, page_size), 12000)
             fetch_offset = 0
+            filters["coverage_scan"] = True
         elif post_filter_since or post_filter_before:
             fetch_limit = 500
             fetch_offset = 0 if page == 1 else min(offset * 3, 1000)
@@ -1097,7 +1098,8 @@ async def list_jobs(
         source_balanced_fetch = (
             not filters.get("source")
             and hasattr(db, "get_jobs_source_balanced")
-            and (filters.get("title_terms") or personalized or free_text_search_active or not taxonomy_filter_active)
+            and not taxonomy_filter_active
+            and (personalized or free_text_search_active or not filters.get("title_terms"))
         )
         if source_balanced_fetch:
             jobs = await db.get_jobs_source_balanced(
@@ -1298,7 +1300,7 @@ async def list_jobs(
             "page_size": page_size,
             "total_pages": total_pages,
             "filters_applied": {
-                **filters,
+                **{k: v for k, v in filters.items() if k != "coverage_scan"},
                 **({"role": role} if role else {}),
                 **({"category": category} if category else {}),
                 **({"country": filters.get("country")} if filters.get("country") else {}),

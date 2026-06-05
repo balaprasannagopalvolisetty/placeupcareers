@@ -302,6 +302,7 @@ def build_scrapling_targets(
     include_monster: bool = True,
     include_jooble: bool = True,
     include_discovery: bool = True,
+    include_search_pages: bool = False,
 ) -> list[dict[str, Any]]:
     """Build bounded Scrapling targets from roles, H1B sponsors, and career pages."""
     glassdoor_targets: list[dict[str, Any]] = []
@@ -328,13 +329,14 @@ def build_scrapling_targets(
             discovery_targets.append({"kind": "career_page", "url": entry["url"], "company": entry["company"]})
         for url in _extra_career_urls():
             discovery_targets.append({"kind": "career_page", "url": url})
-        for role in all_role_names():
-            discovery_targets.append({"kind": "google_jobs", "url": google_jobs_url(f"{role} OPT H-1B visa sponsor"), "query": role})
-            discovery_targets.append({"kind": "linkedin", "url": linkedin_search_url(role), "query": role, "location": "United States"})
-        for company in _top_h1b_excel_companies(settings.scrapling_h1b_excel_company_limit):
-            for role in POPULAR_ROLE_SEEDS:
-                query = f"{company} {role} jobs United States"
-                discovery_targets.append({"kind": "google_jobs", "url": google_jobs_url(query), "query": query, "company": company})
+        if include_search_pages:
+            for role in all_role_names():
+                discovery_targets.append({"kind": "google_jobs", "url": google_jobs_url(f"{role} OPT H-1B visa sponsor"), "query": role})
+                discovery_targets.append({"kind": "linkedin", "url": linkedin_search_url(role), "query": role, "location": "United States"})
+            for company in _top_h1b_excel_companies(settings.scrapling_h1b_excel_company_limit):
+                for role in POPULAR_ROLE_SEEDS:
+                    query = f"{company} {role} jobs United States"
+                    discovery_targets.append({"kind": "google_jobs", "url": google_jobs_url(query), "query": query, "company": company})
 
     max_targets = settings.scrapling_discovery_max_targets
     buckets = [bucket for bucket in (glassdoor_targets, ziprecruiter_targets, monster_targets, jooble_targets, discovery_targets) if bucket]
