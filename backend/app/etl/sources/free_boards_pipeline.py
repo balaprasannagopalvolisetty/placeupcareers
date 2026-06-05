@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import inspect
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -23,6 +25,10 @@ from app.etl.sources.source_base import SourceHealth, guarded_source
 from app.etl.sources import free_boards as fb
 
 logger = logging.getLogger(__name__)
+try:
+    CLEAN_SOURCE_CONCURRENCY = max(1, int(os.getenv("CLEAN_SOURCE_CONCURRENCY", "10")))
+except ValueError:
+    CLEAN_SOURCE_CONCURRENCY = 10
 
 # name -> connector coroutine factory
 FREE_BOARD_SOURCES = {
@@ -31,6 +37,18 @@ FREE_BOARD_SOURCES = {
     "arbeitnow": fb.scrape_arbeitnow,
     "jobicy": fb.scrape_jobicy,
     "weworkremotely": fb.scrape_weworkremotely,
+}
+
+QUERYABLE_SOURCES = {
+    "jobtech",
+    "ba_jobsuche",
+    "mycareersfuture",
+    "france_travail",
+    "nhs_jobs",
+    "uk_findajob",
+    "jobbank_ca",
+    "nav_arbeidsplassen",
+    "tyomarkkinatori",
 }
 
 
@@ -66,6 +84,8 @@ async def run_free_boards(
     health: Optional[SourceHealth] = None,
     registry: Optional[dict] = None,
     english_only: bool = False,
+    queries: Optional[list[str]] = None,
+    queryable_sources: Optional[set[str]] = None,
 ) -> tuple[list[JobPost], dict[str, str]]:
     """Run all (or a subset of) clean-200 sources.
 
@@ -84,16 +104,36 @@ async def run_free_boards(
     base = registry if registry is not None else FREE_BOARD_SOURCES
     sources = {k: v for k, v in base.items() if not only or k in only}
 
+    clean_queries = [
+        str(q).strip()
+        for q in (queries or [])
+        if str(q).strip()
+    ]
+    queryable = queryable_sources if queryable_sources is not None else QUERYABLE_SOURCES
     collected: list[JobPost] = []
     async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
-        async def _one(name: str, fn) -> list[JobPost]:
-            return await guarded_source(
-                name,
-                lambda: fn(client=client, max_jobs=max_jobs_per_source),
-                health=health,
-            )
+        semaphore = asyncio.Semaphore(CLEAN_SOURCE_CONCURRENCY)
 
-        results = await asyncio.gather(*[_one(n, fn) for n, fn in sources.items()])
+        async def _one(name: str, fn, *, query: Optional[str] = None, cap: Optional[int] = None) -> list[JobPost]:
+            kwargs = {"client": client, "max_jobs": cap or max_jobs_per_source}
+            if query and "query" in inspect.signature(fn).parameters:
+                kwargs["query"] = query
+            async with semaphore:
+                return await guarded_source(
+                    name,
+                    lambda: fn(**kwargs),
+                    health=health,
+                )
+
+        tasks = []
+        for name, fn in sources.items():
+            if clean_queries and name in queryable:
+                per_query_cap = max(5, min(25, max_jobs_per_source // max(1, len(clean_queries))))
+                tasks.extend(_one(name, fn, query=query, cap=per_query_cap) for query in clean_queries)
+            else:
+                tasks.append(_one(name, fn))
+
+        results = await asyncio.gather(*tasks)
 
     for batch in results:
         collected.extend(batch)
@@ -115,12 +155,14 @@ def main() -> int:
     parser.add_argument("--hours", type=int, default=8, help="Only keep jobs posted in the last N hours (0 = no limit)")
     parser.add_argument("--max", type=int, default=500, help="Max jobs per source")
     parser.add_argument("--only", type=str, default="", help="Comma-separated subset of sources")
+    parser.add_argument("--queries", type=str, default="", help="Comma-separated query terms for queryable sources")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     only = {s.strip() for s in args.only.split(",") if s.strip()} or None
+    queries = [s.strip() for s in args.queries.split(",") if s.strip()] or None
     jobs, status = asyncio.run(
-        run_free_boards(hours=args.hours, max_jobs_per_source=args.max, only=only)
+        run_free_boards(hours=args.hours, max_jobs_per_source=args.max, only=only, queries=queries)
     )
     print(f"\n{len(jobs)} unique jobs in last {args.hours}h")
     for src, st in status.items():

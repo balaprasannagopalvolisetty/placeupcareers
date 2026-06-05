@@ -8,13 +8,13 @@ These connectors are deliberately conservative:
 """
 from __future__ import annotations
 
-import base64
+import asyncio
 import logging
 import os
 import re
 from datetime import datetime
 from typing import Any, Optional
-from urllib.parse import quote_plus, urljoin
+from urllib.parse import urljoin
 
 import httpx
 from bs4 import BeautifulSoup
@@ -25,6 +25,8 @@ from app.etl.sources.source_base import safe_get_json, safe_get_text, is_probabl
 
 logger = logging.getLogger(__name__)
 
+DETAIL_CONCURRENCY = 6
+
 
 def _s(v: Any) -> str:
     return "" if v is None else str(v).strip()
@@ -34,6 +36,66 @@ def _clean_html(value: Any) -> str:
     if not value:
         return ""
     return BeautifulSoup(str(value), "html.parser").get_text(" ", strip=True)
+
+
+def _main_text_from_html(html_text: str) -> str:
+    soup = BeautifulSoup(html_text or "", "html.parser")
+    for tag in soup(["script", "style", "noscript", "svg"]):
+        tag.decompose()
+    main = (
+        soup.find("main")
+        or soup.find(attrs={"role": "main"})
+        or soup.find("article")
+        or soup.body
+        or soup
+    )
+    return " ".join(main.get_text(" ", strip=True).split())
+
+
+async def _detail_text(client: Optional[httpx.AsyncClient], url: str, *, min_chars: int = 450) -> str:
+    if not url:
+        return ""
+    normalized_url = url.rstrip("/")
+    if normalized_url in {
+        "https://www.arbeitsagentur.de/jobsuche",
+        "https://findajob.dwp.gov.uk/search",
+        "https://www.jobbank.gc.ca/jobsearch/jobsearch",
+    }:
+        return ""
+    own_client = client is None
+    client = client or httpx.AsyncClient(timeout=12.0, follow_redirects=True)
+    try:
+        resp = await client.get(url)
+        if resp.status_code != 200:
+            return ""
+        text = resp.text
+    except (httpx.TimeoutException, httpx.TransportError):
+        return ""
+    finally:
+        if own_client:
+            await client.aclose()
+    cleaned = _main_text_from_html(text)
+    return cleaned if len(cleaned) >= min_chars else ""
+
+
+async def _hydrate_detail_texts(
+    jobs: list[JobPost],
+    *,
+    client: Optional[httpx.AsyncClient],
+    min_chars: int = 450,
+) -> list[JobPost]:
+    semaphore = asyncio.Semaphore(DETAIL_CONCURRENCY)
+
+    async def _one(job: JobPost) -> JobPost:
+        if len(job.description or "") >= min_chars:
+            return job
+        async with semaphore:
+            detail = await _detail_text(client, job.job_url, min_chars=min_chars)
+        if detail and len(detail) > len(job.description or ""):
+            job.description = detail
+        return job
+
+    return await asyncio.gather(*[_one(job) for job in jobs])
 
 
 def _parse_iso(value: Any) -> Optional[datetime]:
@@ -175,7 +237,7 @@ def ba_item_to_jobpost(item: dict) -> Optional[JobPost]:
         company=item.get("arbeitgeber"),
         location=location,
         description=item.get("beruf") or item.get("titel"),
-        job_url=f"https://www.arbeitsagentur.de/jobsuche/jobdetail/{ref}" if ref else "https://www.arbeitsagentur.de/jobsuche/",
+        job_url=f"https://www.arbeitsagentur.de/jobsuche/jobdetail/{ref}" if ref and "/" not in ref else "https://www.arbeitsagentur.de/jobsuche/",
         source=JobSource.BA_JOBSUCHE,
         source_job_id=ref,
         posted_at=_parse_iso(item.get("aktuelleVeroeffentlichungsdatum") or item.get("modifikationsTimestamp")),
@@ -184,18 +246,21 @@ def ba_item_to_jobpost(item: dict) -> Optional[JobPost]:
     )
 
 
-async def scrape_ba_jobsuche(*, client: Optional[httpx.AsyncClient] = None, max_jobs: int = 500) -> list[JobPost]:
+async def scrape_ba_jobsuche(*, client: Optional[httpx.AsyncClient] = None, max_jobs: int = 500, query: str = "") -> list[JobPost]:
+    params = {"size": min(max_jobs, 100), "page": 1}
+    if query:
+        params["was"] = query
     data = await safe_get_json(
         BA_JOBS_URL,
         client=client,
-        params={"size": min(max_jobs, 100), "page": 1},
+        params=params,
         headers=BA_HEADERS,
     )
     rows = (data or {}).get("stellenangebote") if isinstance(data, dict) else None
     if not isinstance(rows, list):
         return []
     out = [jp for row in rows for jp in [ba_item_to_jobpost(row)] if jp]
-    return out[:max_jobs]
+    return await _hydrate_detail_texts(out[:max_jobs], client=client)
 
 
 # Singapore - MyCareersFuture
@@ -234,8 +299,11 @@ def mcf_item_to_jobpost(item: dict) -> Optional[JobPost]:
     )
 
 
-async def scrape_mycareersfuture(*, client: Optional[httpx.AsyncClient] = None, max_jobs: int = 500) -> list[JobPost]:
-    data = await safe_get_json(MCF_URL, client=client, params={"limit": min(max_jobs, 100), "page": 0})
+async def scrape_mycareersfuture(*, client: Optional[httpx.AsyncClient] = None, max_jobs: int = 500, query: str = "") -> list[JobPost]:
+    params = {"limit": min(max_jobs, 100), "page": 0}
+    if query:
+        params["search"] = query
+    data = await safe_get_json(MCF_URL, client=client, params=params)
     rows = (data or {}).get("results") if isinstance(data, dict) else None
     if not isinstance(rows, list):
         return []
@@ -248,7 +316,7 @@ FT_TOKEN_URL = "https://entreprise.francetravail.fr/connexion/oauth2/access_toke
 FT_SEARCH_URL = "https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search"
 
 
-async def scrape_france_travail(*, client: Optional[httpx.AsyncClient] = None, max_jobs: int = 500) -> list[JobPost]:
+async def scrape_france_travail(*, client: Optional[httpx.AsyncClient] = None, max_jobs: int = 500, query: str = "") -> list[JobPost]:
     client_id = os.getenv("FRANCE_TRAVAIL_CLIENT_ID", "").strip()
     client_secret = os.getenv("FRANCE_TRAVAIL_CLIENT_SECRET", "").strip()
     if not client_id or not client_secret:
@@ -274,7 +342,7 @@ async def scrape_france_travail(*, client: Optional[httpx.AsyncClient] = None, m
             return []
         resp = await client.get(
             FT_SEARCH_URL,
-            params={"range": f"0-{min(max_jobs, 149) - 1}"},
+            params={**({"motsCles": query} if query else {}), "range": f"0-{min(max_jobs, 149) - 1}"},
             headers={"Authorization": f"Bearer {token}"},
         )
         if resp.status_code != 200:
@@ -327,9 +395,10 @@ def _parse_nhs_jobs(html: str, *, max_jobs: int) -> list[JobPost]:
     return [j for j in out if j]
 
 
-async def scrape_nhs_jobs(*, client: Optional[httpx.AsyncClient] = None, max_jobs: int = 500) -> list[JobPost]:
-    text = await safe_get_text("https://www.jobs.nhs.uk/candidate/search/results", client=client, params={"keyword": ""})
-    return _parse_nhs_jobs(text or "", max_jobs=max_jobs) if text else []
+async def scrape_nhs_jobs(*, client: Optional[httpx.AsyncClient] = None, max_jobs: int = 500, query: str = "") -> list[JobPost]:
+    text = await safe_get_text("https://www.jobs.nhs.uk/candidate/search/results", client=client, params={"keyword": query})
+    jobs = _parse_nhs_jobs(text or "", max_jobs=max_jobs) if text else []
+    return await _hydrate_detail_texts(jobs, client=client)
 
 
 def _parse_findajob(html: str, *, max_jobs: int) -> list[JobPost]:
@@ -356,9 +425,13 @@ def _parse_findajob(html: str, *, max_jobs: int) -> list[JobPost]:
     return [j for j in out if j]
 
 
-async def scrape_uk_findajob(*, client: Optional[httpx.AsyncClient] = None, max_jobs: int = 500) -> list[JobPost]:
-    text = await safe_get_text("https://findajob.dwp.gov.uk/search", client=client, params={"w": "UK"})
-    return _parse_findajob(text or "", max_jobs=max_jobs) if text else []
+async def scrape_uk_findajob(*, client: Optional[httpx.AsyncClient] = None, max_jobs: int = 500, query: str = "") -> list[JobPost]:
+    params = {"w": "UK"}
+    if query:
+        params["q"] = query
+    text = await safe_get_text("https://findajob.dwp.gov.uk/search", client=client, params=params)
+    jobs = _parse_findajob(text or "", max_jobs=max_jobs) if text else []
+    return await _hydrate_detail_texts(jobs, client=client)
 
 
 def _parse_jobbank(html: str, *, max_jobs: int) -> list[JobPost]:
@@ -390,9 +463,13 @@ def _parse_jobbank(html: str, *, max_jobs: int) -> list[JobPost]:
     return [j for j in out if j]
 
 
-async def scrape_jobbank_ca(*, client: Optional[httpx.AsyncClient] = None, max_jobs: int = 500) -> list[JobPost]:
-    text = await safe_get_text("https://www.jobbank.gc.ca/jobsearch/jobsearch", client=client, params={"locationstring": "Canada"})
-    return _parse_jobbank(text or "", max_jobs=max_jobs) if text else []
+async def scrape_jobbank_ca(*, client: Optional[httpx.AsyncClient] = None, max_jobs: int = 500, query: str = "") -> list[JobPost]:
+    params = {"locationstring": "Canada"}
+    if query:
+        params["searchstring"] = query
+    text = await safe_get_text("https://www.jobbank.gc.ca/jobsearch/jobsearch", client=client, params=params)
+    jobs = _parse_jobbank(text or "", max_jobs=max_jobs) if text else []
+    return await _hydrate_detail_texts(jobs, client=client)
 
 
 def _parse_anchor_cards(html: str, *, source: JobSource, country: str, base_url: str, href_marker: str, max_jobs: int) -> list[JobPost]:
@@ -425,13 +502,17 @@ def _parse_anchor_cards(html: str, *, source: JobSource, country: str, base_url:
     return [j for j in out if j]
 
 
-async def scrape_nav_arbeidsplassen(*, client: Optional[httpx.AsyncClient] = None, max_jobs: int = 500) -> list[JobPost]:
-    text = await safe_get_text("https://arbeidsplassen.nav.no/stillinger", client=client)
+async def scrape_nav_arbeidsplassen(*, client: Optional[httpx.AsyncClient] = None, max_jobs: int = 500, query: str = "") -> list[JobPost]:
+    params = {"q": query} if query else None
+    text = await safe_get_text("https://arbeidsplassen.nav.no/stillinger", client=client, params=params)
     return _parse_anchor_cards(text or "", source=JobSource.NAV_ARBEIDSPLASSEN, country="NO", base_url="https://arbeidsplassen.nav.no", href_marker="/stillinger/stilling/", max_jobs=max_jobs) if text else []
 
 
-async def scrape_tyomarkkinatori(*, client: Optional[httpx.AsyncClient] = None, max_jobs: int = 500) -> list[JobPost]:
-    text = await safe_get_text("https://tyomarkkinatori.fi/henkiloasiakkaat/avoimet-tyopaikat/", client=client, params={"ae": "NOW", "f": "MAX_3_DAYS", "p": 0, "ps": min(max_jobs, 100)})
+async def scrape_tyomarkkinatori(*, client: Optional[httpx.AsyncClient] = None, max_jobs: int = 500, query: str = "") -> list[JobPost]:
+    params = {"ae": "NOW", "f": "MAX_3_DAYS", "p": 0, "ps": min(max_jobs, 100)}
+    if query:
+        params["hakusana"] = query
+    text = await safe_get_text("https://tyomarkkinatori.fi/henkiloasiakkaat/avoimet-tyopaikat/", client=client, params=params)
     return _parse_anchor_cards(text or "", source=JobSource.TYOMARKKINATORI, country="FI", base_url="https://tyomarkkinatori.fi", href_marker="/henkiloasiakkaat/avoimet-tyopaikat/", max_jobs=max_jobs) if text else []
 
 

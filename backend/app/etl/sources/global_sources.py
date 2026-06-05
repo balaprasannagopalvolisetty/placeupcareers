@@ -43,6 +43,7 @@ async def run_all_clean_sources(
     max_jobs_per_source: int = 500,
     only: Optional[set[str]] = None,
     english_only: bool = True,
+    queries: Optional[list[str]] = None,
 ) -> tuple[list[JobPost], dict[str, str]]:
     """Run every registered clean-200 source (boards + official portals).
 
@@ -55,6 +56,7 @@ async def run_all_clean_sources(
         only=only,
         registry=ALL_CLEAN_SOURCES,
         english_only=english_only,
+        queries=queries,
     )
 
 
@@ -63,15 +65,17 @@ def main() -> int:
     parser.add_argument("--hours", type=int, default=8, help="Keep jobs posted in last N hours (0 = no limit)")
     parser.add_argument("--max", type=int, default=500, help="Max jobs per source")
     parser.add_argument("--only", type=str, default="", help="Comma-separated subset of source names")
+    parser.add_argument("--queries", type=str, default="", help="Comma-separated query terms for queryable sources")
     parser.add_argument("--english-only", action="store_true", help="Drop non-English postings (B4)")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     only = {s.strip() for s in args.only.split(",") if s.strip()} or None
+    queries = [s.strip() for s in args.queries.split(",") if s.strip()] or None
     jobs, status = asyncio.run(
         run_all_clean_sources(
             hours=args.hours, max_jobs_per_source=args.max,
-            only=only, english_only=args.english_only,
+            only=only, english_only=args.english_only, queries=queries,
         )
     )
     print(f"\n{len(jobs)} unique jobs (last {args.hours}h, english_only={args.english_only})")

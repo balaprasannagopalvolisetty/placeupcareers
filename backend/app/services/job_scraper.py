@@ -727,6 +727,7 @@ async def run_scrape_cycle(
                 max_jobs_per_source=max(500, request.results_per_source * 10),
                 only=clean_sources,
                 english_only=True,
+                queries=list(request.search_terms or []),
             )
             logger.info("clean_sources status: %s", clean_status)
             return clean_jobs
