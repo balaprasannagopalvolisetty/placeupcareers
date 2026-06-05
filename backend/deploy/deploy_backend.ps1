@@ -85,7 +85,7 @@ $GreenhouseTokensSecret = Test-SecretExists "GREENHOUSE_BOARD_TOKENS"
 if ($GreenhouseTokensSecret) {
   $ScraperSecrets = "$ScraperSecrets,GREENHOUSE_BOARD_TOKENS=GREENHOUSE_BOARD_TOKENS:latest"
 }
-gcloud.cmd builds submit . --tag $Image
+gcloud.cmd builds submit backend --tag $Image
 
 gcloud.cmd run deploy placeup-api `
   --image $Image `
