@@ -22,6 +22,7 @@ from app.security import decode_access_token, optional_user_id, require_internal
 from app.config import settings
 from app.services.job_exporter import export_jobs
 from app.services.global_visa_rules import COUNTRY_RULES, country_options, normalize_country_code, visa_program_options
+from app.utils.job_quality import has_usable_job_description, is_probably_fake_or_scam_job
 from app.utils.terminal_table import render_table
 
 logger = logging.getLogger(__name__)
@@ -1050,6 +1051,15 @@ async def list_jobs(
             ):
                 continue
             if not _is_english_user_friendly(j):
+                continue
+            if is_probably_fake_or_scam_job(
+                j.get("title") or "",
+                j.get("company") or j.get("company_name") or "",
+                j.get("description") or "",
+                j.get("job_url") or j.get("url") or "",
+            ):
+                continue
+            if not has_usable_job_description(j.get("description") or ""):
                 continue
             j["taxonomy_category"] = cat
             j["role"] = rname
