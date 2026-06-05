@@ -272,9 +272,16 @@ class ScrapeRequest(BaseModel):
     )
     sources: list[JobSource] = Field(
         default=[
+            JobSource.LINKEDIN,
+            JobSource.INDEED,
+            JobSource.GLASSDOOR,
+            JobSource.ZIPRECRUITER,
+            JobSource.GOOGLE,
             JobSource.RAPIDAPI,
             JobSource.USAJOBS,
             JobSource.DICE,
+            JobSource.MONSTER,
+            JobSource.JOOBLE,
             JobSource.REMOTEOK,
             JobSource.REMOTIVE,
             JobSource.ARBEITNOW,
@@ -294,7 +301,7 @@ class ScrapeRequest(BaseModel):
             JobSource.TIER1_ATS,
             JobSource.SCRAPLING_DISCOVERY,
         ],
-        description="Free/open/API/direct sources to use by default. Blocked boards are only collected through legal/API paths or direct ATS/company career pages.",
+        description="Broad multi-source scraping defaults, including job boards, APIs, official portals, H1B sponsors, and direct career pages.",
     )
     h1b_sponsor_tiers: list[str] = Field(
         default=["T1", "T2"],

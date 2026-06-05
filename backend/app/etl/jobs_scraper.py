@@ -65,9 +65,16 @@ def build_request(args: argparse.Namespace) -> ScrapeRequest:
         sources = [JobSource(src.strip()) for src in split_cli_list(args.sources)]
     else:
         sources = [
+            JobSource.LINKEDIN,
+            JobSource.INDEED,
+            JobSource.GLASSDOOR,
+            JobSource.ZIPRECRUITER,
+            JobSource.GOOGLE,
             JobSource.RAPIDAPI,
             JobSource.USAJOBS,
             JobSource.DICE,
+            JobSource.MONSTER,
+            JobSource.JOOBLE,
             JobSource.REMOTEOK,
             JobSource.REMOTIVE,
             JobSource.ARBEITNOW,

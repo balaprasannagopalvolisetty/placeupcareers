@@ -25,11 +25,15 @@ logger = logging.getLogger(__name__)
 # Public/API pass must cover every taxonomy role, not just USAJobs. Keep this
 # env-tunable because RapidAPI/Dice quotas are operational limits, but the
 # production default should collect from all currently wired public sources.
-FREE_OPEN_PUBLIC_SOURCES = os.getenv("SCRAPER_PUBLIC_SOURCES", "rapidapi~usajobs~dice")
+FREE_OPEN_PUBLIC_SOURCES = os.getenv(
+    "SCRAPER_PUBLIC_SOURCES",
+    "linkedin~indeed~glassdoor~ziprecruiter~google~rapidapi~usajobs~dice",
+)
 FREE_OPEN_BOARD_SOURCES = (
     "h1b_sponsor~tier1_ats~remoteok~remotive~arbeitnow~jobicy~weworkremotely~"
     "jobtech~eures~uk_findajob~nhs_jobs~jobbank_ca~ba_jobsuche~france_travail~"
-    "mycareersfuture~tyomarkkinatori~nav_arbeidsplassen~scrapling_discovery"
+    "mycareersfuture~tyomarkkinatori~nav_arbeidsplassen~monster~jooble~"
+    "scrapling_discovery"
 )
 try:
     BATCH_SIZE = max(2, int(os.getenv("SCRAPER_ROLE_BATCH_SIZE", "8")))

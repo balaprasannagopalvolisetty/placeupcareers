@@ -696,6 +696,7 @@ async def run_scrape_cycle(
             include_monster=JobSource.MONSTER in request.sources,
             include_jooble=JobSource.JOOBLE in request.sources,
             include_discovery=include_discovery,
+            include_search_pages=include_discovery,
         )
         if targets:
             tasks.append(("scrapling_discovery", scrape_scrapling_targets(targets)))
