@@ -96,12 +96,16 @@ async def _run_batched() -> int:
     failures = 0
 
     logger.info("6h scraper running direct H1B/ATS board pass")
-    api_connector_count = await run_api_connectors_to_postgres(
-        queries=terms,
-        countries=list(sorted(TARGET_COUNTRIES)),
-        sources=os.getenv("API_CONNECTOR_SOURCES", "adzuna~greenhouse~remoteok~remotive~jobicy"),
-    )
-    logger.info("6h official API/ATS connectors loaded %s jobs", api_connector_count)
+    try:
+        api_connector_count = await run_api_connectors_to_postgres(
+            queries=terms,
+            countries=list(sorted(TARGET_COUNTRIES)),
+            sources=os.getenv("API_CONNECTOR_SOURCES", "adzuna~greenhouse~remoteok~remotive~jobicy"),
+        )
+        logger.info("6h official API/ATS connectors loaded %s jobs", api_connector_count)
+    except Exception as exc:
+        failures += 1
+        logger.warning("6h official API/ATS connector pass failed; continuing with board/public sources: %s", exc)
     board_code = await run(_base_args(
         queries=_encoded_terms(roles),
         sources=FREE_OPEN_BOARD_SOURCES,
