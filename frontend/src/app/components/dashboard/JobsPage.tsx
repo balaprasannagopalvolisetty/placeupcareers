@@ -271,6 +271,34 @@ function activeFilterChipStyle(): CSSProperties {
   };
 }
 
+function paginationButtonStyle(active = false, disabled = false): CSSProperties {
+  return {
+    minWidth: 36,
+    height: 36,
+    padding: "0 11px",
+    borderRadius: 8,
+    border: `1px solid ${active ? "rgba(167,139,250,0.46)" : J.line}`,
+    background: active ? "rgba(124,58,237,0.18)" : "rgba(248,250,252,0.05)",
+    color: disabled ? J.t3 : active ? "#C4B5FD" : J.t2,
+    fontSize: 12,
+    fontWeight: 850,
+    fontFamily: F.sans,
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.52 : 1,
+    boxShadow: active ? "0 12px 30px rgba(124,58,237,0.20)" : "none",
+  };
+}
+
+function paginationPages(current: number, totalPages: number, maxButtons: number) {
+  const safeTotal = Math.max(1, totalPages);
+  const safeCurrent = Math.min(Math.max(1, current), safeTotal);
+  const count = Math.min(Math.max(3, maxButtons), safeTotal);
+  let start = Math.max(1, safeCurrent - Math.floor(count / 2));
+  const endOverflow = start + count - 1 - safeTotal;
+  if (endOverflow > 0) start = Math.max(1, start - endOverflow);
+  return Array.from({ length: Math.min(count, safeTotal) }, (_, index) => start + index);
+}
+
 function clearChipButtonStyle(): CSSProperties {
   return {
     background: "none",
@@ -389,6 +417,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const pageSize = 40;
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -525,10 +554,8 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
     jobsRequestId.current = requestId;
     setLoading(true);
     setError(null);
-    if (page === 1) {
-      setJobs([]);
-      setTotal(0);
-    }
+    setJobs([]);
+    if (page === 1) setTotal(0);
 
     const params: Record<string, string | number | boolean> = { page, page_size: pageSize, max_years: 10, sort: "match", personalized, tz_offset: new Date().getTimezoneOffset() };
     if (resumeLink.hasResume) params.include_scores = true;
@@ -557,11 +584,15 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             : Array.isArray(response?.results)
               ? response.results
               : [];
-        setJobs((prev) => page === 1 ? incoming : [...prev, ...incoming]);
+        setJobs(incoming);
         const reportedTotal = Array.isArray(response)
           ? response.length
           : (response?.total ?? response?.count ?? incoming.length);
         setTotal(typeof reportedTotal === "number" ? reportedTotal : incoming.length);
+        const reportedPages = !Array.isArray(response) && typeof response?.total_pages === "number"
+          ? response.total_pages
+          : Math.max(1, Math.ceil((typeof reportedTotal === "number" ? reportedTotal : incoming.length) / pageSize));
+        setTotalPages(Math.max(1, reportedPages));
       })
       .catch((err) => {
         if (active && jobsRequestId.current === requestId) {
@@ -569,6 +600,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
           if (page === 1) {
             setJobs([]);
             setTotal(0);
+            setTotalPages(1);
           }
           // Keep failed first-page filters from showing stale All Jobs results.
         }
@@ -639,6 +671,15 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   );
   const allJobsCount = Number(pipelineStatus?.total_jobs || pipelineStatus?.active_jobs || total || 0);
   const openPositionsCount = hasServerFilters ? total : allJobsCount;
+  const safeTotalPages = Math.max(1, totalPages);
+  const pageNumbers = useMemo(
+    () => paginationPages(page, safeTotalPages, isMobile ? 5 : 7),
+    [page, safeTotalPages, isMobile],
+  );
+  const currentPageStart = total > 0 ? ((page - 1) * pageSize) + 1 : 0;
+  const currentPageEnd = total > 0 ? Math.min(page * pageSize, total) : 0;
+  const canGoPrevious = page > 1 && !loading;
+  const canGoNext = page < safeTotalPages && !loading;
   const taxonomyRoleCount = Number(taxonomyMeta?.role_count || allRoles.length || 0);
   const scrapeTermCount = Number(taxonomyMeta?.scrape_term_count || 0);
   const targetRoleCount = userPrefs?.target_roles?.length || 0;
@@ -1082,13 +1123,65 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             );
           })}
         </div>
-        {!loading && jobs.length < total && (
-          <button
-            onClick={() => setPage((p) => p + 1)}
-            style={{ alignSelf: "center", marginTop: 6, padding: "10px 18px", borderRadius: 10, border: `1px solid ${J.line}`, background: "rgba(248,250,252,0.05)", color: J.blue, fontSize: 13, fontWeight: 850, fontFamily: F.sans, cursor: "pointer", boxShadow: J.shadow }}
+        {!loading && total > pageSize && (
+          <div
+            style={{
+              marginTop: 8,
+              padding: isMobile ? "12px 10px" : "14px 16px",
+              borderRadius: 12,
+              border: `1px solid ${J.line}`,
+              background: "rgba(15,23,42,0.68)",
+              boxShadow: J.shadow,
+              display: "flex",
+              flexDirection: isMobile ? "column" : "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+            }}
           >
-            Load more jobs ({jobs.length.toLocaleString()} of {total.toLocaleString()})
-          </button>
+            <div style={{ color: J.t2, fontSize: 12, fontWeight: 750, fontFamily: F.sans }}>
+              Showing {currentPageStart.toLocaleString()}-{currentPageEnd.toLocaleString()} of {total.toLocaleString()} positions
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
+              <button
+                disabled={!canGoPrevious}
+                onClick={() => canGoPrevious && setPage((p) => Math.max(1, p - 1))}
+                style={paginationButtonStyle(false, !canGoPrevious)}
+              >
+                Prev
+              </button>
+              {pageNumbers[0] > 1 && (
+                <>
+                  <button onClick={() => setPage(1)} style={paginationButtonStyle(page === 1)}>1</button>
+                  {pageNumbers[0] > 2 && <span style={{ color: J.t3, fontSize: 12, fontWeight: 850 }}>...</span>}
+                </>
+              )}
+              {pageNumbers.map((pageNumber) => (
+                <button
+                  key={`jobs-page-${pageNumber}`}
+                  onClick={() => setPage(pageNumber)}
+                  style={paginationButtonStyle(pageNumber === page)}
+                >
+                  {pageNumber}
+                </button>
+              ))}
+              {pageNumbers[pageNumbers.length - 1] < safeTotalPages && (
+                <>
+                  {pageNumbers[pageNumbers.length - 1] < safeTotalPages - 1 && <span style={{ color: J.t3, fontSize: 12, fontWeight: 850 }}>...</span>}
+                  <button onClick={() => setPage(safeTotalPages)} style={paginationButtonStyle(page === safeTotalPages)}>
+                    {safeTotalPages}
+                  </button>
+                </>
+              )}
+              <button
+                disabled={!canGoNext}
+                onClick={() => canGoNext && setPage((p) => Math.min(safeTotalPages, p + 1))}
+                style={paginationButtonStyle(false, !canGoNext)}
+              >
+                Next
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </div>
