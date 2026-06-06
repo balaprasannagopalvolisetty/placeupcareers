@@ -554,8 +554,11 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
     jobsRequestId.current = requestId;
     setLoading(true);
     setError(null);
-    setJobs([]);
-    if (page === 1) setTotal(0);
+    if (page === 1) {
+      setJobs([]);
+      setTotal(0);
+      setTotalPages(1);
+    }
 
     const params: Record<string, string | number | boolean> = { page, page_size: pageSize, max_years: 10, sort: "match", personalized, tz_offset: new Date().getTimezoneOffset() };
     if (resumeLink.hasResume) params.include_scores = true;

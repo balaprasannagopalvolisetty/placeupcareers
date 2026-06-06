@@ -2,6 +2,7 @@ import { Outlet, useLocation } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { useState, createContext, useContext } from "react";
 import Particles from "./Particles";
+import { PrivacyGuard } from "./PrivacyGuard";
 
 type ThemeCtx = { dark: boolean; toggle: () => void };
 export const ThemeContext = createContext<ThemeCtx>({ dark: true, toggle: () => {} });
@@ -14,6 +15,7 @@ export default function Layout() {
 
   return (
     <ThemeContext.Provider value={{ dark, toggle }}>
+      <PrivacyGuard />
       <div
         className={dark ? "dark" : ""}
         style={{
