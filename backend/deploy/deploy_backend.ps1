@@ -113,7 +113,7 @@ gcloud.cmd run jobs deploy placeup-job-scraper-6h `
   --memory 2Gi `
   --cpu 2 `
   --max-retries 0 `
-  --task-timeout 21600
+  --task-timeout 28800
 
 gcloud.cmd run jobs deploy placeup-external-api-12h `
   --image $Image `
