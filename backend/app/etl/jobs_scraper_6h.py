@@ -16,6 +16,7 @@ from sqlalchemy import text
 from app.db.postgres import PostgresClient
 from app.etl.jobs_scraper import run
 from app.etl.api_sources.runner import run_api_connectors_to_postgres
+from app.etl.purge_jobs_except_today import purge_except_day
 from app.config import settings
 from app.job_taxonomy import all_balanced_taxonomy_scrape_search_terms, all_role_names
 from app.services.global_visa_rules import COUNTRY_RULES, TARGET_COUNTRIES
@@ -43,6 +44,8 @@ try:
     PUBLIC_BATCH_CONCURRENCY = max(0, int(os.getenv("SCRAPER_PUBLIC_BATCH_CONCURRENCY", "2")))
 except ValueError:
     PUBLIC_BATCH_CONCURRENCY = 0
+PURGE_EXCEPT_TODAY = os.getenv("SCRAPER_PURGE_EXCEPT_TODAY", "true").strip().lower() not in {"0", "false", "no", "off"}
+PURGE_TIMEZONE = os.getenv("SCRAPER_PURGE_TIMEZONE", "America/Chicago").strip() or "America/Chicago"
 ADVISORY_LOCK_KEY = 6412226682826
 
 
@@ -142,6 +145,14 @@ async def _run_batched() -> int:
         for index, batch in enumerate(batches, start=1)
     ])
     failures += sum(1 for code in public_results if code)
+
+    if PURGE_EXCEPT_TODAY:
+        try:
+            counts = purge_except_day(day=None, tz_name=PURGE_TIMEZONE, dry_run=False)
+            logger.info("6h scraper post-run today-only purge: %s", counts)
+        except Exception as exc:
+            failures += 1
+            logger.warning("6h scraper post-run today-only purge failed: %s", exc)
 
     return 1 if failures == len(batches) + 1 else 0
 
