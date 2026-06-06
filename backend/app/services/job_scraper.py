@@ -680,6 +680,7 @@ async def run_scrape_cycle(
                     source_attempts["dice"] = source_attempts.get("dice", 0) + 1
 
     scrapling_requested_sources = {
+        JobSource.LINKEDIN,
         JobSource.GLASSDOOR,
         JobSource.ZIPRECRUITER,
         JobSource.MONSTER,
@@ -695,6 +696,7 @@ async def run_scrape_cycle(
             include_ziprecruiter=JobSource.ZIPRECRUITER in request.sources and not (settings.scrape_ziprecruiter_jobspy_enabled or settings.proxy_url),
             include_monster=JobSource.MONSTER in request.sources,
             include_jooble=JobSource.JOOBLE in request.sources,
+            include_linkedin=JobSource.LINKEDIN in request.sources,
             include_discovery=include_discovery,
             include_search_pages=include_discovery,
         )

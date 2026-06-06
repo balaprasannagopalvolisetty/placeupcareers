@@ -301,6 +301,7 @@ def build_scrapling_targets(
     include_ziprecruiter: bool = False,
     include_monster: bool = True,
     include_jooble: bool = True,
+    include_linkedin: bool = False,
     include_discovery: bool = True,
     include_search_pages: bool = False,
 ) -> list[dict[str, Any]]:
@@ -309,6 +310,7 @@ def build_scrapling_targets(
     ziprecruiter_targets: list[dict[str, Any]] = []
     monster_targets: list[dict[str, Any]] = []
     jooble_targets: list[dict[str, Any]] = []
+    linkedin_targets: list[dict[str, Any]] = []
     discovery_targets: list[dict[str, Any]] = []
     terms = list(search_terms) or all_taxonomy_scrape_search_terms()
     locs = list(locations) or ["United States"]
@@ -323,6 +325,8 @@ def build_scrapling_targets(
                 monster_targets.append({"kind": "monster", "url": monster_search_url(term, location), "query": term, "location": location})
             if include_jooble:
                 jooble_targets.append({"kind": "jooble", "url": jooble_search_url(term, location), "query": term, "location": location})
+            if include_linkedin:
+                linkedin_targets.append({"kind": "linkedin", "url": linkedin_search_url(term, location), "query": term, "location": location})
 
     if include_discovery:
         for entry in CAREER_PAGES:
@@ -332,14 +336,16 @@ def build_scrapling_targets(
         if include_search_pages:
             for role in all_role_names():
                 discovery_targets.append({"kind": "google_jobs", "url": google_jobs_url(f"{role} OPT H-1B visa sponsor"), "query": role})
-                discovery_targets.append({"kind": "linkedin", "url": linkedin_search_url(role), "query": role, "location": "United States"})
+                if include_linkedin:
+                    for location in locs[:8]:
+                        discovery_targets.append({"kind": "linkedin", "url": linkedin_search_url(role, location), "query": role, "location": location})
             for company in _top_h1b_excel_companies(settings.scrapling_h1b_excel_company_limit):
                 for role in POPULAR_ROLE_SEEDS:
                     query = f"{company} {role} jobs United States"
                     discovery_targets.append({"kind": "google_jobs", "url": google_jobs_url(query), "query": query, "company": company})
 
     max_targets = settings.scrapling_discovery_max_targets
-    buckets = [bucket for bucket in (glassdoor_targets, ziprecruiter_targets, monster_targets, jooble_targets, discovery_targets) if bucket]
+    buckets = [bucket for bucket in (glassdoor_targets, ziprecruiter_targets, monster_targets, jooble_targets, linkedin_targets, discovery_targets) if bucket]
     targets: list[dict[str, Any]] = []
     if max_targets <= 0:
         for bucket in buckets:

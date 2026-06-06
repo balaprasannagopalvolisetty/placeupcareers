@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 # production default should collect from all currently wired public sources.
 FREE_OPEN_PUBLIC_SOURCES = os.getenv(
     "SCRAPER_PUBLIC_SOURCES",
-    "linkedin~indeed~glassdoor~ziprecruiter~google~rapidapi~usajobs~dice",
+    "linkedin~indeed~glassdoor~ziprecruiter~google~usajobs~dice",
 )
 FREE_OPEN_BOARD_SOURCES = (
     "h1b_sponsor~tier1_ats~remoteok~remotive~arbeitnow~jobicy~weworkremotely~"

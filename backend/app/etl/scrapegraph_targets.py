@@ -26,9 +26,10 @@ Three target buckets are exposed:
 from __future__ import annotations
 
 from typing import Iterable
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlencode
 
 from app.job_taxonomy import all_role_names
+from app.services.global_visa_rules import COUNTRY_RULES, TARGET_COUNTRIES
 
 
 # ─── 1. Direct career pages (companies with no public ATS API) ───────
@@ -94,6 +95,20 @@ LINKEDIN_GEO_IDS: dict[str, str] = {
     # geoId values from LinkedIn's location autocomplete API. These rarely
     # change; mapped here so we don't have to scrape them on the fly.
     "United States": "103644278",
+    "Canada": "101174742",
+    "United Kingdom": "101165590",
+    "Ireland": "104738515",
+    "Germany": "101282230",
+    "Netherlands": "102890719",
+    "Australia": "101452733",
+    "New Zealand": "105490917",
+    "Singapore": "102454443",
+    "United Arab Emirates": "104305776",
+    "Japan": "101355337",
+    "France": "105015875",
+    "Spain": "105646813",
+    "Italy": "103350119",
+    "India": "102713980",
     "San Francisco Bay Area": "90000084",
     "New York City Metropolitan Area": "90000070",
     "Seattle, Washington Metropolitan Area": "90000099",
@@ -108,21 +123,31 @@ def linkedin_keywords() -> list[str]:
     return all_role_names()
 
 
+def linkedin_locations() -> list[str]:
+    """Country labels from the same filter matrix used by the Jobs page."""
+    return [
+        (COUNTRY_RULES.get(code).name if COUNTRY_RULES.get(code) else code)
+        for code in TARGET_COUNTRIES
+    ]
+
+
 def linkedin_search_url(keyword: str, location_name: str = "United States") -> str:
     """Build a LinkedIn guest-mode job search URL.
 
     f_TPR=r604800 = posted in the last week (keeps each scrape fresh).
     f_E=2,3       = entry- and associate-level (matches our 0-10yr filter).
     """
-    geo_id = LINKEDIN_GEO_IDS.get(location_name, LINKEDIN_GEO_IDS["United States"])
     params = {
-        "keywords": quote_plus(keyword),
-        "geoId": geo_id,
+        "keywords": keyword,
+        "location": location_name,
         "f_TPR": "r604800",
         "f_E": "2,3",
         "sortBy": "DD",  # date descending
     }
-    qs = "&".join(f"{k}={v}" for k, v in params.items())
+    geo_id = LINKEDIN_GEO_IDS.get(location_name)
+    if geo_id:
+        params["geoId"] = geo_id
+    qs = urlencode(params)
     return f"https://www.linkedin.com/jobs/search/?{qs}"
 
 
@@ -157,7 +182,7 @@ def iter_targets(
     seen_linkedin: set[str] = set()
     linkedin_target_count = 0
     for kw in linkedin_keywords():
-        for loc in ("United States",):
+        for loc in linkedin_locations():
             if max_linkedin is not None and linkedin_target_count >= max_linkedin:
                 break
             url = linkedin_search_url(kw, loc)
