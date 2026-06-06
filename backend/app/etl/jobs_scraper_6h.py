@@ -41,6 +41,10 @@ try:
 except ValueError:
     BATCH_SIZE = 20
 try:
+    CANONICAL_ROLE_BATCH_SIZE = max(2, int(os.getenv("SCRAPER_CANONICAL_ROLE_BATCH_SIZE", "5")))
+except ValueError:
+    CANONICAL_ROLE_BATCH_SIZE = 5
+try:
     PUBLIC_BATCH_CONCURRENCY = max(0, int(os.getenv("SCRAPER_PUBLIC_BATCH_CONCURRENCY", "2")))
 except ValueError:
     PUBLIC_BATCH_CONCURRENCY = 0
@@ -90,16 +94,31 @@ def _base_args(**overrides) -> argparse.Namespace:
 async def _run_batched() -> int:
     roles = all_role_names()
     terms = all_balanced_taxonomy_scrape_search_terms()
+    countries = list(sorted(TARGET_COUNTRIES))
+    country_locations = _target_locations()
+    role_country_pairs = len(roles) * len(countries)
     batches = [terms[i:i + BATCH_SIZE] for i in range(0, len(terms), BATCH_SIZE)]
+    canonical_role_batches = [
+        roles[i:i + CANONICAL_ROLE_BATCH_SIZE]
+        for i in range(0, len(roles), CANONICAL_ROLE_BATCH_SIZE)
+    ]
     public_concurrency = PUBLIC_BATCH_CONCURRENCY or len(batches) or 1
     semaphore = asyncio.Semaphore(public_concurrency)
     failures = 0
+
+    logger.info(
+        "6h role-country coverage plan: %s canonical roles x %s countries = %s role-country pairs; countries=%s",
+        len(roles),
+        len(countries),
+        role_country_pairs,
+        ",".join(countries),
+    )
 
     logger.info("6h scraper running direct H1B/ATS board pass")
     try:
         api_connector_count = await run_api_connectors_to_postgres(
             queries=terms,
-            countries=list(sorted(TARGET_COUNTRIES)),
+            countries=countries,
             sources=os.getenv("API_CONNECTOR_SOURCES", "adzuna~greenhouse~remoteok~remotive~jobicy"),
         )
         logger.info("6h official API/ATS connectors loaded %s jobs", api_connector_count)
@@ -108,6 +127,8 @@ async def _run_batched() -> int:
         logger.warning("6h official API/ATS connector pass failed; continuing with board/public sources: %s", exc)
     board_code = await run(_base_args(
         queries=_encoded_terms(roles),
+        locations=country_locations,
+        max_per_source=200,
         sources=FREE_OPEN_BOARD_SOURCES,
         schedule_type="6h-boards",
     ))
@@ -118,36 +139,47 @@ async def _run_batched() -> int:
     public_sources = _configured_public_sources()
     if not public_sources:
         logger.info("6h scraper public source pass disabled")
-        return 1 if board_code else 0
+        return 1 if failures >= 2 else 0
 
-    async def _run_public_batch(index: int, batch: list[str]) -> int:
+    async def _run_public_batch(index: int, total: int, batch: list[str], *, phase: str, batch_size: int) -> int:
         async with semaphore:
             logger.info(
-                "6h scraper batch %s/%s publishing %s role terms",
+                "6h scraper %s batch %s/%s publishing %s terms across %s countries (%s role-country attempts)",
+                phase,
                 index,
-                len(batches),
+                total,
                 len(batch),
+                len(countries),
+                len(batch) * len(countries),
             )
             code = await run(_base_args(
                 queries=_encoded_terms(batch),
+                locations=country_locations,
                 sources=public_sources,
-                schedule_type=f"6h-public-{index:02d}",
+                schedule_type=f"6h-public-{phase}-{index:02d}",
+                max_per_source=batch_size,
             ))
             if code:
-                logger.warning("6h scraper public batch %s/%s failed with code %s", index, len(batches), code)
+                logger.warning("6h scraper public %s batch %s/%s failed with code %s", phase, index, total, code)
             return code
 
     logger.info(
-        "6h scraper launching %s public batches for %s current roles / %s search terms with concurrency %s",
+        "6h scraper launching %s canonical public batches and %s synonym/coverage batches for %s current roles / %s search terms with concurrency %s",
+        len(canonical_role_batches),
         len(batches),
         len(roles),
         len(terms),
         public_concurrency,
     )
-    public_results = await asyncio.gather(*[
-        _run_public_batch(index, batch)
+    canonical_results = await asyncio.gather(*[
+        _run_public_batch(index, len(canonical_role_batches), batch, phase="canonical", batch_size=90)
+        for index, batch in enumerate(canonical_role_batches, start=1)
+    ])
+    synonym_results = await asyncio.gather(*[
+        _run_public_batch(index, len(batches), batch, phase="synonyms", batch_size=60)
         for index, batch in enumerate(batches, start=1)
     ])
+    public_results = [*canonical_results, *synonym_results]
     failures += sum(1 for code in public_results if code)
 
     if PURGE_EXCEPT_TODAY:
@@ -158,7 +190,8 @@ async def _run_batched() -> int:
             failures += 1
             logger.warning("6h scraper post-run today-only purge failed: %s", exc)
 
-    return 1 if failures == len(batches) + 1 else 0
+    total_failure_slots = 2 + len(canonical_role_batches) + len(batches)
+    return 1 if failures >= total_failure_slots else 0
 
 
 def main() -> int:
