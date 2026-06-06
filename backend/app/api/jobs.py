@@ -1232,6 +1232,12 @@ async def list_jobs(
             else:
                 total = max(offset + len(decorated) + page_size, page * page_size + 1)
             total_pages = max(1, math.ceil(total / page_size))
+        elif not exact_count_active:
+            if len(decorated) < page_size:
+                total = offset + len(decorated)
+            else:
+                total = max(offset + len(decorated) + page_size, page * page_size + 1)
+            total_pages = max(1, math.ceil(total / page_size))
 
         resume_text = await _active_resume_text(user_id) if include_scores else None
         resume_cache = _prepare_resume_tokens(resume_text) if resume_text else None

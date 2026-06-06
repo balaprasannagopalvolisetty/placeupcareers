@@ -18,7 +18,7 @@ from app.etl.jobs_scraper import run
 from app.etl.api_sources.runner import run_api_connectors_to_postgres
 from app.etl.purge_jobs_except_today import purge_except_day
 from app.config import settings
-from app.job_taxonomy import all_balanced_taxonomy_scrape_search_terms, all_role_names
+from app.job_taxonomy import all_balanced_taxonomy_scrape_search_terms, all_linkedin_style_role_names, all_role_names
 from app.services.global_visa_rules import COUNTRY_RULES, TARGET_COUNTRIES
 
 logger = logging.getLogger(__name__)
@@ -93,14 +93,15 @@ def _base_args(**overrides) -> argparse.Namespace:
 
 async def _run_batched() -> int:
     roles = all_role_names()
+    linkedin_style_roles = all_linkedin_style_role_names()
     terms = all_balanced_taxonomy_scrape_search_terms()
     countries = list(sorted(TARGET_COUNTRIES))
     country_locations = _target_locations()
     role_country_pairs = len(roles) * len(countries)
     batches = [terms[i:i + BATCH_SIZE] for i in range(0, len(terms), BATCH_SIZE)]
     canonical_role_batches = [
-        roles[i:i + CANONICAL_ROLE_BATCH_SIZE]
-        for i in range(0, len(roles), CANONICAL_ROLE_BATCH_SIZE)
+        linkedin_style_roles[i:i + CANONICAL_ROLE_BATCH_SIZE]
+        for i in range(0, len(linkedin_style_roles), CANONICAL_ROLE_BATCH_SIZE)
     ]
     public_concurrency = PUBLIC_BATCH_CONCURRENCY or len(batches) or 1
     semaphore = asyncio.Semaphore(public_concurrency)
@@ -126,7 +127,7 @@ async def _run_batched() -> int:
         failures += 1
         logger.warning("6h official API/ATS connector pass failed; continuing with board/public sources: %s", exc)
     board_code = await run(_base_args(
-        queries=_encoded_terms(roles),
+        queries=_encoded_terms(linkedin_style_roles),
         locations=country_locations,
         max_per_source=200,
         sources=FREE_OPEN_BOARD_SOURCES,
@@ -164,10 +165,11 @@ async def _run_batched() -> int:
             return code
 
     logger.info(
-        "6h scraper launching %s canonical public batches and %s synonym/coverage batches for %s current roles / %s search terms with concurrency %s",
+        "6h scraper launching %s LinkedIn-style canonical public batches and %s synonym/coverage batches for %s current roles / %s canonical search names / %s search terms with concurrency %s",
         len(canonical_role_batches),
         len(batches),
         len(roles),
+        len(linkedin_style_roles),
         len(terms),
         public_concurrency,
     )

@@ -368,6 +368,62 @@ def all_role_names() -> list[str]:
     return [role.name for cat in CATEGORIES for role in cat.roles]
 
 
+LINKEDIN_ROLE_NAME_OVERRIDES: dict[str, tuple[str, ...]] = {
+    "DevOps / Cloud Engineer": ("DevOps Engineer", "Cloud Engineer", "Site Reliability Engineer"),
+    "QA / Test Engineer": ("QA Engineer", "Software Test Engineer", "Automation Engineer"),
+    "IT Support / Analyst": ("IT Support Analyst", "Desktop Support Analyst", "Technical Support Specialist"),
+    "Product Manager (Tech)": ("Technical Product Manager", "Product Manager", "Associate Product Manager"),
+    "UI/UX Designer": ("UX Designer", "UI Designer", "Product Designer"),
+    "Accountant / CPA": ("Accountant", "Staff Accountant", "CPA"),
+    "Lab Technician / Research Assistant": ("Lab Technician", "Research Assistant", "Laboratory Technician"),
+    "Scrum Master / Agile Coach": ("Scrum Master", "Agile Coach", "Agile Project Manager"),
+    "Growth Hacker / Growth Analyst": ("Growth Analyst", "Growth Marketing Analyst", "Growth Manager"),
+    "Research Assistant / Associate": ("Research Assistant", "Research Associate", "Clinical Research Assistant"),
+    "Product / UX Designer": ("Product Designer", "UX Designer", "UX UI Designer"),
+    "Urban / City Planner": ("Urban Planner", "City Planner", "Planning Analyst"),
+    "Grant Writer / Nonprofit Program Manager": ("Grant Writer", "Nonprofit Program Manager", "Program Manager Nonprofit"),
+    "IP / Patent Analyst": ("Patent Analyst", "IP Analyst", "Intellectual Property Analyst"),
+    "UN / International Org Intern": ("United Nations Intern", "International Organization Intern", "NGO Intern"),
+}
+
+
+def _linkedin_clean_title(title: str) -> str:
+    clean = re.sub(r"\([^)]*\)", " ", title or "")
+    clean = clean.replace("/", " ")
+    clean = re.sub(r"\s+", " ", clean).strip()
+    return clean
+
+
+def all_linkedin_style_role_names() -> list[str]:
+    """Canonical scrape queries rewritten as job-board/LinkedIn style titles.
+
+    The UI can keep concise labels like "DevOps / Cloud Engineer", but public
+    boards index real postings as "DevOps Engineer", "Cloud Engineer", etc.
+    This list is used by scheduled scraping so every visible role searches
+    with terms that job boards are more likely to return.
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+
+    def add(term: str) -> None:
+        clean = _linkedin_clean_title(term)
+        key = clean.lower()
+        if len(clean) >= 3 and key not in seen:
+            seen.add(key)
+            out.append(clean)
+
+    for cat in CATEGORIES:
+        for role in cat.roles:
+            for override in LINKEDIN_ROLE_NAME_OVERRIDES.get(role.name, ()):
+                add(override)
+            add(role.name)
+            for synonym in role.synonyms[:3]:
+                add(synonym)
+            for synonym in EXTRA_ROLE_SYNONYMS.get(role.name, ())[:3]:
+                add(synonym)
+    return out
+
+
 def all_role_backfill_search_terms() -> list[str]:
     """Focused cloud backfill queries for every visible category role.
 
