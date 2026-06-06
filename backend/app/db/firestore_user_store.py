@@ -317,6 +317,7 @@ def create_resume(
     size_bytes: int,
     storage_path: Optional[str] = None,
     parsed_text: Optional[str] = None,
+    parsed_json: Optional[dict[str, Any]] = None,
     active: bool = False,
 ) -> dict:
     resume_id = f"r_{uuid.uuid4().hex[:10]}"
@@ -333,6 +334,7 @@ def create_resume(
         "active": bool(active),
         "storage_path": storage_path,
         "parsed_text": (parsed_text or "")[:200000],
+        "parsed_json": parsed_json or {},
     }
     _doc("user_resumes", resume_id).set(data)
     return data

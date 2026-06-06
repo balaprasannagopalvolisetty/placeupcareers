@@ -657,10 +657,13 @@ def _job_matches_preferences(job: dict, preferred_roles: list[str], preferred_lo
     return role_match or loc_match
 
 
-def _source_diverse_page(jobs: list[dict], page_size: int) -> list[dict]:
+def _source_diverse_page(jobs: list[dict], page_size: int, page: int = 1) -> list[dict]:
     """Keep one high-volume source from taking over the visible Jobs page."""
-    if len(jobs) <= page_size:
-        return jobs
+    if page_size <= 0:
+        return []
+    target_count = max(page_size, page * page_size)
+    if len(jobs) <= target_count and page <= 1:
+        return jobs[:page_size]
     max_per_source = max(2, math.ceil(page_size * 0.45))
     selected: list[dict] = []
     leftovers: list[dict] = []
@@ -672,8 +675,9 @@ def _source_diverse_page(jobs: list[dict], page_size: int) -> list[dict]:
             counts[source] = counts.get(source, 0) + 1
         else:
             leftovers.append(job)
-        if len(selected) >= page_size:
-            return selected[:page_size]
+        if len(selected) >= target_count:
+            start = (page - 1) * page_size
+            return selected[start:start + page_size]
     seen_ids = {str(job.get("id") or "") for job in selected}
     for job in leftovers:
         job_id = str(job.get("id") or "")
@@ -682,9 +686,10 @@ def _source_diverse_page(jobs: list[dict], page_size: int) -> list[dict]:
         selected.append(job)
         if job_id:
             seen_ids.add(job_id)
-        if len(selected) >= page_size:
+        if len(selected) >= target_count:
             break
-    return selected[:page_size]
+    start = (page - 1) * page_size
+    return selected[start:start + page_size]
 
 
 def _taxonomy_terms(category: Optional[str], role: Optional[str]) -> list[str]:
@@ -1122,15 +1127,15 @@ async def list_jobs(
             fetch_offset = 0
             filters["coverage_scan"] = True
         elif post_filter_since or post_filter_before:
-            fetch_limit = 500
-            fetch_offset = 0 if page == 1 else min(offset * 3, 1000)
+            fetch_limit = min(max(offset + page_size * 8, 500), 2500)
+            fetch_offset = 0
         else:
             # Post-fetch filters (country scope, is_target_experience) routinely
             # drop ~50-70% of rows, which is why users were seeing ~16 cards even
             # though the API said "20 per page". Over-fetch ×4 so a full page still
             # renders after filtering, then bound to a safe ceiling.
-            fetch_limit = min(max(page_size * 3, 60), 120)
-            fetch_offset = offset * 3 if offset else 0
+            fetch_limit = min(max(offset + page_size * 8, 360), 2500)
+            fetch_offset = 0
         source_balanced_fetch = (
             not filters.get("source")
             and hasattr(db, "get_jobs_source_balanced")
@@ -1141,7 +1146,7 @@ async def list_jobs(
             jobs = await db.get_jobs_source_balanced(
                 filters=filters,
                 limit=max(fetch_limit, 360),
-                offset=0 if fetch_offset == 0 else fetch_offset,
+                offset=0,
                 per_source=90,
             )
         else:
@@ -1194,8 +1199,6 @@ async def list_jobs(
                 post_filter_since,
                 post_filter_before,
             ):
-                continue
-            if not _is_english_user_friendly(j):
                 continue
             if is_probably_fake_or_scam_job(
                 j.get("title") or "",
@@ -1310,7 +1313,7 @@ async def list_jobs(
         if taxonomy_filter_active:
             page_jobs = decorated[offset:offset + page_size]
         else:
-            page_jobs = decorated[:page_size] if filters.get("source") else _source_diverse_page(decorated, page_size)
+            page_jobs = decorated[offset:offset + page_size] if filters.get("source") else _source_diverse_page(decorated, page_size, page)
 
         # Convert to JobPost models for the response. Stash the taxonomy
         # extras and re-attach them post-validation so the strict JobPost
@@ -1655,7 +1658,7 @@ async def get_job_detail(
     db=Depends(get_db),
     user_id: Optional[str] = Depends(optional_user_id),
 ):
-    """Job detail with taxonomy, contacts, and per-active-resume ATS score."""
+    """Job detail with taxonomy and per-active-resume ATS score."""
     job = await db.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -1694,18 +1697,15 @@ async def get_job_detail(
         payload["missingKeywords"] = []
     payload.update(await _visa_stats_for_company(payload.get("company") or "", db))
 
-    try:
-        contacts = await db.get_contacts(job_id=job_id, limit=3)
-    except Exception:
-        contacts = []
-    payload["contacts"] = contacts
-    if contacts and not payload.get("hiring_manager_name"):
-        primary = contacts[0]
-        payload["hiring_manager_name"] = primary.get("full_name") or " ".join(
-            part for part in (primary.get("first_name"), primary.get("last_name")) if part
-        ).strip() or None
-        payload["hiring_manager_email"] = primary.get("email")
-        payload["hiring_manager_linkedin"] = primary.get("linkedin_url")
+    payload["contacts"] = []
+    for sensitive_key in (
+        "hiring_manager",
+        "hiringManager",
+        "hiring_manager_name",
+        "hiring_manager_email",
+        "hiring_manager_linkedin",
+    ):
+        payload.pop(sensitive_key, None)
     return payload
 
 

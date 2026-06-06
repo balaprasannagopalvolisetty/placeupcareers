@@ -41,6 +41,8 @@ BOILERPLATE_PHRASES = {
     "privacy policy", "terms conditions", "apply now", "job description",
     "job type", "salary range", "benefits package", "work environment",
     "background check", "drug screen", "authorized work", "without sponsorship",
+    "be an early applicant", "people clicked apply", "promoted by hirer",
+    "responses managed", "use ai", "show match", "tailor my resume",
 }
 
 NOISY_KEYWORDS = STOP_WORDS | {
@@ -48,6 +50,8 @@ NOISY_KEYWORDS = STOP_WORDS | {
     "high quality", "job duties", "key responsibilities", "minimum qualifications",
     "preferred qualifications", "strong communication", "team members",
     "work closely", "work experience", "working knowledge",
+    "clearance level", "date posted", "full time", "shift day",
+    "minimum clearance", "potential remote", "schedule full",
 }
 
 # Technical skills dictionary for enhanced extraction
@@ -67,6 +71,12 @@ TECH_SKILLS = {
     "tableau", "power bi", "looker", "databricks", "spark",
     "kafka", "rabbitmq", "celery", "airflow",
     "oauth", "jwt", "ssl", "encryption", "cybersecurity",
+    "siem", "soc", "iam", "sso", "mfa", "rbac", "nist", "iso 27001",
+    "soc 2", "incident response", "threat modeling", "vulnerability management",
+    "penetration testing", "application security", "cloud security",
+    "network security", "endpoint security", "zero trust", "ids", "ips",
+    "splunk", "crowdstrike", "okta", "sailpoint", "wireshark", "burp suite",
+    "owasp", "sast", "dast", "sonarqube", "guardduty", "security hub",
     ".net", "firebase", "supabase", "prisma", "langchain",
     "openai", "llm", "rag", "vector database",
     "bigquery", "snowflake", "dbt", "mlflow",
@@ -104,12 +114,18 @@ def is_relevant_keyword(keyword: str) -> bool:
     normalized = re.sub(r"[^a-z0-9+#./-]+", " ", raw).strip()
     if not normalized or normalized in NOISY_KEYWORDS:
         return False
+    if re.search(r"[a-z]{12,}[a-z]", normalized) and normalized not in TECH_SKILLS:
+        # Scraped descriptions sometimes lose spaces around HTML entities and
+        # generate fused pseudo-terms such as "environmentutilize".
+        return False
     if normalized in TECH_SKILLS or normalized in DOMAIN_KEYWORDS:
         return True
     if any(ch.isdigit() or ch in "+#./-" for ch in normalized):
         return True
     parts = normalized.split()
     if len(parts) > 1:
+        if any(part in NOISY_KEYWORDS for part in parts):
+            return False
         return any(part in TECH_SKILLS or part in DOMAIN_KEYWORDS for part in parts)
     # Single generic nouns are usually bad ATS advice unless we know them.
     return False
@@ -171,6 +187,8 @@ def extract_keywords(
     """
     # Normalize and remove job-board/EEO boilerplate before keyword counting.
     text_lower = clean_text(text).lower()
+    text_lower = re.sub(r"([a-z])([A-Z])", r"\1 \2", text_lower)
+    text_lower = re.sub(r"([a-z])(&nbsp;|\\u00a0)([a-z])", r"\1 \3", text_lower)
     text_lower = re.sub(
         r"\b(equal opportunity employer|reasonable accommodation|protected veteran|"
         r"privacy policy|terms and conditions|background check|drug screen|"
@@ -197,7 +215,7 @@ def extract_keywords(
     # single words like "data" or "active".
     for a, b in zip(filtered, filtered[1:]):
         phrase = f"{a} {b}"
-        if phrase not in BOILERPLATE_PHRASES and a != b:
+        if phrase not in BOILERPLATE_PHRASES and a != b and is_relevant_keyword(phrase):
             counter[phrase] += 2
 
     # Boost technical skills
@@ -211,6 +229,8 @@ def extract_keywords(
 
     out: list[str] = []
     for kw, _ in counter.most_common(top_n * 2):
+        if not is_relevant_keyword(kw):
+            continue
         if kw in BOILERPLATE_PHRASES:
             continue
         if " " not in kw and kw in STOP_WORDS:

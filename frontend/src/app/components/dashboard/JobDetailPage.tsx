@@ -1,8 +1,7 @@
 import { useState, useEffect, type ReactNode } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowLeft, MapPin, DollarSign, ExternalLink, Bookmark, Share2, Check, X, Lock, Copy, Linkedin, ShieldCheck, Sparkles, Briefcase } from "lucide-react";
+import { ArrowLeft, MapPin, DollarSign, ExternalLink, Bookmark, Share2, Check, X, ShieldCheck, Sparkles, Briefcase } from "lucide-react";
 import * as api from "../../lib/api";
-import { useAuth } from "../../context/AuthContext";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 const T = {
@@ -221,7 +220,6 @@ function renderJobDescription(raw: string): ReactNode {
 }
 
 export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => void }) {
-  const { user } = useAuth();
   const { isMobile, isTablet } = useViewportWidth();
   const [job, setJob] = useState<api.JobPost | null>(null);
   const [loading, setLoading] = useState(true);
@@ -239,8 +237,6 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
   const [resumeVersion, setResumeVersion] = useState(
     () => typeof window !== "undefined" ? localStorage.getItem("placeup_resume_version") || "" : ""
   );
-  const isPro = ["pro", "elite"].includes(String(user?.plan || "").toLowerCase());
-
   useEffect(() => {
     const refresh = () => {
       setResumeVersion(typeof window !== "undefined" ? localStorage.getItem("placeup_resume_version") || String(Date.now()) : String(Date.now()));
@@ -313,12 +309,6 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
     benefits: job?.benefits ?? [],
     approvalRate: job?.approvalRate ?? 0,
     petitions: job?.petitions ?? 0,
-    hiringManager: (job as any)?.hiringManager || ((job as any)?.hiring_manager_name ? {
-      name: (job as any).hiring_manager_name,
-      title: "Hiring contact",
-      email: (job as any).hiring_manager_email || "",
-      linkedin: (job as any).hiring_manager_linkedin || "",
-    } : null),
     jobUrl: resolvedJobUrl,
   };
 
@@ -485,6 +475,21 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
   const visibleKeywords = (currentJob.strongKeywords ?? []).slice(0, 10);
   const visibleMissing = (currentJob.missingKeywords ?? []).slice(0, 10);
   const role = (job as any)?.role || (job as any)?.taxonomy_category || currentJob.status;
+  const responsibilityHighlights = cleanList(currentJob.responsibilities).slice(0, 4);
+  const requirementHighlights = cleanList(currentJob.requirements).slice(0, 4);
+  const niceHighlights = cleanList(currentJob.niceToHave).slice(0, 3);
+  const descriptionText = currentJob.description || "";
+  const jdWordCount = descriptionText ? descriptionText.replace(/<[^>]+>/g, " ").trim().split(/\s+/).filter(Boolean).length : 0;
+  const jdSignals = [
+    { label: "Keywords", value: String((currentJob.strongKeywords ?? []).length + (currentJob.missingKeywords ?? []).length) },
+    { label: "JD depth", value: jdWordCount > 450 ? "Full" : jdWordCount > 140 ? "Medium" : "Short" },
+    { label: "Sections", value: String([responsibilityHighlights, requirementHighlights, niceHighlights].filter((items) => items.length).length || 1) },
+  ];
+  const highlightCards = [
+    { title: "What you'll do", items: responsibilityHighlights, tone: "rgba(166,55,45,0.10)" },
+    { title: "What they need", items: requirementHighlights, tone: "rgba(242,238,179,0.06)" },
+    { title: "Standout signals", items: niceHighlights.length ? niceHighlights : visibleMissing.slice(0, 3).map((item) => `${item.kw} (${item.impact})`), tone: "rgba(140,58,39,0.13)" },
+  ].filter((card) => card.items.length);
 
   return (
     <div
@@ -610,9 +615,43 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
         </div>
 
         {/* Job Description */}
-        <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: 24 }}>
-          <h3 style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 16 }}>Job Description</h3>
-          <div>{renderJobDescription(currentJob.description || "")}</div>
+        <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: isMobile ? 16 : 24, overflow: "hidden" }}>
+          <div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", gap: 12, flexDirection: isMobile ? "column" : "row", marginBottom: 18 }}>
+            <div>
+              <div style={{ fontFamily: F.sans, fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: T.t3, marginBottom: 6 }}>Full posting</div>
+              <h3 style={{ fontFamily: F.sans, fontSize: 18, fontWeight: 800, color: T.text, margin: 0 }}>Job Description</h3>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {jdSignals.map((signal) => (
+                <div key={signal.label} style={{ padding: "7px 10px", borderRadius: 999, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", fontFamily: F.sans }}>
+                  <span style={{ fontSize: 10, color: T.t3, marginRight: 6 }}>{signal.label}</span>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: T.text }}>{signal.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {highlightCards.length > 0 && (
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : `repeat(${Math.min(highlightCards.length, 3)}, minmax(0, 1fr))`, gap: 12, marginBottom: 18 }}>
+              {highlightCards.map((card) => (
+                <div key={card.title} style={{ border: `1px solid ${T.border}`, borderRadius: 16, background: card.tone, padding: 14 }}>
+                  <div style={{ fontFamily: F.sans, fontSize: 12, fontWeight: 800, color: T.text, marginBottom: 10 }}>{card.title}</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {card.items.slice(0, 4).map((item) => (
+                      <div key={item} style={{ display: "grid", gridTemplateColumns: "16px minmax(0, 1fr)", gap: 8, alignItems: "start" }}>
+                        <Check size={12} color={T.red} style={{ marginTop: 3 }} />
+                        <span style={{ fontFamily: F.sans, fontSize: 12, lineHeight: 1.55, color: T.t2 }}>{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ border: `1px solid ${T.border}`, borderRadius: 18, background: "rgba(1,17,38,0.22)", padding: isMobile ? 14 : 20 }}>
+            {renderJobDescription(descriptionText)}
+          </div>
         </div>
       </div>
 
@@ -639,41 +678,6 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
               </div>
             );
           })}
-        </div>
-
-        {/* Hiring Manager */}
-        <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: 20 }}>
-          <h4 style={{ fontFamily: F.sans, fontSize: 13, fontWeight: 600, color: T.text, marginBottom: 14 }}>Hiring Manager</h4>
-          {isPro && currentJob.hiringManager ? (
-            <div>
-              <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14 }}>
-                <div style={{ width: 48, height: 48, borderRadius: "50%", background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 700, color: "#fff", fontFamily: F.sans }}>{currentJob.hiringManager.name[0]}</div>
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: T.text, fontFamily: F.sans }}>{currentJob.hiringManager.name}</div>
-                  <div style={{ fontSize: 12, color: T.t2, fontFamily: F.sans }}>{currentJob.hiringManager.title}</div>
-                </div>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <span style={{ fontSize: 12, color: T.t3, fontFamily: F.sans }}>{currentJob.hiringManager.email || "Email unavailable"}</span>
-                  <button style={{ background: "none", border: "none", cursor: "pointer", color: T.t3 }}><Copy size={13} /></button>
-                </div>
-                {currentJob.hiringManager.linkedin && (
-                  <a href={String(currentJob.hiringManager.linkedin).startsWith("http") ? currentJob.hiringManager.linkedin : `https://${currentJob.hiringManager.linkedin}`} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: T.red, fontFamily: F.sans, textDecoration: "none" }}>
-                    <Linkedin size={13} /> {currentJob.hiringManager.linkedin}
-                  </a>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div style={{ textAlign: "center", padding: "16px 0" }}>
-              <div style={{ width: 48, height: 48, borderRadius: "50%", background: "rgba(242,238,179,0.05)", margin: "0 auto 10px", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)" }}>
-                <Lock size={18} color={T.t3} />
-              </div>
-              <div style={{ fontSize: 13, color: T.t3, fontFamily: F.sans, marginBottom: 10 }}>Upgrade to Pro to unlock hiring manager contacts</div>
-              <button style={{ padding: "9px 16px", borderRadius: 10, border: "none", background: T.grad, color: "#fff", fontSize: 12, fontWeight: 600, fontFamily: F.sans, cursor: "pointer" }}>Upgrade to Pro</button>
-            </div>
-          )}
         </div>
 
         {/* Visa Info */}

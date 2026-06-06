@@ -27,6 +27,7 @@ import secrets
 import time
 from collections import defaultdict, deque
 from typing import Deque, Dict, Tuple
+from urllib.parse import urlparse
 
 import jwt
 from fastapi import Request
@@ -55,6 +56,7 @@ PUBLIC_READ_PATHS = {
     "/api/auth/demo",
     "/api/auth/oidc/providers",
     "/api/auth/session",
+    "/api/billing/plans",
     "/docs",
     "/openapi.json",
     "/redoc",
@@ -68,6 +70,11 @@ PUBLIC_WRITE_PATHS = {
     "/api/auth/signup",
     "/api/auth/refresh",
     "/api/auth/logout",
+    "/api/auth/forgot-password",
+    "/api/auth/reset-password",
+    "/api/forgot-password",
+    "/api/reset-password",
+    "/api/billing/webhook",
 }
 
 RATE_LIMIT_EXEMPT_GET_PREFIXES = (
@@ -199,6 +206,39 @@ def _is_public_read(path: str) -> bool:
     return any(path.startswith(prefix) for prefix in PUBLIC_READ_PREFIXES)
 
 
+def _allowed_origin_hosts() -> set[str]:
+    hosts: set[str] = {
+        "placeupcareer.com",
+        "www.placeupcareer.com",
+        "localhost",
+        "127.0.0.1",
+    }
+    for origin in settings.cors_origins:
+        try:
+            parsed = urlparse(origin)
+            if parsed.hostname:
+                hosts.add(parsed.hostname.lower())
+        except Exception:
+            continue
+    return hosts
+
+
+def _has_trusted_origin(request: Request) -> bool:
+    """Validate browser write origins without blocking server-to-server calls."""
+    origin = request.headers.get("origin")
+    referer = request.headers.get("referer")
+    candidate = origin or referer
+    if not candidate:
+        # Native/mobile/server clients usually omit Origin; they still need auth
+        # or a Stripe signature on protected routes.
+        return True
+    try:
+        parsed = urlparse(candidate)
+    except Exception:
+        return False
+    return bool(parsed.hostname and parsed.hostname.lower() in _allowed_origin_hosts())
+
+
 class RouteAccessMiddleware(BaseHTTPMiddleware):
     """Coarse route gate so restricted handlers are not reached anonymously."""
 
@@ -210,9 +250,13 @@ class RouteAccessMiddleware(BaseHTTPMiddleware):
         if method == "GET" and _is_public_read(path):
             return await call_next(request)
         if path in PUBLIC_WRITE_PATHS:
+            if path != "/api/billing/webhook" and not _has_trusted_origin(request):
+                return JSONResponse({"detail": "Invalid request origin"}, status_code=403)
             return await call_next(request)
         if path.startswith("/api/") and not _has_valid_auth_header(request):
             return JSONResponse({"detail": "Authentication required"}, status_code=401)
+        if path.startswith("/api/") and method in {"POST", "PUT", "PATCH", "DELETE"} and not _has_trusted_origin(request):
+            return JSONResponse({"detail": "Invalid request origin"}, status_code=403)
         return await call_next(request)
 
 

@@ -114,6 +114,7 @@ class AckResponse(BaseModel):
 
 # ─── Endpoints ────────────────────────────────────────────────────────
 
+@router.post("/auth/forgot-password", response_model=AckResponse)
 @router.post("/forgot-password", response_model=AckResponse)
 async def forgot_password(payload: ForgotPasswordRequest):
     """Initiate a password reset. Always returns 200 to prevent account
@@ -142,6 +143,7 @@ async def forgot_password(payload: ForgotPasswordRequest):
     return AckResponse()
 
 
+@router.post("/auth/reset-password")
 @router.post("/reset-password")
 async def reset_password(payload: ResetPasswordRequest):
     """Complete a password reset. Token may only be used once."""

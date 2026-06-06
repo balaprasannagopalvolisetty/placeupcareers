@@ -334,7 +334,7 @@ async def upload_user_resume(
 
     try:
         from app.services.ats_scorer import score_resume_quality
-        from app.services.resume_parser import parse_resume_file
+        from app.services.resume_parser import parse_resume_file, resume_text_to_json
         parsed = await parse_resume_file(content, filename)
         parsed_text = (parsed.get("text") or "").strip()
         if len(parsed_text) < 30:
@@ -343,6 +343,16 @@ async def upload_user_resume(
                 detail="Could not extract readable text from this resume. Please upload a text-based PDF or DOCX.",
             )
         score = int(round(float(score_resume_quality(parsed_text))))
+        parsed_json = resume_text_to_json(
+            parsed_text,
+            metadata={
+                "filename": filename,
+                "format": parsed.get("format"),
+                "word_count": parsed.get("word_count"),
+                "page_count": parsed.get("page_count"),
+                "score": score,
+            },
+        )
     except HTTPException:
         raise
     except Exception as exc:
@@ -360,6 +370,7 @@ async def upload_user_resume(
         active=True,
         storage_path=None,
         parsed_text=parsed_text,
+        parsed_json=parsed_json,
     )
     return _to_resume_meta(row)
 
@@ -401,8 +412,9 @@ async def get_parsed_active_resume(user_id: str = Depends(current_user_id)):
                 "keywords": [],
                 "missing_keywords": [],
             }
-        skills = extract_skills_from_text(text)
-        keywords = extract_keywords(text, top_n=40)
+        resume_json = active.get("parsed_json") or {}
+        skills = resume_json.get("skills") or extract_skills_from_text(text)
+        keywords = resume_json.get("keywords") or extract_keywords(text, top_n=40)
     except Exception as e:
         log.warning("Active resume parse lookup failed for %s: %s", user_id, e)
         return {
@@ -423,6 +435,7 @@ async def get_parsed_active_resume(user_id: str = Depends(current_user_id)):
         "score": active.get("score"),
         "skills": sorted(set(skills)),
         "keywords": keywords[:30],
+        "resume_json": resume_json,
         "quick_wins": suggestions,
         "target_roles": target_roles,
     }

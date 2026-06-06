@@ -641,7 +641,11 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const savedIds = useMemo(() => getSavedIds(), [savedVersion]);
   const trackedJobs = useMemo(() => ({ ...getTrackedJobs(), ...serverTrackedJobs }), [appliedVersion, serverTrackedJobs]);
 
-  const filtered = jobs;
+  const filtered = jobs.filter((job) => {
+    const id = String(job.id || "");
+    const status = id ? trackedJobs[id] : "";
+    return status !== "applied" && status !== "interview";
+  });
 
   const allRoles = useMemo(
     () => Array.from(new Set(taxonomy.flatMap((cat) => cat.roles.map((role) => role.name)).filter(Boolean))),

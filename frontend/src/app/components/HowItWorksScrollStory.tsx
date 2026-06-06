@@ -42,7 +42,7 @@ const STEPS = [
   {
     num: "04", icon: "📊",
     eyebrow: "Instant Analysis",
-    title: "ATS breakdown +\nhiring manager unlocked",
+    title: "ATS breakdown +\napplication tracking",
     desc: "Keyword gaps, match score, and the direct email of the person who can hire you.",
   },
   {
@@ -526,7 +526,7 @@ function ATSCard({ p3 }: { p3: MotionValue<number> }) {
   );
 }
 
-// ── Hiring Manager Card ──
+// ── Application Insight Card ──
 function HMCard({ p3 }: { p3: MotionValue<number> }) {
   const cardOpac = useTransform(p3, [0.28, 0.55], [0, 1]);
   const cardY    = useTransform(p3, [0.28, 0.55], [-40, 0]);
@@ -542,7 +542,7 @@ function HMCard({ p3 }: { p3: MotionValue<number> }) {
         boxShadow: "0 12px 40px rgba(1,17,38,0.80)",
       }}
     >
-      <div style={{ fontFamily: F.sans, fontSize: 8, color: T.t3, letterSpacing: "0.08em", textTransform: "uppercase" as const, marginBottom: 7 }}>Hiring Manager</div>
+      <div style={{ fontFamily: F.sans, fontSize: 8, color: T.t3, letterSpacing: "0.08em", textTransform: "uppercase" as const, marginBottom: 7 }}>Application Fit</div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 9 }}>
         <div style={{
           width: 28, height: 28, borderRadius: "50%", flexShrink: 0,

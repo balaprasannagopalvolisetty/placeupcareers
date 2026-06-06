@@ -435,7 +435,7 @@ function HeroSection() {
           {/* Subheading */}
           <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.8, delay: 0.65 }}
             style={{ fontSize: 17, lineHeight: 1.75, color: T.t2, fontFamily: F.sans, fontWeight: 400, maxWidth: 560, margin: "0 auto 40px" }}>
-            AI-powered job matching with real-time ATS scoring, hiring manager contacts, and visa-aware filtering — built exclusively for international students.
+            AI-powered job matching with real-time ATS scoring, application tracking, and visa-aware filtering — built exclusively for international students.
           </motion.p>
 
           {/* CTA Buttons */}
@@ -512,7 +512,7 @@ function HeroSection() {
 const features = [
   { icon: Shield,   emoji: "🛡",  title: "Visa-Aware Matching",       desc: "Filter by F1-CPT, F1-OPT, STEM OPT, H-1B. Every listing is verified for sponsorship status." },
   { icon: Target,   emoji: "🎯",  title: "Real-Time ATS Scoring",     desc: "Know your match score before applying. Full keyword gap analysis included." },
-  { icon: Users,    emoji: "👤",  title: "Hiring Manager Contacts",   desc: "Direct email + LinkedIn of the person who can hire you — per listing." },
+  { icon: Users,    emoji: "👤",  title: "Application Intelligence",   desc: "Track applied, skipped, and saved roles so you never duplicate effort." },
   { icon: BarChart3,emoji: "📊",  title: "Application Tracker",       desc: "Full history of applications, dates, and status — all in one clean dashboard." },
   { icon: Bell,     emoji: "🔔",  title: "Smart Email Alerts",        desc: "Daily top 10 matches. OPT/H-1B filtered. Never miss the perfect opportunity." },
   { icon: Mic,      emoji: "🎤",  title: "Mock Interview Sessions",   desc: "Elite members get weekly 1:1 with top US recruiters. Practice every round." },
@@ -588,7 +588,7 @@ const plans = [
     features: [
       ["ATS Score (5/mo)", true], ["Basic Job Alerts", true], ["Public Visa Data", true],
       ["1 Resume Upload", true], ["Community Support", true],
-      ["Hiring Manager Contacts", false], ["One-Click Apply", false],
+      ["Application Tracker", true], ["One-Click Apply", false],
     ],
     cta: "Start Basic", ctaLink: "/signup",
   },
@@ -597,7 +597,7 @@ const plans = [
     badge: "Most Popular", featured: true, borderColor: T.red,
     features: [
       ["Unlimited ATS Scoring", true], ["Smart Daily Alerts", true], ["Full Visa Tracker", true],
-      ["5 Resume Versions", true], ["Hiring Manager Contacts", true],
+      ["5 Resume Versions", true], ["Application Tracker", true],
       ["One-Click Apply (50+ boards)", true], ["Career Analytics Dashboard", true],
     ],
     cta: "Go Pro →", ctaLink: "/signup",
