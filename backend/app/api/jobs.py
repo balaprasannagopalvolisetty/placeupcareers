@@ -1066,10 +1066,12 @@ async def list_jobs(
         post_filter_since = max(fresh_since, visible_cutoff)
         post_filter_before = fresh_before
     else:
-        # The default "All active" view should use the indexed freshness field.
-        # A COALESCE(posted_at,last_seen_at) predicate forced broad scans on
-        # master_jobs and was hitting Cloud Run's 45s timeout.
-        filters["seen_since"] = visible_cutoff
+        # Default Jobs view should not show stale postings just because they
+        # were re-scraped today. Use the caller's local "today" window.
+        today_since, today_before = _posted_window("today", tz_offset_minutes=tz_offset)
+        filters["effective_since"] = today_since or visible_cutoff
+        post_filter_since = today_since or visible_cutoff
+        post_filter_before = today_before
     title_terms = _taxonomy_terms(category, role)
     preferred_roles, preferred_locations = _preference_terms(user_id) if personalized else ([], [])
     if personalized and not title_terms and not search and preferred_roles:
@@ -1726,7 +1728,10 @@ async def get_top_matches(
         post_filter_since = max(fresh_since, _visible_jobs_cutoff())
         post_filter_before = fresh_before
     else:
-        filters["seen_since"] = _recent_jobs_cutoff()
+        today_since, today_before = _posted_window("today", tz_offset_minutes=tz_offset)
+        filters["effective_since"] = today_since or _recent_jobs_cutoff()
+        post_filter_since = today_since or _recent_jobs_cutoff()
+        post_filter_before = today_before
     resume_text = await _active_resume_text(user_id)
     preferred_roles, preferred_locations = _preference_terms(user_id)
     terms = _terms_for_role_names(preferred_roles)

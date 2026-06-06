@@ -530,7 +530,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       setTotal(0);
     }
 
-    const params: Record<string, string | number | boolean> = { page, page_size: pageSize, max_years: 10, sort: "match", personalized };
+    const params: Record<string, string | number | boolean> = { page, page_size: pageSize, max_years: 10, sort: "match", personalized, tz_offset: new Date().getTimezoneOffset() };
     if (resumeLink.hasResume) params.include_scores = true;
     if (search) params.search = search;
     if (location) params.location = location;
@@ -541,8 +541,6 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
     if (visaProgramFilter) params.visa_program = visaProgramFilter;
     if (timeFilter) {
       params.time_filter = timeFilter;
-      // Pass timezone offset so backend calculates "today"/"yesterday" in the user's local time
-      params.tz_offset = new Date().getTimezoneOffset();
     }
 
     getJobsWithRetry(params, 2)
