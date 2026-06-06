@@ -12,6 +12,14 @@ from app.services.global_visa_rules import COUNTRY_RULES, TARGET_COUNTRIES
 
 logger = logging.getLogger("placeup.etl.taxonomy_role_backfill")
 
+BACKFILL_SOURCES = (
+    "linkedin~indeed~glassdoor~ziprecruiter~google~usajobs~dice~monster~jooble~"
+    "remoteok~remotive~arbeitnow~jobicy~weworkremotely~jobtech~eures~"
+    "uk_findajob~nhs_jobs~jobbank_ca~ba_jobsuche~france_travail~"
+    "mycareersfuture~tyomarkkinatori~nav_arbeidsplassen~h1b_sponsor~"
+    "tier1_ats~scrapling_discovery"
+)
+
 
 def _target_locations() -> str:
     locations: list[str] = []
@@ -28,13 +36,13 @@ def main() -> int:
     args = argparse.Namespace(
         queries="~".join(term.replace(" ", "_") for term in terms),
         locations=_target_locations(),
-        sources="rapidapi~usajobs~dice",
-        max_per_source=60,
-        max_per_sponsor=25,
+        sources=BACKFILL_SOURCES,
+        max_per_source=140,
+        max_per_sponsor=600,
         h1b_sponsor_concurrency=4,
-        jobspy_hours_old=8,
+        jobspy_hours_old=336,
         jobspy_page_size=50,
-        jobspy_max_pages=25,
+        jobspy_max_pages=50,
         tiers="T1~T2",
         schedule_type="taxonomy-role-backfill",
         dry_run=False,

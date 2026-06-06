@@ -18,7 +18,12 @@ from app.etl.jobs_scraper import run
 from app.etl.api_sources.runner import run_api_connectors_to_postgres
 from app.etl.purge_jobs_except_today import purge_except_day
 from app.config import settings
-from app.job_taxonomy import all_balanced_taxonomy_scrape_search_terms, all_linkedin_style_role_names, all_role_names
+from app.job_taxonomy import (
+    all_balanced_taxonomy_scrape_search_terms,
+    all_linkedin_style_role_names,
+    all_role_backfill_search_terms,
+    all_role_names,
+)
 from app.services.global_visa_rules import COUNTRY_RULES, TARGET_COUNTRIES
 
 logger = logging.getLogger(__name__)
@@ -48,7 +53,7 @@ try:
     PUBLIC_BATCH_CONCURRENCY = max(0, int(os.getenv("SCRAPER_PUBLIC_BATCH_CONCURRENCY", "2")))
 except ValueError:
     PUBLIC_BATCH_CONCURRENCY = 0
-PURGE_EXCEPT_TODAY = os.getenv("SCRAPER_PURGE_EXCEPT_TODAY", "true").strip().lower() not in {"0", "false", "no", "off"}
+PURGE_EXCEPT_TODAY = os.getenv("SCRAPER_PURGE_EXCEPT_TODAY", "false").strip().lower() not in {"0", "false", "no", "off"}
 PURGE_TIMEZONE = os.getenv("SCRAPER_PURGE_TIMEZONE", "America/Chicago").strip() or "America/Chicago"
 ADVISORY_LOCK_KEY = 6412226682826
 
@@ -72,6 +77,18 @@ def _configured_public_sources() -> str:
         logger.warning("USAJobs public batches disabled because USAJOBS_API_KEY/USAJOBS_EMAIL are not configured.")
         sources = [source for source in sources if source != "usajobs"]
     return "~".join(sources)
+
+
+def _merge_sources(*groups: str) -> str:
+    merged: list[str] = []
+    seen: set[str] = set()
+    for group in groups:
+        for source in group.strip("~ ").split("~"):
+            source = source.strip()
+            if source and source not in seen:
+                seen.add(source)
+                merged.append(source)
+    return "~".join(merged)
 
 
 def _base_args(**overrides) -> argparse.Namespace:
@@ -183,6 +200,36 @@ async def _run_batched() -> int:
     ])
     public_results = [*canonical_results, *synonym_results]
     failures += sum(1 for code in public_results if code)
+
+    coverage_floor_terms = all_role_backfill_search_terms()
+    coverage_floor_sources = _merge_sources(
+        public_sources,
+        "monster~jooble",
+        "remoteok~remotive~arbeitnow~jobicy~weworkremotely",
+        "jobtech~eures~uk_findajob~nhs_jobs~jobbank_ca~ba_jobsuche~france_travail~mycareersfuture~tyomarkkinatori~nav_arbeidsplassen",
+        "h1b_sponsor~tier1_ats~scrapling_discovery",
+    )
+    logger.info(
+        "6h scraper running coverage-floor backfill: %s role-focused terms across %s countries via %s",
+        len(coverage_floor_terms),
+        len(countries),
+        coverage_floor_sources,
+    )
+    coverage_floor_code = await run(_base_args(
+        queries=_encoded_terms(coverage_floor_terms),
+        locations=country_locations,
+        sources=coverage_floor_sources,
+        max_per_source=140,
+        max_per_sponsor=600,
+        h1b_sponsor_concurrency=10,
+        jobspy_hours_old=336,
+        jobspy_page_size=50,
+        jobspy_max_pages=50,
+        schedule_type="6h-coverage-floor",
+    ))
+    if coverage_floor_code:
+        failures += 1
+        logger.warning("6h scraper coverage-floor backfill failed with code %s", coverage_floor_code)
 
     if PURGE_EXCEPT_TODAY:
         try:

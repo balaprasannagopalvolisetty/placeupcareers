@@ -89,7 +89,12 @@ class Settings(BaseSettings):
     greenhouse_board_tokens: str = Field(default="")
     adzuna_app_id: str = Field(default="")
     adzuna_app_key: str = Field(default="")
-    adzuna_countries: str = Field(default="us,gb,de,nl,fr,ca,au,it,es,pl,in")
+    adzuna_countries: str = Field(
+        default=(
+            "us,gb,de,nl,fr,ca,au,it,es,pl,in,ie,nz,sg,pt,se,dk,no,ch,fi,"
+            "be,at,qa,sa,lu,kr,tw,hk,cz"
+        )
+    )
 
     # --- Contact / Recruiter Enrichment APIs ---
     apollo_api_key: str = Field(default="", description="Apollo.io API key (free: 60 credits/mo)")
