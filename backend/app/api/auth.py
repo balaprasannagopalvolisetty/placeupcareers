@@ -220,14 +220,17 @@ async def get_demo_credentials():
 @router.post("/signin", response_model=AuthResponse)
 async def signin(payload: AuthRequest, request: Request, response: Response):
     _enforce_trusted_origin(request)
-    email = str(payload.email)
-    if not settings.is_production and email.lower() == DEMO_EMAIL and payload.password == DEMO_PASSWORD:
+    identifier = str(payload.email).strip()
+    if not settings.is_production and identifier.lower() == DEMO_EMAIL and payload.password == DEMO_PASSWORD:
         _ensure_demo_user()
-    user = user_store.get_user_by_email(email)
+    if "@" in identifier:
+        user = user_store.get_user_by_email(identifier)
+    else:
+        user = user_store.get_user_by_phone(identifier)
     if not user or not verify_password(payload.password, user.get("password_hash", "")):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password",
+            detail="Invalid email/phone or password",
         )
     return _issue_session(user, request, response)
 

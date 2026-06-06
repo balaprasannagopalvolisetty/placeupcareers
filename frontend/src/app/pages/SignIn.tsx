@@ -1,10 +1,10 @@
 ﻿import { useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { Link, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import { Eye, EyeOff, Star } from "lucide-react";
 import { OrbitalSphereSmall } from "../components/OrbitalSphereSmall";
 import { useAuth } from "../context/AuthContext";
-import { getAuthProviders, getDemoCredentials, startGoogleOidc, type DemoCredentials } from "../lib/api";
+import { getDemoCredentials, type DemoCredentials } from "../lib/api";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 const T = {
@@ -87,41 +87,37 @@ function StyledInput({
 
 export default function SignIn() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { signIn } = useAuth();
   const { isMobile } = useViewportFlags();
-  const [email, setEmail] = useState("");
-  // Optional phone field — accepts phone as an alternative identifier
-  // for accounts where phone signup was used. Backend resolves either
-  // by matching `users.email == identifier` OR `users.phone == identifier`.
-  const [phone, setPhone] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [demo, setDemo] = useState<DemoCredentials | null>(null);
-  const [googleSsoEnabled, setGoogleSsoEnabled] = useState(false);
+  const redirectTo = typeof location.state === "object" && location.state && "from" in location.state
+    ? String((location.state as { from?: unknown }).from || "/dashboard")
+    : "/dashboard";
 
   useEffect(() => {
     let active = true;
     getDemoCredentials()
       .then((d) => { if (active) setDemo(d); })
       .catch(() => { /* prod or unavailable — hide the demo affordance */ });
-    getAuthProviders()
-      .then((providers) => { if (active) setGoogleSsoEnabled(providers.google); })
-      .catch(() => { if (active) setGoogleSsoEnabled(false); });
     return () => { active = false; };
   }, []);
 
   const handleSubmit = async () => {
     setError(null);
-    if (!email || !password) {
-      setError("Please enter your email and password.");
+    if (!identifier.trim() || !password) {
+      setError("Please enter your email or phone and password.");
       return;
     }
     setLoading(true);
     try {
-      await signIn(email, password);
-      navigate("/dashboard");
+      await signIn(identifier.trim(), password);
+      navigate(redirectTo, { replace: true });
     } catch (err) {
       setError((err as Error).message || "Unable to sign in.");
     } finally {
@@ -131,13 +127,13 @@ export default function SignIn() {
 
   const handleUseDemo = async () => {
     if (!demo) return;
-    setEmail(demo.email);
+    setIdentifier(demo.email);
     setPassword(demo.password);
     setError(null);
     setLoading(true);
     try {
       await signIn(demo.email, demo.password);
-      navigate("/dashboard");
+      navigate(redirectTo, { replace: true });
     } catch (err) {
       setError((err as Error).message || "Demo sign-in failed.");
     } finally {
@@ -185,8 +181,7 @@ export default function SignIn() {
               Sign in to access your job matches, alerts, and analytics.
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 16 }}>
-              <StyledInput label="Email Address" type="email" value={email} onChange={setEmail} />
-              <StyledInput label="Phone Number (optional)" type="tel" value={phone} onChange={setPhone} />
+              <StyledInput label="Email or Phone" type="text" value={identifier} onChange={setIdentifier} />
               <StyledInput
                 label="Password"
                 type={showPass ? "text" : "password"}

@@ -436,10 +436,10 @@ export async function getDemoCredentials() {
   return request<DemoCredentials>("/api/auth/demo");
 }
 
-export async function signin(email: string, password: string) {
+export async function signin(identifier: string, password: string) {
   const payload = await request<AuthResponse>("/api/auth/signin", {
     method: "POST",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email: identifier, password }),
   });
   setStoredToken(payload.access_token);
   return payload;

@@ -11,7 +11,7 @@ VISA_STATUSES = (
 
 
 class AuthRequest(BaseModel):
-    email: EmailStr
+    email: str
     password: str
 
 

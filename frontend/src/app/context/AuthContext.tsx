@@ -21,7 +21,7 @@ interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
   isAuthenticated: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (identifier: string, password: string) => Promise<void>;
   signUp: (payload: SignupPayload) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -62,10 +62,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (identifier: string, password: string) => {
     setLoading(true);
     try {
-      const data = await signin(email, password);
+      const data = await signin(identifier, password);
       setUser({ id: data.user_id, first_name: data.first_name, last_name: data.last_name, email: data.email, plan: data.plan });
     } finally {
       setLoading(false);

@@ -118,6 +118,35 @@ def get_user_by_email(email: str) -> Optional[dict]:
     return None
 
 
+def _phone_digits(value: str | None) -> str:
+    return "".join(ch for ch in str(value or "") if ch.isdigit())
+
+
+def get_user_by_phone(phone: str) -> Optional[dict]:
+    """Find a user by phone, tolerating common formatting differences."""
+    raw_phone = str(phone or "").strip()
+    if not raw_phone:
+        return None
+
+    rows = (
+        _client()
+        .collection("users")
+        .where("phone", "==", raw_phone)
+        .limit(1)
+        .stream()
+    )
+    for snap in rows:
+        return _clean(snap.to_dict() | {"id": snap.id})
+
+    wanted = _phone_digits(raw_phone)
+    if not wanted:
+        return None
+    for user in list_users(limit=5000):
+        if _phone_digits(user.get("phone")) == wanted:
+            return user
+    return None
+
+
 def list_users(limit: int = 500) -> list[dict]:
     rows = _client().collection("users").limit(limit).stream()
     return [_clean(snap.to_dict() | {"id": snap.id}) for snap in rows]

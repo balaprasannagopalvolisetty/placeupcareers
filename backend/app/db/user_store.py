@@ -28,6 +28,7 @@ from app.db.firestore_user_store import (  # noqa: F401
     get_preferences,
     get_user_by_email,
     get_user_by_id,
+    get_user_by_phone,
     list_alerts,
     list_resumes,
     list_users,
