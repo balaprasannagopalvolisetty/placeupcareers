@@ -55,11 +55,6 @@ export function PrivacyGuard() {
     };
     const onAfterPrint = () => setShielded(false);
 
-    document.addEventListener("contextmenu", block, true);
-    document.addEventListener("copy", block, true);
-    document.addEventListener("cut", block, true);
-    document.addEventListener("dragstart", block, true);
-    document.addEventListener("selectstart", block, true);
     document.addEventListener("keydown", onKeyDown, true);
     document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("blur", onBlur);
@@ -69,11 +64,6 @@ export function PrivacyGuard() {
 
     return () => {
       document.body.classList.remove("placeup-privacy-protected");
-      document.removeEventListener("contextmenu", block, true);
-      document.removeEventListener("copy", block, true);
-      document.removeEventListener("cut", block, true);
-      document.removeEventListener("dragstart", block, true);
-      document.removeEventListener("selectstart", block, true);
       document.removeEventListener("keydown", onKeyDown, true);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("blur", onBlur);
@@ -86,15 +76,6 @@ export function PrivacyGuard() {
   return (
     <>
       <style>{`
-        body.placeup-privacy-protected,
-        body.placeup-privacy-protected * {
-          -webkit-user-select: none !important;
-          user-select: none !important;
-        }
-        body.placeup-privacy-protected img,
-        body.placeup-privacy-protected video {
-          -webkit-user-drag: none !important;
-        }
         @media print {
           body.placeup-privacy-protected * {
             visibility: hidden !important;

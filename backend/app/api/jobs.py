@@ -33,7 +33,7 @@ from app.utils.terminal_table import render_table
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
-DEFAULT_VISIBLE_MAX_AGE_DAYS = 1
+DEFAULT_VISIBLE_MAX_AGE_DAYS = 14
 DEFAULT_RECENT_JOB_HOURS = 8
 _detail_repair_recent: dict[str, datetime] = {}
 
@@ -1066,12 +1066,11 @@ async def list_jobs(
         post_filter_since = max(fresh_since, visible_cutoff)
         post_filter_before = fresh_before
     else:
-        # Default Jobs view should not show stale postings just because they
-        # were re-scraped today. Use the caller's local "today" window.
-        today_since, today_before = _posted_window("today", tz_offset_minutes=tz_offset)
-        filters["effective_since"] = today_since or visible_cutoff
-        post_filter_since = today_since or visible_cutoff
-        post_filter_before = today_before
+        # The UI default is "All active", so do not silently force the local
+        # "today" window here. Keep the database scan bounded to recently
+        # active jobs, then let explicit Today/Yesterday/Week/Month filters
+        # apply exact posted-date windows above.
+        filters["effective_since"] = visible_cutoff
     title_terms = _taxonomy_terms(category, role)
     preferred_roles, preferred_locations = _preference_terms(user_id) if personalized else ([], [])
     if personalized and not title_terms and not search and preferred_roles:

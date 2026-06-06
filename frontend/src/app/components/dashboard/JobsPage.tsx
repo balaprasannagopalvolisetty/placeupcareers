@@ -586,11 +586,19 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             ? response.jobs
             : Array.isArray(response?.results)
               ? response.results
-              : [];
+              : Array.isArray(response?.items)
+                ? response.items
+                : Array.isArray(response?.data)
+                  ? response.data
+                  : [];
         setJobs(incoming);
         const reportedTotal = Array.isArray(response)
           ? response.length
           : (response?.total ?? response?.count ?? incoming.length);
+        if (incoming.length === 0 && page > 1 && typeof reportedTotal === "number" && reportedTotal > 0) {
+          setPage(1);
+          return;
+        }
         setTotal(typeof reportedTotal === "number" ? reportedTotal : incoming.length);
         const reportedPages = !Array.isArray(response) && typeof response?.total_pages === "number"
           ? response.total_pages
