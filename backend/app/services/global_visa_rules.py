@@ -32,7 +32,7 @@ class CountryVisaRule:
 TARGET_COUNTRIES: tuple[str, ...] = (
     "US", "CA", "GB", "IE", "DE", "NL", "AU", "NZ", "SG", "AE", "JP", "PT",
     "FR", "ES", "SE", "DK", "NO", "CH", "FI", "BE", "AT", "PL", "EE", "QA", "SA",
-    "IT", "LU", "KR", "TW", "HK", "CZ",
+    "IT", "LU", "KR", "TW", "HK", "CZ", "IN",
 )
 
 
@@ -95,6 +95,11 @@ COUNTRY_RULES: dict[str, CountryVisaRule] = {
         VisaProgram("d3_highly_qualified", "D3 Highly Qualified Activity Visa", ("d3 visa", "highly qualified activity")),
         VisaProgram("tech_visa", "Tech Visa", ("tech visa",)),
     ), ("pt_tech_visa",)),
+    "IN": CountryVisaRule("IN", "India", True, (
+        VisaProgram("employment_visa", "Employment Visa", ("employment visa", "work visa", "work permit", "visa sponsorship")),
+        VisaProgram("oci_pio", "OCI/PIO Eligible", ("oci", "pio", "overseas citizen of india")),
+        VisaProgram("relocation_support", "Relocation Support", ("relocation support", "relocation assistance", "immigration support")),
+    )),
 }
 
 
@@ -173,10 +178,10 @@ COUNTRY_ALIASES: dict[str, tuple[str, ...]] = {
     "TW": ("taiwan", "taipei", "taichung"),
     "HK": ("hong kong",),
     "CZ": ("czech republic", "czechia", "prague", "brno"),
+    "IN": ("india", "bangalore", "bengaluru", "coimbatore", "hyderabad", "pune", "mumbai", "chennai", "gurgaon", "gurugram", "noida", "delhi", "new delhi"),
 }
 
 NON_TARGET_COUNTRY_ALIASES: dict[str, tuple[str, ...]] = {
-    "IN": ("india", "bangalore", "bengaluru", "coimbatore", "hyderabad", "pune", "mumbai", "chennai", "gurgaon", "gurugram", "noida"),
     "MX": ("mexico", "mexico city", "ciudad de mexico", "guadalajara"),
     "CO": ("colombia", "bogota", "medellin"),
     "BR": ("brazil", "sao paulo", "rio de janeiro"),

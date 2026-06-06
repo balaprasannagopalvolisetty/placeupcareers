@@ -217,10 +217,10 @@ See `/docs/backend-pipeline.md` for full details.
 ### Global Visa Coverage Foundation
 
 The live job model is no longer hard-coded to USA/Canada or US-only visa
-labels. The global visa foundation is implemented for 31 target countries:
+labels. The global visa foundation is implemented for 32 target countries:
 
 `US, CA, GB, IE, DE, NL, AU, NZ, SG, AE, JP, PT, FR, ES, SE, DK, NO, CH, FI,
-BE, AT, PL, EE, QA, SA, IT, LU, KR, TW, HK, CZ`.
+BE, AT, PL, EE, QA, SA, IT, LU, KR, TW, HK, CZ, IN`.
 
 The country and visa-route rules live in
 `backend/app/services/global_visa_rules.py`. The backend now classifies each

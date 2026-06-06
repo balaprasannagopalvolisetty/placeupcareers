@@ -24,6 +24,7 @@ COUNTRY_ALIASES = {
     "IT": "it",
     "ES": "es",
     "PL": "pl",
+    "IN": "in",
 }
 
 
@@ -84,4 +85,3 @@ def _normalize(row: dict[str, Any], country: str) -> NormalizedJob | None:
         raw_tags=tags,
         raw=row,
     )
-
