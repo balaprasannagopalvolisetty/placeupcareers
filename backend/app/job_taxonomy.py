@@ -441,6 +441,65 @@ def all_taxonomy_scrape_search_terms() -> list[str]:
     return out
 
 
+def all_balanced_taxonomy_scrape_search_terms() -> list[str]:
+    """Comprehensive scrape terms ordered for fair role coverage.
+
+    Public boards are slow and rate-limited. If we send every synonym for
+    Software Engineer before the next role, long production runs fill only the
+    first few UI filters. This round-robin ordering sends every canonical role
+    first, then the first synonym for every role, then the second synonym, etc.
+    """
+    seen: set[str] = set()
+    role_terms: list[list[str]] = []
+
+    def clean_term(term: str) -> str:
+        return " ".join((term or "").replace("/", " ").split())
+
+    def add_global(out: list[str], term: str) -> None:
+        clean = clean_term(term)
+        key = clean.lower()
+        if len(clean) >= 3 and key not in seen:
+            seen.add(key)
+            out.append(clean)
+
+    for cat in CATEGORIES:
+        for role in cat.roles:
+            terms: list[str] = [role.name, *role.synonyms, *EXTRA_ROLE_SYNONYMS.get(role.name, ())]
+            deduped: list[str] = []
+            local_seen: set[str] = set()
+            for term in terms:
+                clean = clean_term(term)
+                key = clean.lower()
+                if len(clean) >= 3 and key not in local_seen:
+                    local_seen.add(key)
+                    deduped.append(clean)
+            role_terms.append(deduped)
+
+    out: list[str] = []
+    max_len = max((len(terms) for terms in role_terms), default=0)
+    for index in range(max_len):
+        for terms in role_terms:
+            if index < len(terms):
+                add_global(out, terms[index])
+
+    for term in (
+        "entry level visa sponsorship",
+        "junior OPT friendly",
+        "new grad H1B sponsor",
+        "associate OPT STEM",
+        "internship OPT",
+        "visa sponsorship",
+        "H1B sponsor",
+        "OPT eligible",
+        "STEM OPT",
+        "early career",
+        "new graduate",
+    ):
+        add_global(out, term)
+
+    return out
+
+
 def all_early_career_search_terms() -> list[str]:
     """Search terms biased toward 0-10 year roles across the taxonomy."""
     seen: set[str] = set()

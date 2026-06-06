@@ -17,7 +17,7 @@ from app.db.postgres import PostgresClient
 from app.etl.jobs_scraper import run
 from app.etl.api_sources.runner import run_api_connectors_to_postgres
 from app.config import settings
-from app.job_taxonomy import all_role_names, all_taxonomy_scrape_search_terms
+from app.job_taxonomy import all_balanced_taxonomy_scrape_search_terms, all_role_names
 from app.services.global_visa_rules import COUNTRY_RULES, TARGET_COUNTRIES
 
 logger = logging.getLogger(__name__)
@@ -86,7 +86,7 @@ def _base_args(**overrides) -> argparse.Namespace:
 
 async def _run_batched() -> int:
     roles = all_role_names()
-    terms = all_taxonomy_scrape_search_terms()
+    terms = all_balanced_taxonomy_scrape_search_terms()
     batches = [terms[i:i + BATCH_SIZE] for i in range(0, len(terms), BATCH_SIZE)]
     public_concurrency = PUBLIC_BATCH_CONCURRENCY or len(batches) or 1
     semaphore = asyncio.Semaphore(public_concurrency)

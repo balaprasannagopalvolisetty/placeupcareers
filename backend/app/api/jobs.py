@@ -33,7 +33,7 @@ from app.utils.terminal_table import render_table
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
-DEFAULT_VISIBLE_MAX_AGE_DAYS = 30
+DEFAULT_VISIBLE_MAX_AGE_DAYS = 1
 DEFAULT_RECENT_JOB_HOURS = 8
 _detail_repair_recent: dict[str, datetime] = {}
 
