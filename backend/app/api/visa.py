@@ -72,15 +72,53 @@ def _sponsor_row_to_card(r: dict) -> dict:
     }
 
 
+def _global_sponsor_row_to_card(r: dict) -> dict:
+    approvals = int(r.get("approvals") or 0)
+    denials = int(r.get("denials") or 0)
+    total_petitions = int(r.get("total_petitions") or approvals + denials or 0)
+    total = approvals + denials
+    rate = round((approvals / total) * 100) if total else (100 if approvals or total_petitions else 0)
+    city = r.get("city") or ""
+    region = r.get("region") or ""
+    location = ", ".join(part for part in (city, region) if part) or r.get("country_name") or "Multiple"
+    return {
+        "employer": r.get("employer_name") or "Unknown",
+        "city": city or location,
+        "state": region,
+        "location": location,
+        "type": r.get("visa_route") or "Work visa",
+        "country": r.get("country"),
+        "country_name": r.get("country_name"),
+        "source": r.get("source_name"),
+        "source_url": r.get("source_url"),
+        "fiscal_year": int(r.get("fiscal_year") or 0),
+        "fy": int(r.get("fiscal_year") or 0),
+        "approvals": approvals,
+        "approval": approvals,
+        "new_approvals": approvals,
+        "continuing_approvals": 0,
+        "denials": denials,
+        "denial": denials,
+        "rate": rate,
+        "approval_rate": rate,
+        "status": r.get("status") or "Active",
+        "total_petitions": total_petitions,
+    }
+
+
 @router.get("/dashboard")
 async def get_visa_dashboard(db=Depends(get_db)):
     """Aggregate sponsorship dashboard view: top sponsors + headline stats."""
+    try:
+        global_rows = await db.get_visa_sponsors(limit=100000) if hasattr(db, "get_visa_sponsors") else []
+    except Exception:
+        global_rows = []
     try:
         rows = await db.get_h1b_sponsors(limit=100000)
     except Exception:
         rows = []
 
-    all_sponsors = [_sponsor_row_to_card(r) for r in rows]
+    all_sponsors = [_global_sponsor_row_to_card(r) for r in global_rows] or [_sponsor_row_to_card(r) for r in rows]
     active_sponsors = [s for s in all_sponsors if (s["approvals"] + s["denials"]) > 0]
     active_sponsors.sort(key=lambda s: (s["approvals"], s["total_petitions"]), reverse=True)
     sponsors = active_sponsors[:25]
@@ -122,6 +160,31 @@ async def list_visa_sponsors(
     """Searchable sponsor directory backed by the H1B Excel import."""
     country_code = normalize_country_code(country) or "US"
     official_source = OFFICIAL_SPONSOR_SOURCES.get(country_code)
+    if hasattr(db, "get_visa_sponsors"):
+        try:
+            total = await db.count_visa_sponsors(country=country_code, employer=company, region=state)
+            if total:
+                offset = (page - 1) * page_size
+                rows = await db.get_visa_sponsors(
+                    country=country_code,
+                    employer=company,
+                    region=state,
+                    limit=page_size,
+                    offset=offset,
+                )
+                return {
+                    "total": total,
+                    "page": page,
+                    "page_size": page_size,
+                    "total_pages": max(1, (total + page_size - 1) // page_size),
+                    "country": country_code,
+                    "country_name": COUNTRY_RULES.get(country_code).name if COUNTRY_RULES.get(country_code) else country_code,
+                    "official_source": official_source,
+                    "sponsors": [_global_sponsor_row_to_card(r) for r in rows],
+                }
+        except Exception as e:
+            logger.warning("Global visa sponsor lookup failed for %s: %s", country_code, e)
+
     if country_code != "US":
         rule = COUNTRY_RULES.get(country_code)
         source = official_source or {

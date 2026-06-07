@@ -153,6 +153,20 @@ gcloud.cmd run jobs deploy placeup-h1b-import `
   --set-env-vars "APP_ENV=production,DATABASE_BACKEND=postgres" `
   --set-secrets "DATABASE_URL=DATABASE_URL:latest"
 
+gcloud.cmd run jobs deploy placeup-visa-sponsor-import `
+  --image $Image `
+  --region $Region `
+  --service-account "placeup-etl-sa@$ProjectId.iam.gserviceaccount.com" `
+  --command python `
+  --args="-m,app.etl.import_visa_sponsors,--force-h1b" `
+  --set-cloudsql-instances "$ProjectId`:$Region`:$DbInstance" `
+  --set-env-vars "APP_ENV=production,DATABASE_BACKEND=postgres" `
+  --set-secrets "DATABASE_URL=DATABASE_URL:latest" `
+  --memory 2Gi `
+  --cpu 1 `
+  --max-retries 1 `
+  --task-timeout 7200
+
 gcloud.cmd run jobs deploy placeup-daily-match-digest `
   --image $Image `
   --region $Region `
@@ -230,6 +244,29 @@ if ($DigestScheduleJob) {
     --uri $DigestScheduleUri `
     --http-method POST `
     --oauth-service-account-email "placeup-api-sa@$ProjectId.iam.gserviceaccount.com"
+}
+
+$VisaSponsorScheduleUri = "https://$Region-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/$ProjectId/jobs/placeup-visa-sponsor-import:run"
+$VisaSponsorScheduleJob = gcloud.cmd scheduler jobs describe placeup-visa-sponsor-import-monthly `
+  --location $Region `
+  --format "value(name)" 2>$null
+
+if ($VisaSponsorScheduleJob) {
+  gcloud.cmd scheduler jobs update http placeup-visa-sponsor-import-monthly `
+    --location $Region `
+    --schedule "0 3 1 * *" `
+    --time-zone "America/Chicago" `
+    --uri $VisaSponsorScheduleUri `
+    --http-method POST `
+    --oauth-service-account-email "placeup-etl-sa@$ProjectId.iam.gserviceaccount.com"
+} else {
+  gcloud.cmd scheduler jobs create http placeup-visa-sponsor-import-monthly `
+    --location $Region `
+    --schedule "0 3 1 * *" `
+    --time-zone "America/Chicago" `
+    --uri $VisaSponsorScheduleUri `
+    --http-method POST `
+    --oauth-service-account-email "placeup-etl-sa@$ProjectId.iam.gserviceaccount.com"
 }
 
 Write-Host "Backend image, API, and ETL jobs deployed."

@@ -265,6 +265,35 @@ def _top_h1b_excel_companies(limit: int) -> list[str]:
         return []
 
 
+def _top_imported_visa_sponsor_companies(limit: int) -> list[str]:
+    if limit <= 0:
+        return []
+    try:
+        from sqlalchemy import text
+
+        from app.db.postgres import PostgresClient
+
+        client = PostgresClient()
+        with client.session() as db:
+            rows = db.execute(
+                text(
+                    """
+                    select employer_name
+                      from visa_sponsors
+                     where employer_name is not null
+                     group by employer_name
+                     order by max(total_petitions) desc, max(approvals) desc, employer_name asc
+                     limit :limit
+                    """
+                ),
+                {"limit": limit},
+            ).scalars().all()
+        return [_clean(row) for row in rows if _clean(row)]
+    except Exception as exc:
+        logger.info("Scrapling discovery: imported visa sponsor company load skipped: %s", exc)
+        return []
+
+
 def monster_search_url(search_term: str, location: str = "United States") -> str:
     return (
         "https://www.monster.com/jobs/search"
@@ -342,6 +371,10 @@ def build_scrapling_targets(
             for company in _top_h1b_excel_companies(settings.scrapling_h1b_excel_company_limit):
                 for role in POPULAR_ROLE_SEEDS:
                     query = f"{company} {role} jobs United States"
+                    discovery_targets.append({"kind": "google_jobs", "url": google_jobs_url(query), "query": query, "company": company})
+            for company in _top_imported_visa_sponsor_companies(settings.scrapling_h1b_excel_company_limit):
+                for role in POPULAR_ROLE_SEEDS:
+                    query = f"{company} {role} open jobs"
                     discovery_targets.append({"kind": "google_jobs", "url": google_jobs_url(query), "query": query, "company": company})
 
     max_targets = settings.scrapling_discovery_max_targets

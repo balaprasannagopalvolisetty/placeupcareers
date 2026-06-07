@@ -218,3 +218,56 @@ class H1BSponsor(Base):
             "fiscal_year": self.fiscal_year,
             "data_json": self.data_json or {},
         }
+
+
+class VisaSponsor(Base):
+    __tablename__ = "visa_sponsors"
+    __table_args__ = (
+        UniqueConstraint("country", "source_name", "source_record_id", name="uq_visa_sponsor_source_record"),
+        Index("ix_visa_sponsors_country_employer", "country", "employer_name"),
+        Index("ix_visa_sponsors_country_route", "country", "visa_route"),
+        Index("ix_visa_sponsors_verified", "country", "last_verified_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    employer_name: Mapped[str] = mapped_column(String(400), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(String(400), nullable=False)
+    country: Mapped[str] = mapped_column(String(8), nullable=False)
+    country_name: Mapped[str | None] = mapped_column(String(120))
+    visa_route: Mapped[str | None] = mapped_column(String(160))
+    city: Mapped[str | None] = mapped_column(String(160))
+    region: Mapped[str | None] = mapped_column(String(160))
+    postal_code: Mapped[str | None] = mapped_column(String(80))
+    status: Mapped[str] = mapped_column(String(80), default="Active", nullable=False)
+    approvals: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    denials: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_petitions: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    fiscal_year: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    source_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    source_url: Mapped[str | None] = mapped_column(Text)
+    source_record_id: Mapped[str] = mapped_column(String(180), nullable=False)
+    last_verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    data_json: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "employer_name": self.employer_name,
+            "normalized_name": self.normalized_name,
+            "country": self.country,
+            "country_name": self.country_name or "",
+            "visa_route": self.visa_route or "",
+            "city": self.city or "",
+            "region": self.region or "",
+            "postal_code": self.postal_code or "",
+            "status": self.status,
+            "approvals": self.approvals,
+            "denials": self.denials,
+            "total_petitions": self.total_petitions,
+            "fiscal_year": self.fiscal_year,
+            "source_name": self.source_name,
+            "source_url": self.source_url or "",
+            "source_record_id": self.source_record_id,
+            "last_verified_at": self.last_verified_at,
+            "data_json": self.data_json or {},
+        }

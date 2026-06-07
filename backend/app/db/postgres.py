@@ -13,7 +13,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
-from app.db.schema import Company, Contact, H1BSponsor, Job, MasterJob, StagingRecord
+from app.db.schema import Company, Contact, H1BSponsor, Job, MasterJob, StagingRecord, VisaSponsor
 from app.services.global_visa_rules import COUNTRY_RULES, TARGET_COUNTRIES, in_target_country, resolve_country
 from app.utils.job_quality import clean_job_company, clean_job_description, infer_posted_at
 
@@ -367,6 +367,60 @@ class PostgresClient:
                 stmt = insert(H1BSponsor).values(**sponsor)
                 stmt = stmt.on_conflict_do_update(
                     index_elements=[H1BSponsor.id],
+                    set_={k: v for k, v in sponsor.items() if k != "id"},
+                )
+                db.execute(stmt)
+                count += 1
+            return count
+
+    async def get_visa_sponsors(
+        self,
+        *,
+        country: str | None = None,
+        employer: str | None = None,
+        region: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict]:
+        with self.session() as db:
+            stmt = select(VisaSponsor)
+            if country:
+                stmt = stmt.where(func.upper(VisaSponsor.country) == country.upper())
+            if employer:
+                stmt = stmt.where(VisaSponsor.employer_name.ilike(f"%{employer}%"))
+            if region:
+                stmt = stmt.where(func.lower(VisaSponsor.region) == region.lower())
+            stmt = stmt.order_by(
+                VisaSponsor.total_petitions.desc(),
+                VisaSponsor.approvals.desc(),
+                VisaSponsor.employer_name.asc(),
+            ).limit(limit).offset(offset)
+            return [row.to_dict() for row in db.execute(stmt).scalars().all()]
+
+    async def count_visa_sponsors(
+        self,
+        *,
+        country: str | None = None,
+        employer: str | None = None,
+        region: str | None = None,
+    ) -> int:
+        with self.session() as db:
+            stmt = select(func.count()).select_from(VisaSponsor)
+            if country:
+                stmt = stmt.where(func.upper(VisaSponsor.country) == country.upper())
+            if employer:
+                stmt = stmt.where(VisaSponsor.employer_name.ilike(f"%{employer}%"))
+            if region:
+                stmt = stmt.where(func.lower(VisaSponsor.region) == region.lower())
+            return int(db.execute(stmt).scalar() or 0)
+
+    async def upsert_visa_sponsors(self, sponsors: list[dict]) -> int:
+        with self.session() as db:
+            count = 0
+            for sponsor in sponsors:
+                stmt = insert(VisaSponsor).values(**sponsor)
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=[VisaSponsor.country, VisaSponsor.source_name, VisaSponsor.source_record_id],
                     set_={k: v for k, v in sponsor.items() if k != "id"},
                 )
                 db.execute(stmt)

@@ -129,7 +129,7 @@ export function VisaTrackerPage() {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   const statCards = [
-    { icon: Shield,      label: "H-1B Sponsors",       value: stats.h1b_sponsors,        color: T.red },
+    { icon: Shield,      label: "Verified Sponsors",   value: stats.h1b_sponsors,        color: T.red },
     { icon: Globe,       label: "OPT Roles Active",    value: stats.opt_roles,           color: T.burnt },
     { icon: TrendingUp,  label: "Top-25 Approval Rate",value: stats.avg_approval_rate,   color: T.red },
     { icon: Users,       label: "Petitions (Top-25)",  value: stats.petitions_last_year, color: T.burnt },
@@ -170,7 +170,7 @@ export function VisaTrackerPage() {
           style={{ width: isMobile ? "100%" : 130, height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", color: T.text, fontSize: 13, outline: "none", fontFamily: F.sans, textTransform: "uppercase" }}
         />
         <datalist id="visa-country-options">
-          {["US", "GB", "CA", "NL", "IE", "NZ", "AU", "SG", "DE", "FR", "ES", "SE", "AE", "JP"].map((code) => <option key={code} value={code} />)}
+          {["US", "CA", "GB", "IE", "DE", "NL", "AU", "NZ", "SG", "AE", "JP", "PT", "FR", "ES", "SE", "DK", "NO", "CH", "FI", "BE", "AT", "PL", "EE", "QA", "SA", "IT", "LU", "KR", "TW", "HK", "CZ", "IN"].map((code) => <option key={code} value={code} />)}
         </datalist>
         <input
           value={stateFilter}
