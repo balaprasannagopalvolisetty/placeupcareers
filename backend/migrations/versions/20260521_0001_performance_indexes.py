@@ -50,10 +50,16 @@ def upgrade() -> None:
         "CREATE INDEX IF NOT EXISTS ix_jobs_posted_at_desc "
         "ON jobs (posted_at DESC NULLS LAST)"
     )
-    bind.exec_driver_sql(
-        "CREATE INDEX IF NOT EXISTS ix_jobs_company_posted_at "
-        "ON jobs (company, posted_at DESC NULLS LAST)"
-    )
+    jobs_company_column = bind.exec_driver_sql(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_name='jobs' AND column_name IN ('company', 'company_id') "
+        "ORDER BY CASE WHEN column_name='company' THEN 0 ELSE 1 END LIMIT 1"
+    ).scalar()
+    if jobs_company_column:
+        bind.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_jobs_company_posted_at "
+            f"ON jobs ({jobs_company_column}, posted_at DESC NULLS LAST)"
+        )
 
     # ── Master jobs (deduped table that powers /api/jobs in prod).
     bind.exec_driver_sql(
