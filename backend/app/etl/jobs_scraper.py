@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 import sys
 import re
@@ -20,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.db.postgres import PostgresClient, stable_hash
+from app.db.postgres import PostgresClient, json_default, stable_hash
 from app.db.schema import IngestRun
 from app.etl.loaders.jobs import load_normalized_jobs
 from app.etl.normalizers.jobs import normalize_job_payload
@@ -206,7 +207,7 @@ async def run(args: argparse.Namespace) -> int:
             "source_url": payload.get("job_url") or payload.get("job_url_direct"),
             "record_hash": stable_hash(payload),
             "payload": payload,
-            "normalized_payload": normalized_payload,
+            "normalized_payload": _json_safe(normalized_payload),
             "validation_status": "valid" if normalized_payload.get("title") and not _normalization_errors(normalized_payload) else "invalid",
             "validation_errors": _normalization_errors(normalized_payload) or ([] if normalized_payload.get("title") else ["missing title"]),
         }
@@ -282,6 +283,11 @@ def _normalization_errors(normalized_payload: dict) -> list[str]:
         return []
     errors = metadata.get("validation_errors") or []
     return [str(error) for error in errors if str(error).strip()] if isinstance(errors, list) else []
+
+
+def _json_safe(payload: dict) -> dict:
+    """Convert staging JSONB payloads while preserving typed loader values."""
+    return json.loads(json.dumps(payload, default=json_default))
 
 
 def main() -> int:
