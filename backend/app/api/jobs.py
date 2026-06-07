@@ -1229,13 +1229,13 @@ async def list_jobs(
             decorated = [j for j in decorated if (j.get("taxonomy_category") or "").lower() == cat_l]
             total = len(decorated)
             total_pages = max(1, math.ceil(total / page_size))
-        elif free_text_search_active:
+        elif not taxonomy_filter_active and free_text_search_active:
             if len(decorated) < page_size:
                 total = offset + len(decorated)
             else:
                 total = max(offset + len(decorated) + page_size, page * page_size + 1)
             total_pages = max(1, math.ceil(total / page_size))
-        elif not exact_count_active:
+        elif not taxonomy_filter_active and not exact_count_active:
             if len(decorated) < page_size:
                 total = offset + len(decorated)
             else:
