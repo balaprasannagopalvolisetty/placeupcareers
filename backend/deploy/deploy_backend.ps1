@@ -247,11 +247,15 @@ if ($DigestScheduleJob) {
 }
 
 $VisaSponsorScheduleUri = "https://$Region-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/$ProjectId/jobs/placeup-visa-sponsor-import:run"
-$VisaSponsorScheduleJob = gcloud.cmd scheduler jobs describe placeup-visa-sponsor-import-monthly `
+$previousErrorAction = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+$VisaSponsorScheduleJob = & gcloud.cmd scheduler jobs describe placeup-visa-sponsor-import-monthly `
   --location $Region `
   --format "value(name)" 2>$null
+$VisaSponsorScheduleExists = $LASTEXITCODE -eq 0
+$ErrorActionPreference = $previousErrorAction
 
-if ($VisaSponsorScheduleJob) {
+if ($VisaSponsorScheduleExists) {
   gcloud.cmd scheduler jobs update http placeup-visa-sponsor-import-monthly `
     --location $Region `
     --schedule "0 3 1 * *" `
