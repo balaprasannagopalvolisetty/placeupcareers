@@ -57,13 +57,18 @@ class PostgresClient:
         filters = filters or {}
         if self._master_jobs_available():
             with self.session() as db:
+                description_expr = (
+                    MasterJob.description
+                    if self._needs_full_description(filters)
+                    else func.substr(MasterJob.description, 1, 900)
+                )
                 stmt = select(
                     MasterJob.id,
                     MasterJob.title,
                     MasterJob.company,
                     MasterJob.location,
                     MasterJob.country,
-                    func.substr(MasterJob.description, 1, 900).label("description"),
+                    description_expr.label("description"),
                     MasterJob.source_url,
                     MasterJob.employment_type,
                     MasterJob.salary_min,
@@ -89,12 +94,17 @@ class PostgresClient:
                 rows = db.execute(stmt).mappings().all()
                 return self._filter_target_jobs([self._master_job_mapping_to_dict(row) for row in rows])[:limit]
         with self.session() as db:
+            description_expr = (
+                Job.description
+                if self._needs_full_description(filters)
+                else func.substr(Job.description, 1, 900)
+            )
             stmt = select(
                 Job.id,
                 Job.title,
                 Company.name.label("company"),
                 Job.location,
-                func.substr(Job.description, 1, 900).label("description"),
+                description_expr.label("description"),
                 Job.source_url,
                 Job.category,
                 Job.employment_type,
@@ -138,13 +148,18 @@ class PostgresClient:
             return await self.get_jobs(filters=filters, limit=limit, offset=offset)
         filters = filters or {}
         with self.session() as db:
+            description_expr = (
+                MasterJob.description
+                if self._needs_full_description(filters)
+                else func.substr(MasterJob.description, 1, 900)
+            )
             base = select(
                 MasterJob.id,
                 MasterJob.title,
                 MasterJob.company,
                 MasterJob.location,
                 MasterJob.country,
-                func.substr(MasterJob.description, 1, 900).label("description"),
+                description_expr.label("description"),
                 MasterJob.source_url,
                 MasterJob.employment_type,
                 MasterJob.salary_min,
@@ -188,9 +203,21 @@ class PostgresClient:
         deeper in master_jobs.
         """
         filters = filters or {}
-        if filters.get("coverage_scan") or limit > 500:
+        if filters.get("coverage_scan"):
+            return min(max(limit, 500), 30000)
+        if limit > 500:
             return min(max(limit, 500), 12000)
         return min(max(limit * 5, limit + 20), 500)
+
+    def _needs_full_description(self, filters: dict | None) -> bool:
+        filters = filters or {}
+        return bool(
+            filters.get("coverage_scan")
+            or filters.get("title_terms")
+            or filters.get("search")
+            or filters.get("posted_since")
+            or filters.get("posted_before")
+        )
 
     async def get_job(self, job_id: str) -> Optional[dict]:
         if self._master_jobs_available():
