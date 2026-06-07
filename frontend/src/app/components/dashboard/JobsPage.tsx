@@ -5,25 +5,28 @@ import * as api from "../../lib/api";
 import { LoadingLogo } from "../LoadingLogo";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
+// Aligned to the main-page cream + orange theme (navy surfaces, cream text,
+// orange accent). Legacy accent keys (violet/blue/fuchsia) are kept but mapped
+// to orange so every existing usage recolors automatically.
 const T = {
-  text: "#F8FAFC", t2: "rgba(248,250,252,0.68)", t3: "rgba(248,250,252,0.44)",
-  border: "rgba(148,163,184,0.16)", glass: "rgba(15,23,42,0.72)",
-  grad: "linear-gradient(135deg, #7C3AED, #2563EB, #DB2777)",
-  panel: "linear-gradient(135deg, rgba(15,23,42,0.92), rgba(30,27,75,0.74), rgba(49,46,129,0.42))",
-  violet: "#A78BFA", blue: "#60A5FA", fuchsia: "#F0ABFC", red: "#F87171", burnt: "#F59E0B", dark: "#0F172A",
+  text: "#F5EAC8", t2: "rgba(245,234,200,0.66)", t3: "rgba(245,234,200,0.45)",
+  border: "rgba(245,234,200,0.10)", glass: "rgba(64,18,18,0.55)",
+  grad: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)",
+  panel: "linear-gradient(135deg, rgba(1,17,38,0.92), rgba(64,18,18,0.5), rgba(122,52,8,0.28))",
+  violet: "#ED7D2B", blue: "#F2A341", fuchsia: "#ED7D2B", red: "#ED7D2B", burnt: "#C75A12", dark: "#011126",
 };
 
 const J = {
   page: "transparent",
-  card: "rgba(15,23,42,0.72)",
-  line: "rgba(148,163,184,0.16)",
-  text: "#F8FAFC",
-  t2: "rgba(248,250,252,0.68)",
-  t3: "rgba(248,250,252,0.44)",
-  blue: "#A78BFA",
-  blueBg: "rgba(124,58,237,0.12)",
-  green: "#16A34A",
-  greenBg: "rgba(34,197,94,0.10)",
+  card: "rgba(64,18,18,0.45)",
+  line: "rgba(245,234,200,0.10)",
+  text: "#F5EAC8",
+  t2: "rgba(245,234,200,0.66)",
+  t3: "rgba(245,234,200,0.45)",
+  blue: "#ED7D2B",
+  blueBg: "rgba(237,125,43,0.12)",
+  green: "#3FB477",
+  greenBg: "rgba(63,180,119,0.12)",
   shadow: "0 18px 44px rgba(1,17,38,0.28)",
 };
 
@@ -35,13 +38,13 @@ const TIME_OPTIONS = [
   { label: "Week", value: "week" },
   { label: "Month", value: "month" },
 ];
-const SELECT_DARK_STYLE: CSSProperties = { background: "#0F172A", color: "#F8FAFC" };
+const SELECT_DARK_STYLE: CSSProperties = { background: "#011126", color: "#F5EAC8" };
 const VISA_BADGES: Record<string, { bg: string; color: string; border: string }> = {
-  "H-1B":   { bg: "rgba(124,58,237,0.15)", color: "#C4B5FD", border: "rgba(167,139,250,0.35)" },
-  "OPT":    { bg: "rgba(37,99,235,0.12)", color: "#93C5FD", border: "rgba(96,165,250,0.3)" },
-  "STEM":   { bg: "rgba(219,39,119,0.12)",  color: "#F9A8D4", border: "rgba(240,171,252,0.3)" },
+  "H-1B":   { bg: "rgba(237,125,43,0.15)", color: "#F5EAC8", border: "rgba(237,125,43,0.35)" },
+  "OPT":    { bg: "rgba(37,99,235,0.12)", color: "#93C5FD", border: "rgba(237,125,43,0.3)" },
+  "STEM":   { bg: "rgba(199,90,18,0.12)",  color: "#F9A8D4", border: "rgba(240,171,252,0.3)" },
   "Vol":    { bg: "rgba(34,197,94,0.10)", color: "#22c55e", border: "rgba(34,197,94,0.3)" },
-  "No sponsorship": { bg: "rgba(148,163,184,0.08)", color: "rgba(248,250,252,0.62)", border: "rgba(148,163,184,0.18)" },
+  "No sponsorship": { bg: "rgba(245,234,200,0.08)", color: "rgba(245,234,200,0.62)", border: "rgba(245,234,200,0.18)" },
   "English-friendly": { bg: "rgba(34,197,94,0.10)", color: "#86EFAC", border: "rgba(34,197,94,0.26)" },
 };
 
@@ -171,10 +174,15 @@ function formatPosted(value: unknown): string {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
+function jobPostedRaw(job: api.JobPost): unknown {
+  // posted_at is preferred; fall back to scraped_at / last_seen_at so a date
+  // always renders instead of "unavailable" for rows missing posted_at.
+  return job.posted_at || job.posted || (job as any).scraped_at || (job as any).last_seen_at;
+}
+
 function jobDateLabel(job: api.JobPost): string {
-  if (job.posted_at) return `Posted ${formatPosted(job.posted_at)}`;
-  if (job.posted) return `Posted ${formatPosted(job.posted)}`;
-  return "Posted date unavailable";
+  const raw = jobPostedRaw(job);
+  return raw ? `Posted ${formatPosted(raw)}` : "Posted recently";
 }
 
 function compactNumber(value: number): string {
@@ -200,8 +208,8 @@ function countryFlag(code: string): string {
 }
 
 function publishDateLabel(job: api.JobPost): string {
-  const raw = job.posted_at || job.posted;
-  if (!raw) return "Publish date unavailable";
+  const raw = jobPostedRaw(job);
+  if (!raw) return "Publish date —";
   const date = new Date(String(raw));
   if (Number.isNaN(date.getTime())) return `Publish date ${String(raw).slice(0, 18)}`;
   const dd = String(date.getDate()).padStart(2, "0");
@@ -265,7 +273,7 @@ function activeFilterChipStyle(): CSSProperties {
     borderRadius: 999,
     background: J.blueBg,
     color: J.blue,
-    border: "1px solid rgba(167,139,250,0.28)",
+    border: "1px solid rgba(237,125,43,0.28)",
     fontFamily: F.sans,
     fontWeight: 750,
   };
@@ -277,15 +285,15 @@ function paginationButtonStyle(active = false, disabled = false): CSSProperties 
     height: 36,
     padding: "0 11px",
     borderRadius: 8,
-    border: `1px solid ${active ? "rgba(167,139,250,0.46)" : J.line}`,
-    background: active ? "rgba(124,58,237,0.18)" : "rgba(248,250,252,0.05)",
-    color: disabled ? J.t3 : active ? "#C4B5FD" : J.t2,
+    border: `1px solid ${active ? "rgba(237,125,43,0.46)" : J.line}`,
+    background: active ? "rgba(237,125,43,0.18)" : "rgba(245,234,200,0.05)",
+    color: disabled ? J.t3 : active ? "#F5EAC8" : J.t2,
     fontSize: 12,
     fontWeight: 850,
     fontFamily: F.sans,
     cursor: disabled ? "not-allowed" : "pointer",
     opacity: disabled ? 0.52 : 1,
-    boxShadow: active ? "0 12px 30px rgba(124,58,237,0.20)" : "none",
+    boxShadow: active ? "0 12px 30px rgba(237,125,43,0.20)" : "none",
   };
 }
 
@@ -357,7 +365,7 @@ function ATSRing({ score, size = 60 }: { score: number | null | undefined; size?
   return (
     <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
       <svg viewBox={`0 0 ${size} ${size}`} style={{ width: "100%", height: "100%", transform: "rotate(-90deg)" }}>
-        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(148,163,184,0.20)" strokeWidth="5" />
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(245,234,200,0.20)" strokeWidth="5" />
         <motion.circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth="5" strokeLinecap="round"
           strokeDasharray={circ} initial={{ strokeDashoffset: circ }} animate={{ strokeDashoffset: offset }}
           transition={{ duration: 1.2, ease: "easeOut" }} />
@@ -376,14 +384,14 @@ function getScoreMeta(score: number | null | undefined) {
       label: "Resume needed",
       detail: "Upload resume for score",
       color: T.t3,
-      bg: "rgba(248,250,252,0.05)",
+      bg: "rgba(245,234,200,0.05)",
       border: T.border,
     };
   }
   if (score >= 80) return { label: "Strong match", detail: "High keyword overlap", color: "#22c55e", bg: "rgba(34,197,94,0.10)", border: "rgba(34,197,94,0.25)" };
-  if (score >= 60) return { label: "Good match", detail: "Review missing keywords", color: T.violet, bg: "rgba(124,58,237,0.12)", border: "rgba(167,139,250,0.28)" };
+  if (score >= 60) return { label: "Good match", detail: "Review missing keywords", color: T.violet, bg: "rgba(237,125,43,0.12)", border: "rgba(237,125,43,0.28)" };
   if (score >= 40) return { label: "Partial match", detail: "Resume may need tailoring", color: T.burnt, bg: "rgba(245,158,11,0.12)", border: "rgba(245,158,11,0.28)" };
-  return { label: "Low match", detail: "Large skill gap detected", color: "#F8FAFC", bg: "rgba(248,250,252,0.06)", border: "rgba(248,250,252,0.12)" };
+  return { label: "Low match", detail: "Large skill gap detected", color: "#F5EAC8", bg: "rgba(245,234,200,0.06)", border: "rgba(245,234,200,0.12)" };
 }
 
 export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
@@ -733,10 +741,10 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             backdropFilter: "blur(24px)",
           }}
         >
-          <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 12% 0%, rgba(124,58,237,0.20), transparent 36%), radial-gradient(circle at 88% 8%, rgba(219,39,119,0.16), transparent 32%)", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 12% 0%, rgba(237,125,43,0.20), transparent 36%), radial-gradient(circle at 88% 8%, rgba(199,90,18,0.16), transparent 32%)", pointerEvents: "none" }} />
           <div style={{ position: "relative", display: "grid", gridTemplateColumns: isTablet ? "1fr" : "minmax(0, 1.3fr) minmax(310px, 0.7fr)", gap: 18, alignItems: "stretch" }}>
             <div style={{ minWidth: 0 }}>
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 8, height: 28, padding: "0 10px", borderRadius: 999, border: "1px solid rgba(167,139,250,0.30)", background: J.blueBg, color: J.blue, fontSize: 11, fontWeight: 800, fontFamily: F.sans }}>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 8, height: 28, padding: "0 10px", borderRadius: 999, border: "1px solid rgba(237,125,43,0.30)", background: J.blueBg, color: J.blue, fontSize: 11, fontWeight: 800, fontFamily: F.sans }}>
                 <Sparkles size={13} />
                 Global visa search
               </div>
@@ -767,8 +775,8 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
               ].map((item) => {
                 const Icon = item.icon;
                 return (
-                  <div key={item.label} style={{ minHeight: 82, borderRadius: 12, border: `1px solid ${J.line}`, background: "rgba(15,23,42,0.54)", padding: 12, display: "flex", flexDirection: "column", justifyContent: "space-between", backdropFilter: "blur(18px)" }}>
-                    <div style={{ width: 30, height: 30, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(248,250,252,0.06)", border: `1px solid ${J.line}` }}>
+                  <div key={item.label} style={{ minHeight: 82, borderRadius: 12, border: `1px solid ${J.line}`, background: "rgba(1,17,38,0.54)", padding: 12, display: "flex", flexDirection: "column", justifyContent: "space-between", backdropFilter: "blur(18px)" }}>
+                    <div style={{ width: 30, height: 30, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(245,234,200,0.06)", border: `1px solid ${J.line}` }}>
                       <Icon size={15} color={item.color} />
                     </div>
                     <div>
@@ -858,7 +866,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                     height: 28,
                     padding: "0 9px",
                     borderRadius: 999,
-                    border: `1px solid ${visaProgramFilter === program.code ? "rgba(167,139,250,0.32)" : J.line}`,
+                    border: `1px solid ${visaProgramFilter === program.code ? "rgba(237,125,43,0.32)" : J.line}`,
                     background: visaProgramFilter === program.code ? J.blueBg : J.card,
                     color: visaProgramFilter === program.code ? J.blue : J.t2,
                     fontSize: 11,
@@ -973,7 +981,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             <div style={{ color: J.t2, marginBottom: 10 }}>{error}</div>
             <button
               onClick={() => setReloadKey((value) => value + 1)}
-              style={{ height: 32, padding: "0 12px", borderRadius: 8, border: `1px solid ${J.line}`, background: "rgba(248,250,252,0.05)", color: J.text, fontSize: 12, fontWeight: 800, fontFamily: F.sans, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}
+              style={{ height: 32, padding: "0 12px", borderRadius: 8, border: `1px solid ${J.line}`, background: "rgba(245,234,200,0.05)", color: J.text, fontSize: 12, fontWeight: 800, fontFamily: F.sans, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}
             >
               <RefreshCw size={12} />
               Retry
@@ -994,7 +1002,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
               <div style={{ fontSize: 12, color: J.t2, marginBottom: 12 }}>Try clearing the search, location, or time filter.</div>
               <button
                 onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setCountryFilter(""); setVisaProgramFilter(""); setVisaOnly(false); setTimeFilter(""); setActiveCategory(null); setActiveRole(null); setPersonalized(true); setPage(1); }}
-                style={{ padding: "8px 14px", borderRadius: 8, border: `1px solid ${J.line}`, background: "rgba(248,250,252,0.05)", color: J.blue, fontSize: 12, fontWeight: 800, fontFamily: F.sans, cursor: "pointer" }}
+                style={{ padding: "8px 14px", borderRadius: 8, border: `1px solid ${J.line}`, background: "rgba(245,234,200,0.05)", color: J.blue, fontSize: 12, fontWeight: 800, fontFamily: F.sans, cursor: "pointer" }}
               >Reset filters</button>
             </div>
           )}
@@ -1019,7 +1027,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                 onClick={() => onJobClick(id)}
                 style={{
                   minHeight: 258,
-                  background: "linear-gradient(135deg, rgba(15,23,42,0.86), rgba(30,27,75,0.58))",
+                  background: "linear-gradient(135deg, rgba(1,17,38,0.86), rgba(64,18,18,0.58))",
                   border: `1px solid ${J.line}`,
                   boxShadow: "0 12px 28px rgba(1,17,38,0.24)",
                   borderRadius: 16,
@@ -1048,11 +1056,11 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                           display: "flex", alignItems: "center", justifyContent: "center",
                           fontFamily: F.sans, fontWeight: 700, fontSize: 17, color: "#fff",
                           background: `linear-gradient(135deg, ${
-                            ["#7C3AED", "#2563EB", "#DB2777", "#0891B2", "#059669", "#475569"][
+                            ["#ED7D2B", "#F2A341", "#C75A12", "#0891B2", "#059669", "#475569"][
                               Math.abs((job.company || "X").charCodeAt(0)) % 6
                             ]
-                          }, #0F172A)`,
-                          boxShadow: "0 4px 14px rgba(124,58,237,0.26)",
+                          }, #011126)`,
+                          boxShadow: "0 4px 14px rgba(237,125,43,0.26)",
                         }}
                       >
                         {(job.company || "?").trim().charAt(0).toUpperCase()}
@@ -1062,7 +1070,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                             alt=""
                             loading="lazy"
                             onError={(e) => { e.currentTarget.style.display = "none"; }}
-                            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", padding: 6, background: "rgba(248,250,252,0.92)" }}
+                            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", padding: 6, background: "rgba(245,234,200,0.92)" }}
                           />
                         )}
                       </div>
@@ -1073,10 +1081,10 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                     </div>
                     <ATSRing score={match} size={48} />
                   </div>
-                  <div style={{ height: 1, background: "rgba(167,139,250,0.22)", marginTop: 2 }} />
+                  <div style={{ height: 1, background: "rgba(237,125,43,0.22)", marginTop: 2 }} />
                   <div style={{ display: "flex", gap: 8, fontSize: 11, color: J.t2, fontFamily: F.sans, flexWrap: "wrap", alignItems: "center" }}>
                     <span style={{ display: "inline-flex", gap: 5, alignItems: "center", minWidth: 0 }}><span style={{ fontSize: 15 }}>{countryFlag(visaCountry)}</span><span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{job.location || visaCountryName || "Remote"}</span></span>
-                    <span style={{ display: "inline-flex", gap: 5, alignItems: "center", padding: "3px 8px", borderRadius: 999, background: "rgba(96,165,250,0.08)", color: "#BFDBFE", border: "1px solid rgba(96,165,250,0.18)", whiteSpace: "nowrap" }}>
+                    <span style={{ display: "inline-flex", gap: 5, alignItems: "center", padding: "3px 8px", borderRadius: 999, background: "rgba(237,125,43,0.08)", color: "#F5EAC8", border: "1px solid rgba(237,125,43,0.18)", whiteSpace: "nowrap" }}>
                       <Clock size={11} />
                       {publishDateLabel(job).replace("Publish date ", "")}
                     </span>
@@ -1108,13 +1116,13 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                         const next = savedIds.has(id) ? saved.filter((item) => item !== id) : [...saved, id];
                         localStorage.setItem("placeup_saved_jobs", JSON.stringify(next));
                         setSavedVersion((v) => v + 1);
-                      }} style={{ width: 30, height: 28, borderRadius: 7, border: `1px solid ${savedIds.has(id) ? "rgba(248,113,113,0.35)" : J.line}`, background: savedIds.has(id) ? "rgba(248,113,113,0.10)" : "rgba(248,250,252,0.05)", color: savedIds.has(id) ? T.red : J.t2, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }} title={savedIds.has(id) ? "Unsave" : "Save job"}><Bookmark size={13} fill={savedIds.has(id) ? T.red : "none"}/></button>
+                      }} style={{ width: 30, height: 28, borderRadius: 7, border: `1px solid ${savedIds.has(id) ? "rgba(248,113,113,0.35)" : J.line}`, background: savedIds.has(id) ? "rgba(248,113,113,0.10)" : "rgba(245,234,200,0.05)", color: savedIds.has(id) ? T.red : J.t2, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }} title={savedIds.has(id) ? "Unsave" : "Save job"}><Bookmark size={13} fill={savedIds.has(id) ? T.red : "none"}/></button>
                       <button onClick={async (e) => {
                         e.stopPropagation();
                         const cur = trackedJobs[id];
                         const nextStatus = cur === "applied" ? "interview" : "applied";
                         await persistApplication(job, nextStatus);
-                      }} style={{ height: 28, padding: "0 9px", borderRadius: 7, border: `1px solid ${trackedJobs[id] === "interview" ? "rgba(96,165,250,0.35)" : trackedJobs[id] === "applied" ? "rgba(34,197,94,0.35)" : J.line}`, background: trackedJobs[id] === "interview" ? "rgba(96,165,250,0.10)" : trackedJobs[id] === "applied" ? "rgba(34,197,94,0.10)" : "rgba(248,250,252,0.05)", color: trackedJobs[id] === "interview" ? "#93C5FD" : trackedJobs[id] === "applied" ? "#86EFAC" : J.t2, fontSize: 10, fontWeight: 800, cursor: "pointer", fontFamily: F.sans, whiteSpace: "nowrap" }} title={trackedJobs[id] === "interview" ? "Interview stage" : trackedJobs[id] === "applied" ? "Applied - click to move to Interview" : "Track application status"}>
+                      }} style={{ height: 28, padding: "0 9px", borderRadius: 7, border: `1px solid ${trackedJobs[id] === "interview" ? "rgba(237,125,43,0.35)" : trackedJobs[id] === "applied" ? "rgba(34,197,94,0.35)" : J.line}`, background: trackedJobs[id] === "interview" ? "rgba(237,125,43,0.10)" : trackedJobs[id] === "applied" ? "rgba(34,197,94,0.10)" : "rgba(245,234,200,0.05)", color: trackedJobs[id] === "interview" ? "#93C5FD" : trackedJobs[id] === "applied" ? "#86EFAC" : J.t2, fontSize: 10, fontWeight: 800, cursor: "pointer", fontFamily: F.sans, whiteSpace: "nowrap" }} title={trackedJobs[id] === "interview" ? "Interview stage" : trackedJobs[id] === "applied" ? "Applied - click to move to Interview" : "Track application status"}>
                         {trackedJobs[id] === "interview" ? "Interview" : trackedJobs[id] === "applied" ? "Applied" : "Track"}
                       </button>
                       <button
@@ -1123,7 +1131,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                           const url = jobUrl || `https://www.google.com/search?q=${encodeURIComponent(`${job.company || ""} ${job.title || ""} apply`)}`;
                           window.open(url, "_blank", "noopener,noreferrer");
                         }}
-                        style={{ height: 28, padding: "0 10px", borderRadius: 7, border: `1px solid ${J.line}`, background: "rgba(248,250,252,0.05)", color: J.t2, fontSize: 10, cursor: "pointer", fontFamily: F.sans, fontWeight: 800, display: "flex", alignItems: "center", gap: 4 }}
+                        style={{ height: 28, padding: "0 10px", borderRadius: 7, border: `1px solid ${J.line}`, background: "rgba(245,234,200,0.05)", color: J.t2, fontSize: 10, cursor: "pointer", fontFamily: F.sans, fontWeight: 800, display: "flex", alignItems: "center", gap: 4 }}
                       ><ExternalLink size={11}/> Apply</button>
                       <button onClick={(e) => { e.stopPropagation(); onJobClick(id); }} style={{ height: 28, padding: "0 10px", borderRadius: 7, border: "none", background: T.grad, color: "#fff", fontSize: 10, cursor: "pointer", fontFamily: F.sans, fontWeight: 800, display: "flex", alignItems: "center", gap: 4 }}><ExternalLink size={11}/> View</button>
                       </div>
@@ -1141,7 +1149,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
               padding: isMobile ? "12px 10px" : "14px 16px",
               borderRadius: 12,
               border: `1px solid ${J.line}`,
-              background: "rgba(15,23,42,0.68)",
+              background: "rgba(1,17,38,0.68)",
               boxShadow: J.shadow,
               display: "flex",
               flexDirection: isMobile ? "column" : "row",

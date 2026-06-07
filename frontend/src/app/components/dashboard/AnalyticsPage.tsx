@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router";
 import { motion } from "motion/react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, CartesianGrid } from "recharts";
 import { TrendingUp, Award, ExternalLink } from "lucide-react";
@@ -20,7 +21,7 @@ const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', mo
 const T = {
   text: "#F2EEB3", t2: "rgba(242,238,179,0.65)", t3: "rgba(242,238,179,0.45)",
   border: "rgba(242,238,179,0.08)", glass: "rgba(64,18,18,0.55)",
-  grad: "linear-gradient(135deg, #8C3A27, #A6372D, #401212)", red: "#A6372D", burnt: "#8C3A27",
+  grad: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)", red: "#ED7D2B", burnt: "#F2A341",
 };
 
 interface MetricCard {
@@ -104,7 +105,7 @@ export function AnalyticsPage() {
         {metrics.map((m, i) => (
           <motion.div key={m.label} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}
             style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 16, padding: "20px" }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(166,55,45,0.1)", border: "1px solid rgba(166,55,45,0.2)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(237,125,43,0.1)", border: "1px solid rgba(237,125,43,0.2)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
               <m.icon size={16} color={m.color} />
             </div>
             <div style={{ fontFamily: F.sans, fontSize: 30, fontWeight: 800, color: m.color, lineHeight: 1, marginBottom: 4 }}>{m.value}</div>
@@ -129,10 +130,12 @@ export function AnalyticsPage() {
                   </div>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     <span style={{ fontSize: 11, color: T.red, fontFamily: F.sans, fontWeight: 700 }}>{app.match_score || 0}% match</span>
-                    {app.job_url && (
-                      <a href={app.job_url} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 5, color: T.t2, fontSize: 11, fontFamily: F.sans, textDecoration: "none" }}>
+                    {app.job_id && (
+                      // Link to OUR job post page (not the company URL) — company
+                      // listings often get closed once interviews start.
+                      <Link to={`/dashboard/jobs/${app.job_id}`} style={{ display: "inline-flex", alignItems: "center", gap: 5, color: T.t2, fontSize: 11, fontFamily: F.sans, textDecoration: "none" }}>
                         <ExternalLink size={12} /> Job post
-                      </a>
+                      </Link>
                     )}
                   </div>
                 </div>
@@ -171,16 +174,16 @@ export function AnalyticsPage() {
             <AreaChart data={timeSeries} margin={{ top: 8, right: 10, bottom: 0, left: -18 }}>
               <defs>
                 <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#A6372D" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#A6372D" stopOpacity={0} />
+                  <stop offset="5%" stopColor="#ED7D2B" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#ED7D2B" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid stroke="rgba(242,238,179,0.08)" vertical={false} />
               <XAxis dataKey="month" tick={{ fill: T.t3, fontSize: 11, fontFamily: F.sans }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fill: T.t3, fontSize: 11, fontFamily: F.sans }} axisLine={false} tickLine={false} />
               <Tooltip contentStyle={{ background: "rgba(64,18,18,0.9)", border: "1px solid rgba(242,238,179,0.1)", borderRadius: 10, color: T.text, fontFamily: F.sans, fontSize: 12 }} />
-              <Area type="monotone" dataKey="apps" stroke="#A6372D" strokeWidth={2} fill="url(#areaGrad)" />
-              <Area type="monotone" dataKey="interviews" stroke="#8C3A27" strokeWidth={2} fill="none" strokeDasharray="4 2" />
+              <Area type="monotone" dataKey="apps" stroke="#ED7D2B" strokeWidth={2} fill="url(#areaGrad)" />
+              <Area type="monotone" dataKey="interviews" stroke="#F2A341" strokeWidth={2} fill="none" strokeDasharray="4 2" />
             </AreaChart>
           </ResponsiveContainer>
           )}
@@ -206,7 +209,7 @@ export function AnalyticsPage() {
               <Tooltip contentStyle={{ background: "rgba(64,18,18,0.9)", border: "1px solid rgba(242,238,179,0.1)", borderRadius: 10, color: T.text, fontFamily: F.sans, fontSize: 12 }} />
               <Bar dataKey="score" radius={[6, 6, 0, 0]}>
                 {scoreData.map((_, i) => (
-                  <Cell key={`cell-${i}`} fill={i === scoreData.length - 1 ? T.red : "rgba(166,55,45,0.35)"} />
+                  <Cell key={`cell-${i}`} fill={i === scoreData.length - 1 ? T.red : "rgba(237,125,43,0.35)"} />
                 ))}
               </Bar>
             </BarChart>

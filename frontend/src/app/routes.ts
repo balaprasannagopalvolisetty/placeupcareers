@@ -29,9 +29,6 @@ const JobsRoute = lazy(() =>
 const JobDetailRoute = lazy(() =>
   import("./components/dashboard/JobRoutes").then((m) => ({ default: m.JobDetailRoute }))
 );
-const VisaTrackerPage = lazy(() =>
-  import("./components/dashboard/VisaTrackerPage").then((m) => ({ default: m.VisaTrackerPage }))
-);
 const AlertsPage = lazy(() =>
   import("./components/dashboard/AlertsPage").then((m) => ({ default: m.AlertsPage }))
 );
@@ -115,7 +112,6 @@ export const router = createBrowserRouter([
           { path: "resumes", Component: authedGuarded(ResumePage) },
           { path: "jobs", Component: authedGuarded(JobsRoute) },
           { path: "jobs/:jobId", Component: authedGuarded(JobDetailRoute) },
-          { path: "visa", Component: authedGuarded(VisaTrackerPage) },
           { path: "alerts", Component: authedGuarded(AlertsPage) },
           { path: "applications", Component: authedGuarded(ApplicationsPage) },
           { path: "analytics", Component: authedGuarded(AnalyticsPage) },

@@ -10,8 +10,8 @@ const T = {
   t3: "rgba(242,238,179,0.45)",
   border: "rgba(242,238,179,0.08)",
   glass: "rgba(64,18,18,0.55)",
-  grad: "linear-gradient(135deg, #8C3A27, #A6372D, #401212)",
-  red: "#A6372D",
+  grad: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)",
+  red: "#ED7D2B",
 };
 
 const fallbackPlans: api.PaymentPlan[] = [
@@ -60,7 +60,7 @@ export function BillingPage() {
       </div>
 
       {message && (
-        <div style={{ padding: 14, borderRadius: 12, border: "1px solid rgba(166,55,45,0.28)", background: "rgba(166,55,45,0.08)", color: T.text, fontSize: 13 }}>
+        <div style={{ padding: 14, borderRadius: 12, border: "1px solid rgba(237,125,43,0.28)", background: "rgba(237,125,43,0.08)", color: T.text, fontSize: 13 }}>
           {message}
         </div>
       )}
@@ -75,7 +75,7 @@ export function BillingPage() {
             whileHover={{ y: -6 }}
             style={{
               borderRadius: 18,
-              border: `1px solid ${plan.id === "pro" ? "rgba(166,55,45,0.38)" : T.border}`,
+              border: `1px solid ${plan.id === "pro" ? "rgba(237,125,43,0.38)" : T.border}`,
               background: plan.id === "pro" ? "linear-gradient(135deg, rgba(64,18,18,0.72), rgba(25,18,32,0.78))" : T.glass,
               backdropFilter: "blur(20px)",
               padding: 20,

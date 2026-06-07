@@ -12,7 +12,6 @@ import { useAuth } from "../context/AuthContext";
 import * as api from "../lib/api";
 import { ResumePage } from "../components/dashboard/ResumePage";
 import { JobsPage } from "../components/dashboard/JobsPage";
-import { VisaTrackerPage } from "../components/dashboard/VisaTrackerPage";
 import { AlertsPage } from "../components/dashboard/AlertsPage";
 import { AnalyticsPage } from "../components/dashboard/AnalyticsPage";
 import { SettingsPage } from "../components/dashboard/SettingsPage";
@@ -26,16 +25,16 @@ const T = {
   glass:  "rgba(13,28,53,0.7)",
   cardGlass: "rgba(64,18,18,0.45)",
   border: "rgba(242,238,179,0.08)",
-  borderHover: "rgba(166,55,45,0.4)",
+  borderHover: "rgba(237,125,43,0.4)",
   text:   "#F2EEB3",
   t2:     "rgba(242,238,179,0.65)",
   t3:     "rgba(242,238,179,0.4)",
-  grad:   "linear-gradient(135deg, #8C3A27, #A6372D, #401212)",
-  red:    "#A6372D",
-  burnt:  "#8C3A27",
-  dark:   "#401212",
+  grad:   "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)",
+  red:    "#ED7D2B",
+  burnt:  "#F2A341",
+  dark:   "#C75A12",
   shadow: "0 4px 20px rgba(1,17,38,0.3)",
-  shadowH: "0 20px 50px rgba(1,17,38,0.4), 0 0 0 1px rgba(166,55,45,0.3)",
+  shadowH: "0 20px 50px rgba(1,17,38,0.4), 0 0 0 1px rgba(237,125,43,0.3)",
 };
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 
@@ -90,7 +89,6 @@ const NAV_ITEMS = [
   { icon: Home,     label: "Overview", to: "/dashboard" },
   { icon: FileText, label: "Resumes", to: "/dashboard/resumes" },
   { icon: Briefcase,label: "Jobs", to: "/dashboard/jobs" },
-  { icon: Globe,    label: "Visa Tracker", to: "/dashboard/visa" },
   { icon: Bell,     label: "Alerts", to: "/dashboard/alerts" },
   { icon: BarChart3,label: "Analytics", to: "/dashboard/analytics" },
   { icon: Settings, label: "Settings", to: "/dashboard/settings" },
@@ -153,9 +151,9 @@ function GlowCard({ children, style = {}, hoverY = -6, onClick }: {
       }}
     >
       <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500"
-        style={{ background: "radial-gradient(ellipse at 50% -25%, rgba(166,55,45,0.16) 0%, transparent 65%)", zIndex: 0 }} />
+        style={{ background: "radial-gradient(ellipse at 50% -25%, rgba(237,125,43,0.16) 0%, transparent 65%)", zIndex: 0 }} />
       <div className="absolute top-0 left-0 right-0 h-px pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500"
-        style={{ background: "linear-gradient(to right, transparent, rgba(166,55,45,0.45), transparent)" }} />
+        style={{ background: "linear-gradient(to right, transparent, rgba(237,125,43,0.45), transparent)" }} />
       <div style={{ position: "relative", zIndex: 1 }}>{children}</div>
     </motion.div>
   );
@@ -321,7 +319,7 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
               <FileCheck size={16} color={T.text} />
             </div>
             {hasResume && (
-              <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 9999, background: "rgba(166,55,45,0.12)", color: T.red, border: "1px solid rgba(166,55,45,0.25)", fontFamily: F.sans }}>Active</span>
+              <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 9999, background: "rgba(237,125,43,0.12)", color: T.red, border: "1px solid rgba(237,125,43,0.25)", fontFamily: F.sans }}>Active</span>
             )}
           </div>
           <div style={{ fontFamily: F.sans, fontSize: isMobile ? 30 : 38, fontWeight: 800, color: T.text, lineHeight: 1, marginBottom: 4 }}><SpringCounter target={totalResumes} /></div>
@@ -343,7 +341,7 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
             <motion.div key={job.id} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 + i * 0.08 }}>
               <GlowCard style={{ padding: 20 }} onClick={() => handleJobClick(job.id)}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: "50%", background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: F.sans, boxShadow: "0 0 12px rgba(166,55,45,0.3)" }}>
+                  <div style={{ width: 40, height: 40, borderRadius: "50%", background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: F.sans, boxShadow: "0 0 12px rgba(237,125,43,0.3)" }}>
                     {job.company[0]}
                   </div>
                   <span style={{ fontSize: 14, fontWeight: 800, color: job.match === null ? T.t3 : T.red, fontFamily: F.mono }}>
@@ -414,17 +412,20 @@ export default function Dashboard() {
     navItems.find((item) => item.to !== "/dashboard" ? location.pathname.startsWith(item.to) : location.pathname === "/dashboard")?.label ?? "Overview";
 
   const unread = notifications.filter((n) => n.unread).length;
+  // Hide the side navigation while the user is on the Jobs experience so the
+  // job grid gets the full width (requested for /dashboard/jobs).
+  const hideSidebar = location.pathname.startsWith("/dashboard/jobs");
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: T.bg, position: "relative", fontFamily: F.sans, overflowX: "hidden" }}>
       {/* Ambient orbs */}
       <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 0, overflow: "hidden" }}>
         <div style={{ position: "absolute", top: "-8%", left: "-4%", width: 500, height: 500, borderRadius: "50%", filter: "blur(120px)", background: "rgba(140,58,39,0.12)" }} />
-        <div style={{ position: "absolute", bottom: "5%", right: "-6%", width: 420, height: 420, borderRadius: "50%", filter: "blur(120px)", background: "rgba(166,55,45,0.09)" }} />
+        <div style={{ position: "absolute", bottom: "5%", right: "-6%", width: 420, height: 420, borderRadius: "50%", filter: "blur(120px)", background: "rgba(237,125,43,0.09)" }} />
       </div>
 
       {/* ── Desktop Sidebar ── */}
-      <aside className="hidden lg:flex flex-col" style={{ width: 256, borderRight: `1px solid ${T.border}`, background: "rgba(1,17,38,0.85)", backdropFilter: "blur(24px)", position: "relative", zIndex: 10, flexShrink: 0 }}>
+      <aside className="hidden lg:flex flex-col" style={{ width: 256, borderRight: `1px solid ${T.border}`, background: "rgba(1,17,38,0.85)", backdropFilter: "blur(24px)", position: "relative", zIndex: 10, flexShrink: 0, display: hideSidebar ? "none" : undefined }}>
         {/* Logo */}
         <div style={{ padding: "0 24px", height: 64, display: "flex", alignItems: "center", borderBottom: `1px solid ${T.border}` }}>
           <Link to="/" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none" }}>
@@ -449,7 +450,7 @@ export default function Dashboard() {
                 borderRadius: 10,
                 textDecoration: "none",
                 cursor: "pointer",
-                background: isActive ? "rgba(166,55,45,0.09)" : "transparent",
+                background: isActive ? "rgba(237,125,43,0.09)" : "transparent",
                 color: isActive ? T.red : T.t2,
                 fontSize: 13,
                 fontFamily: F.sans,
@@ -457,7 +458,7 @@ export default function Dashboard() {
                 textAlign: "left",
                 position: "relative",
                 transition: "all 0.2s",
-                boxShadow: isActive ? "0 0 0 1px rgba(166,55,45,0.2)" : "none",
+                boxShadow: isActive ? "0 0 0 1px rgba(237,125,43,0.2)" : "none",
               })}
             >
               {({ isActive }) => (
@@ -475,7 +476,7 @@ export default function Dashboard() {
         <div style={{ padding: "10px 14px", borderTop: `1px solid ${T.border}`, borderBottom: `1px solid ${T.border}` }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: T.t3, fontFamily: F.sans }}>Saved Jobs</span>
-            <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 9999, background: "rgba(166,55,45,0.12)", color: T.red, border: "1px solid rgba(166,55,45,0.25)", fontFamily: F.sans }}>5/5</span>
+            <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 9999, background: "rgba(237,125,43,0.12)", color: T.red, border: "1px solid rgba(237,125,43,0.25)", fontFamily: F.sans }}>5/5</span>
           </div>
           <div style={{ display: "flex", gap: 5 }}>
             {[1, 2, 3, 4, 5].map((i) => (
@@ -489,7 +490,7 @@ export default function Dashboard() {
           <motion.button whileTap={{ scale: 0.97 }} onClick={() => navigate("/dashboard/profile")}
             style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, border: "none", cursor: "pointer", background: "transparent", textAlign: "left", transition: "background 0.2s" }}
             className="hover:bg-[rgba(242,238,179,0.03)]">
-            <div style={{ width: 34, height: 34, borderRadius: "50%", background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 12, fontWeight: 700, fontFamily: F.sans, boxShadow: "0 2px 8px rgba(166,55,45,0.35)", flexShrink: 0 }}>
+            <div style={{ width: 34, height: 34, borderRadius: "50%", background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 12, fontWeight: 700, fontFamily: F.sans, boxShadow: "0 2px 8px rgba(237,125,43,0.35)", flexShrink: 0 }}>
               {displayAvatar}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -515,7 +516,7 @@ export default function Dashboard() {
               </div>
               {navItems.map((item) => (
                 <button key={item.label} onClick={() => { navigate(item.to!); setSidebarOpen(false); }}
-                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, height: 40, padding: "0 12px", borderRadius: 10, border: "none", cursor: "pointer", marginBottom: 2, background: location.pathname.startsWith(item.to!) ? "rgba(166,55,45,0.09)" : "transparent", color: location.pathname.startsWith(item.to!) ? T.red : T.t2, fontSize: 13, fontFamily: F.sans, textAlign: "left" }}>
+                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, height: 40, padding: "0 12px", borderRadius: 10, border: "none", cursor: "pointer", marginBottom: 2, background: location.pathname.startsWith(item.to!) ? "rgba(237,125,43,0.09)" : "transparent", color: location.pathname.startsWith(item.to!) ? T.red : T.t2, fontSize: 13, fontFamily: F.sans, textAlign: "left" }}>
                   <item.icon size={16} />{item.label}
                 </button>
               ))}
@@ -541,7 +542,7 @@ export default function Dashboard() {
             {/* Notifications */}
             <div style={{ position: "relative" }}>
               <motion.button whileTap={{ scale: 0.92 }} onClick={() => { setNotifOpen(!notifOpen); setUserMenuOpen(false); }}
-                style={{ width: 38, height: 38, borderRadius: 10, border: `1px solid ${notifOpen ? "rgba(166,55,45,0.35)" : T.border}`, background: notifOpen ? "rgba(166,55,45,0.08)" : "rgba(242,238,179,0.04)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: T.t2, position: "relative" }}>
+                style={{ width: 38, height: 38, borderRadius: 10, border: `1px solid ${notifOpen ? "rgba(237,125,43,0.35)" : T.border}`, background: notifOpen ? "rgba(237,125,43,0.08)" : "rgba(242,238,179,0.04)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: T.t2, position: "relative" }}>
                 <Bell size={16} />
                 {unread > 0 && <div style={{ position: "absolute", top: 7, right: 7, width: 7, height: 7, borderRadius: "50%", background: T.red, boxShadow: `0 0 6px ${T.red}` }} />}
               </motion.button>
@@ -551,10 +552,10 @@ export default function Dashboard() {
                     style={{ position: "absolute", right: isMobile ? -52 : 0, top: "calc(100% + 8px)", width: isMobile ? "calc(100vw - 24px)" : 320, maxWidth: 320, borderRadius: 16, background: "rgba(8,14,32,0.97)", backdropFilter: "blur(24px)", border: `1px solid ${T.border}`, boxShadow: "0 20px 40px rgba(1,17,38,0.5)", overflow: "hidden" }}>
                     <div style={{ padding: "14px 20px", borderBottom: `1px solid ${T.border}`, display: "flex", justifyContent: "space-between" }}>
                       <span style={{ fontFamily: F.sans, fontSize: 14, fontWeight: 700, color: T.text }}>Notifications</span>
-                      <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 9999, background: "rgba(166,55,45,0.15)", color: T.red, fontFamily: F.sans }}>{unread} new</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 9999, background: "rgba(237,125,43,0.15)", color: T.red, fontFamily: F.sans }}>{unread} new</span>
                     </div>
                     {notifications.map((n) => (
-                      <div key={n.id} style={{ padding: "12px 20px", borderBottom: `1px solid ${T.border}`, background: n.unread ? "rgba(166,55,45,0.04)" : "transparent", display: "flex", gap: 10, alignItems: "flex-start" }}>
+                      <div key={n.id} style={{ padding: "12px 20px", borderBottom: `1px solid ${T.border}`, background: n.unread ? "rgba(237,125,43,0.04)" : "transparent", display: "flex", gap: 10, alignItems: "flex-start" }}>
                         {n.unread && <div style={{ width: 6, height: 6, borderRadius: "50%", background: T.red, flexShrink: 0, marginTop: 5, boxShadow: `0 0 4px ${T.red}` }} />}
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 12, color: T.t2, fontFamily: F.sans, lineHeight: 1.5 }}>{n.text}</div>
@@ -563,7 +564,7 @@ export default function Dashboard() {
                       </div>
                     ))}
                     <div style={{ padding: "12px 20px" }}>
-                      <button onClick={() => { navigate("/dashboard/alerts"); setNotifOpen(false); }} style={{ width: "100%", padding: "9px", borderRadius: 10, cursor: "pointer", background: "rgba(166,55,45,0.08)", border: "1px solid rgba(166,55,45,0.2)", color: T.red, fontSize: 12, fontWeight: 600, fontFamily: F.sans }}>
+                      <button onClick={() => { navigate("/dashboard/alerts"); setNotifOpen(false); }} style={{ width: "100%", padding: "9px", borderRadius: 10, cursor: "pointer", background: "rgba(237,125,43,0.08)", border: "1px solid rgba(237,125,43,0.2)", color: T.red, fontSize: 12, fontWeight: 600, fontFamily: F.sans }}>
                         View All Alerts
                       </button>
                     </div>

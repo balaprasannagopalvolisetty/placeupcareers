@@ -11,8 +11,8 @@ const T = {
   t3: "rgba(242,238,179,0.45)",
   border: "rgba(242,238,179,0.08)",
   glass: "rgba(64,18,18,0.55)",
-  grad: "linear-gradient(135deg, #8C3A27, #A6372D, #401212)",
-  red: "#A6372D",
+  grad: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)",
+  red: "#ED7D2B",
 };
 
 type Row = api.UserApplicationRow;
@@ -30,7 +30,7 @@ function statusBadge(row: Row): { label: string; color: string; bg: string; bord
     return { label: "Heard back", color: "#22c55e", bg: "rgba(34,197,94,0.12)", border: "rgba(34,197,94,0.3)" };
   }
   if (row.status === "applied") {
-    return { label: "Applied", color: T.red, bg: "rgba(166,55,45,0.12)", border: "rgba(166,55,45,0.3)" };
+    return { label: "Applied", color: T.red, bg: "rgba(237,125,43,0.12)", border: "rgba(237,125,43,0.3)" };
   }
   if (row.status === "not_applied") {
     return { label: row.not_applied_reason || "Skipped", color: T.t3, bg: "rgba(242,238,179,0.04)", border: T.border };
@@ -182,7 +182,7 @@ export function ApplicationsPage() {
           >
             <div style={{
               width: 32, height: 32, borderRadius: 9,
-              background: "rgba(166,55,45,0.10)", border: "1px solid rgba(166,55,45,0.22)",
+              background: "rgba(237,125,43,0.10)", border: "1px solid rgba(237,125,43,0.22)",
               display: "flex", alignItems: "center", justifyContent: "center",
             }}>
               <Icon size={14} color={color} />
@@ -262,7 +262,7 @@ export function ApplicationsPage() {
 
       {error && (
         <div style={{ padding: "14px 16px", borderRadius: 12,
-          background: "rgba(166,55,45,0.08)", border: "1px solid rgba(166,55,45,0.25)",
+          background: "rgba(237,125,43,0.08)", border: "1px solid rgba(237,125,43,0.25)",
           color: T.text, fontFamily: F.sans, fontSize: 13 }}>
           {error}
         </div>

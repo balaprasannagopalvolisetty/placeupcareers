@@ -10,8 +10,8 @@ const T = {
   t3: "rgba(242,238,179,0.45)",
   border: "rgba(242,238,179,0.08)",
   glass: "rgba(64,18,18,0.55)",
-  grad: "linear-gradient(135deg, #8C3A27, #A6372D, #401212)",
-  red: "#A6372D",
+  grad: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)",
+  red: "#ED7D2B",
 };
 
 function Panel({ children }: { children: React.ReactNode }) {

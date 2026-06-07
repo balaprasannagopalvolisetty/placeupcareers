@@ -14,8 +14,8 @@ const T = {
   text:   "#F2EEB3",
   t2:     "rgba(242,238,179,0.65)",
   t3:     "rgba(242,238,179,0.38)",
-  grad:   "linear-gradient(135deg, #8C3A27, #A6372D, #401212)",
-  red:    "#A6372D",
+  grad:   "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)",
+  red:    "#ED7D2B",
 };
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 
@@ -78,8 +78,8 @@ function getStep(v: number) { return Math.min(5, Math.floor(v * 6)); }
 
 const GLOWS = [
   "radial-gradient(ellipse 70% 60% at 50% 55%, rgba(140,58,39,0.10) 0%, transparent 70%)",
-  "radial-gradient(ellipse 70% 60% at 50% 55%, rgba(166,55,45,0.14) 0%, transparent 70%)",
-  "radial-gradient(ellipse 70% 60% at 50% 55%, rgba(166,55,45,0.18) 0%, transparent 70%)",
+  "radial-gradient(ellipse 70% 60% at 50% 55%, rgba(237,125,43,0.14) 0%, transparent 70%)",
+  "radial-gradient(ellipse 70% 60% at 50% 55%, rgba(237,125,43,0.18) 0%, transparent 70%)",
   "radial-gradient(ellipse 70% 60% at 50% 55%, rgba(140,58,39,0.14) 0%, transparent 70%)",
   "radial-gradient(ellipse 70% 60% at 50% 55%, rgba(34,197,94,0.06) 0%, transparent 70%)",
   "radial-gradient(ellipse 70% 60% at 50% 55%, rgba(34,197,94,0.12) 0%, transparent 70%)",
@@ -193,7 +193,7 @@ function StepHeader({ step }: { step: number }) {
           <div style={{
             display: "inline-flex", alignItems: "center", gap: 7, marginBottom: 10,
             padding: "4px 12px", borderRadius: 99,
-            background: "rgba(166,55,45,0.10)", border: "1px solid rgba(166,55,45,0.22)",
+            background: "rgba(237,125,43,0.10)", border: "1px solid rgba(237,125,43,0.22)",
           }}>
             <span style={{ fontSize: 13 }}>{s.icon}</span>
             <span style={{ fontFamily: F.sans, fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: T.red }}>
@@ -249,11 +249,11 @@ function LoginScreen({ p0 }: { p0: MotionValue<number> }) {
   // Border color driven by scroll – computed as a MotionValue at hook level
   const emailBorderColor = useTransform(
     p0, [0.45, 0.6],
-    ["rgba(242,238,179,0.08)", "rgba(166,55,45,0.40)"]
+    ["rgba(242,238,179,0.08)", "rgba(237,125,43,0.40)"]
   );
   const buttonBoxShadow = useTransform(
     buttonGlow, [0, 1],
-    ["0 0 0px rgba(166,55,45,0)", "0 0 26px rgba(166,55,45,0.6)"]
+    ["0 0 0px rgba(237,125,43,0)", "0 0 26px rgba(237,125,43,0.6)"]
   );
 
   return (
@@ -363,7 +363,7 @@ function AnimatedJobCard({ job, p1, p2, index }: {
   const cardScore  = useTransform(p2, [0.08, 0.35], [T.t2, isSelected ? T.red : T.t3]);
   const cardShadow = useTransform(
     borderGlow, [0, 1],
-    [`0 0 0 1px rgba(242,238,179,0.08)`, `0 0 0 1px rgba(166,55,45,0.55), 0 0 22px rgba(166,55,45,0.18)`]
+    [`0 0 0 1px rgba(242,238,179,0.08)`, `0 0 0 1px rgba(237,125,43,0.55), 0 0 22px rgba(237,125,43,0.18)`]
   );
 
   return (
@@ -372,7 +372,7 @@ function AnimatedJobCard({ job, p1, p2, index }: {
         opacity: opac, y: yVal, scale: selScale,
         position: "relative" as const,
         padding: "9px 11px", borderRadius: 12, cursor: "default",
-        background: isSelected ? "rgba(166,55,45,0.09)" : "rgba(242,238,179,0.025)",
+        background: isSelected ? "rgba(237,125,43,0.09)" : "rgba(242,238,179,0.025)",
       }}
     >
       {/* Animated border via box-shadow */}
@@ -448,8 +448,8 @@ function JobFeedScreen({ p1, p2 }: { p1: MotionValue<number>; p2: MotionValue<nu
           {["All", "H-1B", "OPT"].map((f) => (
             <div key={f} style={{
               padding: "2px 7px", borderRadius: 5, fontSize: 8, fontFamily: F.sans, fontWeight: 600,
-              background: f === "All" ? "rgba(166,55,45,0.14)" : "rgba(242,238,179,0.03)",
-              border: f === "All" ? "1px solid rgba(166,55,45,0.32)" : `1px solid ${T.border}`,
+              background: f === "All" ? "rgba(237,125,43,0.14)" : "rgba(242,238,179,0.03)",
+              border: f === "All" ? "1px solid rgba(237,125,43,0.32)" : `1px solid ${T.border}`,
               color: f === "All" ? T.red : T.t3,
             }}>{f}</div>
           ))}
@@ -481,8 +481,8 @@ function ATSCircle({ p3, size = 70 }: { p3: MotionValue<number>; size?: number }
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ display: "block" }}>
       <defs>
         <linearGradient id="atsG3" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#A6372D" />
-          <stop offset="100%" stopColor="#8C3A27" />
+          <stop offset="0%" stopColor="#ED7D2B" />
+          <stop offset="100%" stopColor="#F2A341" />
         </linearGradient>
       </defs>
       <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(242,238,179,0.06)" strokeWidth={sw} />
@@ -512,7 +512,7 @@ function ATSCard({ p3 }: { p3: MotionValue<number> }) {
         position: "absolute", bottom: 14, right: 12, zIndex: 20,
         opacity: cardOpac, x: cardX,
         background: "rgba(1,11,28,0.96)", backdropFilter: "blur(24px)",
-        border: "1px solid rgba(166,55,45,0.42)", borderRadius: 14,
+        border: "1px solid rgba(237,125,43,0.42)", borderRadius: 14,
         padding: "12px 14px", minWidth: 126,
         boxShadow: "0 14px 44px rgba(1,17,38,0.80)",
       }}
@@ -546,7 +546,7 @@ function HMCard({ p3 }: { p3: MotionValue<number> }) {
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 9 }}>
         <div style={{
           width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
-          background: "rgba(166,55,45,0.18)", border: "1px solid rgba(166,55,45,0.38)",
+          background: "rgba(237,125,43,0.18)", border: "1px solid rgba(237,125,43,0.38)",
           display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12,
         }}>👤</div>
         <div>
@@ -555,7 +555,7 @@ function HMCard({ p3 }: { p3: MotionValue<number> }) {
         </div>
       </div>
       <div style={{ display: "flex", gap: 5 }}>
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 3, padding: "5px 7px", borderRadius: 7, background: "rgba(166,55,45,0.14)", border: "1px solid rgba(166,55,45,0.30)" }}>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 3, padding: "5px 7px", borderRadius: 7, background: "rgba(237,125,43,0.14)", border: "1px solid rgba(237,125,43,0.30)" }}>
           <Mail size={8} color={T.red} /><span style={{ fontFamily: F.sans, fontSize: 8, color: T.red, fontWeight: 600 }}>Email</span>
         </div>
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "5px 7px", borderRadius: 7, background: "rgba(242,238,179,0.04)", border: `1px solid ${T.border}` }}>
@@ -583,7 +583,7 @@ function ApplyOverlay({ p4, applied }: { p4: MotionValue<number>; applied: boole
       <motion.div
         animate={applied ? {
           scale: [1, 0.96, 1.02, 1],
-          boxShadow: ["0 0 20px rgba(166,55,45,0.4)", "0 0 28px rgba(34,197,94,0.55)", "0 0 18px rgba(34,197,94,0.30)"],
+          boxShadow: ["0 0 20px rgba(237,125,43,0.4)", "0 0 28px rgba(34,197,94,0.55)", "0 0 18px rgba(34,197,94,0.30)"],
         } : {}}
         transition={{ duration: 0.55 }}
         style={{
@@ -591,7 +591,7 @@ function ApplyOverlay({ p4, applied }: { p4: MotionValue<number>; applied: boole
           padding: "11px 18px", borderRadius: 11, cursor: "pointer",
           background: applied ? "linear-gradient(135deg, #15803d, #22c55e)" : T.grad,
           transition: "background 0.4s ease",
-          boxShadow: applied ? "0 0 22px rgba(34,197,94,0.35)" : "0 0 22px rgba(166,55,45,0.35)",
+          boxShadow: applied ? "0 0 22px rgba(34,197,94,0.35)" : "0 0 22px rgba(237,125,43,0.35)",
         }}
       >
         <AnimatePresence mode="wait">
@@ -772,7 +772,7 @@ export function HowItWorksScrollStory() {
   const barWidth = useTransform(scrollYProgress, [0, 1], ["0%", "100%"]);
   const barColor = useTransform(
     scrollYProgress, [0, 0.67, 0.84, 1],
-    ["#A6372D", "#8C3A27", "#16a34a", "#22c55e"]
+    ["#ED7D2B", "#F2A341", "#16a34a", "#22c55e"]
   );
 
   // Discrete step state

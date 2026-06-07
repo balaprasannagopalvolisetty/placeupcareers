@@ -15,18 +15,18 @@ const T = {
   bgPage:   "#011126",
   bgGlass:  "rgba(64,18,18,0.65)",
   border:   "rgba(242,238,179,0.08)",
-  borderHover: "rgba(166,55,45,0.4)",
-  text:     "#F2EEB3",
-  t2:       "rgba(242,238,179,0.65)",
-  t3:       "rgba(242,238,179,0.45)",
-  grad:     "linear-gradient(135deg, #8C3A27, #A6372D, #401212)",
-  gradH:    "linear-gradient(135deg, #A6372D 0%, #8C3A27 50%, #401212 100%)",
-  red:      "#A6372D",
-  burnt:    "#8C3A27",
-  dark:     "#401212",
+  borderHover: "rgba(237,125,43,0.4)",
+  text:     "#F5EAC8",
+  t2:       "rgba(245,234,200,0.66)",
+  t3:       "rgba(245,234,200,0.45)",
+  grad:     "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)",
+  gradH:    "linear-gradient(135deg, #ED7D2B 0%, #F2A341 50%, #C75A12 100%)",
+  red:      "#ED7D2B",
+  burnt:    "#C75A12",
+  dark:     "#7A3408",
   shadow:   "0 4px 24px rgba(1,17,38,0.25), 0 1px 4px rgba(1,17,38,0.15)",
   shadowH:  "0 16px 48px rgba(1,17,38,0.35), 0 4px 16px rgba(1,17,38,0.2)",
-  glow:     "0 0 48px rgba(166,55,45,0.3), 0 0 16px rgba(166,55,45,0.15)",
+  glow:     "0 0 48px rgba(237,125,43,0.3), 0 0 16px rgba(237,125,43,0.15)",
 };
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 
@@ -94,7 +94,7 @@ function GlassCard({ children, style = {}, hoverY = -8, className = "" }: {
     <motion.div
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      whileHover={{ y: hoverY, boxShadow: `${T.shadowH}, ${T.glow}`, borderColor: "rgba(166,55,45,0.3)" }}
+      whileHover={{ y: hoverY, boxShadow: `${T.shadowH}, ${T.glow}`, borderColor: "rgba(237,125,43,0.3)" }}
       whileTap={{ scale: 0.98 }}
       transition={{ duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
       className={`group relative overflow-hidden ${className}`}
@@ -114,7 +114,7 @@ function GlassCard({ children, style = {}, hoverY = -8, className = "" }: {
         transition={{ duration: 0.4 }}
         className="absolute inset-0 pointer-events-none"
         style={{
-          background: "radial-gradient(ellipse at 50% -20%, rgba(166,55,45,0.18) 0%, transparent 65%)",
+          background: "radial-gradient(ellipse at 50% -20%, rgba(237,125,43,0.18) 0%, transparent 65%)",
           zIndex: 0,
         }}
       />
@@ -125,7 +125,7 @@ function GlassCard({ children, style = {}, hoverY = -8, className = "" }: {
         transition={{ duration: 0.4 }}
         className="absolute top-0 left-0 right-0 h-px pointer-events-none"
         style={{
-          background: "linear-gradient(to right, transparent, rgba(166,55,45,0.6), transparent)",
+          background: "linear-gradient(to right, transparent, rgba(237,125,43,0.6), transparent)",
         }}
       />
 
@@ -196,7 +196,7 @@ function AnimatedGradientBg() {
           maxWidth: 800,
           maxHeight: 800,
           borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(166,55,45,0.3) 0%, rgba(140,58,39,0.1) 40%, transparent 70%)",
+          background: "radial-gradient(circle, rgba(237,125,43,0.3) 0%, rgba(140,58,39,0.1) 40%, transparent 70%)",
           filter: "blur(80px)",
         }}
       />
@@ -240,7 +240,7 @@ function AnimatedGradientBg() {
           maxWidth: 600,
           maxHeight: 600,
           borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(166,55,45,0.2) 0%, transparent 60%)",
+          background: "radial-gradient(circle, rgba(237,125,43,0.2) 0%, transparent 60%)",
           filter: "blur(70px)",
         }}
       />
@@ -255,13 +255,13 @@ function OrbitalSphere({ size = 480 }: { size?: number }) {
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ overflow: "visible" }}>
       <defs>
         <radialGradient id="sphereGrad" cx="35%" cy="30%" r="65%">
-          <stop offset="0%" stopColor="rgba(166,55,45,0.95)" />
+          <stop offset="0%" stopColor="rgba(237,125,43,0.95)" />
           <stop offset="55%" stopColor="rgba(140,58,39,0.55)" />
           <stop offset="100%" stopColor="rgba(64,18,18,0)" />
         </radialGradient>
         <radialGradient id="sphereGlow" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="rgba(166,55,45,0.4)" />
-          <stop offset="100%" stopColor="rgba(166,55,45,0)" />
+          <stop offset="0%" stopColor="rgba(237,125,43,0.4)" />
+          <stop offset="100%" stopColor="rgba(237,125,43,0)" />
         </radialGradient>
         <filter id="sphereBlur"><feGaussianBlur stdDeviation="20" /></filter>
         <filter id="ringGlow"><feGaussianBlur stdDeviation="2.5" result="blur" /><feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
@@ -284,7 +284,7 @@ function OrbitalSphere({ size = 480 }: { size?: number }) {
       />
       {/* Orbital ring 3 — angled */}
       <motion.ellipse cx={cx} cy={cy} rx={118} ry={30}
-        fill="none" stroke="rgba(166,55,45,0.5)" strokeWidth="1.5"
+        fill="none" stroke="rgba(237,125,43,0.5)" strokeWidth="1.5"
         style={{ transformOrigin: `${cx}px ${cy}px`, rotate: "-30deg" }}
         animate={{ rotateZ: [-30, 330] }} transition={{ duration: 16, repeat: Infinity, ease: "linear" }}
       />
@@ -401,7 +401,7 @@ function HeroSection() {
           {/* Status badge */}
           <motion.div
             initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.1 }}
-            style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 16px", borderRadius: 9999, marginBottom: 28, background: "rgba(166,55,45,0.08)", border: "1px solid rgba(166,55,45,0.25)" }}
+            style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 16px", borderRadius: 9999, marginBottom: 28, background: "rgba(237,125,43,0.08)", border: "1px solid rgba(237,125,43,0.25)" }}
           >
             <motion.div
               animate={{ scale: [1, 1.4, 1], opacity: [1, 0.6, 1] }}
@@ -409,7 +409,7 @@ function HeroSection() {
               style={{ width: 6, height: 6, borderRadius: "50%", background: T.red, boxShadow: `0 0 6px ${T.red}` }}
             />
             <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: T.burnt, fontFamily: F.sans }}>
-              Now Serving OPT · STEM OPT · H-1B Students
+              Visa-friendly roles across 25 countries · updated every few hours
             </span>
           </motion.div>
 
@@ -427,7 +427,7 @@ function HeroSection() {
             </RevealLine>
             <RevealLine delay={0.42}>
               <h1 style={{ fontFamily: F.sans, fontSize: "clamp(48px, 7vw, 80px)", fontWeight: 800, lineHeight: 1.06, letterSpacing: "-0.025em", color: T.text }}>
-                in the US & Canada
+                Anywhere in the World
               </h1>
             </RevealLine>
           </div>
@@ -435,14 +435,14 @@ function HeroSection() {
           {/* Subheading */}
           <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.8, delay: 0.65 }}
             style={{ fontSize: 17, lineHeight: 1.75, color: T.t2, fontFamily: F.sans, fontWeight: 400, maxWidth: 560, margin: "0 auto 40px" }}>
-            AI-powered job matching with real-time ATS scoring, application tracking, and visa-aware filtering — built exclusively for international students.
+            We surface freshly-posted, visa-friendly roles across 25 countries — H-1B, EU Blue Card, Skilled Worker, Employment Pass and more — then score every job against your résumé in real time, so you only apply where you can actually get hired and sponsored.
           </motion.p>
 
           {/* CTA Buttons */}
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.85 }}
             style={{ display: "flex", gap: 14, marginBottom: 56, flexWrap: "wrap", justifyContent: "center" }}>
             <motion.div
-              whileHover={{ scale: 1.05, boxShadow: "0 0 40px rgba(166,55,45,0.6)" }}
+              whileHover={{ scale: 1.05, boxShadow: "0 0 40px rgba(237,125,43,0.6)" }}
               whileTap={{ scale: 0.98 }}
               transition={{ duration: 0.2 }}
             >
@@ -450,7 +450,7 @@ function HeroSection() {
                 display: "inline-flex", alignItems: "center", gap: 8,
                 padding: "14px 28px", borderRadius: 12, background: T.grad,
                 color: "#fff", fontSize: 15, fontWeight: 700, fontFamily: F.sans,
-                textDecoration: "none", boxShadow: `0 0 28px rgba(166,55,45,0.4)`,
+                textDecoration: "none", boxShadow: `0 0 28px rgba(237,125,43,0.4)`,
               }}>
                 Get Started Free <motion.div
                   animate={{ x: [0, 4, 0] }}
@@ -461,7 +461,7 @@ function HeroSection() {
               </Link>
             </motion.div>
             <motion.button
-              whileHover={{ scale: 1.03, borderColor: "rgba(166,55,45,0.4)" }}
+              whileHover={{ scale: 1.03, borderColor: "rgba(237,125,43,0.4)" }}
               whileTap={{ scale: 0.98 }}
               transition={{ duration: 0.2 }}
               onClick={() => document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" })}
@@ -530,7 +530,7 @@ function FeaturesSection() {
         width: "300px",
         height: "300px",
         borderRadius: "50%",
-        background: "radial-gradient(circle, rgba(166,55,45,0.08) 0%, transparent 70%)",
+        background: "radial-gradient(circle, rgba(237,125,43,0.08) 0%, transparent 70%)",
         filter: "blur(60px)",
         pointerEvents: "none",
       }} />
@@ -633,7 +633,7 @@ function PricingSection() {
           width: "600px",
           height: "600px",
           borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(166,55,45,0.15) 0%, transparent 60%)",
+          background: "radial-gradient(circle, rgba(237,125,43,0.15) 0%, transparent 60%)",
           filter: "blur(80px)",
           pointerEvents: "none",
         }}
@@ -657,7 +657,7 @@ function PricingSection() {
             <SectionReveal key={plan.name} delay={0.2 + i * 0.1} y={40}>
               <div style={{ position: "relative", paddingTop: plan.badge ? 16 : 0 }}>
                 {plan.badge && (
-                  <div style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)", padding: "5px 14px", borderRadius: 9999, background: T.grad, color: "#fff", fontSize: 10, fontWeight: 700, fontFamily: F.sans, whiteSpace: "nowrap", boxShadow: "0 4px 16px rgba(166,55,45,0.4)", zIndex: 2 }}>
+                  <div style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)", padding: "5px 14px", borderRadius: 9999, background: T.grad, color: "#fff", fontSize: 10, fontWeight: 700, fontFamily: F.sans, whiteSpace: "nowrap", boxShadow: "0 4px 16px rgba(237,125,43,0.4)", zIndex: 2 }}>
                     ⭐ {plan.badge}
                   </div>
                 )}
@@ -675,7 +675,7 @@ function PricingSection() {
                     <span style={{ fontSize: 14, color: T.t3, marginBottom: 6, fontFamily: F.sans }}>{plan.period}</span>
                   </div>
                   <motion.div
-                    whileHover={{ scale: 1.02, boxShadow: plan.featured ? "0 12px 32px rgba(166,55,45,0.5)" : "0 4px 16px rgba(242,238,179,0.1)" }}
+                    whileHover={{ scale: 1.02, boxShadow: plan.featured ? "0 12px 32px rgba(237,125,43,0.5)" : "0 4px 16px rgba(242,238,179,0.1)" }}
                     whileTap={{ scale: 0.98 }}
                     transition={{ duration: 0.2 }}
                   >
@@ -686,13 +686,13 @@ function PricingSection() {
                       border: plan.featured ? "none" : `1px solid ${T.border}`,
                       color: "#fff", fontSize: 14, fontWeight: 600, fontFamily: F.sans,
                       textDecoration: "none",
-                      boxShadow: plan.featured ? "0 8px 24px rgba(166,55,45,0.35)" : "none",
+                      boxShadow: plan.featured ? "0 8px 24px rgba(237,125,43,0.35)" : "none",
                     }}>{plan.cta}</Link>
                   </motion.div>
                   <ul style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     {(plan.features as [string, boolean][]).map(([feat, included]) => (
                       <li key={feat} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <div style={{ width: 18, height: 18, borderRadius: "50%", background: included ? "rgba(166,55,45,0.15)" : "rgba(242,238,179,0.04)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, border: included ? "1px solid rgba(166,55,45,0.3)" : "1px solid rgba(242,238,179,0.06)" }}>
+                        <div style={{ width: 18, height: 18, borderRadius: "50%", background: included ? "rgba(237,125,43,0.15)" : "rgba(242,238,179,0.04)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, border: included ? "1px solid rgba(237,125,43,0.3)" : "1px solid rgba(242,238,179,0.06)" }}>
                           {included ? <Check size={10} color={T.red} /> : <span style={{ fontSize: 10, color: T.t3 }}>—</span>}
                         </div>
                         <span style={{ fontSize: 13, color: included ? T.t2 : T.t3, fontFamily: F.sans, lineHeight: 1.4, opacity: included ? 1 : 0.55 }}>{feat}</span>
@@ -738,7 +738,7 @@ function ContactSection() {
         width: "300px",
         height: "300px",
         borderRadius: "50%",
-        background: "radial-gradient(circle, rgba(166,55,45,0.08) 0%, transparent 65%)",
+        background: "radial-gradient(circle, rgba(237,125,43,0.08) 0%, transparent 65%)",
         filter: "blur(60px)",
         pointerEvents: "none",
       }} />
@@ -793,18 +793,18 @@ function ContactSection() {
                       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14, marginBottom: 14 }}>
                         <input placeholder="Full Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
                           style={{ padding: "12px 14px", borderRadius: 12, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", color: T.text, fontSize: 14, fontFamily: F.sans, outline: "none", transition: "border-color 0.3s, background 0.3s" }}
-                          onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(166,55,45,0.4)"; e.currentTarget.style.background = "rgba(242,238,179,0.06)"; }}
+                          onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(237,125,43,0.4)"; e.currentTarget.style.background = "rgba(242,238,179,0.06)"; }}
                           onBlur={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.background = "rgba(242,238,179,0.04)"; }}
                         />
                         <input placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })}
                           style={{ padding: "12px 14px", borderRadius: 12, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", color: T.text, fontSize: 14, fontFamily: F.sans, outline: "none", transition: "border-color 0.3s, background 0.3s" }}
-                          onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(166,55,45,0.4)"; e.currentTarget.style.background = "rgba(242,238,179,0.06)"; }}
+                          onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(237,125,43,0.4)"; e.currentTarget.style.background = "rgba(242,238,179,0.06)"; }}
                           onBlur={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.background = "rgba(242,238,179,0.04)"; }}
                         />
                       </div>
                       <select value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })}
                         style={{ width: "100%", padding: "12px 14px", borderRadius: 12, border: `1px solid ${T.border}`, background: "rgba(1,17,38,0.85)", color: form.subject ? T.text : T.t3, fontSize: 14, fontFamily: F.sans, marginBottom: 14, outline: "none", appearance: "none", transition: "border-color 0.3s" }}
-                        onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(166,55,45,0.4)"; }}
+                        onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(237,125,43,0.4)"; }}
                         onBlur={(e) => { e.currentTarget.style.borderColor = T.border; }}
                       >
                         <option value="">Subject</option>
@@ -815,15 +815,15 @@ function ContactSection() {
                       </select>
                       <textarea placeholder="Your message..." value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })}
                         style={{ width: "100%", height: 110, padding: "12px 14px", borderRadius: 12, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", color: T.text, fontSize: 14, fontFamily: F.sans, resize: "none", outline: "none", marginBottom: 14, transition: "border-color 0.3s, background 0.3s" }}
-                        onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(166,55,45,0.4)"; e.currentTarget.style.background = "rgba(242,238,179,0.06)"; }}
+                        onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(237,125,43,0.4)"; e.currentTarget.style.background = "rgba(242,238,179,0.06)"; }}
                         onBlur={(e) => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.background = "rgba(242,238,179,0.04)"; }}
                       />
                       <motion.button
                         whileTap={{ scale: 0.96 }}
-                        whileHover={{ scale: 1.02, boxShadow: "0 0 32px rgba(166,55,45,0.5)" }}
+                        whileHover={{ scale: 1.02, boxShadow: "0 0 32px rgba(237,125,43,0.5)" }}
                         onClick={() => form.name && form.email && setSent(true)}
                         transition={{ duration: 0.2 }}
-                        style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", cursor: "pointer", background: T.grad, color: "#fff", fontSize: 15, fontWeight: 600, fontFamily: F.sans, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 0 24px rgba(166,55,45,0.35)" }}>
+                        style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", cursor: "pointer", background: T.grad, color: "#fff", fontSize: 15, fontWeight: 600, fontFamily: F.sans, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 0 24px rgba(237,125,43,0.35)" }}>
                         Send Message <motion.div
                           animate={{ x: [0, 3, 0] }}
                           transition={{ duration: 1.2, repeat: Infinity }}

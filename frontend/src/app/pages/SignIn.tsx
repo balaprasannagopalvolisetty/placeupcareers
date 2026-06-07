@@ -9,13 +9,13 @@ import { getDemoCredentials, type DemoCredentials } from "../lib/api";
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 const T = {
   bg: "#011126",
-  surface: "#401212",
+  surface: "#C75A12",
   border: "rgba(242,238,179,0.1)",
   text: "#F2EEB3",
   t2: "rgba(242,238,179,0.65)",
   t3: "rgba(242,238,179,0.45)",
-  grad: "linear-gradient(135deg, #8C3A27, #A6372D, #401212)",
-  red: "#A6372D",
+  grad: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)",
+  red: "#ED7D2B",
   input: "rgba(242,238,179,0.05)",
 };
 
@@ -68,7 +68,7 @@ function StyledInput({
           }}
           onFocus={(e) => {
             e.target.style.borderColor = T.red;
-            e.target.style.boxShadow = `0 0 0 3px rgba(166,55,45,0.15)`;
+            e.target.style.boxShadow = `0 0 0 3px rgba(237,125,43,0.15)`;
           }}
           onBlur={(e) => {
             e.target.style.borderColor = T.border;
@@ -145,7 +145,7 @@ export default function SignIn() {
     <div style={{ minHeight: "100vh", display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", background: T.bg }}>
       <div style={{ position: "relative", overflow: "hidden", background: "linear-gradient(135deg, #011126 0%, #1a0808 100%)", minHeight: isMobile ? 240 : "auto" }}>
         <div style={{ position: "absolute", top: "10%", left: "5%", width: 300, height: 300, borderRadius: "50%", filter: "blur(80px)", background: "rgba(140,58,39,0.2)" }} />
-        <div style={{ position: "absolute", bottom: "20%", right: "10%", width: 250, height: 250, borderRadius: "50%", filter: "blur(80px)", background: "rgba(166,55,45,0.15)" }} />
+        <div style={{ position: "absolute", bottom: "20%", right: "10%", width: 250, height: 250, borderRadius: "50%", filter: "blur(80px)", background: "rgba(237,125,43,0.15)" }} />
         <div style={{ position: "relative", zIndex: 1, height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: isMobile ? 24 : 48 }}>
           {!isMobile && <OrbitalSphereSmall />}
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }} style={{ marginTop: isMobile ? 0 : 40, padding: isMobile ? "16px 18px" : "20px 24px", borderRadius: 16, background: "rgba(64,18,18,0.65)", backdropFilter: "blur(20px)", border: "1px solid rgba(242,238,179,0.08)", maxWidth: 380 }}>
@@ -158,7 +158,7 @@ export default function SignIn() {
               "87% of PlaceUp users land interviews within 6 weeks"
             </p>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 36, height: 36, borderRadius: "50%", background: "linear-gradient(135deg, #8C3A27, #A6372D)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: F.sans, fontSize: 13, fontWeight: 700, color: "#fff" }}>SL</div>
+              <div style={{ width: 36, height: 36, borderRadius: "50%", background: "linear-gradient(135deg, #F2A341, #ED7D2B)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: F.sans, fontSize: 13, fontWeight: 700, color: "#fff" }}>SL</div>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: F.sans }}>Sarah L.</div>
                 <div style={{ fontSize: 12, color: T.t3, fontFamily: F.sans }}>Software Engineer · Google (H-1B)</div>
@@ -210,7 +210,7 @@ export default function SignIn() {
                 fontSize: 15,
                 fontWeight: 600,
                 fontFamily: F.sans,
-                boxShadow: "0 0 24px rgba(166,55,45,0.35)",
+                boxShadow: "0 0 24px rgba(237,125,43,0.35)",
                 opacity: loading ? 0.75 : 1,
               }}
             >

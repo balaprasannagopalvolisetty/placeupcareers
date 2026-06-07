@@ -7,18 +7,31 @@ const F = { sans: "'Plus Jakarta Sans', sans-serif" };
 const T = {
   text: "#F2EEB3", t2: "rgba(242,238,179,0.65)", t3: "rgba(242,238,179,0.45)",
   border: "rgba(242,238,179,0.08)", glass: "rgba(64,18,18,0.55)",
-  grad: "linear-gradient(135deg, #8C3A27, #A6372D, #401212)", red: "#A6372D",
+  grad: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)", red: "#ED7D2B",
 };
 
 export function AlertsPage() {
   const [alerts, setAlerts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [enabled, setEnabled] = useState({ email: true, daily: true, weekly: false });
+  // Count of recently-added positions matching the roles the user picked at
+  // signup. Reuses the existing personalized jobs feed (no new backend rule).
+  const [recentCount, setRecentCount] = useState<number | null>(null);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
-    
+
+    api.getJobs({ personalized: true, time_filter: "today", page: 1, page_size: 1, tz_offset: new Date().getTimezoneOffset() })
+      .then((resp: any) => {
+        if (!active) return;
+        const total = typeof resp?.total === "number" ? resp.total
+          : Array.isArray(resp?.jobs) ? resp.jobs.length
+          : Array.isArray(resp) ? resp.length : 0;
+        setRecentCount(total);
+      })
+      .catch(() => { if (active) setRecentCount(null); });
+
     Promise.all([
       api.getAlerts().then(data => {
         if (active) setAlerts(Array.isArray(data) ? data : data.alerts || []);
@@ -115,7 +128,14 @@ export function AlertsPage() {
       {/* Alert feed */}
       <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, overflow: "hidden" }}>
         <div style={{ padding: "18px 24px", borderBottom: `1px solid ${T.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 600, color: T.text }}>Recent Alerts <span style={{ fontSize: 12, color: T.red, fontWeight: 700, marginLeft: 6 }}>{displayAlerts.filter((a) => a.unread).length} new</span></div>
+          <div style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 600, color: T.text }}>
+            Recent Alerts
+            {recentCount != null && (
+              <span style={{ fontSize: 12, color: T.red, fontWeight: 700, marginLeft: 6 }}>
+                {recentCount} new {recentCount === 1 ? "position" : "positions"} today for your picks
+              </span>
+            )}
+          </div>
           <button onClick={handleMarkAllRead} style={{ fontSize: 12, color: T.red, fontFamily: F.sans, background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>Mark all read</button>
         </div>
         {displayAlerts.length === 0 ? (
@@ -123,7 +143,7 @@ export function AlertsPage() {
         ) : (
           displayAlerts.map((alert, i) => (
             <motion.div key={alert.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.06 }}
-              style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 24px", borderBottom: i < displayAlerts.length - 1 ? `1px solid ${T.border}` : "none", background: alert.unread ? "rgba(166,55,45,0.04)" : "transparent", cursor: "pointer" }}
+              style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 24px", borderBottom: i < displayAlerts.length - 1 ? `1px solid ${T.border}` : "none", background: alert.unread ? "rgba(237,125,43,0.04)" : "transparent", cursor: "pointer" }}
               onClick={() => alert.unread && handleMarkRead(alert.id)}>
               <div style={{ width: 40, height: 40, borderRadius: "50%", background: alert.match_score ? T.grad : "rgba(242,238,179,0.08)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                 {alert.match_score ? <Bell size={16} color="#fff" /> : <Check size={16} color={T.red} />}

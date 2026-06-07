@@ -45,7 +45,7 @@ export class ErrorBoundary extends Component<Props, State> {
             padding: "20px 22px",
             borderRadius: 16,
             background: "rgba(64,18,18,0.7)",
-            border: "1px solid rgba(166,55,45,0.35)",
+            border: "1px solid rgba(237,125,43,0.35)",
             color: "#F2EEB3",
             fontFamily: "'Plus Jakarta Sans', sans-serif",
           }}
@@ -64,7 +64,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 padding: "9px 14px",
                 borderRadius: 10,
                 border: "none",
-                background: "linear-gradient(135deg, #8C3A27, #A6372D, #401212)",
+                background: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)",
                 color: "#fff",
                 fontWeight: 600,
                 fontSize: 13,

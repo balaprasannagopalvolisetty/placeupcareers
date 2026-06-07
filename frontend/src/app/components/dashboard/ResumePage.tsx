@@ -7,12 +7,12 @@ const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', mo
 const T = {
   text: "#F2EEB3", t2: "rgba(242,238,179,0.65)", t3: "rgba(242,238,179,0.45)",
   border: "rgba(242,238,179,0.08)", glass: "rgba(64,18,18,0.55)",
-  grad: "linear-gradient(135deg, #8C3A27, #A6372D, #401212)", red: "#A6372D",
+  grad: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)", red: "#ED7D2B",
 };
 
 function ScoreRing({ score }: { score: number }) {
   const r = 28, circ = 2 * Math.PI * r;
-  const color = score >= 80 ? T.red : score >= 60 ? "#8C3A27" : "#401212";
+  const color = score >= 80 ? T.red : score >= 60 ? "#F2A341" : "#C75A12";
   return (
     <div style={{ position: "relative", width: 72, height: 72 }}>
       <svg viewBox="0 0 72 72" style={{ width: "100%", height: "100%", transform: "rotate(-90deg)" }}>
@@ -123,12 +123,12 @@ export function ResumePage() {
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
         onDrop={(e) => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer.files); }}
-        style={{ padding: 36, borderRadius: 20, border: `2px dashed ${dragging ? T.red : "rgba(166,55,45,0.3)"}`, background: dragging ? "rgba(166,55,45,0.06)" : T.glass, backdropFilter: "blur(20px)", textAlign: "center", cursor: "pointer", transition: "all 0.2s" }}
+        style={{ padding: 36, borderRadius: 20, border: `2px dashed ${dragging ? T.red : "rgba(237,125,43,0.3)"}`, background: dragging ? "rgba(237,125,43,0.06)" : T.glass, backdropFilter: "blur(20px)", textAlign: "center", cursor: "pointer", transition: "all 0.2s" }}
       >
         <Upload size={32} color={T.red} style={{ margin: "0 auto 12px" }} />
         <div style={{ fontSize: 15, fontWeight: 500, color: T.text, fontFamily: F.sans, marginBottom: 6 }}>Drop your resume here or click to upload</div>
         <div style={{ fontSize: 13, color: T.t3, fontFamily: F.sans, marginBottom: 16 }}>PDF or DOCX · Max 10MB · 5 resume limit</div>
-        <label style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "11px 22px", borderRadius: 10, background: T.grad, color: "#fff", fontSize: 13, fontWeight: 600, fontFamily: F.sans, cursor: "pointer", boxShadow: "0 0 20px rgba(166,55,45,0.3)" }}>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "11px 22px", borderRadius: 10, background: T.grad, color: "#fff", fontSize: 13, fontWeight: 600, fontFamily: F.sans, cursor: "pointer", boxShadow: "0 0 20px rgba(237,125,43,0.3)" }}>
           <Upload size={14} /> {uploading ? "Uploading…" : "Choose File"}
           <input ref={inputRef} type="file" accept=".pdf,.docx" style={{ display: "none" }}
             onChange={(e) => handleFiles(e.target.files)} disabled={uploading} />
@@ -149,7 +149,7 @@ export function ResumePage() {
           resumes.map((r, i) => (
             <motion.div key={r.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.07 }}
               style={{ padding: "18px 24px", borderBottom: i < resumes.length - 1 ? `1px solid ${T.border}` : "none", display: "flex", alignItems: "center", gap: 16 }}>
-              <div style={{ width: 44, height: 44, borderRadius: 10, background: r.active ? "rgba(166,55,45,0.12)" : "rgba(242,238,179,0.04)", border: `1px solid ${r.active ? "rgba(166,55,45,0.3)" : T.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div style={{ width: 44, height: 44, borderRadius: 10, background: r.active ? "rgba(237,125,43,0.12)" : "rgba(242,238,179,0.04)", border: `1px solid ${r.active ? "rgba(237,125,43,0.3)" : T.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <FileText size={18} color={r.active ? T.red : T.t3} />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -159,7 +159,7 @@ export function ResumePage() {
               <ScoreRing score={r.score} />
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 {r.active
-                  ? <span style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 9999, background: "rgba(166,55,45,0.12)", color: T.red, border: "1px solid rgba(166,55,45,0.25)", fontFamily: F.sans }}>Active</span>
+                  ? <span style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 9999, background: "rgba(237,125,43,0.12)", color: T.red, border: "1px solid rgba(237,125,43,0.25)", fontFamily: F.sans }}>Active</span>
                   : <button onClick={() => setActive(r.id)} style={{ padding: "6px 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.t2, fontSize: 12, fontFamily: F.sans, cursor: "pointer" }}>Set Active</button>
                 }
                 <button onClick={() => remove(r.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.t3 }}>

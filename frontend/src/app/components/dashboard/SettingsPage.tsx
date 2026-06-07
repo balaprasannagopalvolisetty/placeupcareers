@@ -11,10 +11,10 @@ const F = { sans: "'Plus Jakarta Sans', sans-serif" };
 const T = {
   text: "#F2EEB3", t2: "rgba(242,238,179,0.65)", t3: "rgba(242,238,179,0.45)",
   border: "rgba(242,238,179,0.08)", glass: "rgba(64,18,18,0.55)",
-  grad: "linear-gradient(135deg, #8C3A27, #A6372D, #401212)", red: "#A6372D",
+  grad: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)", red: "#ED7D2B",
   input: "rgba(242,238,179,0.05)",
 };
-const SELECT_DARK_STYLE: CSSProperties = { background: "#401212", color: "#F2EEB3" };
+const SELECT_DARK_STYLE: CSSProperties = { background: "#C75A12", color: "#F2EEB3" };
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -199,7 +199,7 @@ export function SettingsPage() {
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
             {(prefs.target_roles || []).map((role) => (
-              <span key={role} style={{ fontSize: 11, fontWeight: 600, padding: "5px 9px", borderRadius: 6, fontFamily: F.sans, background: "rgba(166,55,45,0.16)", color: T.red, border: "1px solid rgba(166,55,45,0.28)", display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <span key={role} style={{ fontSize: 11, fontWeight: 600, padding: "5px 9px", borderRadius: 6, fontFamily: F.sans, background: "rgba(237,125,43,0.16)", color: T.red, border: "1px solid rgba(237,125,43,0.28)", display: "inline-flex", alignItems: "center", gap: 6 }}>
                 {role}
                 <button type="button" onClick={() => removeJobPreference(role)} style={{ background: "none", border: "none", color: T.red, cursor: "pointer", padding: 0 }}>×</button>
               </span>
@@ -308,7 +308,7 @@ export function SettingsPage() {
         <div style={{
           display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap",
           padding: 14, borderRadius: 10,
-          background: "rgba(166,55,45,0.06)", border: "1px solid rgba(166,55,45,0.25)",
+          background: "rgba(237,125,43,0.06)", border: "1px solid rgba(237,125,43,0.25)",
         }}>
           <AlertTriangle size={18} color={T.red} style={{ marginTop: 2 }} />
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -325,7 +325,7 @@ export function SettingsPage() {
             style={{
               display: "inline-flex", alignItems: "center", gap: 6,
               padding: "9px 14px", borderRadius: 9,
-              border: "1px solid rgba(166,55,45,0.4)", background: "rgba(166,55,45,0.12)",
+              border: "1px solid rgba(237,125,43,0.4)", background: "rgba(237,125,43,0.12)",
               color: T.red, fontSize: 12, fontWeight: 600, fontFamily: F.sans, cursor: "pointer",
             }}
           >
@@ -402,7 +402,7 @@ export function SettingsPage() {
                 }}
                 style={{
                   padding: "9px 14px", borderRadius: 9, border: "none",
-                  background: "linear-gradient(135deg, #8C3A27, #A6372D, #401212)",
+                  background: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)",
                   color: "#fff", fontSize: 13, fontWeight: 600, fontFamily: F.sans,
                   cursor: deleting || !deletePassword ? "not-allowed" : "pointer",
                   opacity: deleting || !deletePassword ? 0.6 : 1,
@@ -420,7 +420,7 @@ export function SettingsPage() {
       ) : null}
 
       <motion.button whileTap={{ scale: 0.97 }} onClick={handleSave} disabled={saving}
-        style={{ display: "flex", alignItems: "center", gap: 8, padding: "13px 28px", borderRadius: 12, border: "none", background: saved ? "rgba(34,197,94,0.9)" : T.grad, color: "#fff", fontSize: 14, fontWeight: 600, fontFamily: F.sans, cursor: saving ? "wait" : "pointer", width: "fit-content", boxShadow: "0 0 20px rgba(166,55,45,0.3)", transition: "background 0.3s" }}>
+        style={{ display: "flex", alignItems: "center", gap: 8, padding: "13px 28px", borderRadius: 12, border: "none", background: saved ? "rgba(34,197,94,0.9)" : T.grad, color: "#fff", fontSize: 14, fontWeight: 600, fontFamily: F.sans, cursor: saving ? "wait" : "pointer", width: "fit-content", boxShadow: "0 0 20px rgba(237,125,43,0.3)", transition: "background 0.3s" }}>
         <Save size={15} /> {saving ? "Saving…" : saved ? "Saved!" : "Save Changes"}
       </motion.button>
     </div>

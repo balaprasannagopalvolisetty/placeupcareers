@@ -6,7 +6,7 @@ const T = {
   text: "#F2EEB3",
   t2: "rgba(242,238,179,0.65)",
   border: "rgba(242,238,179,0.08)",
-  grad: "linear-gradient(135deg, #8C3A27, #A6372D, #401212)",
+  grad: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)",
 };
 
 export function LoadingLogo({ label = "Loading", fullScreen = false }: { label?: string; fullScreen?: boolean }) {
@@ -31,7 +31,7 @@ export function LoadingLogo({ label = "Loading", fullScreen = false }: { label?:
             height: 76,
             borderRadius: "50%",
             padding: 3,
-            background: `conic-gradient(from 0deg, rgba(242,238,179,0.08), #A6372D, #8C3A27, rgba(242,238,179,0.08))`,
+            background: `conic-gradient(from 0deg, rgba(242,238,179,0.08), #ED7D2B, #F2A341, rgba(242,238,179,0.08))`,
           }}
         >
           <div

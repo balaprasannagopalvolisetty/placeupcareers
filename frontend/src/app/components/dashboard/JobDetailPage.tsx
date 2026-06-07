@@ -7,8 +7,8 @@ const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', mo
 const T = {
   text: "#F2EEB3", t2: "rgba(242,238,179,0.65)", t3: "rgba(242,238,179,0.45)",
   border: "rgba(242,238,179,0.08)", glass: "rgba(64,18,18,0.55)",
-  grad: "linear-gradient(135deg, #8C3A27, #A6372D, #401212)",
-  red: "#A6372D", burnt: "#8C3A27", dark: "#401212",
+  grad: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)",
+  red: "#ED7D2B", burnt: "#F2A341", dark: "#C75A12",
 };
 
 function normalizeVisa(visa: unknown): string[] {
@@ -111,7 +111,7 @@ function getScoreMeta(score: number | null | undefined) {
     };
   }
   if (score >= 80) return { label: "Strong match", detail: "This role lines up well with your active resume.", color: "#22c55e", bg: "rgba(34,197,94,0.10)", border: "rgba(34,197,94,0.25)" };
-  if (score >= 60) return { label: "Good match", detail: "A few resume keyword updates could improve your odds.", color: T.red, bg: "rgba(166,55,45,0.12)", border: "rgba(166,55,45,0.28)" };
+  if (score >= 60) return { label: "Good match", detail: "A few resume keyword updates could improve your odds.", color: T.red, bg: "rgba(237,125,43,0.12)", border: "rgba(237,125,43,0.28)" };
   if (score >= 40) return { label: "Partial match", detail: "Review requirements before applying.", color: T.burnt, bg: "rgba(140,58,39,0.12)", border: "rgba(140,58,39,0.28)" };
   return { label: "Low match", detail: "This posting appears far from your active resume.", color: "#F2EEB3", bg: "rgba(242,238,179,0.06)", border: "rgba(242,238,179,0.12)" };
 }
@@ -435,7 +435,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
 
   const visaBadge: Record<string, { bg: string; color: string; border: string }> = {
     "H-1B":    { bg: "rgba(140,58,39,0.15)", color: T.burnt,  border: "rgba(140,58,39,0.35)" },
-    "F1-OPT":  { bg: "rgba(166,55,45,0.12)", color: T.red,    border: "rgba(166,55,45,0.3)" },
+    "F1-OPT":  { bg: "rgba(237,125,43,0.12)", color: T.red,    border: "rgba(237,125,43,0.3)" },
     "F1-STEM": { bg: "rgba(64,18,18,0.15)",  color: T.red,    border: "rgba(64,18,18,0.3)" },
   };
 
@@ -486,7 +486,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
     { label: "Sections", value: String([responsibilityHighlights, requirementHighlights, niceHighlights].filter((items) => items.length).length || 1) },
   ];
   const highlightCards = [
-    { title: "What you'll do", items: responsibilityHighlights, tone: "rgba(166,55,45,0.10)" },
+    { title: "What you'll do", items: responsibilityHighlights, tone: "rgba(237,125,43,0.10)" },
     { title: "What they need", items: requirementHighlights, tone: "rgba(242,238,179,0.06)" },
     { title: "Standout signals", items: niceHighlights.length ? niceHighlights : visibleMissing.slice(0, 3).map((item) => `${item.kw} (${item.impact})`), tone: "rgba(140,58,39,0.13)" },
   ].filter((card) => card.items.length);
@@ -547,7 +547,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
                 display: "flex", alignItems: "center", gap: 6, padding: "11px 20px",
                 borderRadius: 10, border: "none", background: T.grad, color: "#fff",
                 fontSize: 13, fontWeight: 600, fontFamily: F.sans, cursor: "pointer",
-                boxShadow: "0 0 20px rgba(166,55,45,0.35)",
+                boxShadow: "0 0 20px rgba(237,125,43,0.35)",
               }}
             >
               <ExternalLink size={14} /> Apply on Company Website
@@ -558,8 +558,8 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
               style={{
                 display: "flex", alignItems: "center", gap: 6, padding: "11px 16px",
                 borderRadius: 10,
-                border: `1px solid ${saved ? "rgba(166,55,45,0.35)" : T.border}`,
-                background: saved ? "rgba(166,55,45,0.10)" : "transparent",
+                border: `1px solid ${saved ? "rgba(237,125,43,0.35)" : T.border}`,
+                background: saved ? "rgba(237,125,43,0.10)" : "transparent",
                 color: saved ? T.red : T.t2,
                 fontSize: 13, fontFamily: F.sans, cursor: "pointer",
               }}
@@ -594,7 +594,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
               <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: T.t3, fontFamily: F.sans, marginBottom: 10 }}>Strong Keywords ✓</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {visibleKeywords.map((kw) => (
-                  <span key={kw} style={{ fontSize: 11, padding: "4px 9px", borderRadius: 4, background: "rgba(166,55,45,0.1)", color: T.red, border: "1px solid rgba(166,55,45,0.25)", fontFamily: F.sans, display: "flex", alignItems: "center", gap: 4 }}>
+                  <span key={kw} style={{ fontSize: 11, padding: "4px 9px", borderRadius: 4, background: "rgba(237,125,43,0.1)", color: T.red, border: "1px solid rgba(237,125,43,0.25)", fontFamily: F.sans, display: "flex", alignItems: "center", gap: 4 }}>
                     <Check size={9} /> {kw}
                   </span>
                 ))}
@@ -668,7 +668,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
             const Icon = item.icon;
             return (
               <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: `1px solid ${T.border}` }}>
-                <div style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(166,55,45,0.10)", border: "1px solid rgba(166,55,45,0.20)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <div style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(237,125,43,0.10)", border: "1px solid rgba(237,125,43,0.20)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   <Icon size={13} color={T.red} />
                 </div>
                 <div style={{ minWidth: 0 }}>
@@ -685,7 +685,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
           <h4 style={{ fontFamily: F.sans, fontSize: 13, fontWeight: 600, color: T.text, marginBottom: 14 }}>Visa Sponsorship Info</h4>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
             {(currentJob.visa ?? []).map((v) => {
-              const s = { "H-1B": { bg: "rgba(140,58,39,0.15)", color: T.burnt, border: "rgba(140,58,39,0.35)" }, "F1-OPT": { bg: "rgba(166,55,45,0.12)", color: T.red, border: "rgba(166,55,45,0.3)" } }[v] ?? { bg: "rgba(64,18,18,0.1)", color: T.t2, border: T.border };
+              const s = { "H-1B": { bg: "rgba(140,58,39,0.15)", color: T.burnt, border: "rgba(140,58,39,0.35)" }, "F1-OPT": { bg: "rgba(237,125,43,0.12)", color: T.red, border: "rgba(237,125,43,0.3)" } }[v] ?? { bg: "rgba(64,18,18,0.1)", color: T.t2, border: T.border };
               return <span key={v} style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: s.bg, color: s.color, border: `1px solid ${s.border}`, fontFamily: F.sans }}>{v}</span>;
             })}
           </div>
@@ -717,7 +717,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {(currentJob.benefits ?? []).map((b) => (
               <div key={b} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ width: 20, height: 20, borderRadius: "50%", background: "rgba(166,55,45,0.12)", border: "1px solid rgba(166,55,45,0.25)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <div style={{ width: 20, height: 20, borderRadius: "50%", background: "rgba(237,125,43,0.12)", border: "1px solid rgba(237,125,43,0.25)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   <Check size={10} color={T.red} />
                 </div>
                 <span style={{ fontSize: 13, color: T.t2, fontFamily: F.sans }}>{b}</span>

@@ -7,11 +7,11 @@ import * as api from "../lib/api";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 const T = {
-  bg: "#011126", surface: "#401212",
+  bg: "#011126", surface: "#C75A12",
   border: "rgba(242,238,179,0.1)", text: "#F2EEB3",
   t2: "rgba(242,238,179,0.65)", t3: "rgba(242,238,179,0.45)",
-  grad: "linear-gradient(135deg, #8C3A27, #A6372D, #401212)",
-  red: "#A6372D", input: "rgba(242,238,179,0.05)",
+  grad: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)",
+  red: "#ED7D2B", input: "rgba(242,238,179,0.05)",
 };
 
 function useViewportFlags() {
@@ -180,7 +180,7 @@ function AppSelect({ label, value, onChange, options, required, placeholder = "S
           {options.map((o) => (
             <button key={o} type="button" onClick={() => { onChange(o); setOpen(false); }}
               style={{ width: "100%", textAlign: "left", padding: "9px 10px", borderRadius: 8, border: "none",
-                background: value === o ? "rgba(166,55,45,0.18)" : "transparent", color: T.text,
+                background: value === o ? "rgba(237,125,43,0.18)" : "transparent", color: T.text,
                 fontSize: 13, fontFamily: F.sans, cursor: "pointer" }}>
               {o}
             </button>
@@ -429,7 +429,7 @@ export default function SignUp() {
                     return (
                       <button key={role} type="button" onClick={() => toggleRole(role)} disabled={disabled}
                         style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderRadius: 8, border: "none",
-                          background: sel ? "rgba(166,55,45,0.18)" : "transparent", color: disabled ? T.t3 : T.text,
+                          background: sel ? "rgba(237,125,43,0.18)" : "transparent", color: disabled ? T.t3 : T.text,
                           fontSize: 13, fontFamily: F.sans, cursor: disabled ? "not-allowed" : "pointer", textAlign: "left" }}>
                         <span>{role}</span>
                         {sel && <Check size={13} color="#22c55e" />}
@@ -446,7 +446,7 @@ export default function SignUp() {
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
                   {targetRoles.map((role) => (
-                    <span key={role} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "rgba(166,55,45,0.1)", color: T.red, border: "1px solid rgba(166,55,45,0.25)", fontFamily: F.sans }}>
+                    <span key={role} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "rgba(237,125,43,0.1)", color: T.red, border: "1px solid rgba(237,125,43,0.25)", fontFamily: F.sans }}>
                       {role}
                       <button type="button" onClick={() => toggleRole(role)} style={{ background: "none", border: "none", cursor: "pointer", color: T.red, padding: 0 }}><X size={10} /></button>
                     </span>
@@ -477,7 +477,7 @@ export default function SignUp() {
               )}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
                 {targetLocations.map((l) => (
-                  <span key={l} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "rgba(166,55,45,0.1)", color: T.red, border: "1px solid rgba(166,55,45,0.25)", fontFamily: F.sans }}>
+                  <span key={l} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "rgba(237,125,43,0.1)", color: T.red, border: "1px solid rgba(237,125,43,0.25)", fontFamily: F.sans }}>
                     {l}
                     <button type="button" onClick={() => setTargetLocations((prev) => prev.filter((x) => x !== l))} style={{ background: "none", border: "none", cursor: "pointer", color: T.red, padding: 0 }}><X size={10} /></button>
                   </span>
@@ -493,7 +493,7 @@ export default function SignUp() {
             <div style={{ fontSize: 12, fontWeight: 500, color: T.t2, fontFamily: F.sans, marginBottom: 8 }}>
               Upload Resume (required, 1 file)
             </div>
-            <label style={{ display: "block", padding: 28, borderRadius: 12, border: `2px dashed ${resumeFile ? T.red : "rgba(166,55,45,0.3)"}`, background: T.input, textAlign: "center", cursor: "pointer", transition: "all 0.2s" }}>
+            <label style={{ display: "block", padding: 28, borderRadius: 12, border: `2px dashed ${resumeFile ? T.red : "rgba(237,125,43,0.3)"}`, background: T.input, textAlign: "center", cursor: "pointer", transition: "all 0.2s" }}>
               <Upload size={24} color={T.red} style={{ margin: "0 auto 10px" }} />
               {resumeFile ? (
                 <div>
@@ -533,12 +533,12 @@ export default function SignUp() {
           )}
           {step < 4 ? (
             <button type="button" onClick={next} disabled={loading}
-              style={{ flex: 2, padding: "12px", borderRadius: 12, border: "none", background: T.grad, color: "#fff", fontSize: 13, fontFamily: F.sans, cursor: "pointer", fontWeight: 600, boxShadow: "0 0 18px rgba(166,55,45,0.3)" }}>
+              style={{ flex: 2, padding: "12px", borderRadius: 12, border: "none", background: T.grad, color: "#fff", fontSize: 13, fontFamily: F.sans, cursor: "pointer", fontWeight: 600, boxShadow: "0 0 18px rgba(237,125,43,0.3)" }}>
               Next →
             </button>
           ) : (
             <button type="button" onClick={handleSubmit} disabled={loading}
-              style={{ flex: 2, padding: "12px", borderRadius: 12, border: "none", background: T.grad, color: "#fff", fontSize: 13, fontFamily: F.sans, cursor: loading ? "wait" : "pointer", fontWeight: 600, boxShadow: "0 0 18px rgba(166,55,45,0.3)" }}>
+              style={{ flex: 2, padding: "12px", borderRadius: 12, border: "none", background: T.grad, color: "#fff", fontSize: 13, fontFamily: F.sans, cursor: loading ? "wait" : "pointer", fontWeight: 600, boxShadow: "0 0 18px rgba(237,125,43,0.3)" }}>
               {loading ? "Creating account…" : "Create Account 🎉"}
             </button>
           )}

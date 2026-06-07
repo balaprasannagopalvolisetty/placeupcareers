@@ -35,7 +35,7 @@ export default function NotFound() {
           style={{
             fontSize: 56,
             fontWeight: 800,
-            background: "linear-gradient(135deg, #8C3A27, #A6372D, #401212)",
+            background: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)",
             WebkitBackgroundClip: "text",
             WebkitTextFillColor: "transparent",
             backgroundClip: "text",
@@ -65,7 +65,7 @@ export default function NotFound() {
             style={{
               padding: "10px 18px",
               borderRadius: 10,
-              background: "linear-gradient(135deg, #8C3A27, #A6372D, #401212)",
+              background: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)",
               color: "#fff",
               fontWeight: 600,
               fontSize: 13,

@@ -2,15 +2,7 @@ import { Link, useLocation } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { Menu, X } from "lucide-react";
 import { useState, useCallback } from "react";
-
-const F = { sans: "'Plus Jakarta Sans', sans-serif" };
-const C = {
-  bg: "rgba(1,17,38,0.75)",
-  border: "rgba(242,238,179,0.08)",
-  text: "#F2EEB3",
-  t2: "rgba(242,238,179,0.55)",
-  grad: "linear-gradient(135deg, #8C3A27, #A6372D, #401212)",
-};
+import { C, F } from "../theme";
 
 const navItems = [
   { label: "How It Works", id: "how-it-works" },
@@ -50,7 +42,7 @@ export function Navbar() {
           <img src="/logo_white.png" alt="PlaceUp Career" style={{ width: 32, height: 32, objectFit: "contain" }} />
           <span style={{ fontFamily: F.sans, fontWeight: 700, fontSize: 17, color: C.text, letterSpacing: "-0.02em" }}>
             PlaceUp
-            <span style={{ fontSize: 13, fontWeight: 600, color: "#A6372D", marginLeft: 4 }}>Career</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "#ED7D2B", marginLeft: 4 }}>Career</span>
           </span>
         </Link>
 
@@ -87,7 +79,7 @@ export function Navbar() {
             background: C.grad,
             color: "#fff", fontSize: 14, fontFamily: F.sans, fontWeight: 600,
             textDecoration: "none",
-            boxShadow: "0 0 20px rgba(166,55,45,0.35)",
+            boxShadow: "0 0 20px rgba(237,125,43,0.35)",
           }}>
             Get Started →
           </Link>
