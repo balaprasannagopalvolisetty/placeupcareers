@@ -122,6 +122,17 @@ def _csv_rows(text: str) -> list[dict[str, str]]:
     return [dict(row) for row in reader]
 
 
+def _resource_year(resource: dict[str, Any]) -> int:
+    text = f"{resource.get('name') or ''} {resource.get('url') or ''}"
+    years = [int(match) for match in re.findall(r"\b(20\d{2}|19\d{2})\b", text)]
+    return max(years) if years else 0
+
+
+def _is_english_resource(resource: dict[str, Any]) -> bool:
+    text = f"{resource.get('name') or ''} {resource.get('url') or ''}".lower()
+    return not any(marker in text for marker in ("_fr.", "_fr_", "-fr.", " french", "français", "francais"))
+
+
 async def download_uk_sponsors(client: httpx.AsyncClient) -> list[dict]:
     page = await _get_text(client, UK_SPONSOR_PAGE)
     soup = BeautifulSoup(page, "html.parser")
@@ -162,43 +173,91 @@ async def download_uk_sponsors(client: httpx.AsyncClient) -> list[dict]:
 async def download_canada_lmia_sponsors(client: httpx.AsyncClient) -> list[dict]:
     package = (await client.get(CANADA_LMIA_PACKAGE)).json()
     resources = (package.get("result") or {}).get("resources") or []
-    csv_resources = [
+    data_resources = [
         r for r in resources
-        if str(r.get("format", "")).lower() == "csv" or str(r.get("url", "")).lower().endswith(".csv")
+        if str(r.get("format", "")).lower() in {"csv", "xlsx", "xls"}
+        or str(r.get("url", "")).lower().endswith((".csv", ".xlsx", ".xls"))
     ]
-    if not csv_resources:
-        logger.warning("Canada LMIA: no CSV resources found")
+    data_resources = [r for r in data_resources if _is_english_resource(r)]
+    if not data_resources:
+        logger.warning("Canada LMIA: no English CSV/XLSX resources found")
         return []
-    # Prefer English CSVs and larger files, which usually contain the current
-    # positive-LMIA employer list.
-    csv_resources.sort(key=lambda r: ("fr" in str(r.get("name", "")).lower(), -int(r.get("size") or 0)))
-    url = csv_resources[0].get("url")
-    rows = _csv_rows(await _get_text(client, url))
+
+    latest_year = max(_resource_year(r) for r in data_resources)
+    selected = [r for r in data_resources if _resource_year(r) == latest_year]
+    selected.sort(key=lambda r: str(r.get("url") or ""))
     sponsors: list[dict] = []
-    for i, raw in enumerate(rows):
-        employer = _field(raw, "Employer", "Employer Name", "Business Name", "Company")
-        city = _field(raw, "City", "Location")
-        region = _field(raw, "Province", "Province/Territory", "PT", "Region")
-        route = _field(raw, "Program Stream", "Stream", "Program") or "LMIA Work Permit"
-        fiscal_year = _int(_field(raw, "Year", "Fiscal Year"))
-        sponsor = _row(
-            employer=employer,
-            country="CA",
-            visa_route=route,
-            source_name="canada_lmia",
-            source_url=str(url),
-            source_record_id=f"{employer}|{city}|{region}|{route}|{fiscal_year}|{i}",
-            city=city,
-            region=region,
-            status="Approved",
-            approvals=1,
-            fiscal_year=fiscal_year,
-            data_json={"source": "Government of Canada positive LMIA employers"},
-        )
-        if sponsor:
-            sponsors.append(sponsor)
-    logger.info("Canada LMIA: parsed %s rows", len(sponsors))
+    seen: set[str] = set()
+    for resource in selected:
+        url = str(resource.get("url") or "")
+        if not url:
+            continue
+        try:
+            rows = await _canada_resource_rows(client, url)
+        except Exception as exc:
+            logger.warning("Canada LMIA: failed to parse %s: %s", url, exc)
+            continue
+        fiscal_year = _resource_year(resource) or _int(_field(resource, "year", "fiscal_year"))
+        for i, raw in enumerate(rows):
+            employer = _field(
+                raw,
+                "Employer",
+                "Employer Name",
+                "Business Name",
+                "Company",
+                "Organization",
+            )
+            address = _field(raw, "Address", "Business Address")
+            city = _field(raw, "City", "Location", "Business Location") or address.split(",", 1)[0]
+            region = _field(raw, "Province/Territory", "Province", "PT", "Region")
+            route = _field(raw, "Program Stream", "Stream", "Program") or "LMIA Work Permit"
+            positions = _int(_field(raw, "Approved Positions", "Positions Approved", "Number of Positions", "Positions"))
+            dedupe_key = _norm(f"{employer}|{city}|{region}|{route}|{fiscal_year}")
+            if not employer or dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            sponsor = _row(
+                employer=employer,
+                country="CA",
+                visa_route=route,
+                source_name="canada_lmia",
+                source_url=url,
+                source_record_id=f"{employer}|{city}|{region}|{route}|{fiscal_year}|{i}",
+                city=city,
+                region=region,
+                status="Approved",
+                approvals=max(positions, 1),
+                fiscal_year=fiscal_year,
+                data_json={"source": "Government of Canada positive LMIA employers"},
+            )
+            if sponsor:
+                sponsors.append(sponsor)
+    logger.info("Canada LMIA: parsed %s rows from %s resources for %s", len(sponsors), len(selected), latest_year)
     return sponsors
+
+
+async def _canada_resource_rows(client: httpx.AsyncClient, url: str) -> list[dict[str, Any]]:
+    if url.lower().endswith(".csv"):
+        return _csv_rows(await _get_text(client, url))
+
+    import pandas as pd
+
+    response = await client.get(url)
+    response.raise_for_status()
+    content = io.BytesIO(response.content)
+    preview = pd.read_excel(content, header=None, nrows=8).fillna("")
+    header_row = 0
+    for index, row in preview.iterrows():
+        values = {_norm(value) for value in row.tolist() if _clean(value)}
+        if "employer" in values and any(value in values for value in {"province territory", "program stream"}):
+            header_row = int(index)
+            break
+    content.seek(0)
+    frame = pd.read_excel(content, header=header_row)
+    return [
+        {str(key): value for key, value in row.items()}
+        for row in frame.fillna("").to_dict(orient="records")
+    ]
 
 
 async def download_nl_ind_sponsors(client: httpx.AsyncClient) -> list[dict]:
