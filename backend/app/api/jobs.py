@@ -1076,17 +1076,17 @@ async def list_jobs(
         # active jobs, then let explicit Today/Yesterday/Week/Month filters
         # apply exact posted-date windows above.
         filters["effective_since"] = visible_cutoff
+    taxonomy_filter_active = bool(category or role)
     title_terms = _taxonomy_terms(category, role)
     preferred_roles, preferred_locations = _preference_terms(user_id) if personalized else ([], [])
     if personalized and not title_terms and not search and preferred_roles:
         title_terms = _terms_for_role_names(preferred_roles)
-    if title_terms:
+    if title_terms and not taxonomy_filter_active:
         filters["title_terms"] = title_terms
 
     offset = (page - 1) * page_size
 
     try:
-        taxonomy_filter_active = bool(category or role)
         free_text_search_active = bool(search and search.strip())
         # Taxonomy filters are derived from title/category matching. Counting
         # all matches first doubles the work and makes category clicks feel
@@ -1123,7 +1123,7 @@ async def list_jobs(
         # requested page directly so the dashboard does not wait on thousands
         # of rows just to render the first 100 cards.
         if taxonomy_filter_active:
-            fetch_limit = min(max(total, page_size), 12000)
+            fetch_limit = min(max(total, page_size), 30000)
             fetch_offset = 0
             filters["coverage_scan"] = True
         elif post_filter_since or post_filter_before:
