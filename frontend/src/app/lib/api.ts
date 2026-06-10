@@ -6,9 +6,33 @@
  * cookies issued by the API.
  */
 
-const DEFAULT_API_BASE = "";
-const configuredApiBase = (import.meta.env.VITE_API_BASE as string | undefined)?.trim();
-const API_BASE = (configuredApiBase || DEFAULT_API_BASE).replace(/\/+$/, "");
+// Production Cloud Run backend. Used as the fallback when no VITE_API_BASE was
+// baked into the build AND the app is served from a Firebase domain that has no
+// /api proxy (placeupcareer.com, *.web.app, *.firebaseapp.com). On the nginx
+// Cloud Run frontend (which proxies /api → backend) and on localhost dev we keep
+// same-origin ("") so the proxy / dev server handles it.
+// Direct backend URL — only used when served from Firebase Hosting domains
+// that lack an /api proxy (*.web.app, *.firebaseapp.com). When served from
+// the Cloud Run nginx frontend (placeupcareer.com, *.run.app) the browser
+// uses same-origin ("") and nginx proxies /api → backend.
+const PROD_API_BASE = "https://placeup-api-641222668282.us-east1.run.app";
+
+function resolveApiBase(): string {
+  const configured = (import.meta.env.VITE_API_BASE as string | undefined)?.trim();
+  if (configured) return configured.replace(/\/+$/, "");
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    // Only Firebase Hosting domains need direct cross-origin calls —
+    // placeupcareer.com and Cloud Run *.run.app domains use the nginx proxy.
+    const isFirebaseHostingOnly =
+      host.endsWith(".web.app") ||
+      host.endsWith(".firebaseapp.com");
+    if (isFirebaseHostingOnly) return PROD_API_BASE;
+  }
+  return ""; // same-origin (nginx proxy, Cloud Run, or local dev)
+}
+
+const API_BASE = resolveApiBase();
 const STORAGE_TOKEN_KEY = "placeup_token";
 let accessToken: string | null = null;
 

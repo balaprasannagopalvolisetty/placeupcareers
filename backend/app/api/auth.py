@@ -60,6 +60,15 @@ def _cookie_secure(request: Request | None = None) -> bool:
     return False
 
 
+def _cookie_samesite(request: Request | None = None) -> str:
+    # The SPA (placeupcareer.com) and the API (Cloud Run) are on different
+    # origins, so the refresh cookie is a cross-site cookie. Browsers only send
+    # cross-site cookies when SameSite=None AND Secure. Use "none" whenever the
+    # connection is secure (prod/https); fall back to "lax" for local http dev
+    # (browsers reject SameSite=None without Secure).
+    return "none" if _cookie_secure(request) else "lax"
+
+
 def _set_refresh_cookie(response: Response, token: str, request: Request | None = None) -> None:
     response.set_cookie(
         REFRESH_COOKIE_NAME,
@@ -68,7 +77,7 @@ def _set_refresh_cookie(response: Response, token: str, request: Request | None 
         path="/api/auth",
         secure=_cookie_secure(request),
         httponly=True,
-        samesite="strict",
+        samesite=_cookie_samesite(request),
     )
 
 
@@ -78,7 +87,7 @@ def _clear_refresh_cookie(response: Response, request: Request | None = None) ->
         path="/api/auth",
         secure=_cookie_secure(request),
         httponly=True,
-        samesite="strict",
+        samesite=_cookie_samesite(request),
     )
 
 
