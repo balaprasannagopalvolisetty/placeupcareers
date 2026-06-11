@@ -113,7 +113,11 @@ def _slug_candidates(company: str) -> list[str]:
 
     def _add(token: str) -> None:
         token = token.strip("-")
-        if token and len(token) >= 3 and token not in candidates:
+        alpha = re.sub(r"[^a-z]", "", token)
+        digits = re.sub(r"\D", "", token)
+        if digits and len(digits) >= len(alpha):
+            return
+        if token and len(alpha) >= 3 and len(token) >= 3 and token not in candidates:
             candidates.append(token)
 
     if words:
@@ -243,6 +247,22 @@ async def _get_company_intel(company: str) -> _BoardCache:
                 _company_cache.pop(next(iter(_company_cache)))
         _company_cache[key] = entry
     return entry
+
+
+async def get_board_postings(company: str) -> list:
+    """All open postings on the company's ATS board (cached; no extra network
+    cost after resolve_company_job has probed the same company).
+
+    Used by the company-link worker to harvest ENTIRE boards: one scraped
+    LinkedIn job leads us to the employer's ATS, and from there we ingest
+    every open position with first-party data and direct apply links.
+    """
+    try:
+        intel = await _get_company_intel(company)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Board postings lookup failed for %r: %s", company, exc)
+        return []
+    return list(intel.postings or [])
 
 
 async def resolve_company_job(
