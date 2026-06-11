@@ -1,7 +1,7 @@
 # Where User Data Lives in PlaceUp
 
 This doc is the source of truth for "where is X stored, and who can modify it?".
-Pair it with [`/privacy`](https://placeup.careers/privacy) — the privacy policy
+Pair it with [`/privacy`](https://placeupcareer.com/privacy) — the privacy policy
 is the public-facing version of the same info.
 
 ## Storage layout
@@ -89,7 +89,7 @@ immediate removal, so there is no soft-delete flag.
 
 ## How to access your own data
 
-Email `privacy@placeup.careers` for a data-subject access request. We will
+Email `privacy@placeupcareer.com` for a data-subject access request. We will
 return a JSON export of every Firestore document we hold for your user_id
 within 30 days, in line with GDPR Article 15 / CCPA §1798.110.
 

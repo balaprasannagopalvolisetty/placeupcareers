@@ -11,4 +11,4 @@ Disallow: /api/
 Crawl-delay: 2
 
 # Sitemap location — kept root-relative so it works on any deploy domain.
-Sitemap: https://placeup.careers/sitemap.xml
+Sitemap: https://placeupcareer.com/sitemap.xml

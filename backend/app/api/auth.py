@@ -15,7 +15,8 @@ from urllib.parse import urlencode
 import httpx
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
+from pydantic import BaseModel, EmailStr
 
 from app.config import settings
 from app.db import user_store
@@ -241,6 +242,15 @@ async def signin(payload: AuthRequest, request: Request, response: Response):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email/phone or password",
         )
+    # MFA: when enabled, a correct password is NOT enough — email a code and
+    # make the client complete /auth/otp/verify (purpose="login") to get tokens.
+    if settings.otp_mfa_enabled and not (not settings.is_production and str(user.get("email", "")).lower() == DEMO_EMAIL):
+        from app.services.otp import request_otp, OtpError
+        try:
+            request_otp(user["email"], "login")
+        except OtpError as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
+        return JSONResponse({"mfa_required": True, "email": user["email"]})
     return _issue_session(user, request, response)
 
 
@@ -285,6 +295,68 @@ async def signup(payload: SignupRequest, request: Request, response: Response):
     if pref_updates:
         user_store.update_preferences(user["id"], pref_updates)
 
+    # MFA: when enabled, require the user to confirm an emailed code before we
+    # issue a session (proves the email is real + theirs).
+    if settings.otp_mfa_enabled:
+        from app.services.otp import request_otp, OtpError
+        try:
+            request_otp(user["email"], "signup")
+        except OtpError as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
+        return JSONResponse({"otp_required": True, "email": user["email"]})
+    return _issue_session(user, request, response)
+
+
+# ─── Email OTP / MFA endpoints ───────────────────────────────────────────────
+
+class OtpRequest(BaseModel):
+    email: EmailStr
+    purpose: str  # "signup" | "login"
+
+
+class OtpVerify(BaseModel):
+    email: EmailStr
+    code: str
+    purpose: str  # "signup" | "login"
+
+
+@router.post("/otp/request")
+async def otp_request(payload: OtpRequest, request: Request):
+    """(Re)send an email OTP for signup or login. Throttled; never reveals
+    whether an account exists for a login code."""
+    _enforce_trusted_origin(request)
+    from app.services.otp import request_otp, OtpError
+    email = str(payload.email).strip().lower()
+    purpose = payload.purpose.strip().lower()
+    # For login, only send if the account exists — but always return ok so we
+    # don't leak account existence.
+    if purpose == "login" and not user_store.get_user_by_email(email):
+        return {"ok": True}
+    try:
+        request_otp(email, purpose)
+    except OtpError as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc))
+    return {"ok": True}
+
+
+@router.post("/otp/verify", response_model=AuthResponse)
+async def otp_verify(payload: OtpVerify, request: Request, response: Response):
+    """Verify an OTP and issue a session (used for both signup activation and
+    login MFA completion)."""
+    _enforce_trusted_origin(request)
+    from app.services.otp import verify_otp
+    email = str(payload.email).strip().lower()
+    purpose = payload.purpose.strip().lower()
+    if not verify_otp(email, payload.code, purpose):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired code")
+    user = user_store.get_user_by_email(email)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
+    if purpose == "signup":
+        try:
+            user_store.mark_email_verified(user["id"])
+        except Exception:  # non-fatal — verification succeeded regardless
+            logger.warning("mark_email_verified failed for %s", user["id"])
     return _issue_session(user, request, response)
 
 

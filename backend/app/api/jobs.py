@@ -171,6 +171,92 @@ async def _repair_detail_description_background(job: dict, db) -> None:
         logger.debug("Unable to persist repaired JD for %s: %s", job.get("id"), exc)
 
 
+# ── Stale-if-error cache for the Jobs list ──────────────────────────────────
+# Keeps the site readable while the scraper (or any incident) saturates the
+# database. Entries live 30 minutes and the cache is capped to 2000 pages.
+_STALE_JOBS_TTL_SECONDS = 30 * 60
+_STALE_JOBS_MAX_ENTRIES = 2000
+_stale_jobs_cache: "dict[str, tuple[float, dict]]" = {}
+
+
+def _store_stale_jobs_response(key: str, payload: dict) -> None:
+    import time as _time
+    now = _time.monotonic()
+    if len(_stale_jobs_cache) >= _STALE_JOBS_MAX_ENTRIES:
+        expired = [k for k, (at, _) in _stale_jobs_cache.items() if now - at > _STALE_JOBS_TTL_SECONDS]
+        for k in expired:
+            _stale_jobs_cache.pop(k, None)
+        while len(_stale_jobs_cache) >= _STALE_JOBS_MAX_ENTRIES and _stale_jobs_cache:
+            _stale_jobs_cache.pop(next(iter(_stale_jobs_cache)))
+    _stale_jobs_cache[key] = (now, payload)
+
+
+def _get_stale_jobs_response(key: str) -> "dict | None":
+    import time as _time
+    entry = _stale_jobs_cache.get(key)
+    if not entry:
+        return None
+    at, payload = entry
+    if _time.monotonic() - at > _STALE_JOBS_TTL_SECONDS:
+        _stale_jobs_cache.pop(key, None)
+        return None
+    return payload
+
+
+_THIRD_PARTY_SOURCES = {"linkedin", "dice", "glassdoor", "indeed", "ziprecruiter", "simplyhired", "monster"}
+_company_link_recent: dict[str, datetime] = {}
+
+
+def _should_schedule_company_link(job: dict) -> bool:
+    """Schedule official-careers-page resolution for third-party postings."""
+    source = str(job.get("source") or job.get("source_name") or "").lower()
+    if source not in _THIRD_PARTY_SOURCES:
+        return False
+    meta = job.get("extra_metadata") or {}
+    if isinstance(meta, dict) and (meta.get("company_link_checked") or meta.get("company_link")):
+        return False
+    if not (job.get("company") and job.get("title")):
+        return False
+    job_id = str(job.get("id") or "")
+    now = datetime.now(timezone.utc)
+    last = _company_link_recent.get(job_id)
+    if last and (now - last).total_seconds() < 3600:
+        return False
+    _company_link_recent[job_id] = now
+    if len(_company_link_recent) > 5000:
+        cutoff = now - timedelta(hours=4)
+        for key, value in list(_company_link_recent.items()):
+            if value < cutoff:
+                _company_link_recent.pop(key, None)
+    return True
+
+
+async def _resolve_company_link_background(job: dict, db) -> None:
+    """Find the employer's official posting/careers page after the response is sent."""
+    try:
+        from app.services.company_career_resolver import resolve_company_job
+
+        link = await resolve_company_job(
+            str(job.get("company") or ""),
+            str(job.get("title") or ""),
+            str(job.get("location") or ""),
+        )
+        metadata: dict = {"company_link_checked": datetime.now(timezone.utc).isoformat()}
+        description = None
+        if link is not None:
+            metadata["company_link"] = link.to_metadata()
+            if link.description:
+                current = clean_description_text(job.get("description") or "")
+                candidate = clean_description_text(link.description)[:60000]
+                if len(candidate) > max(len(current) + 300, 600):
+                    description = candidate
+        merge = getattr(db, "merge_job_metadata", None)
+        if merge:
+            await merge(str(job.get("id") or ""), metadata, description=description)
+    except Exception as exc:  # noqa: BLE001 — background enrichment must never raise
+        logger.debug("Company link resolution failed for %s: %s", job.get("id"), exc)
+
+
 def _prepare_resume_tokens(resume_text: str) -> dict:
     """Pre-tokenize the resume once so per-job scoring is fast.
 
@@ -644,7 +730,9 @@ def _projection_sort_key(job: dict, tz_offset_minutes: int = 0) -> tuple:
     posted = _coerce_datetime(job.get("posted_at"))
     posted_ts = posted.timestamp() if posted else effective_ts
     preference_bucket = 0 if job.get("preference_match") else 1
-    return (preference_bucket, date_bucket, -score, -effective_ts, -posted_ts)
+    # Final id tiebreaker keeps ordering identical across requests even when
+    # bucket/score/timestamps tie — required for stable pagination.
+    return (preference_bucket, date_bucket, -score, -effective_ts, -posted_ts, str(job.get("id") or ""))
 
 
 def _job_matches_preferences(job: dict, preferred_roles: list[str], preferred_locations: list[str]) -> bool:
@@ -1037,6 +1125,14 @@ async def list_jobs(
     When a JWT is supplied, each job is scored against the caller's active
     resume so the UI can sort/show match percentages without a second call.
     """
+    # Stale-if-error key: while the scraper saturates Cloud SQL, user queries
+    # can time out. Instead of an empty Jobs page, serve the last successful
+    # response for the same user+filters (up to 30 minutes old).
+    _stale_key = "|".join(str(v) for v in (
+        user_id or "anon", page, page_size, search, location, country, visa_program,
+        category, source, status, visa_only, role, time_filter, sort, personalized,
+        include_scores, entry_level, max_years, min_salary, job_type, tz_offset,
+    ))
     filters = {}
     if search:
         filters["search"] = search
@@ -1315,6 +1411,28 @@ async def list_jobs(
         else:
             page_jobs = decorated[offset:offset + page_size] if filters.get("source") else _source_diverse_page(decorated, page_size, page)
 
+        # Re-score the visible page against FULL descriptions so the list
+        # shows the exact number the Job Detail page computes. Pool ranking
+        # above scores 900-char truncated JDs for speed, which previously
+        # produced mismatches like "74 in detail, 88 in the list".
+        if resume_text and page_jobs:
+            try:
+                get_descriptions = getattr(db, "get_job_descriptions", None)
+                full_descriptions = (
+                    await get_descriptions([str(j.get("id") or "") for j in page_jobs])
+                    if get_descriptions else {}
+                )
+                for j in page_jobs:
+                    full = full_descriptions.get(str(j.get("id") or "")) or j.get("description") or ""
+                    jt = j.get("title") or ""
+                    if _can_score_job_text(jt, full):
+                        j["match_score"] = _score_job_against_resume(
+                            resume_text, f"{jt}\n{full}", resume_cache=resume_cache,
+                        )
+                        j["score_type"] = "resume_match"
+            except Exception as exc:
+                logger.debug("Full-text page rescore skipped: %s", exc)
+
         # Convert to JobPost models for the response. Stash the taxonomy
         # extras and re-attach them post-validation so the strict JobPost
         # enum doesn't reject "Technology & Engineering" etc.
@@ -1338,7 +1456,7 @@ async def list_jobs(
 
         # Return a plain dict so taxonomy_category / role survive — FastAPI's
         # default jsonable_encoder doesn't drop unknown keys.
-        return {
+        response_payload = {
             "jobs": job_posts,
             "total": total,
             "page": page,
@@ -1356,8 +1474,17 @@ async def list_jobs(
                 **({"personalized": personalized and bool(preferred_roles)} if personalized else {}),
             },
         }
+        if job_posts:
+            _store_stale_jobs_response(_stale_key, response_payload)
+        return response_payload
     except Exception as e:
         logger.error(f"Error listing jobs: {e}")
+        # Serve the last-known-good page instead of an error while the
+        # scraper (or any incident) has the database under pressure.
+        stale = _get_stale_jobs_response(_stale_key)
+        if stale is not None:
+            logger.warning("Serving stale jobs page for key=%s due to: %s", _stale_key[:80], e)
+            return {**stale, "stale": True}
         raise HTTPException(status_code=500, detail="Error listing jobs")
 
 
@@ -1665,6 +1792,8 @@ async def get_job_detail(
 
     if _should_schedule_detail_repair(job):
         background_tasks.add_task(_repair_detail_description_background, dict(job), db)
+    if _should_schedule_company_link(job):
+        background_tasks.add_task(_resolve_company_link_background, dict(job), db)
     title = job.get("title") or ""
     description = job.get("description") or ""
     cat, rname = categorize(title)

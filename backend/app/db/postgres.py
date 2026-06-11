@@ -24,6 +24,16 @@ def json_default(value):
     return str(value)
 
 
+def _company_link_url(meta: dict) -> Optional[str]:
+    """Official company posting/careers URL resolved by the company link worker."""
+    link = meta.get("company_link") if isinstance(meta, dict) else None
+    if isinstance(link, dict):
+        url = str(link.get("url") or "").strip()
+        if url.startswith("http"):
+            return url
+    return None
+
+
 def stable_hash(payload: dict) -> str:
     raw = json.dumps(payload, sort_keys=True, default=json_default)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -37,7 +47,23 @@ class PostgresClient:
     """Postgres-backed data access used by FastAPI and ETL workers."""
 
     def __init__(self, database_url: Optional[str] = None):
-        self.engine = create_engine(database_url or settings.database_url, pool_pre_ping=True)
+        # Bounded pool so N Cloud Run instances cannot exhaust Cloud SQL's
+        # max_connections under load. Per-instance ceiling = pool_size +
+        # max_overflow; multiply by max-instances when sizing the DB tier
+        # (see SCALING_PLAYBOOK.md). Tunable via DB_POOL_SIZE / DB_MAX_OVERFLOW.
+        timeout_ms = int(getattr(settings, "db_statement_timeout_ms", 0) or 0)
+        connect_args = (
+            {"options": f"-c statement_timeout={timeout_ms}"} if timeout_ms > 0 else {}
+        )
+        self.engine = create_engine(
+            database_url or settings.database_url,
+            pool_pre_ping=True,
+            pool_size=int(getattr(settings, "db_pool_size", 5) or 5),
+            max_overflow=int(getattr(settings, "db_max_overflow", 10) or 10),
+            pool_recycle=1800,
+            pool_timeout=15,
+            connect_args=connect_args,
+        )
         self.SessionLocal = sessionmaker(bind=self.engine, autoflush=False, expire_on_commit=False)
         self._has_master_jobs: Optional[bool] = None
 
@@ -90,7 +116,11 @@ class PostgresClient:
                 )
                 stmt = self._apply_master_job_filters(stmt, filters)
                 fetch_limit = self._job_fetch_limit(limit, filters)
-                stmt = stmt.order_by(MasterJob.last_seen_at.desc()).limit(fetch_limit).offset(offset)
+                # id tiebreaker: bulk-scraped rows share last_seen_at, and
+                # Postgres returns tied rows in ARBITRARY order per query —
+                # without this, page 2 could fetch a reshuffled pool whose
+                # slice repeats page 1 ("same jobs on every page").
+                stmt = stmt.order_by(MasterJob.last_seen_at.desc(), MasterJob.id).limit(fetch_limit).offset(offset)
                 rows = db.execute(stmt).mappings().all()
                 return self._filter_target_jobs([self._master_job_mapping_to_dict(row) for row in rows])[:limit]
         with self.session() as db:
@@ -126,7 +156,7 @@ class PostgresClient:
             ).join(Company, Job.company_id == Company.id, isouter=True)
             stmt = self._apply_job_filters(stmt, filters)
             fetch_limit = self._job_fetch_limit(limit, filters)
-            stmt = stmt.order_by(Job.last_seen_at.desc()).limit(fetch_limit).offset(offset)
+            stmt = stmt.order_by(Job.last_seen_at.desc(), Job.id).limit(fetch_limit).offset(offset)
             rows = db.execute(stmt).mappings().all()
             return self._filter_target_jobs([self._job_mapping_to_dict(row) for row in rows])[:limit]
 
@@ -180,14 +210,14 @@ class PostgresClient:
                 MasterJob.merged_sources,
                 func.row_number().over(
                     partition_by=MasterJob.source_name,
-                    order_by=MasterJob.last_seen_at.desc(),
+                    order_by=(MasterJob.last_seen_at.desc(), MasterJob.id),
                 ).label("source_rank"),
             )
             base = self._apply_master_job_filters(base, filters).subquery()
             stmt = (
                 select(base)
                 .where(base.c.source_rank <= per_source)
-                .order_by(base.c.last_seen_at.desc())
+                .order_by(base.c.last_seen_at.desc(), base.c.id)
                 .limit(limit)
                 .offset(offset)
             )
@@ -276,6 +306,70 @@ class PostgresClient:
                     update jobs
                        set description = :description,
                            source_url = coalesce(:source_url, source_url),
+                           extra_metadata = coalesce(extra_metadata, '{}'::jsonb) || cast(:extra_metadata as jsonb)
+                     where id = :job_id
+                    """
+                ),
+                params,
+            )
+            total += int(result.rowcount or 0)
+            return total
+
+    async def get_job_descriptions(self, job_ids: list[str]) -> dict[str, str]:
+        """Full (untruncated) cleaned descriptions for a small set of jobs.
+
+        Used to re-score the visible page of the Jobs list with the exact same
+        text the Job Detail endpoint scores, so both surfaces show one number.
+        """
+        ids = [str(i) for i in job_ids if i]
+        if not ids:
+            return {}
+        with self.session() as db:
+            if self._master_jobs_available():
+                rows = db.execute(
+                    select(MasterJob.id, MasterJob.description).where(MasterJob.id.in_(ids))
+                ).all()
+            else:
+                rows = db.execute(
+                    select(Job.id, Job.description).where(Job.id.in_(ids))
+                ).all()
+        return {str(row[0]): clean_job_description(row[1] or "") for row in rows}
+
+    async def merge_job_metadata(
+        self,
+        job_id: str,
+        metadata: dict,
+        *,
+        description: str | None = None,
+    ) -> int:
+        """Merge keys into a job's extra_metadata (master_jobs + jobs); optionally upgrade the JD."""
+        if not job_id or not metadata:
+            return 0
+        params = {
+            "job_id": job_id,
+            "description": description or "",
+            "extra_metadata": json.dumps(metadata, default=json_default),
+        }
+        with self.session() as db:
+            total = 0
+            if self._master_jobs_available():
+                result = db.execute(
+                    text(
+                        """
+                        update master_jobs
+                           set description = coalesce(nullif(:description, ''), description),
+                               extra_metadata = coalesce(extra_metadata, '{}'::jsonb) || cast(:extra_metadata as jsonb)
+                         where id = :job_id
+                        """
+                    ),
+                    params,
+                )
+                total += int(result.rowcount or 0)
+            result = db.execute(
+                text(
+                    """
+                    update jobs
+                       set description = coalesce(nullif(:description, ''), description),
                            extra_metadata = coalesce(extra_metadata, '{}'::jsonb) || cast(:extra_metadata as jsonb)
                      where id = :job_id
                     """
@@ -677,6 +771,7 @@ class PostgresClient:
             "scraped_at": job.last_seen_at,
             "status": job.status,
             "content_hash": job.canonical_key,
+            "job_url_direct": _company_link_url(meta),
             "extra_metadata": meta | {"merged_sources": job.merged_sources or []},
         }
 
@@ -717,6 +812,7 @@ class PostgresClient:
             "scraped_at": row.get("last_seen_at"),
             "status": row.get("status"),
             "content_hash": row.get("canonical_key"),
+            "job_url_direct": _company_link_url(meta),
             "extra_metadata": meta | {"merged_sources": row.get("merged_sources") or []},
         }
 

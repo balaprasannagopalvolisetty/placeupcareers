@@ -7,7 +7,7 @@ import io
 import logging
 import re
 from typing import Optional
-from zipfile import is_zipfile
+from zipfile import ZipFile, is_zipfile
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,16 @@ PDF_ACTIVE_CONTENT_MARKERS = (
     b"/AA",
     b"/Launch",
     b"/EmbeddedFile",
+)
+DOCX_BLOCKED_PARTS = (
+    "vbaProject.bin",
+    "activeX/",
+    "embeddings/",
+)
+DOCX_BLOCKED_REL_MARKERS = (
+    b'TargetMode="External"',
+    b"oleObject",
+    b"activeXControl",
 )
 
 
@@ -44,7 +54,7 @@ async def parse_resume_file(
 
     if ext == "pdf":
         return await _parse_pdf(file_content)
-    elif ext in ("docx", "doc"):
+    elif ext == "docx":
         return await _parse_docx(file_content)
     else:
         raise ValueError(f"Unsupported file format: .{ext}. Please upload a PDF or DOCX file.")
@@ -113,6 +123,7 @@ async def _parse_docx(content: bytes) -> dict:
     """
     if not content.startswith(b"PK") or not is_zipfile(io.BytesIO(content)):
         raise ValueError("Uploaded file is not a valid DOCX document.")
+    _scan_docx_for_active_content(content)
     try:
         from docx import Document
 
@@ -148,6 +159,28 @@ async def _parse_docx(content: bytes) -> dict:
     except Exception as e:
         logger.error(f"DOCX parsing error: {e}")
         raise ValueError(f"Failed to parse DOCX: {str(e)}")
+
+
+def _scan_docx_for_active_content(content: bytes) -> None:
+    """Reject DOCX packages with macros, embedded objects, or external links."""
+    try:
+        with ZipFile(io.BytesIO(content)) as zf:
+            names = zf.namelist()
+            lower_names = [name.replace("\\", "/").lower() for name in names]
+            for blocked in DOCX_BLOCKED_PARTS:
+                if any(blocked.lower() in name for name in lower_names):
+                    raise ValueError("DOCX contains active or embedded content and cannot be accepted.")
+            for name in names:
+                lower = name.lower()
+                if not lower.endswith(".rels") and "document.xml" not in lower:
+                    continue
+                data = zf.read(name)[:2_000_000]
+                if any(marker in data for marker in DOCX_BLOCKED_REL_MARKERS):
+                    raise ValueError("DOCX contains external or embedded content and cannot be accepted.")
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise ValueError(f"DOCX security scan failed: {exc}")
 
 
 def _clean_resume_text(text: str) -> str:

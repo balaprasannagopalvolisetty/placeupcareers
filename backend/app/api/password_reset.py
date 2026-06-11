@@ -61,28 +61,22 @@ def _generate_token() -> str:
 
 
 def _frontend_base() -> str:
-    return os.getenv("FRONTEND_URL", "https://placeup.careers").rstrip("/")
+    return os.getenv("FRONTEND_URL", "https://placeupcareer.com").split(",", 1)[0].strip().rstrip("/")
 
 
 def _send_email(to: str, subject: str, body: str) -> None:
-    """
-    Send a transactional email. Currently logs the body — wire up your
-    provider here. The dev workflow can grep these logs to copy the
-    link out by hand.
+    """Send a transactional email via the shared provider-agnostic sender.
 
-    Recommended adapter (SendGrid example):
-
-        from sendgrid import SendGridAPIClient
-        from sendgrid.helpers.mail import Mail
-        client = SendGridAPIClient(os.environ["SENDGRID_API_KEY"])
-        client.send(Mail(
-            from_email="no-reply@placeup.careers",
-            to_emails=to,
-            subject=subject,
-            html_content=body,
-        ))
+    Configure delivery with EMAIL_PROVIDER + the matching key (see
+    app/services/email.py). Failures are logged, not raised, so the
+    forgot-password endpoint stays uniform (never reveals whether an
+    address exists).
     """
-    logger.info("EMAIL→ %s | %s | %s", to, subject, body)
+    from app.services.email import send_email, EmailDeliveryError
+    try:
+        send_email(to, subject, html=body)
+    except EmailDeliveryError as exc:
+        logger.error("Password/verification email to %s failed: %s", to, exc)
 
 
 # ─── Schemas ──────────────────────────────────────────────────────────

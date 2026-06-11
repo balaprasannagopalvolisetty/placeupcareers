@@ -181,7 +181,7 @@ def _resolve_plan(plan_slug: str) -> PlanCard:
 
 
 def _frontend_base() -> str:
-    return os.getenv("FRONTEND_URL", "https://placeup.careers").rstrip("/")
+    return os.getenv("FRONTEND_URL", "https://placeupcareer.com").rstrip("/")
 
 
 @router.post("/checkout")

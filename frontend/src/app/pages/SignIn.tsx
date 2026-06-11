@@ -148,7 +148,7 @@ export default function SignIn() {
         <div style={{ position: "absolute", bottom: "20%", right: "10%", width: 250, height: 250, borderRadius: "50%", filter: "blur(80px)", background: "rgba(237,125,43,0.15)" }} />
         <div style={{ position: "relative", zIndex: 1, height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: isMobile ? 24 : 48 }}>
           {!isMobile && <OrbitalSphereSmall />}
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }} style={{ marginTop: isMobile ? 0 : 40, padding: isMobile ? "16px 18px" : "20px 24px", borderRadius: 16, background: "rgba(64,18,18,0.65)", backdropFilter: "blur(20px)", border: "1px solid rgba(242,238,179,0.08)", maxWidth: 380 }}>
+          {!isMobile && <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }} style={{ marginTop: 40, padding: "20px 24px", borderRadius: 16, background: "rgba(64,18,18,0.65)", backdropFilter: "blur(20px)", border: "1px solid rgba(242,238,179,0.08)", maxWidth: 380 }}>
             <div style={{ display: "flex", gap: 3, marginBottom: 10 }}>
               {[0, 1, 2, 3, 4].map((i) => (
                 <Star key={i} size={12} fill={T.red} color={T.red} />
@@ -164,16 +164,13 @@ export default function SignIn() {
                 <div style={{ fontSize: 12, color: T.t3, fontFamily: F.sans }}>Software Engineer · Google (H-1B)</div>
               </div>
             </div>
-          </motion.div>
+          </motion.div>}
         </div>
       </div>
       <div style={{ background: T.surface, display: "flex", alignItems: "center", justifyContent: "center", padding: isMobile ? "32px 18px" : 48 }}>
         <div style={{ width: "100%", maxWidth: 420 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "center", marginBottom: 40 }}>
-            <img src="/logo_white.png" alt="PlaceUp Career" style={{ width: 34, height: 34, objectFit: "contain" }} />
-            <span style={{ fontFamily: F.sans, fontWeight: 700, fontSize: 18, color: T.text, letterSpacing: "-0.02em" }}>
-              PlaceUp <span style={{ color: T.red, fontSize: 14, fontWeight: 600 }}>Career</span>
-            </span>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 40 }}>
+            <img src="/logo_light.png" alt="PlaceUp Career" style={{ height: 48, width: "auto", objectFit: "contain" }} />
           </div>
           <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
             <h2 style={{ fontFamily: F.sans, fontSize: 26, fontWeight: 700, color: T.text, marginBottom: 6, textAlign: "center" }}>Welcome Back</h2>

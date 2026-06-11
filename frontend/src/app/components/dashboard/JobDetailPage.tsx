@@ -275,9 +275,10 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
   const resolvedJobUrl = (() => {
     const j: any = job ?? {};
     const candidates = [
+      j.job_url_direct,                       // official company posting (resolved by backend)
+      j.extra_metadata?.company_link?.url,    // same, from metadata if not flattened
       j.job_url,
       j.source_url,
-      j.job_url_direct,
       j.apply_url,
       j.url,
       j.company_url,

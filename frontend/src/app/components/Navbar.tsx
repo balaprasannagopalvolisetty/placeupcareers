@@ -38,12 +38,8 @@ export function Navbar() {
       <div style={{ maxWidth: 1280, margin: "0 auto", padding: "0 32px", height: "100%", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
 
         {/* Logo */}
-        <Link to="/" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none" }}>
-          <img src="/logo_white.png" alt="PlaceUp Career" style={{ width: 32, height: 32, objectFit: "contain" }} />
-          <span style={{ fontFamily: F.sans, fontWeight: 700, fontSize: 17, color: C.text, letterSpacing: "-0.02em" }}>
-            PlaceUp
-            <span style={{ fontSize: 13, fontWeight: 600, color: "#ED7D2B", marginLeft: 4 }}>Career</span>
-          </span>
+        <Link to="/" style={{ display: "flex", alignItems: "center", textDecoration: "none" }}>
+          <img src="/logo_light.png" alt="PlaceUp Career" style={{ height: 42, width: "auto", objectFit: "contain", display: "block" }} />
         </Link>
 
         {/* Desktop nav */}

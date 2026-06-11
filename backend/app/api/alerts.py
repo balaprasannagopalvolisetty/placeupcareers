@@ -10,6 +10,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from app.db import user_store
+from app.dependencies import get_db
 from app.models.alert import AlertCreateRequest, AlertItem, AlertSetting
 from app.security import current_user_id
 
@@ -57,6 +58,48 @@ def _row_to_alert(row: dict) -> AlertItem:
 @router.get("", response_model=List[AlertItem])
 async def get_alerts(user_id: str = Depends(current_user_id)):
     return [_row_to_alert(r) for r in user_store.list_alerts(user_id)]
+
+
+@router.get("/digest")
+async def alerts_digest(user_id: str = Depends(current_user_id), db=Depends(get_db)):
+    """Personalized alert digest: how many NEW positions landed in the database
+    for each of the user's target roles (last 24h / 7d). Powers the summary
+    band at the top of the Alerts page; "top picks" come from /jobs/top-matches.
+    """
+    from datetime import timedelta
+
+    from app.api.jobs import _taxonomy_terms
+
+    prefs = user_store.get_preferences(user_id)
+    roles = [str(r).strip() for r in (prefs.get("target_roles") or []) if str(r).strip()][:6]
+    now = datetime.now(timezone.utc)
+    since_24h = now - timedelta(hours=24)
+    since_7d = now - timedelta(days=7)
+
+    role_counts: list[dict] = []
+    total_24h = 0
+    total_7d = 0
+    for role in roles:
+        try:
+            terms = _taxonomy_terms(None, role) or [role]
+        except Exception:
+            terms = [role]
+        try:
+            count_24h = await db.count_jobs(filters={"status": "active", "title_terms": terms, "seen_since": since_24h})
+            count_7d = await db.count_jobs(filters={"status": "active", "title_terms": terms, "seen_since": since_7d})
+        except Exception:
+            count_24h, count_7d = 0, 0
+        total_24h += count_24h
+        total_7d += count_7d
+        role_counts.append({"role": role, "new_24h": count_24h, "new_7d": count_7d})
+
+    return {
+        "generated_at": now.isoformat(),
+        "target_roles": role_counts,
+        "total_new_24h": total_24h,
+        "total_new_7d": total_7d,
+        "has_target_roles": bool(roles),
+    }
 
 
 @router.post("", response_model=AlertItem)

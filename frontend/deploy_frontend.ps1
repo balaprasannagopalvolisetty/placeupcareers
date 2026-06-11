@@ -8,6 +8,16 @@ param(
 $ErrorActionPreference = "Stop"
 $Image = "$Region-docker.pkg.dev/$ProjectId/placeup/frontend:latest"
 
+# Guard: this nginx-served SPA ships CSP "connect-src 'self'" and uses
+# SameSite=Strict refresh cookies. Baking an ABSOLUTE API base means every
+# browser blocks the API calls ("Failed to fetch" on sign-in). The API must be
+# reached same-origin through nginx's /api/ proxy (-BackendOrigin).
+if ($ApiBase -and $ApiBase -match "^https?://") {
+  Write-Warning "ApiBase='$ApiBase' is an absolute URL. Browsers WILL block these calls under the nginx CSP (connect-src 'self') and sign-in will fail with 'Failed to fetch'."
+  Write-Warning "Use -ApiBase '' (relative, proxied via -BackendOrigin) for the Cloud Run deployment. Continuing in 10s if you really mean it..."
+  Start-Sleep -Seconds 10
+}
+
 function Invoke-Gcloud {
   & gcloud.cmd @args
   if ($LASTEXITCODE -ne 0) {

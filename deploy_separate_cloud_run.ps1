@@ -89,10 +89,16 @@ Write-Host "Backend API URL: $BackendUrl"
 if (-not $SkipFrontend) {
   Push-Location (Join-Path $Root "frontend")
   try {
+    # ApiBase MUST stay empty (relative /api) for the Cloud Run + nginx
+    # deployment: the SPA's CSP is connect-src 'self' and refresh cookies are
+    # SameSite=Strict, so the browser BLOCKS direct calls to the run.app
+    # backend ("Failed to fetch" on sign-in). All API traffic goes through
+    # nginx's /api/ proxy; BackendOrigin points that proxy at the live API.
     & ".\deploy_frontend.ps1" `
       -ProjectId $FrontendProjectId `
       -Region $Region `
-      -ApiBase $BackendUrl
+      -ApiBase "" `
+      -BackendOrigin $BackendUrl
   } finally {
     Pop-Location
   }
@@ -114,10 +120,12 @@ Write-Host "Frontend URL: $FrontendUrl"
 if (-not $SkipCorsUpdate) {
   $apiEnv = "FRONTEND_URL=$FrontendUrl,APP_ENV=production,DATABASE_BACKEND=postgres,USER_DATABASE_BACKEND=firestore,USER_FIRESTORE_PROJECT_ID=$UserFirestoreProjectId,USER_FIRESTORE_DATABASE=$UserFirestoreDatabase,SCRAPE_INTERVAL_HOURS=8"
 
+  # --update-env-vars (merge), NEVER --set-env-vars (replace): replacing wiped
+  # OTP/email/OIDC settings on every deploy and broke sign-in/sign-up.
   gcloud.cmd run services update placeup-api `
     --region $Region `
     --project $BackendProjectId `
-    --set-env-vars $apiEnv
+    --update-env-vars $apiEnv
 
   Write-Host "Backend CORS updated for frontend origin: $FrontendUrl"
 }
@@ -129,7 +137,9 @@ if (-not $SkipBackend) {
   # services doesn't apply to jobs; this re-points to the latest image.
   Write-Host "Deploying ATS worker Cloud Run Job..."
   $imageTag = "$Region-docker.pkg.dev/$BackendProjectId/placeup/backend:latest"
-  $workerEnv = "APP_ENV=production,DATABASE_BACKEND=postgres,USER_DATABASE_BACKEND=firestore,USER_FIRESTORE_PROJECT_ID=$UserFirestoreProjectId,USER_FIRESTORE_DATABASE=$UserFirestoreDatabase"
+  # Tiny DB connection budget for background jobs so they can never starve
+  # the user-facing API of Cloud SQL connections while running.
+  $workerEnv = "APP_ENV=production,DATABASE_BACKEND=postgres,DB_POOL_SIZE=2,DB_MAX_OVERFLOW=2,USER_DATABASE_BACKEND=firestore,USER_FIRESTORE_PROJECT_ID=$UserFirestoreProjectId,USER_FIRESTORE_DATABASE=$UserFirestoreDatabase"
 
   gcloud.cmd run jobs deploy placeup-ats-worker `
     --image $imageTag `
@@ -222,6 +232,27 @@ if (-not $SkipBackend) {
     --command python `
     --args="-m,app.workers.finalscout_batch,--limit,200" `
     --max-retries 1
+}
+
+# ---- Post-deploy auth smoke test --------------------------------------------
+# Sign-in/sign-up has historically broken when deploys wiped auth/email env
+# vars. This gate verifies the live auth surface end-to-end after EVERY
+# deploy and fails the script loudly if anything is wrong.
+Write-Host ""
+Write-Host "Running auth smoke test (backend direct)..."
+& (Join-Path $Root "backend\deploy\smoke_auth.ps1") -ApiBase $BackendUrl -Origin "https://placeupcareer.com"
+if ($LASTEXITCODE -ne 0) {
+  throw "Auth smoke test FAILED - sign-in/sign-up is broken on this deploy. Fix before announcing the release. (Previous Cloud Run revision may still be serving traffic if the new one failed to boot.)"
+}
+
+# Same checks through the REAL user path: custom domain -> nginx /api proxy.
+# Catches broken BACKEND_ORIGIN, CSP/API-base mismatches, and domain issues
+# that the direct backend test cannot see.
+Write-Host ""
+Write-Host "Running auth smoke test (through placeupcareer.com proxy)..."
+& (Join-Path $Root "backend\deploy\smoke_auth.ps1") -ApiBase "https://placeupcareer.com" -Origin "https://placeupcareer.com"
+if ($LASTEXITCODE -ne 0) {
+  throw "Auth smoke test through the custom domain FAILED - users cannot sign in even though the backend is healthy. Check the frontend service's BACKEND_ORIGIN env var and the nginx /api proxy."
 }
 
 Write-Host "Separate Cloud Run deployment complete."

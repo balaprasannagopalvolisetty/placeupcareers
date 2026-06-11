@@ -3,6 +3,7 @@ PlaceUp Career — User profile, preferences, notifications & resume metadata.
 All endpoints require a valid JWT bearer token.
 """
 import logging
+import re
 import uuid as _uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,7 +29,7 @@ log = logging.getLogger(__name__)
 router = APIRouter(prefix="/user", tags=["User"])
 
 MAX_RESUME_BYTES = 10 * 1024 * 1024
-ALLOWED_RESUME_EXT = {"pdf", "docx", "doc"}
+ALLOWED_RESUME_EXT = {"pdf", "docx"}
 
 
 def _user_to_profile(user: dict) -> UserProfile:
@@ -110,6 +111,47 @@ def _to_prefs(raw: dict) -> UserPreferences:
         target_roles=list(raw.get("target_roles") or [])[:25],
         target_locations=list(raw.get("target_locations") or []),
     )
+
+
+_DATE_RANGE_RE = re.compile(
+    r"(?:19|20)\d{2}\s*(?:[–—\-]|to)+\s*(?:(?:19|20)\d{2}|present|current|now)", re.I
+)
+_COMPANY_HINT_RE = re.compile(
+    r"\b(Inc|LLC|Ltd|Corp|Corporation|Technologies|Technology|Systems|Solutions|Labs|Group|"
+    r"Consulting|Services|Software|Bank|Capital|Health|University|Institute|Global|Networks)\b\.?",
+    re.I,
+)
+
+
+def _extract_past_companies(experience_lines: list[str]) -> list[str]:
+    """Best-effort extraction of employer names from resume experience lines.
+
+    Targets lines that carry a date range (the usual 'Company — Title, 2021-2023'
+    shape) or a corporate suffix, then keeps the leading name segment.
+    """
+    companies: list[str] = []
+    seen: set[str] = set()
+    for ln in experience_lines or []:
+        line = (ln or "").strip()
+        if not line or len(line) > 140:
+            continue
+        if not (_DATE_RANGE_RE.search(line) or _COMPANY_HINT_RE.search(line)):
+            continue
+        cleaned = _DATE_RANGE_RE.sub("", line).strip(" ,|·•—–-")
+        seg = re.split(r"\s*[|,•·]\s*|\s+[–—]\s+|\s+-\s+", cleaned)[0].strip(" .")
+        # Skip segments that read like job titles rather than employers
+        if not seg or len(seg) < 3 or len(seg) > 60:
+            continue
+        if re.search(r"\b(engineer|developer|manager|analyst|intern|consultant|lead|architect|designer|scientist|administrator|specialist)\b", seg, re.I) and not _COMPANY_HINT_RE.search(seg):
+            continue
+        key = seg.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        companies.append(seg)
+        if len(companies) >= 8:
+            break
+    return companies
 
 
 def _build_resume_quick_wins(text: str, skills: list[str], keywords: list[str], target_roles: list[str]) -> list[dict]:
@@ -413,6 +455,22 @@ async def get_parsed_active_resume(user_id: str = Depends(current_user_id)):
                 "missing_keywords": [],
             }
         resume_json = active.get("parsed_json") or {}
+        # Resumes uploaded before parsed_json existed have only parsed_text.
+        # Derive the structured document on the fly so the Profile page's
+        # Active Resume view and Past Companies always render.
+        if not (resume_json.get("sections") or resume_json.get("experience") or resume_json.get("summary")):
+            try:
+                from app.services.resume_parser import resume_text_to_json
+                resume_json = resume_text_to_json(
+                    text,
+                    metadata={
+                        "filename": active.get("name"),
+                        "score": active.get("score"),
+                        "derived_at_read": True,
+                    },
+                )
+            except Exception as derive_exc:  # noqa: BLE001 — keep flat fallback working
+                log.warning("On-the-fly resume_json derivation failed for %s: %s", user_id, derive_exc)
         skills = resume_json.get("skills") or extract_skills_from_text(text)
         keywords = resume_json.get("keywords") or extract_keywords(text, top_n=40)
     except Exception as e:
@@ -424,7 +482,7 @@ async def get_parsed_active_resume(user_id: str = Depends(current_user_id)):
             "keywords": [],
         }
 
-    # Diff against the user's target roles → suggest "Quick Wins".
+    # Diff against the user's target roles to suggest "Quick Wins".
     prefs = user_store.get_preferences(user_id)
     target_roles = prefs.get("target_roles") or []
     suggestions = _build_resume_quick_wins(text, skills, keywords, target_roles)
@@ -438,4 +496,5 @@ async def get_parsed_active_resume(user_id: str = Depends(current_user_id)):
         "resume_json": resume_json,
         "quick_wins": suggestions,
         "target_roles": target_roles,
+        "past_companies": _extract_past_companies(resume_json.get("experience") or []),
     }

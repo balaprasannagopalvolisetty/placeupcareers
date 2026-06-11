@@ -99,6 +99,22 @@ function isValidLinkedInUrl(value: string) {
   }
 }
 
+function validateResumeFile(file: File | null): string | null {
+  if (!file) return "Please upload one resume to create your account.";
+  const ext = file.name.toLowerCase().split(".").pop() || "";
+  const allowedExt = new Set(["pdf", "docx"]);
+  const allowedTypes = new Set([
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "",
+  ]);
+  if (!allowedExt.has(ext)) return "Please upload a PDF or Word DOCX resume only.";
+  if (!allowedTypes.has(file.type)) return "This file type is not accepted. Upload a PDF or Word DOCX resume.";
+  if (file.size <= 0) return "The selected resume file is empty.";
+  if (file.size > 10 * 1024 * 1024) return "Resume file is too large. Maximum size is 10MB.";
+  return null;
+}
+
 function Field({ label, type = "text", value, onChange, placeholder, required, rightEl }:
   { label: string; type?: string; value: string; onChange: (v: string) => void; placeholder?: string; required?: boolean; rightEl?: React.ReactNode }) {
   return (
@@ -307,7 +323,8 @@ export default function SignUp() {
       if (targetRoles.length === 0) return "Pick at least one target role.";
     }
     if (step === 4) {
-      if (!resumeFile) return "Please upload one resume to create your account.";
+      const resumeProblem = validateResumeFile(resumeFile);
+      if (resumeProblem) return resumeProblem;
     }
     return null;
   };
@@ -338,9 +355,16 @@ export default function SignUp() {
         target_roles: targetRoles,
         target_locations: targetLocations,
       });
-      // After auth, upload the resume (only if provided).
+      // After auth, upload the resume as the user's active resume before they
+      // enter the dashboard so they are not asked to upload it again.
       if (resumeFile) {
-        try { await api.uploadResume(resumeFile); } catch (e) { console.warn("resume upload skipped:", e); }
+        try {
+          await api.uploadResume(resumeFile);
+          window.dispatchEvent(new Event("placeup:resume-changed"));
+        } catch (resumeError) {
+          setError((resumeError as Error).message || "Account created, but resume upload failed. Please retry the secure resume upload before continuing.");
+          return;
+        }
       }
       navigate("/dashboard");
     } catch (err) {
@@ -506,14 +530,19 @@ export default function SignUp() {
               ) : (
                 <div>
                   <div style={{ fontSize: 13, color: T.text, fontFamily: F.sans, marginBottom: 4 }}>Click or drop a resume</div>
-                  <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans }}>PDF or DOCX, max 10MB</div>
+                  <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans }}>PDF or Word DOCX, max 10MB</div>
                 </div>
               )}
-              <input type="file" accept=".pdf,.docx" style={{ display: "none" }}
-                onChange={(e) => setResumeFile(e.target.files?.[0] ?? null)} />
+              <input type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style={{ display: "none" }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  const fileProblem = validateResumeFile(file);
+                  setResumeFile(fileProblem ? null : file);
+                  setError(fileProblem);
+                }} />
             </label>
             <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, marginTop: 12, lineHeight: 1.55 }}>
-              Your resume is stored as the single active resume. You can replace it later from the Resumes tab.
+              Your resume is security-checked for active PDF/DOCX content, parsed into private JSON, and saved as your active resume. You can replace it later from the Resumes tab.
             </div>
           </motion.div>
         )}

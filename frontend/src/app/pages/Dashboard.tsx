@@ -411,10 +411,14 @@ export default function Dashboard() {
     location.pathname.startsWith("/dashboard/profile") ? "Profile" :
     navItems.find((item) => item.to !== "/dashboard" ? location.pathname.startsWith(item.to) : location.pathname === "/dashboard")?.label ?? "Overview";
 
+  const isNavItemActive = (to: string) =>
+    to === "/dashboard" ? location.pathname === "/dashboard" : location.pathname.startsWith(to);
   const unread = notifications.filter((n) => n.unread).length;
-  // Hide the side navigation while the user is on the Jobs experience so the
-  // job grid gets the full width (requested for /dashboard/jobs).
-  const hideSidebar = location.pathname.startsWith("/dashboard/jobs");
+  // Compact icon rail on EVERY dashboard page so content gets the full width.
+  // Moving the mouse over the rail expands it (as an overlay — the page
+  // underneath never reflows); moving away collapses it again.
+  const [sidebarHovered, setSidebarHovered] = useState(false);
+  const compactSidebar = !sidebarHovered;
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: T.bg, position: "relative", fontFamily: F.sans, overflowX: "hidden" }}>
@@ -424,29 +428,35 @@ export default function Dashboard() {
         <div style={{ position: "absolute", bottom: "5%", right: "-6%", width: 420, height: 420, borderRadius: "50%", filter: "blur(120px)", background: "rgba(237,125,43,0.09)" }} />
       </div>
 
-      {/* ── Desktop Sidebar ── */}
-      <aside className="hidden lg:flex flex-col" style={{ width: 256, borderRight: `1px solid ${T.border}`, background: "rgba(1,17,38,0.85)", backdropFilter: "blur(24px)", position: "relative", zIndex: 10, flexShrink: 0, display: hideSidebar ? "none" : undefined }}>
+      {/* ── Desktop Sidebar: 76px gutter in layout; expands over content on hover ── */}
+      <div className="hidden lg:block" style={{ width: 76, flexShrink: 0, position: "relative", zIndex: 40 }}>
+      <aside
+        onMouseEnter={() => setSidebarHovered(true)}
+        onMouseLeave={() => setSidebarHovered(false)}
+        className="hidden lg:flex flex-col"
+        style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: compactSidebar ? 76 : 256, borderRight: `1px solid ${T.border}`, background: compactSidebar ? "rgba(1,17,38,0.85)" : "rgba(1,17,38,0.97)", backdropFilter: "blur(24px)", zIndex: 40, overflow: "hidden", transition: "width 0.22s ease, background 0.22s ease", boxShadow: compactSidebar ? "none" : "16px 0 48px rgba(1,17,38,0.55)" }}>
         {/* Logo */}
-        <div style={{ padding: "0 24px", height: 64, display: "flex", alignItems: "center", borderBottom: `1px solid ${T.border}` }}>
-          <Link to="/" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none" }}>
-            <img src="/logo_white.png" alt="PlaceUp Career" style={{ width: 34, height: 34, objectFit: "contain", flexShrink: 0 }} />
-            <span style={{ fontFamily: F.sans, fontWeight: 700, fontSize: 16, color: T.text, letterSpacing: "-0.02em" }}>
-              PlaceUp <span style={{ color: T.red, fontSize: 13, fontWeight: 600 }}>Career</span>
-            </span>
+        <div style={{ padding: compactSidebar ? "0 16px" : "0 24px", height: 64, display: "flex", alignItems: "center", justifyContent: compactSidebar ? "center" : "flex-start", borderBottom: `1px solid ${T.border}` }}>
+          <Link to="/" title="PlaceUp Career" style={{ display: "flex", alignItems: "center", textDecoration: "none" }}>
+            {compactSidebar
+              ? <img src="/logo_white.png" alt="PlaceUp Career" style={{ width: 34, height: 34, objectFit: "contain", flexShrink: 0 }} />
+              : <img src="/logo_light.png" alt="PlaceUp Career" style={{ height: 40, width: "auto", objectFit: "contain", display: "block" }} />}
           </Link>
         </div>
 
         {/* Nav */}
-        <nav style={{ flex: 1, padding: "14px 10px", display: "flex", flexDirection: "column", gap: 2 }}>
+        <nav style={{ flex: 1, padding: compactSidebar ? "14px 8px" : "14px 10px", display: "flex", flexDirection: "column", gap: 2 }}>
           {navItems.map((item) => (
             <NavLink key={item.label} to={item.to!} end={item.to === "/dashboard"}
+              title={item.label}
               style={({ isActive }) => ({
                 width: "100%",
                 display: "flex",
                 alignItems: "center",
-                gap: 10,
+                justifyContent: compactSidebar ? "center" : "flex-start",
+                gap: compactSidebar ? 0 : 10,
                 height: 40,
-                padding: "0 12px",
+                padding: compactSidebar ? 0 : "0 12px",
                 borderRadius: 10,
                 textDecoration: "none",
                 cursor: "pointer",
@@ -465,7 +475,7 @@ export default function Dashboard() {
                 <>
                   {isActive && <div style={{ position: "absolute", left: 0, top: "50%", transform: "translateY(-50%)", width: 3, height: 18, borderRadius: 9999, background: T.grad }} />}
                   <item.icon size={17} />
-                  {item.label}
+                  {!compactSidebar && item.label}
                 </>
               )}
             </NavLink>
@@ -473,7 +483,7 @@ export default function Dashboard() {
         </nav>
 
         {/* Saved jobs indicator */}
-        <div style={{ padding: "10px 14px", borderTop: `1px solid ${T.border}`, borderBottom: `1px solid ${T.border}` }}>
+        {!compactSidebar && <div style={{ padding: "10px 14px", borderTop: `1px solid ${T.border}`, borderBottom: `1px solid ${T.border}` }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: T.t3, fontFamily: F.sans }}>Saved Jobs</span>
             <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 9999, background: "rgba(237,125,43,0.12)", color: T.red, border: "1px solid rgba(237,125,43,0.25)", fontFamily: F.sans }}>5/5</span>
@@ -483,40 +493,42 @@ export default function Dashboard() {
               <div key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: i <= 5 ? T.grad : "rgba(242,238,179,0.08)" }} />
             ))}
           </div>
-        </div>
+        </div>}
 
         {/* User */}
         <div style={{ padding: "10px" }}>
           <motion.button whileTap={{ scale: 0.97 }} onClick={() => navigate("/dashboard/profile")}
-            style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, border: "none", cursor: "pointer", background: "transparent", textAlign: "left", transition: "background 0.2s" }}
+            title={displayName}
+            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: compactSidebar ? "center" : "flex-start", gap: compactSidebar ? 0 : 10, padding: compactSidebar ? "10px 0" : "10px 12px", borderRadius: 10, border: "none", cursor: "pointer", background: "transparent", textAlign: "left", transition: "background 0.2s" }}
             className="hover:bg-[rgba(242,238,179,0.03)]">
             <div style={{ width: 34, height: 34, borderRadius: "50%", background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 12, fontWeight: 700, fontFamily: F.sans, boxShadow: "0 2px 8px rgba(237,125,43,0.35)", flexShrink: 0 }}>
               {displayAvatar}
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
+            {!compactSidebar && <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: F.sans, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{displayName}</div>
               <div style={{ fontSize: 11, color: T.red, fontFamily: F.sans }}>{displayPlan} Plan</div>
-            </div>
+            </div>}
           </motion.button>
         </div>
       </aside>
+      </div>
 
       {/* ── Mobile Sidebar ── */}
       <AnimatePresence>
         {sidebarOpen && (
-          <div className="lg:hidden fixed inset-0" style={{ zIndex: 50 }}>
+          <div className={compactSidebar ? "fixed inset-0" : "lg:hidden fixed inset-0"} style={{ zIndex: 50 }}>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={() => setSidebarOpen(false)} style={{ position: "absolute", inset: 0, background: "rgba(1,17,38,0.85)", backdropFilter: "blur(4px)" }} />
             <motion.aside initial={{ x: -280 }} animate={{ x: 0 }} exit={{ x: -280 }}
               transition={{ type: "spring", stiffness: 300, damping: 30 }}
               style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 256, background: "rgba(1,17,38,0.98)", backdropFilter: "blur(24px)", borderRight: `1px solid ${T.border}`, padding: "24px 10px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", padding: "0 12px", marginBottom: 20 }}>
-                <img src="/logo_white.png" alt="PlaceUp Career" style={{ width: 34, height: 34, objectFit: "contain" }} />
+                <img src="/logo_light.png" alt="PlaceUp Career" style={{ height: 36, width: "auto", objectFit: "contain" }} />
                 <button onClick={() => setSidebarOpen(false)} style={{ background: "rgba(242,238,179,0.05)", border: "none", cursor: "pointer", color: T.text, padding: 6, borderRadius: 6 }}><X size={16} /></button>
               </div>
               {navItems.map((item) => (
                 <button key={item.label} onClick={() => { navigate(item.to!); setSidebarOpen(false); }}
-                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, height: 40, padding: "0 12px", borderRadius: 10, border: "none", cursor: "pointer", marginBottom: 2, background: location.pathname.startsWith(item.to!) ? "rgba(237,125,43,0.09)" : "transparent", color: location.pathname.startsWith(item.to!) ? T.red : T.t2, fontSize: 13, fontFamily: F.sans, textAlign: "left" }}>
+                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, height: 40, padding: "0 12px", borderRadius: 10, border: "none", cursor: "pointer", marginBottom: 2, background: isNavItemActive(item.to!) ? "rgba(237,125,43,0.09)" : "transparent", color: isNavItemActive(item.to!) ? T.red : T.t2, fontSize: 13, fontFamily: F.sans, textAlign: "left" }}>
                   <item.icon size={16} />{item.label}
                 </button>
               ))}
@@ -530,7 +542,12 @@ export default function Dashboard() {
         {/* Topbar */}
         <div style={{ position: "sticky", top: 0, zIndex: 40, height: 64, background: "rgba(1,17,38,0.85)", backdropFilter: "blur(24px)", borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", padding: isMobile ? "0 12px" : "0 24px", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <button className="lg:hidden" onClick={() => setSidebarOpen(true)} style={{ background: "rgba(242,238,179,0.05)", border: "none", cursor: "pointer", color: T.text, padding: 8, borderRadius: 8 }}>
+            <button
+              className={compactSidebar ? "" : "lg:hidden"}
+              aria-label="Open navigation"
+              onClick={() => setSidebarOpen(true)}
+              style={{ background: "rgba(242,238,179,0.05)", border: "none", cursor: "pointer", color: T.text, padding: 8, borderRadius: 8 }}
+            >
               <Menu size={18} />
             </button>
             <div>

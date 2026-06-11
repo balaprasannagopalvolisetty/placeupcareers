@@ -273,12 +273,7 @@ function LoginScreen({ p0 }: { p0: MotionValue<number> }) {
       }}>
         {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: 18 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-            <div style={{ width: 24, height: 24, borderRadius: 6, background: T.grad, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <span style={{ fontFamily: F.sans, fontSize: 11, fontWeight: 800, color: "#fff" }}>P</span>
-            </div>
-            <span style={{ fontFamily: F.sans, fontSize: 13, fontWeight: 700, color: T.text }}>PlaceUp</span>
-          </div>
+          <img src="/logo_light.png" alt="PlaceUp Career" style={{ height: 30, width: "auto", objectFit: "contain", marginBottom: 6 }} />
           <p style={{ fontFamily: F.sans, fontSize: 11, color: T.t3, margin: 0 }}>Welcome back 👋</p>
         </div>
 
@@ -751,14 +746,29 @@ export function HowItWorksScrollStory() {
     };
     update();
     window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
+    window.addEventListener("load", update);
+    // Recompute when layout above the section shifts (images, fonts, async content)
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
+    ro?.observe(document.body);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("load", update);
+      ro?.disconnect();
+    };
   }, []);
 
   // 0 → 1 over the section's scroll range
-  const scrollYProgress = useTransform(scrollY, (sy) => {
+  const rawProgress = useTransform(scrollY, (sy) => {
     const { start, length } = boundsRef.current;
     return Math.max(0, Math.min(1, (sy - start) / length));
   });
+
+  // Spring-smoothed progress: removes frame-stepped jitter from wheel scrolling,
+  // so typewriter, ATS ring, and card reveals glide instead of stutter.
+  const prefersReducedMotion = typeof window !== "undefined"
+    && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  const smoothed = useSpring(rawProgress, { stiffness: 120, damping: 28, mass: 0.35 });
+  const scrollYProgress = prefersReducedMotion ? rawProgress : smoothed;
 
   // Per-step continuous progress (each step occupies 1/6 of section scroll)
   const p0 = useTransform(scrollYProgress, [S(0), S(1)], [0, 1]);
@@ -856,7 +866,7 @@ export function HowItWorksScrollStory() {
                   <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, background: "rgba(242,238,179,0.04)", border: `1px solid ${T.border}`, borderRadius: 6, padding: "3px 9px" }}>
                     <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e", opacity: 0.75 }} />
                     <span style={{ fontFamily: F.mono, fontSize: 9, color: T.t3, overflow: "hidden", whiteSpace: "nowrap" as const, textOverflow: "ellipsis" }}>
-                      app.placeup.careers/dashboard
+                      app.placeupcareer.com/dashboard
                     </span>
                   </div>
                   <AnimatePresence>

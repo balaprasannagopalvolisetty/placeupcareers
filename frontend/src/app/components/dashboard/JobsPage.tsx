@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useSearchParams } from "react-router";
 import { motion } from "motion/react";
 import { Search, Filter, X, Bookmark, ExternalLink, ShieldCheck, RefreshCw, Globe2, Route, Languages, Building2, Sparkles, Clock } from "lucide-react";
 import * as api from "../../lib/api";
@@ -223,7 +224,7 @@ function getVisaRecord(job: api.JobPost): Record<string, unknown> {
 
 function routeLabel(program: VisaProgramOption): string {
   const shortName = program.name.replace(/\s+Visa$/i, "").replace(/\s+Permit$/i, "");
-  return `${program.country_code} ${shortName}`;
+  return `${countryFlag(program.country_code)} ${program.country_code} ${shortName}`;
 }
 
 function sourceLabel(value: unknown): string {
@@ -399,6 +400,16 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const [taxonomy, setTaxonomy] = useState<TaxonomyCategory[]>([]);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [activeRole, setActiveRole] = useState<string | null>(null);
+  // Deep links from the Alerts digest ("/dashboard/jobs?role=Security Engineer")
+  // pre-apply the role/category filter on arrival.
+  const [searchParams] = useSearchParams();
+  useEffect(() => {
+    const roleParam = searchParams.get("role");
+    const categoryParam = searchParams.get("category");
+    if (roleParam) setActiveRole(roleParam);
+    if (categoryParam) setActiveCategory(categoryParam);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Pulled from user_preferences once at mount. When present, the API
   // uses every saved target role/location to personalize results.
   // The user can still override any of these inline.
@@ -656,7 +667,8 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   });
 
   const allRoles = useMemo(
-    () => Array.from(new Set(taxonomy.flatMap((cat) => cat.roles.map((role) => role.name)).filter(Boolean))),
+    () => Array.from(new Set(taxonomy.flatMap((cat) => cat.roles.map((role) => role.name)).filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b)),
     [taxonomy],
   );
   const visibleVisaPrograms = useMemo(
@@ -722,6 +734,70 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       position_open: true,
     });
   };
+
+  const paginationControls = total > pageSize ? (
+    <div
+      style={{
+        marginTop: 8,
+        marginBottom: 8,
+        padding: isMobile ? "12px 10px" : "14px 16px",
+        borderRadius: 12,
+        border: `1px solid ${J.line}`,
+        background: "rgba(1,17,38,0.68)",
+        boxShadow: J.shadow,
+        display: "flex",
+        flexDirection: isMobile ? "column" : "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+        position: "relative",
+        zIndex: 2,
+      }}
+    >
+      <div style={{ color: J.t2, fontSize: 12, fontWeight: 750, fontFamily: F.sans }}>
+        Showing {currentPageStart.toLocaleString()}-{currentPageEnd.toLocaleString()} of {total.toLocaleString()} positions
+      </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
+        <button
+          disabled={!canGoPrevious}
+          onClick={() => canGoPrevious && setPage((p) => Math.max(1, p - 1))}
+          style={paginationButtonStyle(false, !canGoPrevious)}
+        >
+          Prev
+        </button>
+        {pageNumbers[0] > 1 && (
+          <>
+            <button onClick={() => setPage(1)} style={paginationButtonStyle(page === 1)}>1</button>
+            {pageNumbers[0] > 2 && <span style={{ color: J.t3, fontSize: 12, fontWeight: 850 }}>...</span>}
+          </>
+        )}
+        {pageNumbers.map((pageNumber) => (
+          <button
+            key={`jobs-page-${pageNumber}`}
+            onClick={() => setPage(pageNumber)}
+            style={paginationButtonStyle(pageNumber === page)}
+          >
+            {pageNumber}
+          </button>
+        ))}
+        {pageNumbers[pageNumbers.length - 1] < safeTotalPages && (
+          <>
+            {pageNumbers[pageNumbers.length - 1] < safeTotalPages - 1 && <span style={{ color: J.t3, fontSize: 12, fontWeight: 850 }}>...</span>}
+            <button onClick={() => setPage(safeTotalPages)} style={paginationButtonStyle(page === safeTotalPages)}>
+              {safeTotalPages}
+            </button>
+          </>
+        )}
+        <button
+          disabled={!canGoNext}
+          onClick={() => canGoNext && setPage((p) => Math.min(safeTotalPages, p + 1))}
+          style={paginationButtonStyle(false, !canGoNext)}
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  ) : null;
 
   return (
     <div style={{ width: "100%", minWidth: 0, background: J.page, color: J.text, margin: "-28px", padding: isMobile ? "14px 12px 32px" : "24px 28px 48px", minHeight: "calc(100vh - 64px)" }}>
@@ -801,7 +877,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             style={controlStyle({ minWidth: isMobile ? "100%" : 220, fontSize: 13 })}
           >
             <option style={SELECT_DARK_STYLE} value="">All saved roles</option>
-            {allRoles.map((role) => <option style={SELECT_DARK_STYLE} key={role} value={role}>{role}</option>)}
+            {[...allRoles].sort((a, b) => a.localeCompare(b)).map((role) => <option style={SELECT_DARK_STYLE} key={role} value={role}>{role}</option>)}
           </select>
           <div style={controlStyle({ display: "flex", alignItems: "center", gap: 8, flex: "1 1 240px", minWidth: isMobile ? "100%" : 200 })}>
             <Search size={13} color={J.t3} />
@@ -816,7 +892,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             style={controlStyle({ width: isMobile ? "100%" : 180 })}
           >
             <option style={SELECT_DARK_STYLE} value="">Country: All countries</option>
-            {targetCountries.map((country) => <option style={SELECT_DARK_STYLE} key={country.code} value={country.code}>{countryFlag(country.code)} {country.code} - {country.name}</option>)}
+            {[...targetCountries].sort((a, b) => a.name.localeCompare(b.name)).map((country) => <option style={SELECT_DARK_STYLE} key={country.code} value={country.code}>{countryFlag(country.code)} {country.code} - {country.name}</option>)}
           </select>
           <select
             value={visaProgramFilter}
@@ -824,7 +900,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             style={controlStyle({ width: isMobile ? "100%" : 230 })}
           >
             <option style={SELECT_DARK_STYLE} value="">Visa-friendly: All routes</option>
-            {visibleVisaPrograms.map((program) => <option style={SELECT_DARK_STYLE} key={`${program.country_code}-${program.code}`} value={program.code}>{program.country_code} - {program.name}</option>)}
+            {[...visibleVisaPrograms].sort((a, b) => routeLabel(a).localeCompare(routeLabel(b))).map((program) => <option style={SELECT_DARK_STYLE} key={`${program.country_code}-${program.code}`} value={program.code}>{countryFlag(program.country_code)} {program.country_code} - {program.name}</option>)}
           </select>
           <button onClick={() => { setVisaOnly(!visaOnly); setPage(1); }}
             style={{ ...controlStyle(), border: `1px solid ${visaOnly ? "rgba(34,197,94,0.32)" : J.line}`, background: visaOnly ? J.greenBg : J.card, color: visaOnly ? "#86EFAC" : J.t2, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
@@ -989,8 +1065,10 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
           </div>
         )}
 
+        {paginationControls}
+
         {/* Job cards */}
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(270px, 1fr))", gap: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 14 }}>
           {loading && jobs.length === 0 && (
             <div style={{ gridColumn: "1 / -1", background: J.card, border: `1px solid ${J.line}`, borderRadius: 16, boxShadow: J.shadow, backdropFilter: "blur(24px)" }}>
               <LoadingLogo label="Loading jobs" />
@@ -1026,7 +1104,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                 whileHover={{ y: -4, boxShadow: "0 16px 36px rgba(1,17,38,0.35)" }}
                 onClick={() => onJobClick(id)}
                 style={{
-                  minHeight: 258,
+                  minHeight: isMobile ? 248 : 176,
                   background: "linear-gradient(135deg, rgba(1,17,38,0.86), rgba(64,18,18,0.58))",
                   border: `1px solid ${J.line}`,
                   boxShadow: "0 12px 28px rgba(1,17,38,0.24)",
@@ -1034,7 +1112,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                   padding: 14,
                   cursor: "pointer",
                   display: "grid",
-                  gridTemplateColumns: "1fr",
+                  gridTemplateColumns: "minmax(0, 1fr)",
                   gap: 12,
                   alignItems: "stretch",
                   color: J.text,
@@ -1042,7 +1120,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                 }}
               >
                 <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 9 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", minHeight: 54 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start", minHeight: 54 }}>
                     <div style={{ display: "flex", gap: 12, alignItems: "flex-start", minWidth: 0, flex: 1 }}>
                       {/* Company avatar — first-letter gradient circle.
                           Cheaper than fetching real logos and looks consistent
@@ -1095,7 +1173,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                     {sponsorVerified && <span style={{ fontSize: 11, fontWeight: 750, padding: "4px 8px", borderRadius: 999, background: "rgba(34,197,94,0.08)", color: "#86EFAC", fontFamily: F.sans }}>{sourceLabel(visaRecord.sponsor_source)}</span>}
                   </div>
                   {preview && (
-                    <div style={{ fontSize: 11, color: J.t2, fontFamily: F.sans, lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                    <div style={{ fontSize: 12, color: J.t2, fontFamily: F.sans, lineHeight: 1.55, display: "-webkit-box", WebkitLineClamp: isMobile ? 3 : 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
                       {preview}
                     </div>
                   )}
@@ -1142,66 +1220,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             );
           })}
         </div>
-        {!loading && total > pageSize && (
-          <div
-            style={{
-              marginTop: 8,
-              padding: isMobile ? "12px 10px" : "14px 16px",
-              borderRadius: 12,
-              border: `1px solid ${J.line}`,
-              background: "rgba(1,17,38,0.68)",
-              boxShadow: J.shadow,
-              display: "flex",
-              flexDirection: isMobile ? "column" : "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 12,
-            }}
-          >
-            <div style={{ color: J.t2, fontSize: 12, fontWeight: 750, fontFamily: F.sans }}>
-              Showing {currentPageStart.toLocaleString()}-{currentPageEnd.toLocaleString()} of {total.toLocaleString()} positions
-            </div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
-              <button
-                disabled={!canGoPrevious}
-                onClick={() => canGoPrevious && setPage((p) => Math.max(1, p - 1))}
-                style={paginationButtonStyle(false, !canGoPrevious)}
-              >
-                Prev
-              </button>
-              {pageNumbers[0] > 1 && (
-                <>
-                  <button onClick={() => setPage(1)} style={paginationButtonStyle(page === 1)}>1</button>
-                  {pageNumbers[0] > 2 && <span style={{ color: J.t3, fontSize: 12, fontWeight: 850 }}>...</span>}
-                </>
-              )}
-              {pageNumbers.map((pageNumber) => (
-                <button
-                  key={`jobs-page-${pageNumber}`}
-                  onClick={() => setPage(pageNumber)}
-                  style={paginationButtonStyle(pageNumber === page)}
-                >
-                  {pageNumber}
-                </button>
-              ))}
-              {pageNumbers[pageNumbers.length - 1] < safeTotalPages && (
-                <>
-                  {pageNumbers[pageNumbers.length - 1] < safeTotalPages - 1 && <span style={{ color: J.t3, fontSize: 12, fontWeight: 850 }}>...</span>}
-                  <button onClick={() => setPage(safeTotalPages)} style={paginationButtonStyle(page === safeTotalPages)}>
-                    {safeTotalPages}
-                  </button>
-                </>
-              )}
-              <button
-                disabled={!canGoNext}
-                onClick={() => canGoNext && setPage((p) => Math.min(safeTotalPages, p + 1))}
-                style={paginationButtonStyle(false, !canGoNext)}
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        )}
+        {paginationControls}
       </div>
     </div>
   );

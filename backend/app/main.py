@@ -105,8 +105,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    # Enumerate instead of "*": wildcard methods/headers with credentialed
+    # CORS is wider than the API needs and flags every security scanner.
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-Requested-With"],
 )
 app.add_middleware(
     TrustedHostMiddleware,

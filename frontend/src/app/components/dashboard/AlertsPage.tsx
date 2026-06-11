@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "motion/react";
-import { Bell, BellOff, Trash2, MapPin, DollarSign, Check } from "lucide-react";
+import { Bell, BellOff, Trash2, MapPin, DollarSign, Check, Sparkles, TrendingUp } from "lucide-react";
+import { Link } from "react-router";
 import * as api from "../../lib/api";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif" };
@@ -17,6 +18,9 @@ export function AlertsPage() {
   // Count of recently-added positions matching the roles the user picked at
   // signup. Reuses the existing personalized jobs feed (no new backend rule).
   const [recentCount, setRecentCount] = useState<number | null>(null);
+  // Per-target-role "new positions" digest + personalized top picks.
+  const [digest, setDigest] = useState<api.AlertsDigest | null>(null);
+  const [topPicks, setTopPicks] = useState<any[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -31,6 +35,18 @@ export function AlertsPage() {
         setRecentCount(total);
       })
       .catch(() => { if (active) setRecentCount(null); });
+
+    api.getAlertsDigest()
+      .then((d) => { if (active) setDigest(d); })
+      .catch(() => { if (active) setDigest(null); });
+
+    api.getTopMatches({ page_size: 6 })
+      .then((resp: any) => {
+        if (!active) return;
+        const items = Array.isArray(resp?.jobs) ? resp.jobs : Array.isArray(resp) ? resp : [];
+        setTopPicks(items.slice(0, 6));
+      })
+      .catch(() => { if (active) setTopPicks([]); });
 
     Promise.all([
       api.getAlerts().then(data => {
@@ -53,6 +69,9 @@ export function AlertsPage() {
 
     return () => { active = false; };
   }, []);
+
+  const displayAlerts = Array.isArray(alerts) ? alerts : [];
+  const unreadCount = displayAlerts.filter((alert) => alert.unread).length;
 
   const handleToggleSetting = async (key: 'email' | 'daily' | 'weekly', value: boolean) => {
     setEnabled(e => ({ ...e, [key]: value }));
@@ -99,12 +118,61 @@ export function AlertsPage() {
     return <div style={{ color: T.text, fontFamily: F.sans, textAlign: 'center', padding: 40 }}>Loading alerts...</div>;
   }
 
-  const displayAlerts = Array.isArray(alerts) ? alerts : [];
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      {/* New-positions digest for the user's target roles */}
+      {digest?.has_target_roles && (
+        <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: "18px 22px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+            <TrendingUp size={15} color={T.red} />
+            <span style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 600, color: T.text }}>New positions for your target roles</span>
+            <span style={{ fontSize: 12, color: T.t3, fontFamily: F.sans }}>
+              {digest.total_new_24h} in the last 24h · {digest.total_new_7d} this week
+            </span>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {digest.target_roles.map((r) => (
+              <Link key={r.role} to={`/dashboard/jobs?role=${encodeURIComponent(r.role)}`}
+                style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 10, background: "rgba(237,125,43,0.08)", border: "1px solid rgba(237,125,43,0.2)", textDecoration: "none" }}>
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: T.text, fontFamily: F.sans }}>{r.role}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 9999, background: r.new_24h > 0 ? T.grad : "rgba(242,238,179,0.08)", color: r.new_24h > 0 ? "#fff" : T.t3, fontFamily: F.sans }}>
+                  +{r.new_24h} today
+                </span>
+                <span style={{ fontSize: 11, color: T.t3, fontFamily: F.sans }}>{r.new_7d} this week</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Personalized top picks */}
+      {topPicks.length > 0 && (
+        <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: "18px 22px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <Sparkles size={15} color={T.red} />
+            <span style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 600, color: T.text }}>Top picks for you</span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 10 }}>
+            {topPicks.map((job: any) => (
+              <Link key={String(job.id)} to={`/dashboard/jobs/${encodeURIComponent(String(job.id))}`}
+                style={{ display: "block", padding: "12px 14px", borderRadius: 12, background: "rgba(242,238,179,0.03)", border: `1px solid ${T.border}`, textDecoration: "none", transition: "border-color 0.2s" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: F.sans, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{job.title}</span>
+                  {typeof job.match_score === "number" && (
+                    <span style={{ fontSize: 12, fontWeight: 700, color: T.red, fontFamily: F.sans, flexShrink: 0 }}>{job.match_score}%</span>
+                  )}
+                </div>
+                <div style={{ fontSize: 11.5, color: T.t2, fontFamily: F.sans, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {job.company}{job.location ? ` · ${job.location}` : ""}
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Settings */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
         {[
           { key: "email", label: "Email Alerts", desc: "Instant match notifications" },
           { key: "daily", label: "Daily Digest", desc: "Top 10 matches at 9AM EST" },
@@ -136,10 +204,19 @@ export function AlertsPage() {
               </span>
             )}
           </div>
-          <button onClick={handleMarkAllRead} style={{ fontSize: 12, color: T.red, fontFamily: F.sans, background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>Mark all read</button>
+          <button
+            onClick={handleMarkAllRead}
+            disabled={unreadCount === 0}
+            style={{ fontSize: 12, color: unreadCount === 0 ? T.t3 : T.red, fontFamily: F.sans, background: "none", border: "none", cursor: unreadCount === 0 ? "default" : "pointer", fontWeight: 600 }}
+          >
+            {unreadCount === 0 ? "All caught up" : "Mark all read"}
+          </button>
         </div>
         {displayAlerts.length === 0 ? (
-          <div style={{ padding: "40px", textAlign: "center", color: T.t3 }}>No alerts yet. Your job matches will appear here.</div>
+          <div style={{ padding: "40px", textAlign: "center", color: T.t3, display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+            <BellOff size={22} color={T.t3} />
+            <span>No alerts yet. Your job matches will appear here.</span>
+          </div>
         ) : (
           displayAlerts.map((alert, i) => (
             <motion.div key={alert.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.06 }}

@@ -57,8 +57,8 @@ function LegalShell({
       <div style={{ borderTop: `1px solid ${T.border}`, paddingTop: 18 }}>{children}</div>
       <footer style={{ marginTop: 40, paddingTop: 20, borderTop: `1px solid ${T.border}`, fontSize: 12, color: T.t3 }}>
         Questions? Email{" "}
-        <a href="mailto:legal@placeup.careers" style={{ color: T.text }}>
-          legal@placeup.careers
+        <a href="mailto:legal@placeupcareer.com" style={{ color: T.text }}>
+          legal@placeupcareer.com
         </a>
         .
         <div style={{ marginTop: 8, display: "flex", gap: 14, flexWrap: "wrap" }}>
@@ -118,7 +118,7 @@ export function PrivacyPage() {
 
       <h2 style={H2}>6. Contact</h2>
       <p style={P}>
-        Email <a href="mailto:privacy@placeup.careers" style={{ color: T.text }}>privacy@placeup.careers</a>{" "}
+        Email <a href="mailto:privacy@placeupcareer.com" style={{ color: T.text }}>privacy@placeupcareer.com</a>{" "}
         for any data-subject request (access, correction, deletion). We will
         respond within 30 days.
       </p>
@@ -147,8 +147,8 @@ export function TermsPage() {
       <p style={P}>
         You are responsible for keeping your password safe and for everything
         that happens under your account. Notify us immediately at{" "}
-        <a href="mailto:security@placeup.careers" style={{ color: T.text }}>
-          security@placeup.careers
+        <a href="mailto:security@placeupcareer.com" style={{ color: T.text }}>
+          security@placeupcareer.com
         </a>{" "}
         if you believe your account has been compromised.
       </p>

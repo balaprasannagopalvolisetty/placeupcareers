@@ -58,11 +58,26 @@ def clean_job_company(company: Any, description: Any = "", title: Any = "") -> s
     return ""
 
 
+_MD_ESCAPE_RE = re.compile(r"\\([\\`*_{}\[\]()#+\-.!|>~])")
+
+
+def strip_markdown_escapes(text: str) -> str:
+    r"""Remove backslash-escaped Markdown punctuation left by scrapers.
+
+    Sources that convert HTML to Markdown (LinkedIn, JobSpy, etc.) escape
+    punctuation, so JDs render with artifacts like "F1\-OPT", "pre\-sales",
+    or "8 to 12 years\." — unprofessional and noisy. Unescape them.
+    """
+    return _MD_ESCAPE_RE.sub(r"\1", text or "")
+
+
 def clean_job_description(description: Any) -> str:
     """Trim board chrome/header text while keeping the real job description."""
     text = str(description or "").strip()
     if not text:
         return ""
+
+    text = strip_markdown_escapes(text)
 
     markers = (
         r"\bAbout the job\b",

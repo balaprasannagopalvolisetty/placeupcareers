@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { motion, useScroll, useTransform, AnimatePresence } from "motion/react";
+import { useEffect, useRef, useState } from "react";
+import { motion, useScroll, useTransform, useMotionValue, useSpring, AnimatePresence } from "motion/react";
 import { Link } from "react-router";
 import {
   ArrowRight, Target, Mail, Shield, BarChart3,
@@ -81,6 +81,33 @@ function SectionLabel({ text }: { text: string }) {
         {text}
       </span>
       <div style={{ height: 1, flex: 1, background: `linear-gradient(to right, ${T.red}50, transparent)` }} />
+    </div>
+  );
+}
+
+// ─── 3D tilt wrapper: cards lean toward the cursor, with a moving sheen ───
+function Tilt3D({ children, maxTilt = 8, style = {} }: {
+  children: React.ReactNode; maxTilt?: number; style?: React.CSSProperties;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const rawX = useMotionValue(0);
+  const rawY = useMotionValue(0);
+  const rotateY = useSpring(rawX, { stiffness: 160, damping: 18, mass: 0.4 });
+  const rotateX = useSpring(rawY, { stiffness: 160, damping: 18, mass: 0.4 });
+
+  const handleMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = ref.current?.getBoundingClientRect();
+    if (!rect) return;
+    rawX.set(((e.clientX - rect.left) / rect.width - 0.5) * maxTilt * 2);
+    rawY.set(-((e.clientY - rect.top) / rect.height - 0.5) * maxTilt * 2);
+  };
+  const handleLeave = () => { rawX.set(0); rawY.set(0); };
+
+  return (
+    <div ref={ref} onMouseMove={handleMove} onMouseLeave={handleLeave} style={{ perspective: 900, height: "100%", ...style }}>
+      <motion.div style={{ rotateX, rotateY, transformStyle: "preserve-3d", height: "100%" }}>
+        {children}
+      </motion.div>
     </div>
   );
 }
@@ -510,12 +537,12 @@ function HeroSection() {
 // 3. FEATURES
 // ═══════════════════════════
 const features = [
-  { icon: Shield,   emoji: "🛡",  title: "Visa-Aware Matching",       desc: "Filter by F1-CPT, F1-OPT, STEM OPT, H-1B. Every listing is verified for sponsorship status." },
-  { icon: Target,   emoji: "🎯",  title: "Real-Time ATS Scoring",     desc: "Know your match score before applying. Full keyword gap analysis included." },
-  { icon: Users,    emoji: "👤",  title: "Application Intelligence",   desc: "Track applied, skipped, and saved roles so you never duplicate effort." },
-  { icon: BarChart3,emoji: "📊",  title: "Application Tracker",       desc: "Full history of applications, dates, and status — all in one clean dashboard." },
-  { icon: Bell,     emoji: "🔔",  title: "Smart Email Alerts",        desc: "Daily top 10 matches. OPT/H-1B filtered. Never miss the perfect opportunity." },
-  { icon: Mic,      emoji: "🎤",  title: "Mock Interview Sessions",   desc: "Elite members get weekly 1:1 with top US recruiters. Practice every round." },
+  { icon: Shield,   emoji: "🛡",  title: "Visa-Aware Job Matching",   desc: "Every listing is screened for sponsorship signals — F1-CPT, F1-OPT, STEM OPT, and H-1B — backed by real petition data, so you only apply where you're eligible." },
+  { icon: Target,   emoji: "🎯",  title: "Resume Match Scoring",      desc: "See how your active resume scores against any posting before you apply, with a keyword-by-keyword breakdown of what's strong and what's missing." },
+  { icon: Users,    emoji: "👤",  title: "Direct Company Links",      desc: "We trace each posting back to the company's official careers page, so you apply at the source — where recruiters actually look first." },
+  { icon: BarChart3,emoji: "📊",  title: "Application Tracker",       desc: "Applied, saved, and skipped roles in one dashboard, with dates and statuses, so you never duplicate effort or lose track of a follow-up." },
+  { icon: Bell,     emoji: "🔔",  title: "Smart Daily Alerts",        desc: "Your top matches delivered every morning, pre-filtered by visa status, role, and location. No noise — just jobs worth your time." },
+  { icon: Mic,      emoji: "🎤",  title: "Interview & Career Coaching", desc: "Elite members get 1:1 mock interviews, AI resume rewrites, and salary negotiation support from experienced US recruiters." },
 ];
 
 function FeaturesSection() {
@@ -556,6 +583,7 @@ function FeaturesSection() {
         <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(${isMobile ? "240px" : "300px"}, 1fr))`, gap: 18 }}>
           {features.map((f, i) => (
             <SectionReveal key={f.title} delay={0.15 + i * 0.07} y={30}>
+              <Tilt3D>
               <GlassCard style={{ padding: 28, height: "100%" }}>
                 <motion.div
                   animate={{
@@ -570,6 +598,7 @@ function FeaturesSection() {
                 <h3 style={{ fontFamily: F.sans, fontSize: 17, fontWeight: 600, color: T.text, marginBottom: 10 }}>{f.title}</h3>
                 <p style={{ fontSize: 14, lineHeight: 1.7, color: T.t2, fontFamily: F.sans }}>{f.desc}</p>
               </GlassCard>
+              </Tilt3D>
             </SectionReveal>
           ))}
         </div>
@@ -757,10 +786,10 @@ function ContactSection() {
             <SectionReveal delay={0.2}>
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                 {[
-                  { icon: Mail, label: "Email", value: "hello@placeup.career" },
-                  { icon: Globe, label: "Website", value: "www.placeup.career" },
-                  { icon: Phone, label: "Phone", value: "+1 (800) 555-0199" },
-                  { icon: MapPin, label: "Address", value: "New York, NY 10001" },
+                  { icon: Mail, label: "Email", value: "operations@placeupcareer.com", href: "mailto:operations@placeupcareer.com" },
+                  { icon: Globe, label: "Website", value: "placeupcareer.com", href: "https://placeupcareer.com/" },
+                  { icon: Phone, label: "Phone", value: "+1 (800) 555-0199", href: undefined },
+                  { icon: MapPin, label: "Address", value: "New York, NY 10001", href: undefined },
                 ].map((item) => (
                   <GlassCard key={item.label} style={{ padding: "20px 22px" }} hoverY={-4}>
                     <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -769,7 +798,9 @@ function ContactSection() {
                       </div>
                       <div>
                         <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: T.t3, fontFamily: F.sans, marginBottom: 2 }}>{item.label}</div>
-                        <div style={{ fontSize: 14, color: T.text, fontFamily: F.sans, fontWeight: 500 }}>{item.value}</div>
+                        {item.href
+                          ? <a href={item.href} target={item.href.startsWith("http") ? "_blank" : undefined} rel="noopener noreferrer" style={{ fontSize: 14, color: T.text, fontFamily: F.sans, fontWeight: 500, textDecoration: "none" }}>{item.value}</a>
+                          : <div style={{ fontSize: 14, color: T.text, fontFamily: F.sans, fontWeight: 500 }}>{item.value}</div>}
                       </div>
                     </div>
                   </GlassCard>
@@ -843,11 +874,8 @@ function ContactSection() {
       {/* Footer */}
       <div style={{ flexShrink: 0, borderTop: "1px solid rgba(242,238,179,0.06)", padding: "14px 32px" }}>
         <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ width: 22, height: 22, borderRadius: 6, background: T.grad, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <span style={{ color: "#fff", fontSize: 9, fontWeight: 800, fontFamily: F.sans }}>P</span>
-            </div>
-            <span style={{ fontFamily: F.sans, fontWeight: 700, fontSize: 13, color: T.t2 }}>PlaceUp Career</span>
+          <div style={{ display: "flex", alignItems: "center" }}>
+            <img src="/logo_light.png" alt="PlaceUp Career" style={{ height: 26, width: "auto", objectFit: "contain" }} />
           </div>
           <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
             {["Product", "Privacy", "Terms", "GDPR"].map((l) => (

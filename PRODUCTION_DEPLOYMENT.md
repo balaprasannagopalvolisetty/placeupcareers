@@ -529,6 +529,17 @@ Manual silver loader run:
 gcloud scheduler jobs run placeup-silver-loader-12h --location us-east1 --project steel-shine-492401-u6
 ```
 
+Company career-link resolver (finds the employer's official ATS posting /
+careers page for third-party scraped jobs and powers the "Apply on Company
+Website" button). Run it after each scraper cycle, or schedule it hourly:
+
+```powershell
+python -m app.workers.company_link_resolver --limit 200 --concurrency 5
+```
+
+The Job Detail API also resolves links on demand in the background, so this
+worker is a batch accelerator rather than a hard dependency.
+
 Master table check in Cloud SQL:
 
 ```sql
@@ -555,6 +566,23 @@ Also confirm the API service points to the same Cloud SQL database where `master
 
 ## 10. Operational Notes
 
+- **Env-var rule for the `placeup-api` SERVICE (auth depends on this):** always
+  use `--update-env-vars` / `--update-secrets` (merge), never `--set-env-vars` /
+  `--set-secrets` (replace). Replace semantics silently wiped out-of-band auth
+  settings (`OTP_MFA_ENABLED`, `EMAIL_PROVIDER`, `EMAIL_FROM`, `RESEND_API_KEY`,
+  OIDC overrides) on every deploy, which is what kept breaking sign-in/sign-up
+  after backend pushes. `deploy_backend.ps1` and `deploy_separate_cloud_run.ps1`
+  now use merge semantics; keep it that way in any new script. Cloud Run *jobs*
+  (scrapers, sweepers) may keep replace semantics — they don't serve auth.
+- **Three guard rails now protect sign-in/sign-up on every deploy:**
+  1. Deploy scripts merge env vars instead of replacing them (above).
+  2. The API refuses to boot if `OTP_MFA_ENABLED=true` with no email provider
+     configured — Cloud Run then keeps the previous healthy revision serving.
+  3. `backend/deploy/smoke_auth.ps1` runs automatically at the end of
+     `deploy_separate_cloud_run.ps1` and fails the deploy if `/api/health`,
+     `/api/auth/session`, `/api/auth/oidc/providers`, or the signin route is
+     unhealthy. Run it manually any time:
+     `./backend/deploy/smoke_auth.ps1 -ApiBase https://placeup-api-641222668282.us-east1.run.app`
 - If `gcloud` reports `Reauthentication failed. cannot prompt during
   non-interactive execution`, run `gcloud auth login`, confirm the account is
   `operations@placeupcareer.com`, then rerun the deploy/run command.

@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     jwt_algorithm: str = Field(default="HS256")
     jwt_expires_minutes: int = Field(default=15)
     refresh_token_expires_days: int = Field(default=30)
+    # Email OTP / MFA. Off by default so enabling it is a deliberate, tested
+    # rollout (never silently locks users out). When True: signup requires an
+    # emailed code before activation, and every login requires a fresh code.
+    otp_mfa_enabled: bool = Field(default=False)
+    otp_code_ttl_minutes: int = Field(default=10)
     internal_api_key: str = Field(
         default="",
         description="Optional shared secret for internal/admin-only API operations.",
@@ -60,7 +65,7 @@ class Settings(BaseSettings):
         description="OpenAI-compatible endpoint for OpenRouter.",
     )
     openrouter_referer: str = Field(
-        default="https://placeup.careers",
+        default="https://placeupcareer.com",
         description="HTTP-Referer header — OpenRouter uses it for app attribution.",
     )
 
@@ -132,6 +137,14 @@ class Settings(BaseSettings):
     database_url: str = Field(
         default="postgresql+psycopg://placeup:CHANGE_ME@/jobssilverdb?host=/cloudsql/steel-shine-492401-u6:us-east1:placeup-backend",
         description="SQLAlchemy URL used when DATABASE_BACKEND=postgres.",
+    )
+    db_pool_size: int = Field(default=5, description="SQLAlchemy connections kept open per instance.")
+    db_max_overflow: int = Field(default=10, description="Extra burst connections per instance under load.")
+    db_statement_timeout_ms: int = Field(
+        default=0,
+        description="Per-statement timeout in ms (0 = off). Set on the API service so user "
+                    "queries fail fast into the stale-page cache instead of hanging while "
+                    "the scraper has the database busy. Leave 0 on ETL jobs.",
     )
     firebase_credentials_path: str = Field(default="./service-account.json")
     gcp_project_id: Optional[str] = Field(default=None)
@@ -210,6 +223,26 @@ class Settings(BaseSettings):
             raise RuntimeError("JWT_SECRET must be set to a production secret.")
         if len(self.jwt_secret) < 32:
             raise RuntimeError("JWT_SECRET must be at least 32 characters.")
+        # Auth-config consistency guard: if OTP/MFA is on, an email provider
+        # MUST be configured or every signup/login would dead-end at the OTP
+        # step. Failing here (at boot) makes Cloud Run reject the bad revision
+        # and keep the previous healthy one serving — sign-in stays up even if
+        # a deploy script or manual env change strips the email settings.
+        if self.otp_mfa_enabled:
+            import os
+            has_email_provider = bool(
+                os.getenv("EMAIL_PROVIDER", "").strip()
+                or os.getenv("RESEND_API_KEY", "").strip()
+                or os.getenv("SENDGRID_API_KEY", "").strip()
+                or self.smtp_host.strip()
+            )
+            if not has_email_provider:
+                raise RuntimeError(
+                    "OTP_MFA_ENABLED=true but no email provider is configured "
+                    "(EMAIL_PROVIDER / RESEND_API_KEY / SENDGRID_API_KEY / SMTP_HOST). "
+                    "Either configure email or set OTP_MFA_ENABLED=false. "
+                    "Refusing to start so the previous revision keeps serving sign-in."
+                )
 
     model_config = {
         "env_file": ".env",

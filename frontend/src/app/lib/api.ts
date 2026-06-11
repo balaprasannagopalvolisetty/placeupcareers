@@ -6,33 +6,14 @@
  * cookies issued by the API.
  */
 
-// Production Cloud Run backend. Used as the fallback when no VITE_API_BASE was
-// baked into the build AND the app is served from a Firebase domain that has no
-// /api proxy (placeupcareer.com, *.web.app, *.firebaseapp.com). On the nginx
-// Cloud Run frontend (which proxies /api → backend) and on localhost dev we keep
-// same-origin ("") so the proxy / dev server handles it.
-// Direct backend URL — only used when served from Firebase Hosting domains
-// that lack an /api proxy (*.web.app, *.firebaseapp.com). When served from
-// the Cloud Run nginx frontend (placeupcareer.com, *.run.app) the browser
-// uses same-origin ("") and nginx proxies /api → backend.
-const PROD_API_BASE = "https://placeup-api-641222668282.us-east1.run.app";
-
-function resolveApiBase(): string {
-  const configured = (import.meta.env.VITE_API_BASE as string | undefined)?.trim();
-  if (configured) return configured.replace(/\/+$/, "");
-  if (typeof window !== "undefined") {
-    const host = window.location.hostname;
-    // Only Firebase Hosting domains need direct cross-origin calls —
-    // placeupcareer.com and Cloud Run *.run.app domains use the nginx proxy.
-    const isFirebaseHostingOnly =
-      host.endsWith(".web.app") ||
-      host.endsWith(".firebaseapp.com");
-    if (isFirebaseHostingOnly) return PROD_API_BASE;
-  }
-  return ""; // same-origin (nginx proxy, Cloud Run, or local dev)
-}
-
-const API_BASE = resolveApiBase();
+// The production frontend is a Cloud Run nginx service that proxies /api → the
+// backend (BACKEND_ORIGIN), and its CSP is `connect-src 'self'`, so the browser
+// must call the SAME origin. Local dev uses the Vite proxy. Therefore the API
+// base is empty (same-origin) unless VITE_API_BASE is explicitly provided at
+// build time for a special deployment.
+const DEFAULT_API_BASE = "";
+const configuredApiBase = (import.meta.env.VITE_API_BASE as string | undefined)?.trim();
+const API_BASE = (configuredApiBase || DEFAULT_API_BASE).replace(/\/+$/, "");
 const STORAGE_TOKEN_KEY = "placeup_token";
 let accessToken: string | null = null;
 
@@ -660,6 +641,17 @@ export async function getJobs(params: Record<string, string | number | boolean |
   return request<JobListResponse>(`/api/jobs${suffix}`, init);
 }
 
+export interface AlertsDigestRole { role: string; new_24h: number; new_7d: number }
+export interface AlertsDigest {
+  generated_at: string;
+  target_roles: AlertsDigestRole[];
+  total_new_24h: number;
+  total_new_7d: number;
+  has_target_roles: boolean;
+}
+
+export async function getAlertsDigest() { return request<AlertsDigest>("/api/alerts/digest"); }
+
 export async function getTopMatches(params: Record<string, string | number | boolean | undefined> = {}) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => {
@@ -815,6 +807,20 @@ export async function draftContactEmail(payload: Record<string, unknown>) {
 
 // ─── Resume parsing (Profile Skills + Resume Quick Wins) ─────────────────
 
+export interface ParsedResumeJson {
+  schema_version?: string;
+  contact?: { email?: string; phone?: string; links?: string[] };
+  summary?: string;
+  skills?: string[];
+  keywords?: string[];
+  sections?: Record<string, string[]>;
+  experience?: string[];
+  education?: string[];
+  projects?: string[];
+  certifications?: string[];
+  metadata?: Record<string, unknown>;
+}
+
 export interface ParsedResume {
   has_resume: boolean;
   name?: string;
@@ -823,6 +829,8 @@ export interface ParsedResume {
   keywords?: string[];
   quick_wins?: { kw: string; tip: string; impact: string }[];
   target_roles?: string[];
+  past_companies?: string[];
+  resume_json?: ParsedResumeJson;
   error?: string;
 }
 
