@@ -23,6 +23,7 @@ from app.config import settings
 from app.etl.scrapegraph_targets import CAREER_PAGES, google_jobs_url, linkedin_search_url
 from app.job_taxonomy import all_role_names, all_taxonomy_scrape_search_terms, categorize
 from app.models.job import JobCategory, JobPost, JobSource, VisaBadges
+from app.services.global_visa_rules import COUNTRY_RULES, TARGET_COUNTRIES
 from app.services.visa_classifier import classify_job
 from app.utils.deduplication import generate_content_hash, generate_job_id
 from app.utils.job_quality import is_probably_job_search_page
@@ -53,6 +54,26 @@ POPULAR_ROLE_SEEDS = (
     "Mechanical Engineer",
     "Clinical Research Associate",
 )
+
+
+def _global_location_names() -> list[str]:
+    names: list[str] = []
+    for code in TARGET_COUNTRIES:
+        rule = COUNTRY_RULES.get(code)
+        names.append(rule.name if rule else code)
+    return names
+
+
+def _balanced_locations(locations: Iterable[str]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for loc in [*locations, *_global_location_names()]:
+        clean = _clean(loc)
+        key = clean.lower()
+        if clean and key not in seen:
+            seen.add(key)
+            ordered.append(clean)
+    return ordered
 
 
 def _clean(text: Any) -> str:
@@ -342,7 +363,7 @@ def build_scrapling_targets(
     linkedin_targets: list[dict[str, Any]] = []
     discovery_targets: list[dict[str, Any]] = []
     terms = list(search_terms) or all_taxonomy_scrape_search_terms()
-    locs = list(locations) or ["United States"]
+    locs = _balanced_locations(locations or ())
 
     for term in terms:
         for location in locs:
@@ -366,16 +387,18 @@ def build_scrapling_targets(
             for role in all_role_names():
                 discovery_targets.append({"kind": "google_jobs", "url": google_jobs_url(f"{role} OPT H-1B visa sponsor"), "query": role})
                 if include_linkedin:
-                    for location in locs[:8]:
+                    for location in locs:
                         discovery_targets.append({"kind": "linkedin", "url": linkedin_search_url(role, location), "query": role, "location": location})
             for company in _top_h1b_excel_companies(settings.scrapling_h1b_excel_company_limit):
-                for role in POPULAR_ROLE_SEEDS:
-                    query = f"{company} {role} jobs United States"
-                    discovery_targets.append({"kind": "google_jobs", "url": google_jobs_url(query), "query": query, "company": company})
+                for location in locs:
+                    for role in POPULAR_ROLE_SEEDS:
+                        query = f"{company} {role} jobs {location}"
+                        discovery_targets.append({"kind": "google_jobs", "url": google_jobs_url(query), "query": query, "company": company, "location": location})
             for company in _top_imported_visa_sponsor_companies(settings.scrapling_h1b_excel_company_limit):
-                for role in POPULAR_ROLE_SEEDS:
-                    query = f"{company} {role} open jobs"
-                    discovery_targets.append({"kind": "google_jobs", "url": google_jobs_url(query), "query": query, "company": company})
+                for location in locs:
+                    for role in POPULAR_ROLE_SEEDS:
+                        query = f"{company} {role} open jobs {location}"
+                        discovery_targets.append({"kind": "google_jobs", "url": google_jobs_url(query), "query": query, "company": company, "location": location})
 
     max_targets = settings.scrapling_discovery_max_targets
     buckets = [bucket for bucket in (glassdoor_targets, ziprecruiter_targets, monster_targets, jooble_targets, linkedin_targets, discovery_targets) if bucket]

@@ -23,8 +23,10 @@ from app.job_taxonomy import (
     all_linkedin_style_role_names,
     all_role_backfill_search_terms,
     all_role_names,
+    categorize,
 )
-from app.services.global_visa_rules import COUNTRY_RULES, TARGET_COUNTRIES
+from app.services.global_visa_rules import COUNTRY_RULES, TARGET_COUNTRIES, resolve_country
+from app.utils.terminal_table import render_table
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +58,10 @@ except ValueError:
 PURGE_EXCEPT_TODAY = os.getenv("SCRAPER_PURGE_EXCEPT_TODAY", "false").strip().lower() not in {"0", "false", "no", "off"}
 PURGE_TIMEZONE = os.getenv("SCRAPER_PURGE_TIMEZONE", "America/Chicago").strip() or "America/Chicago"
 ADVISORY_LOCK_KEY = 6412226682826
+try:
+    COVERAGE_AUDIT_FLOOR = max(0, int(os.getenv("SCRAPER_ROLE_COUNTRY_AUDIT_FLOOR", "70")))
+except ValueError:
+    COVERAGE_AUDIT_FLOOR = 70
 
 
 def _encoded_terms(terms: list[str]) -> str:
@@ -239,8 +245,70 @@ async def _run_batched() -> int:
             failures += 1
             logger.warning("6h scraper post-run today-only purge failed: %s", exc)
 
+    _log_role_country_coverage(floor=COVERAGE_AUDIT_FLOOR)
+
     total_failure_slots = 2 + len(canonical_role_batches) + len(batches)
     return 1 if failures >= total_failure_slots else 0
+
+
+def _log_role_country_coverage(*, floor: int) -> None:
+    """Log the thinnest active role-country cells after the run.
+
+    This is intentionally non-fatal. Provider/API outages should not mark a
+    scrape run failed, but the coverage matrix must be visible in Cloud Logs so
+    we can tune terms/countries instead of discovering gaps only in the UI.
+    """
+    if floor <= 0:
+        return
+    roles = all_role_names()
+    counts: dict[tuple[str, str], int] = {
+        (role, country): 0
+        for role in roles
+        for country in TARGET_COUNTRIES
+    }
+    try:
+        client = PostgresClient()
+        with client.session() as db:
+            rows = db.execute(text("""
+                SELECT title, location, country, extra_metadata
+                FROM master_jobs
+                WHERE status = 'active'
+                  AND coalesce(last_seen_at, first_seen_at) >= now() - interval '30 days'
+            """)).mappings().all()
+    except Exception as exc:
+        logger.warning("6h coverage audit skipped: %s", exc)
+        return
+
+    for row in rows:
+        _category, role = categorize(str(row.get("title") or ""))
+        if role not in roles:
+            continue
+        metadata = row.get("extra_metadata") or {}
+        meta_country = metadata.get("visa_country") if isinstance(metadata, dict) else None
+        country = (
+            resolve_country(str(row.get("country") or ""))
+            or resolve_country(str(meta_country or ""))
+            or resolve_country(str(row.get("location") or ""))
+        )
+        if country in TARGET_COUNTRIES:
+            counts[(role, country)] = counts.get((role, country), 0) + 1
+
+    weak = [
+        {"role": role, "country": country, "count": count}
+        for (role, country), count in counts.items()
+        if count < floor
+    ]
+    weak.sort(key=lambda item: (item["count"], item["country"], item["role"]))
+    if weak:
+        logger.warning(
+            "6h role-country coverage audit: %s/%s cells below floor=%s. Lowest cells:\n%s",
+            len(weak),
+            len(counts),
+            floor,
+            render_table(weak[:80], headers=["country", "role", "count"]),
+        )
+    else:
+        logger.info("6h role-country coverage audit passed: all %s cells >= %s active jobs", len(counts), floor)
 
 
 def main() -> int:

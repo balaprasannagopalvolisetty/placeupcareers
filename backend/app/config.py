@@ -78,10 +78,10 @@ class Settings(BaseSettings):
         description="Optional comma-separated extra career page URLs to scrape (beyond the curated list).",
     )
     scrapling_discovery_enabled: bool = Field(default=True)
-    scrapling_discovery_max_targets: int = Field(default=80, ge=0, le=2000)
+    scrapling_discovery_max_targets: int = Field(default=1400, ge=0, le=5000)
     scrapling_discovery_concurrency: int = Field(default=6, ge=1, le=30)
     scrapling_h1b_excel_company_limit: int = Field(
-        default=100,
+        default=1000,
         ge=0,
         le=5000,
         description="Top H1B Excel employers to convert into Scrapling company/Google Jobs discovery targets.",
