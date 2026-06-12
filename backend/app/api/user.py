@@ -7,6 +7,7 @@ import re
 import uuid as _uuid
 import base64
 import html
+import io
 import textwrap
 from datetime import datetime, timezone
 from pathlib import Path
@@ -245,65 +246,161 @@ def _tailor_keywords(resume_text: str, job_text: str) -> tuple[list[str], list[s
         return matched, missing
 
 
-def _build_tailored_resume_text(resume_text: str, job: dict, matched: list[str], missing: list[str]) -> str:
+def _candidate_name(user: dict, resume_text: str) -> str:
+    first = str(user.get("first_name") or "").strip()
+    last = str(user.get("last_name") or "").strip()
+    if first or last:
+        return " ".join(part for part in (first, last) if part).strip()
+    for raw in (resume_text or "").splitlines()[:8]:
+        line = re.sub(r"\s+", " ", raw).strip()
+        if 3 <= len(line) <= 60 and not re.search(r"@|https?://|\d{3}|\bresume\b", line, re.I):
+            return line
+    return "Candidate Name"
+
+
+def _compact_line(value: str, *, max_len: int = 180) -> str:
+    value = re.sub(r"\s+", " ", str(value or "")).strip(" -\t")
+    return value[: max_len - 1].rstrip() + "." if len(value) > max_len else value
+
+
+def _professional_bullets(lines: list[str], target_keywords: list[str], *, limit: int = 10) -> list[str]:
+    bullets: list[str] = []
+    seen: set[str] = set()
+    for line in lines:
+        clean = _compact_line(line, max_len=210)
+        if len(clean) < 12:
+            continue
+        key = clean.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        if target_keywords and not any(term.lower() in key for term in target_keywords[:12]):
+            clean = f"{clean.rstrip('.')} with emphasis on {target_keywords[len(bullets) % len(target_keywords)]}."
+        bullets.append(clean)
+        if len(bullets) >= limit:
+            break
+    if not bullets:
+        bullets = [
+            "Delivered role-relevant technical work with measurable ownership, cross-functional communication, and production-quality execution.",
+            "Applied structured problem solving, documentation, and stakeholder collaboration to support business-critical outcomes.",
+        ]
+    return bullets
+
+
+def _build_tailored_resume_payload(
+    resume_text: str,
+    resume_json: dict,
+    job: dict,
+    matched: list[str],
+    missing: list[str],
+    user: dict,
+) -> dict:
     title = job.get("title") or "Target Role"
     company = job.get("company") or "Target Company"
     location = job.get("location") or ""
-    resume_lines = _clean_resume_lines(resume_text)
-    target_keywords = list(dict.fromkeys([*matched[:8], *missing[:10]]))
-    summary = (
-        f"Targeted resume for {title} at {company}. "
-        f"Positioned around {', '.join(target_keywords[:8])} with evidence from the active resume."
-    )
-    sections = [
-        "TARGETED PROFESSIONAL SUMMARY",
-        summary,
-        "",
-        "ROLE KEYWORD ALIGNMENT",
-        ", ".join(target_keywords) if target_keywords else "Role-specific keywords unavailable.",
-        "",
-        "TAILORED EXPERIENCE HIGHLIGHTS",
+    contact = resume_json.get("contact") if isinstance(resume_json, dict) else {}
+    contact = contact if isinstance(contact, dict) else {}
+    links = [str(v).strip() for v in (contact.get("links") or []) if str(v).strip()]
+    contact_items = [
+        contact.get("email") or user.get("email"),
+        contact.get("phone") or user.get("phone"),
+        *links[:2],
     ]
-    highlight_source = resume_lines[:28] or ["Add measurable accomplishments from your active resume."]
-    for line in highlight_source[:16]:
-        if target_keywords and not any(kw.lower() in line.lower() for kw in target_keywords[:10]):
-            line = f"{line} | Relevant focus: {target_keywords[len(sections) % len(target_keywords)]}"
-        sections.append(f"- {line}")
-    sections.extend([
-        "",
-        "CORE SKILLS FOR THIS POSTING",
-        ", ".join(target_keywords[:18]) if target_keywords else ", ".join(matched[:18]),
-        "",
-        "SOURCE JOB",
-        f"{title} - {company}{(' - ' + location) if location else ''}",
-    ])
-    return "\n".join(sections).strip()
+    skills = list(dict.fromkeys([
+        *matched[:10],
+        *missing[:12],
+        *[str(v).strip() for v in (resume_json.get("skills") or []) if str(v).strip()],
+    ]))
+    target_keywords = list(dict.fromkeys([*matched[:10], *missing[:14]]))
+    role_terms = ", ".join(target_keywords[:8]) if target_keywords else str(title)
+    summary = (
+        f"{title} candidate aligned to {company} with strengths in {role_terms}. "
+        "Prepared to contribute through clear ownership, secure execution, measurable delivery, and fast collaboration with engineering and business partners."
+    )
+    experience_lines = resume_json.get("experience") or _clean_resume_lines(resume_text, limit=36)
+    project_lines = resume_json.get("projects") or []
+    education_lines = resume_json.get("education") or []
+    cert_lines = resume_json.get("certifications") or []
+    return {
+        "name": _candidate_name(user, resume_text),
+        "contact": [str(item).strip() for item in contact_items if str(item or "").strip()],
+        "target": f"{title} | {company}{(' | ' + location) if location else ''}",
+        "summary": summary,
+        "skills": skills[:28],
+        "experience": _professional_bullets([str(v) for v in experience_lines], target_keywords, limit=11),
+        "projects": _professional_bullets([str(v) for v in project_lines], target_keywords, limit=4) if project_lines else [],
+        "education": [_compact_line(str(v), max_len=160) for v in education_lines[:5] if _compact_line(str(v), max_len=160)],
+        "certifications": [_compact_line(str(v), max_len=160) for v in cert_lines[:4] if _compact_line(str(v), max_len=160)],
+        "keywords": target_keywords[:18],
+    }
 
 
-def _doc_bytes(text: str, title: str) -> bytes:
-    escaped = html.escape(text).replace("\n", "<br />\n")
+def _doc_bytes(resume: dict, title: str) -> bytes:
+    def p(value: str) -> str:
+        return html.escape(str(value or ""))
+
+    def bullets(items: list[str]) -> str:
+        return "\n".join(f"<li>{p(item)}</li>" for item in items)
+
+    section_blocks = [
+        ("PROFESSIONAL SUMMARY", f"<p>{p(resume['summary'])}</p>"),
+        ("TECHNICAL SKILLS", f"<p>{p(', '.join(resume['skills']))}</p>"),
+        ("PROFESSIONAL EXPERIENCE", f"<ul>{bullets(resume['experience'])}</ul>"),
+    ]
+    if resume.get("projects"):
+        section_blocks.append(("PROJECTS", f"<ul>{bullets(resume['projects'])}</ul>"))
+    if resume.get("education"):
+        section_blocks.append(("EDUCATION", f"<ul>{bullets(resume['education'])}</ul>"))
+    if resume.get("certifications"):
+        section_blocks.append(("CERTIFICATIONS", f"<ul>{bullets(resume['certifications'])}</ul>"))
+    section_blocks.append(("TARGET KEYWORDS", f"<p>{p(', '.join(resume['keywords']))}</p>"))
+    sections_html = "\n".join(
+        f"<h2>{heading}</h2>\n{body}"
+        for heading, body in section_blocks
+    )
     document = f"""<!doctype html>
 <html>
 <head>
   <meta charset="utf-8" />
   <title>{html.escape(title)}</title>
   <style>
-    body {{ font-family: Arial, sans-serif; color: #111827; line-height: 1.45; margin: 48px; }}
-    h1 {{ font-size: 22px; margin-bottom: 8px; }}
-    .body {{ font-size: 11pt; }}
+    @page {{ margin: 0.55in; }}
+    body {{ font-family: Georgia, 'Times New Roman', serif; color: #111; line-height: 1.25; margin: 0; font-size: 10.5pt; }}
+    h1 {{ font-family: Arial, sans-serif; font-size: 18pt; text-align: center; letter-spacing: 0.5px; margin: 0; }}
+    .contact {{ text-align: center; font-family: Arial, sans-serif; font-size: 8.5pt; margin: 4px 0 10px; }}
+    .target {{ text-align: center; font-family: Arial, sans-serif; font-size: 8.5pt; color: #333; margin-bottom: 12px; }}
+    h2 {{ font-family: Arial, sans-serif; font-size: 9.5pt; letter-spacing: 0.8px; border-bottom: 1px solid #111; margin: 11px 0 5px; padding-bottom: 2px; }}
+    p {{ margin: 0 0 5px; }}
+    ul {{ margin: 0 0 4px 17px; padding: 0; }}
+    li {{ margin: 0 0 3px; }}
   </style>
 </head>
 <body>
-  <h1>{html.escape(title)}</h1>
-  <div class="body">{escaped}</div>
+  <h1>{p(resume['name'])}</h1>
+  <div class="contact">{p(' | '.join(resume['contact']))}</div>
+  <div class="target">{p(resume['target'])}</div>
+  {sections_html}
 </body>
 </html>"""
     return document.encode("utf-8")
 
 
-def _pdf_bytes(text: str, title: str) -> bytes:
-    lines = [title, ""] + textwrap.wrap(re.sub(r"\s+", " ", text).strip(), width=92)
-    pages = [lines[i:i + 44] for i in range(0, len(lines), 44)] or [[title]]
+def _simple_pdf_bytes(resume: dict) -> bytes:
+    lines = [
+        resume.get("name") or "Candidate Name",
+        " | ".join(resume.get("contact") or []),
+        resume.get("target") or "",
+        "",
+        "PROFESSIONAL SUMMARY",
+        resume.get("summary") or "",
+        "",
+        "TECHNICAL SKILLS",
+        ", ".join(resume.get("skills") or []),
+        "",
+        "PROFESSIONAL EXPERIENCE",
+        *[f"- {item}" for item in (resume.get("experience") or [])],
+    ]
+    pages = [lines[i:i + 42] for i in range(0, len(lines), 42)] or [[resume.get("name") or "Resume"]]
     objects: list[bytes] = [
         b"",  # catalog placeholder
         b"",  # pages placeholder
@@ -345,6 +442,76 @@ def _pdf_bytes(text: str, title: str) -> bytes:
         pdf.extend(f"{offset:010d} 00000 n \n".encode())
     pdf.extend(f"trailer\n<< /Root 1 0 R /Size {len(objects) + 1} >>\nstartxref\n{xref}\n%%EOF".encode())
     return bytes(pdf)
+
+
+def _pdf_bytes(resume: dict, title: str) -> bytes:
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.lib.units import inch
+        from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer
+
+        buf = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buf,
+            pagesize=letter,
+            leftMargin=0.55 * inch,
+            rightMargin=0.55 * inch,
+            topMargin=0.45 * inch,
+            bottomMargin=0.45 * inch,
+            title=title,
+        )
+        base = getSampleStyleSheet()
+        styles = {
+            "name": ParagraphStyle("Name", parent=base["Normal"], fontName="Helvetica-Bold", fontSize=17, leading=20, alignment=TA_CENTER, spaceAfter=2),
+            "contact": ParagraphStyle("Contact", parent=base["Normal"], fontName="Helvetica", fontSize=8.2, leading=10, alignment=TA_CENTER, textColor=colors.HexColor("#333333"), spaceAfter=5),
+            "target": ParagraphStyle("Target", parent=base["Normal"], fontName="Helvetica", fontSize=8.5, leading=10, alignment=TA_CENTER, textColor=colors.HexColor("#555555"), spaceAfter=8),
+            "section": ParagraphStyle("Section", parent=base["Normal"], fontName="Helvetica-Bold", fontSize=9.5, leading=11, alignment=TA_LEFT, spaceBefore=7, spaceAfter=2),
+            "body": ParagraphStyle("Body", parent=base["Normal"], fontName="Times-Roman", fontSize=10, leading=12, spaceAfter=3),
+            "bullet": ParagraphStyle("Bullet", parent=base["Normal"], fontName="Times-Roman", fontSize=9.7, leading=11.2, leftIndent=12, firstLineIndent=-8, spaceAfter=1.5),
+        }
+
+        def safe(value: str) -> str:
+            return html.escape(str(value or "")).replace("\n", "<br/>")
+
+        def section(story: list, heading: str) -> None:
+            story.append(Paragraph(safe(heading), styles["section"]))
+            story.append(HRFlowable(width="100%", thickness=0.7, color=colors.black, spaceBefore=0, spaceAfter=4))
+
+        def add_bullets(story: list, items: list[str]) -> None:
+            for item in items:
+                story.append(Paragraph(f"- {safe(item)}", styles["bullet"]))
+
+        story: list = [
+            Paragraph(safe(resume.get("name")), styles["name"]),
+            Paragraph(safe(" | ".join(resume.get("contact") or [])), styles["contact"]),
+            Paragraph(safe(resume.get("target")), styles["target"]),
+        ]
+        section(story, "PROFESSIONAL SUMMARY")
+        story.append(Paragraph(safe(resume.get("summary")), styles["body"]))
+        section(story, "TECHNICAL SKILLS")
+        story.append(Paragraph(safe(", ".join(resume.get("skills") or [])), styles["body"]))
+        section(story, "PROFESSIONAL EXPERIENCE")
+        add_bullets(story, resume.get("experience") or [])
+        if resume.get("projects"):
+            section(story, "PROJECTS")
+            add_bullets(story, resume.get("projects") or [])
+        if resume.get("education"):
+            section(story, "EDUCATION")
+            add_bullets(story, resume.get("education") or [])
+        if resume.get("certifications"):
+            section(story, "CERTIFICATIONS")
+            add_bullets(story, resume.get("certifications") or [])
+        section(story, "TARGET KEYWORDS")
+        story.append(Paragraph(safe(", ".join(resume.get("keywords") or [])), styles["body"]))
+        story.append(Spacer(1, 0.01 * inch))
+        doc.build(story)
+        return buf.getvalue()
+    except Exception as exc:
+        log.warning("ReportLab tailored PDF generation failed, using fallback: %s", exc)
+        return _simple_pdf_bytes(resume)
 
 
 @router.get("/profile", response_model=UserProfile)
@@ -557,6 +724,20 @@ async def generate_tailored_resume(
     resume_text = (active_resume or {}).get("parsed_text") or ""
     if not resume_text.strip():
         raise HTTPException(status_code=400, detail="Upload or re-upload an active resume before tailoring.")
+    resume_json = (active_resume or {}).get("parsed_json") or {}
+    if not isinstance(resume_json, dict) or not (resume_json.get("sections") or resume_json.get("experience") or resume_json.get("summary")):
+        try:
+            from app.services.resume_parser import resume_text_to_json
+            resume_json = resume_text_to_json(
+                resume_text,
+                metadata={
+                    "filename": (active_resume or {}).get("name"),
+                    "derived_for_tailor": True,
+                },
+            )
+        except Exception as exc:
+            log.warning("Tailor resume_json derivation failed for %s: %s", user_id, exc)
+            resume_json = {}
 
     job = None
     try:
@@ -570,14 +751,15 @@ async def generate_tailored_resume(
 
     job_text = f"{job_data.get('title') or ''}\n{job_data.get('description') or ''}".strip()
     matched, missing = _tailor_keywords(resume_text, job_text)
-    tailored_text = _build_tailored_resume_text(resume_text, job_data, matched, missing)
+    user = user_store.get_user_by_id(user_id) or {}
+    tailored_resume = _build_tailored_resume_payload(resume_text, resume_json, job_data, matched, missing, user)
     projected_score = max(95, min(98, int(item.get("match_score") or 0) + max(12, len(missing[:10]))))
     title = f"{job_data.get('title') or 'Tailored Resume'} - {job_data.get('company') or 'PlaceUp'}"
     requested = (payload.format or "doc").lower().strip()
     is_pdf = requested == "pdf"
     ext = "pdf" if is_pdf else "doc"
     filename = re.sub(r"[^A-Za-z0-9._-]+", "_", f"{title}_ATS_{projected_score}.{ext}")[:140]
-    content = _pdf_bytes(tailored_text, title) if is_pdf else _doc_bytes(tailored_text, title)
+    content = _pdf_bytes(tailored_resume, title) if is_pdf else _doc_bytes(tailored_resume, title)
     content_type = "application/pdf" if is_pdf else "application/msword"
 
     user_store.update_tailor_queue_item(user_id, queue_id, {
