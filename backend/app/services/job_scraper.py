@@ -628,9 +628,9 @@ async def run_scrape_cycle(
                 if site_name:
                     if src == JobSource.GOOGLE and google_allowed_terms and search_term.lower() not in google_allowed_terms:
                         continue
-                    if src == JobSource.ZIPRECRUITER and not (settings.scrape_ziprecruiter_jobspy_enabled or settings.proxy_url):
+                    if src == JobSource.ZIPRECRUITER and not settings.scrape_ziprecruiter_jobspy_enabled:
                         continue
-                    if src == JobSource.GLASSDOOR and not (settings.scrape_glassdoor_jobspy_enabled or settings.proxy_url):
+                    if src == JobSource.GLASSDOOR and not settings.scrape_glassdoor_jobspy_enabled:
                         continue
                     normalized_source = _normalize_source_name(site_name)
                     source_results_wanted = min(request.results_per_source, 20) if src == JobSource.GOOGLE else request.results_per_source
@@ -692,8 +692,8 @@ async def run_scrape_cycle(
         targets = build_scrapling_targets(
             search_terms=request.search_terms,
             locations=request.locations,
-            include_glassdoor=JobSource.GLASSDOOR in request.sources and not (settings.scrape_glassdoor_jobspy_enabled or settings.proxy_url),
-            include_ziprecruiter=JobSource.ZIPRECRUITER in request.sources and not (settings.scrape_ziprecruiter_jobspy_enabled or settings.proxy_url),
+            include_glassdoor=JobSource.GLASSDOOR in request.sources and not settings.scrape_glassdoor_jobspy_enabled,
+            include_ziprecruiter=JobSource.ZIPRECRUITER in request.sources and not settings.scrape_ziprecruiter_jobspy_enabled,
             include_monster=JobSource.MONSTER in request.sources,
             include_jooble=JobSource.JOOBLE in request.sources,
             include_linkedin=JobSource.LINKEDIN in request.sources,
