@@ -1294,6 +1294,41 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                       {preview}
                     </div>
                   )}
+                  <button
+                    disabled={tailorQueueIds.has(id) || tailorBusyId === id || tailorUsage.used >= tailorUsage.limit}
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      await addToTailorQueue(job);
+                    }}
+                    style={{
+                      width: "100%",
+                      minHeight: 38,
+                      padding: "0 14px",
+                      borderRadius: 10,
+                      border: `1px solid ${tailorQueueIds.has(id) ? "rgba(34,197,94,0.34)" : "rgba(237,125,43,0.36)"}`,
+                      background: tailorQueueIds.has(id)
+                        ? "rgba(34,197,94,0.10)"
+                        : "linear-gradient(135deg, rgba(242,163,65,0.22), rgba(237,125,43,0.18))",
+                      color: tailorQueueIds.has(id) ? "#86EFAC" : "#F5EAC8",
+                      fontSize: 12,
+                      fontWeight: 900,
+                      cursor: tailorQueueIds.has(id) || tailorUsage.used >= tailorUsage.limit ? "not-allowed" : "pointer",
+                      opacity: tailorUsage.used >= tailorUsage.limit && !tailorQueueIds.has(id) ? 0.55 : 1,
+                      fontFamily: F.sans,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 7,
+                      boxShadow: tailorQueueIds.has(id) ? "none" : "0 10px 24px rgba(237,125,43,0.16)",
+                    }}
+                    title={tailorQueueIds.has(id) ? "Already in tailor queue" : tailorUsage.used >= tailorUsage.limit ? "Daily tailor queue limit reached" : "Add this job to Tailor Queue"}
+                  >
+                    <Wand2 size={14} />
+                    {tailorQueueIds.has(id) ? "Added to Tailor Queue" : tailorBusyId === id ? "Adding to Tailor Queue..." : "Tailor Resume"}
+                    <span style={{ color: tailorQueueIds.has(id) ? "#86EFAC" : "rgba(245,234,200,0.68)", fontSize: 10, fontWeight: 800 }}>
+                      {tailorUsage.used}/{tailorUsage.limit} today
+                    </span>
+                  </button>
                   <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 10, marginTop: "auto" }}>
                     <div style={{ display: "flex", gap: 5, flexWrap: "wrap", minWidth: 0 }}>
                       {visaBadges.slice(0, 4).map((v) => {
@@ -1319,33 +1354,6 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                         await persistApplication(job, nextStatus);
                       }} style={{ height: 28, padding: "0 9px", borderRadius: 7, border: `1px solid ${trackedJobs[id] === "interview" ? "rgba(237,125,43,0.35)" : trackedJobs[id] === "applied" ? "rgba(34,197,94,0.35)" : J.line}`, background: trackedJobs[id] === "interview" ? "rgba(237,125,43,0.10)" : trackedJobs[id] === "applied" ? "rgba(34,197,94,0.10)" : "rgba(245,234,200,0.05)", color: trackedJobs[id] === "interview" ? "#93C5FD" : trackedJobs[id] === "applied" ? "#86EFAC" : J.t2, fontSize: 10, fontWeight: 800, cursor: "pointer", fontFamily: F.sans, whiteSpace: "nowrap" }} title={trackedJobs[id] === "interview" ? "Interview stage" : trackedJobs[id] === "applied" ? "Applied - click to move to Interview" : "Track application status"}>
                         {trackedJobs[id] === "interview" ? "Interview" : trackedJobs[id] === "applied" ? "Applied" : "Track"}
-                      </button>
-                      <button
-                        disabled={tailorQueueIds.has(id) || tailorBusyId === id || tailorUsage.used >= tailorUsage.limit}
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          await addToTailorQueue(job);
-                        }}
-                        style={{
-                          height: 28,
-                          padding: "0 9px",
-                          borderRadius: 7,
-                          border: `1px solid ${tailorQueueIds.has(id) ? "rgba(34,197,94,0.30)" : "rgba(237,125,43,0.28)"}`,
-                          background: tailorQueueIds.has(id) ? "rgba(34,197,94,0.10)" : "rgba(237,125,43,0.10)",
-                          color: tailorQueueIds.has(id) ? "#86EFAC" : "#F2A341",
-                          fontSize: 10,
-                          fontWeight: 800,
-                          cursor: tailorQueueIds.has(id) || tailorUsage.used >= tailorUsage.limit ? "not-allowed" : "pointer",
-                          opacity: tailorUsage.used >= tailorUsage.limit && !tailorQueueIds.has(id) ? 0.55 : 1,
-                          fontFamily: F.sans,
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 4,
-                          whiteSpace: "nowrap",
-                        }}
-                        title={tailorQueueIds.has(id) ? "Already in tailor queue" : tailorUsage.used >= tailorUsage.limit ? "Daily tailor queue limit reached" : "Add to tailor queue"}
-                      >
-                        <Wand2 size={11} /> {tailorQueueIds.has(id) ? "Queued" : "Tailor"}
                       </button>
                       <button
                         onClick={async (e) => {
