@@ -254,6 +254,41 @@ gcloud.cmd run jobs deploy placeup-job-description-repair `
   --max-retries 1 `
   --task-timeout 7200
 
+# Walks the COMPLETE sponsor-company universe (visa_sponsors registries for
+# every target country + h1b_sponsors) and harvests entire ATS boards:
+# first-party postings with direct apply links for ALL employers who can
+# sponsor - independent of what third-party scrapers happen to find.
+gcloud.cmd run jobs deploy placeup-board-discovery-sweep `
+  --image $Image `
+  --region $Region `
+  --service-account "placeup-etl-sa@$ProjectId.iam.gserviceaccount.com" `
+  --command python `
+  --args="-m,app.workers.board_discovery_sweep,--limit,600,--concurrency,8" `
+  --set-cloudsql-instances "$ProjectId`:$Region`:$DbInstance" `
+  --set-env-vars "APP_ENV=production,DATABASE_BACKEND=postgres,DB_POOL_SIZE=2,DB_MAX_OVERFLOW=2" `
+  --set-secrets "DATABASE_URL=DATABASE_URL:latest" `
+  --memory 1Gi `
+  --cpu 1 `
+  --max-retries 1 `
+  --task-timeout 21600
+
+# Resolves each third-party posting (LinkedIn/Dice/Glassdoor/...) to the
+# employer's OFFICIAL careers page / ATS posting and upgrades the JD +
+# "Apply on Company Website" link. Runs after every scraper cycle.
+gcloud.cmd run jobs deploy placeup-company-link-resolver `
+  --image $Image `
+  --region $Region `
+  --service-account "placeup-etl-sa@$ProjectId.iam.gserviceaccount.com" `
+  --command python `
+  --args="-m,app.workers.company_link_resolver,--limit,400,--concurrency,5" `
+  --set-cloudsql-instances "$ProjectId`:$Region`:$DbInstance" `
+  --set-env-vars "APP_ENV=production,DATABASE_BACKEND=postgres,DB_POOL_SIZE=2,DB_MAX_OVERFLOW=2" `
+  --set-secrets "DATABASE_URL=DATABASE_URL:latest" `
+  --memory 1Gi `
+  --cpu 1 `
+  --max-retries 1 `
+  --task-timeout 3600
+
 gcloud.cmd run jobs deploy placeup-stale-jobs-sweeper `
   --image $Image `
   --region $Region `
@@ -317,5 +352,74 @@ if ($VisaSponsorScheduleExists) {
     --http-method POST `
     --oauth-service-account-email "placeup-etl-sa@$ProjectId.iam.gserviceaccount.com"
 }
+
+# Company link resolver: every 2 hours, offset from the 6h scraper so fresh
+# rows get official career links + first-party JDs shortly after ingest.
+$LinkResolverScheduleUri = "https://$Region-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/$ProjectId/jobs/placeup-company-link-resolver:run"
+$previousErrorAction = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+$LinkResolverScheduleJob = & gcloud.cmd scheduler jobs describe placeup-company-link-resolver-2h `
+  --location $Region `
+  --format "value(name)" 2>$null
+$LinkResolverScheduleExists = $LASTEXITCODE -eq 0
+$ErrorActionPreference = $previousErrorAction
+
+if ($LinkResolverScheduleExists) {
+  gcloud.cmd scheduler jobs update http placeup-company-link-resolver-2h `
+    --location $Region `
+    --schedule "30 */2 * * *" `
+    --time-zone "America/Chicago" `
+    --uri $LinkResolverScheduleUri `
+    --http-method POST `
+    --oauth-service-account-email "placeup-etl-sa@$ProjectId.iam.gserviceaccount.com"
+} else {
+  gcloud.cmd scheduler jobs create http placeup-company-link-resolver-2h `
+    --location $Region `
+    --schedule "30 */2 * * *" `
+    --time-zone "America/Chicago" `
+    --uri $LinkResolverScheduleUri `
+    --http-method POST `
+    --oauth-service-account-email "placeup-etl-sa@$ProjectId.iam.gserviceaccount.com"
+}
+
+gcloud.cmd run jobs add-iam-policy-binding placeup-company-link-resolver `
+  --region $Region `
+  --member "serviceAccount:placeup-etl-sa@$ProjectId.iam.gserviceaccount.com" `
+  --role roles/run.invoker
+
+# Board discovery sweep: every 6 hours, 600 sponsor companies per run
+# (~2,400/day). Checkpointed in board_sweep_state, so it cycles through the
+# full registry and re-visits each company every 30 days.
+$BoardSweepScheduleUri = "https://$Region-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/$ProjectId/jobs/placeup-board-discovery-sweep:run"
+$previousErrorAction = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+$BoardSweepScheduleJob = & gcloud.cmd scheduler jobs describe placeup-board-discovery-sweep-6h `
+  --location $Region `
+  --format "value(name)" 2>$null
+$BoardSweepScheduleExists = $LASTEXITCODE -eq 0
+$ErrorActionPreference = $previousErrorAction
+
+if ($BoardSweepScheduleExists) {
+  gcloud.cmd scheduler jobs update http placeup-board-discovery-sweep-6h `
+    --location $Region `
+    --schedule "0 1,7,13,19 * * *" `
+    --time-zone "America/Chicago" `
+    --uri $BoardSweepScheduleUri `
+    --http-method POST `
+    --oauth-service-account-email "placeup-etl-sa@$ProjectId.iam.gserviceaccount.com"
+} else {
+  gcloud.cmd scheduler jobs create http placeup-board-discovery-sweep-6h `
+    --location $Region `
+    --schedule "0 1,7,13,19 * * *" `
+    --time-zone "America/Chicago" `
+    --uri $BoardSweepScheduleUri `
+    --http-method POST `
+    --oauth-service-account-email "placeup-etl-sa@$ProjectId.iam.gserviceaccount.com"
+}
+
+gcloud.cmd run jobs add-iam-policy-binding placeup-board-discovery-sweep `
+  --region $Region `
+  --member "serviceAccount:placeup-etl-sa@$ProjectId.iam.gserviceaccount.com" `
+  --role roles/run.invoker
 
 Write-Host "Backend image, API, and ETL jobs deployed."

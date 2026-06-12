@@ -208,6 +208,27 @@ function countryFlag(code: string): string {
   return COUNTRY_FLAGS[code] || "🌐";
 }
 
+// Windows does NOT render country-flag emoji (users see plain "US" letters),
+// so anywhere we control the markup we render a real flag image with the
+// emoji as alt/fallback. <option> elements can't contain images, so the
+// dropdowns keep emoji.
+function FlagIcon({ code, size = 16 }: { code: string; size?: number }) {
+  const cc = (code || "").trim().toLowerCase();
+  if (!cc || cc.length !== 2) return <span style={{ fontSize: size }}>🌐</span>;
+  return (
+    <img
+      src={`https://flagcdn.com/${Math.round(size * 1.5)}x${size}/${cc}.png`}
+      srcSet={`https://flagcdn.com/${Math.round(size * 3)}x${size * 2}/${cc}.png 2x`}
+      width={Math.round(size * 1.5)}
+      height={size}
+      alt={countryFlag(code)}
+      loading="lazy"
+      onError={(e) => { e.currentTarget.outerHTML = countryFlag(code); }}
+      style={{ borderRadius: 2, display: "inline-block", verticalAlign: "-2px", boxShadow: "0 0 0 1px rgba(245,234,200,0.15)" }}
+    />
+  );
+}
+
 function publishDateLabel(job: api.JobPost): string {
   const raw = jobPostedRaw(job);
   if (!raw) return "Publish date —";
@@ -400,6 +421,8 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const [taxonomy, setTaxonomy] = useState<TaxonomyCategory[]>([]);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [activeRole, setActiveRole] = useState<string | null>(null);
+  const pageChangedRef = useRef(false);
+
   // Deep links from the Alerts digest ("/dashboard/jobs?role=Security Engineer")
   // pre-apply the role/category filter on arrival.
   const [searchParams] = useSearchParams();
@@ -435,6 +458,18 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const [jobs, setJobs] = useState<api.JobPost[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  // Pagination lives below the grid — jump back to the top of the list when
+  // the page changes so the new positions are immediately visible. (This
+  // effect MUST come after the `page` declaration: the dependency array is
+  // evaluated during render, and referencing `page` earlier crashes with a
+  // temporal-dead-zone ReferenceError.)
+  useEffect(() => {
+    if (page > 1 || pageChangedRef.current) {
+      pageChangedRef.current = true;
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
   const pageSize = 40;
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -831,13 +866,14 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                 Search current roles across the 25-country target map, then narrow by local visa names like H-1B, LMIA, Skilled Worker, EU Blue Card, Employment Pass, and more.
               </div>
               <div style={{ marginTop: 14, display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {priorityCountries.map((country) => (
+                {(targetCountries.length ? targetCountries : priorityCountries).map((country) => (
                   <button
                     key={country.code}
+                    title={country.name || country.code}
                     onClick={() => { setCountryFilter(country.code === countryFilter ? "" : country.code); setVisaProgramFilter(""); setPage(1); }}
-                    style={filterPillStyle(countryFilter === country.code)}
+                    style={{ ...filterPillStyle(countryFilter === country.code), display: "inline-flex", alignItems: "center", gap: 6 }}
                   >
-                    {countryFlag(country.code)} {country.code}
+                    <FlagIcon code={country.code} size={13} /> {country.code}
                   </button>
                 ))}
               </div>
@@ -1065,9 +1101,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
           </div>
         )}
 
-        {paginationControls}
-
-        {/* Job cards */}
+        {/* Job cards (pagination lives below the grid) */}
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 14 }}>
           {loading && jobs.length === 0 && (
             <div style={{ gridColumn: "1 / -1", background: J.card, border: `1px solid ${J.line}`, borderRadius: 16, boxShadow: J.shadow, backdropFilter: "blur(24px)" }}>
@@ -1161,7 +1195,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                   </div>
                   <div style={{ height: 1, background: "rgba(237,125,43,0.22)", marginTop: 2 }} />
                   <div style={{ display: "flex", gap: 8, fontSize: 11, color: J.t2, fontFamily: F.sans, flexWrap: "wrap", alignItems: "center" }}>
-                    <span style={{ display: "inline-flex", gap: 5, alignItems: "center", minWidth: 0 }}><span style={{ fontSize: 15 }}>{countryFlag(visaCountry)}</span><span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{job.location || visaCountryName || "Remote"}</span></span>
+                    <span style={{ display: "inline-flex", gap: 5, alignItems: "center", minWidth: 0 }}><FlagIcon code={visaCountry} size={13} /><span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{job.location || visaCountryName || "Remote"}</span></span>
                     <span style={{ display: "inline-flex", gap: 5, alignItems: "center", padding: "3px 8px", borderRadius: 999, background: "rgba(237,125,43,0.08)", color: "#F5EAC8", border: "1px solid rgba(237,125,43,0.18)", whiteSpace: "nowrap" }}>
                       <Clock size={11} />
                       {publishDateLabel(job).replace("Publish date ", "")}

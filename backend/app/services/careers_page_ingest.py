@@ -193,16 +193,26 @@ async def search_careers_page(company: str) -> Optional[str]:
         if wait > 0:
             await _asyncio.sleep(wait)
         _last_search_at = _time.monotonic()
+        html = ""
+        query = f"{company} careers jobs official site"
+        # Provider 1: DuckDuckGo HTML. Often blocks datacenter IPs (Cloud Run),
+        # so fall back to Bing, which tolerates them better.
         try:
             async with httpx.AsyncClient(headers=_HEADERS, timeout=15.0, follow_redirects=True) as client:
-                resp = await client.post(
-                    "https://html.duckduckgo.com/html/",
-                    data={"q": f"{company} careers jobs official site"},
-                )
-                resp.raise_for_status()
-                html = resp.text
+                resp = await client.post("https://html.duckduckgo.com/html/", data={"q": query})
+                if resp.status_code == 200 and "uddg=" in resp.text:
+                    html = resp.text
         except Exception as exc:  # noqa: BLE001
-            logger.debug("Careers search failed for %r: %s", company, exc)
+            logger.debug("DDG careers search failed for %r: %s", company, exc)
+        if not html:
+            try:
+                async with httpx.AsyncClient(headers=_HEADERS, timeout=15.0, follow_redirects=True) as client:
+                    resp = await client.get("https://www.bing.com/search", params={"q": query, "count": "15"})
+                    if resp.status_code == 200:
+                        html = resp.text
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Bing careers search failed for %r: %s", company, exc)
+        if not html:
             if len(_search_cache) > 5000:
                 _search_cache.clear()
             _search_cache[cache_key] = (_time.monotonic(), None)
@@ -212,12 +222,22 @@ async def search_careers_page(company: str) -> Optional[str]:
 
     urls: list[str] = []
     for href in re.findall(r'href="([^"]+)"', html):
-        if "duckduckgo.com/l/" in href:  # redirect wrapper
+        if "duckduckgo.com/l/" in href:  # DDG redirect wrapper
             qs = parse_qs(_urlparse(href).query)
             target = unquote((qs.get("uddg") or [""])[0])
             if target.startswith("http"):
                 urls.append(target)
-        elif href.startswith("http") and "duckduckgo" not in href:
+        elif "bing.com/ck/" in href:  # Bing redirect wrapper (u=a1<base64url>)
+            try:
+                import base64
+                encoded = (parse_qs(_urlparse(href).query).get("u") or [""])[0]
+                if encoded.startswith("a1"):
+                    decoded = base64.urlsafe_b64decode(encoded[2:] + "==").decode("utf-8", "ignore")
+                    if decoded.startswith("http"):
+                        urls.append(decoded)
+            except Exception:  # noqa: BLE001
+                continue
+        elif href.startswith("http") and "duckduckgo" not in href and "bing.com" not in href and "microsoft.com" not in href:
             urls.append(href)
 
     token = re.sub(r"[^a-z0-9]", "", company.lower())[:12]

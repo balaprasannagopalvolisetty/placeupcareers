@@ -71,6 +71,23 @@ def strip_markdown_escapes(text: str) -> str:
     return _MD_ESCAPE_RE.sub(r"\1", text or "")
 
 
+# UI chrome that scrapers swallow from job boards (Job Bank, CareerBeacon...).
+# These fragments are pure navigation noise — never part of a real JD.
+_BOARD_CHROME_PATTERNS = (
+    re.compile(r"\b\d{2,6}\s+\d{1,3}\s+Loading, please wait\.{0,3}\s*Cancel\s*", re.I),
+    re.compile(r"Loading, please wait\.{0,3}\s*Cancel\s*", re.I),
+    re.compile(r"Save to favourites\s*(?:Your favourites\s*)?To add a job posting to your favourites[^.]*\.\s*(?:Sign in or sign up[^.]*\.)?\s*", re.I),
+    re.compile(r"Direct Apply\s*(?:Direct Apply\s*)?Sign in to apply directly on Job Bank[^.]*\.\s*(?:Sign up\b)?\s*", re.I),
+    re.compile(r"Save to favourites\s*", re.I),
+)
+
+
+def strip_board_chrome(text: str) -> str:
+    for pattern in _BOARD_CHROME_PATTERNS:
+        text = pattern.sub(" ", text)
+    return re.sub(r"[ \t]{2,}", " ", text).strip()
+
+
 def clean_job_description(description: Any) -> str:
     """Trim board chrome/header text while keeping the real job description."""
     text = str(description or "").strip()
@@ -78,6 +95,7 @@ def clean_job_description(description: Any) -> str:
         return ""
 
     text = strip_markdown_escapes(text)
+    text = strip_board_chrome(text)
 
     markers = (
         r"\bAbout the job\b",

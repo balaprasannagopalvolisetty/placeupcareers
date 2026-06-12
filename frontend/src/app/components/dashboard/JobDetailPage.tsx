@@ -274,9 +274,14 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
   // works regardless of which scraper sourced the job.
   const resolvedJobUrl = (() => {
     const j: any = job ?? {};
+    // Only a job-SPECIFIC resolved posting may outrank the original link.
+    // Generic "/careers" landing pages are never used for Apply.
+    const resolvedPosting = j.extra_metadata?.company_link?.link_type === "ats_posting"
+      ? j.extra_metadata?.company_link?.url
+      : undefined;
     const candidates = [
-      j.job_url_direct,                       // official company posting (resolved by backend)
-      j.extra_metadata?.company_link?.url,    // same, from metadata if not flattened
+      j.job_url_direct,          // official company posting (backend already gates by link_type)
+      resolvedPosting,
       j.job_url,
       j.source_url,
       j.apply_url,
@@ -289,6 +294,26 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
     const trimmed = String(first).trim();
     // Make sure we always pass an absolute URL to window.open()
     return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  })();
+
+  // HONEST apply button: only claim "Company Website" when the link actually
+  // leaves the third-party boards. While the company-link pipeline works
+  // through the backlog, unresolved jobs say "Apply on LinkedIn" etc. instead
+  // of pretending.
+  const applyLabel = (() => {
+    if (!resolvedJobUrl) return "Search this role";
+    let host = "";
+    try { host = new URL(resolvedJobUrl).hostname.toLowerCase(); } catch { return "Apply to this Position"; }
+    const boards: Array<[string, string]> = [
+      ["linkedin.com", "LinkedIn"], ["indeed.com", "Indeed"], ["glassdoor.", "Glassdoor"],
+      ["dice.com", "Dice"], ["ziprecruiter.com", "ZipRecruiter"], ["monster.com", "Monster"],
+      ["simplyhired.com", "SimplyHired"], ["jooble.org", "Jooble"], ["jobbank.gc.ca", "Job Bank"],
+      ["findajob.dwp.gov.uk", "Find a Job"], ["jobs.nhs.uk", "NHS Jobs"], ["arbeitnow.com", "Arbeitnow"],
+      ["remoteok.com", "RemoteOK"], ["remotive.com", "Remotive"], ["weworkremotely.com", "WWR"],
+      ["mycareersfuture.gov.sg", "MyCareersFuture"], ["jobicy.com", "Jobicy"],
+    ];
+    const board = boards.find(([needle]) => host.includes(needle));
+    return board ? `Apply on ${board[1]}` : "Apply on Company Website";
   })();
 
   const currentJob = {
@@ -551,7 +576,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
                 boxShadow: "0 0 20px rgba(237,125,43,0.35)",
               }}
             >
-              <ExternalLink size={14} /> Apply on Company Website
+              <ExternalLink size={14} /> {applyLabel}
             </button>
             <button
               type="button"

@@ -25,9 +25,15 @@ def json_default(value):
 
 
 def _company_link_url(meta: dict) -> Optional[str]:
-    """Official company posting/careers URL resolved by the company link worker."""
+    """Official company POSTING URL resolved by the company link worker.
+
+    Only job-specific ATS postings qualify for the Apply button. A generic
+    "/careers" landing page must never replace the original job link — users
+    clicking Apply on a specific role were getting dumped on company home
+    careers pages with no way to find the job.
+    """
     link = meta.get("company_link") if isinstance(meta, dict) else None
-    if isinstance(link, dict):
+    if isinstance(link, dict) and link.get("link_type") == "ats_posting":
         url = str(link.get("url") or "").strip()
         if url.startswith("http"):
             return url
@@ -240,14 +246,15 @@ class PostgresClient:
         return min(max(limit * 5, limit + 20), 500)
 
     def _needs_full_description(self, filters: dict | None) -> bool:
+        """Only free-text search needs full JD text in the pool query.
+
+        title_terms / date filters match on title/company/timestamps, so
+        shipping full descriptions for up to 2500 rows made every personalized
+        or time-filtered page slow. Pool ranking works on the 900-char prefix;
+        the visible page is re-scored against full descriptions separately.
+        """
         filters = filters or {}
-        return bool(
-            filters.get("coverage_scan")
-            or filters.get("title_terms")
-            or filters.get("search")
-            or filters.get("posted_since")
-            or filters.get("posted_before")
-        )
+        return bool(filters.get("coverage_scan") or filters.get("search"))
 
     async def get_job(self, job_id: str) -> Optional[dict]:
         if self._master_jobs_available():
@@ -629,8 +636,28 @@ class PostgresClient:
             self._has_master_jobs = inspect(self.engine).has_table("master_jobs")
         return bool(self._has_master_jobs)
 
+    def _target_country_prefilter(self, stmt):
+        """SQL-level target-country filter.
+
+        The Jobs feed previously fetched a recency-bounded pool (360 rows) and
+        THEN dropped out-of-scope countries in Python — so when scrapers pulled
+        many non-target rows, users saw a few hundred jobs out of 50k+, and
+        pagination pointed at pages that didn't exist. Filtering in SQL keeps
+        the pool full of valid rows. NULL/empty country rows pass through for
+        the Python location-based check (remote/unspecified roles).
+        """
+        return stmt.where(
+            or_(
+                func.upper(MasterJob.country).in_([c.upper() for c in TARGET_COUNTRIES]),
+                MasterJob.country.is_(None),
+                MasterJob.country == "",
+            )
+        )
+
     def _apply_master_job_filters(self, stmt, filters: dict | None):
         filters = filters or {}
+        if not filters.get("skip_target_prefilter"):
+            stmt = self._target_country_prefilter(stmt)
         if filters.get("category"):
             stmt = stmt.where(MasterJob.extra_metadata.op("->>")("category") == filters["category"])
         if filters.get("source"):

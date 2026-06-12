@@ -56,20 +56,29 @@ CREATE TABLE IF NOT EXISTS board_sweep_state (
 
 CANDIDATE_SQL = """
 WITH sponsors AS (
-    SELECT employer_name, country, lower(trim(employer_name)) AS company_key
+    SELECT employer_name, country, 0 AS weight, lower(trim(employer_name)) AS company_key
     FROM visa_sponsors
     WHERE coalesce(employer_name, '') <> ''
     UNION
-    SELECT employer_name, 'US' AS country, lower(trim(employer_name)) AS company_key
+    SELECT employer_name, 'US' AS country, total_petitions AS weight, lower(trim(employer_name)) AS company_key
     FROM h1b_sponsors
     WHERE coalesce(employer_name, '') <> '' AND total_petitions >= 1
+),
+pending AS (
+    SELECT DISTINCT ON (s.company_key) s.employer_name, s.country, s.weight, s.company_key
+    FROM sponsors s
+    LEFT JOIN board_sweep_state st ON st.company_key = s.company_key
+    WHERE st.company_key IS NULL
+       OR st.swept_at < now() - make_interval(days => :resweep_days)
+    ORDER BY s.company_key, s.weight DESC
 )
-SELECT DISTINCT ON (s.company_key) s.employer_name, s.country, s.company_key
-FROM sponsors s
-LEFT JOIN board_sweep_state st ON st.company_key = s.company_key
-WHERE st.company_key IS NULL
-   OR st.swept_at < now() - make_interval(days => :resweep_days)
-ORDER BY s.company_key
+SELECT employer_name, country, company_key
+FROM pending
+-- Real employers first: numbered shell companies ("1295416 Alberta Ltd")
+-- almost never run ATS boards, and alphabetical order front-loaded
+-- thousands of them (first sweep batch: 600 checked, 0 boards). High-volume
+-- H-1B petitioners lead, then everything else shuffled.
+ORDER BY (employer_name ~ '^[0-9]'), weight DESC, random()
 LIMIT :limit
 """
 
@@ -152,8 +161,16 @@ async def run(limit: int, concurrency: int, dry_run: bool = False) -> dict[str, 
                     )
             except Exception as exc:  # noqa: BLE001
                 logger.debug("Search-based careers discovery failed for %r: %s", name, exc)
-            if not postings:
-                postings = list(await get_board_postings(name))
+            # ALSO probe the standard ATS APIs every time (not only when the
+            # search missed): companies often run a partial board on one
+            # platform and a fuller portal elsewhere. The pid/seen_ids and
+            # loader canonical-key dedupe make the merge safe.
+            try:
+                board_postings = await get_board_postings(name)
+                if board_postings:
+                    postings.extend(board_postings)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("ATS board probe failed for %r: %s", name, exc)
             count = 0
             for posting in postings:
                 pid = str(getattr(posting, "id", "") or "")

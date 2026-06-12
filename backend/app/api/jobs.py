@@ -203,14 +203,25 @@ def _get_stale_jobs_response(key: str) -> "dict | None":
     return payload
 
 
-_THIRD_PARTY_SOURCES = {"linkedin", "dice", "glassdoor", "indeed", "ziprecruiter", "simplyhired", "monster"}
+# Sources already serving first-party employer data — everything NOT in this
+# set is an intermediary and qualifies for company-page resolution. Inverted
+# (vs. listing portals) so country job boards in registry-less countries
+# (EURES, MyCareersFuture, France Travail, Jobbank CA, ...) are covered too.
+_FIRST_PARTY_SOURCES = {
+    "greenhouse", "lever", "ashby", "smartrecruiters", "workday", "recruitee",
+    "personio", "teamtailor", "jazzhr", "rippling", "bamboohr", "workable",
+    "h1b_sponsor", "tier1_ats",
+}
 _company_link_recent: dict[str, datetime] = {}
+
+# 5-minute cache of exact inventory counts for personalized/role feeds.
+_title_count_cache: dict[str, tuple[float, int]] = {}
 
 
 def _should_schedule_company_link(job: dict) -> bool:
     """Schedule official-careers-page resolution for third-party postings."""
     source = str(job.get("source") or job.get("source_name") or "").lower()
-    if source not in _THIRD_PARTY_SOURCES:
+    if not source or source in _FIRST_PARTY_SOURCES:
         return False
     meta = job.get("extra_metadata") or {}
     if isinstance(meta, dict) and (meta.get("company_link_checked") or meta.get("company_link")):
@@ -1206,14 +1217,35 @@ async def list_jobs(
         # even though fetching the first page is fast. Use a pagination-safe
         # estimate for broad views and tighten totals on filtered/taxonomy
         # paths where the exact count is meaningful to the user.
-        total = 50000 if (
-            taxonomy_filter_active
-            or free_text_search_active
-            or filters.get("title_terms")
-            or post_filter_since
-            or post_filter_before
-            or not exact_count_active
-        ) else await db.count_jobs(filters=filters)
+        title_terms_active = bool(filters.get("title_terms")) and not taxonomy_filter_active
+        if title_terms_active and not free_text_search_active and not post_filter_since and not post_filter_before:
+            # Personalized / role feeds report the EXACT matching inventory
+            # (fast thanks to the pg_trgm title index). Users were seeing
+            # "338 positions" while Alerts correctly reported thousands for
+            # the same target roles — the old heuristic + tiny pool hid the
+            # rest of the inventory. Counts are cached 5 min per filter set so
+            # page clicks don't re-count.
+            import time as _time
+            _count_key = "|".join(sorted(map(str, filters.get("title_terms", [])))) + "|" + "|".join(
+                f"{k}={filters.get(k)}" for k in ("country", "visa_program", "visa_only", "location", "status")
+            )
+            _cached = _title_count_cache.get(_count_key)
+            if _cached and _time.monotonic() - _cached[0] < 300:
+                total = _cached[1]
+            else:
+                total = await db.count_jobs(filters=filters)
+                if len(_title_count_cache) > 500:
+                    _title_count_cache.clear()
+                _title_count_cache[_count_key] = (_time.monotonic(), total)
+        else:
+            total = 50000 if (
+                taxonomy_filter_active
+                or free_text_search_active
+                or filters.get("title_terms")
+                or post_filter_since
+                or post_filter_before
+                or not exact_count_active
+            ) else await db.count_jobs(filters=filters)
         # Category and role are derived from titles in Python. Only those
         # filters need a full pool scan. The normal All Jobs path fetches the
         # requested page directly so the dashboard does not wait on thousands
@@ -1222,6 +1254,13 @@ async def list_jobs(
             fetch_limit = min(max(total, page_size), 30000)
             fetch_offset = 0
             filters["coverage_scan"] = True
+        elif title_terms_active and not free_text_search_active:
+            # Personalized / role views paginate the FULL matching inventory,
+            # not just the newest 360 rows. Descriptions are truncated in the
+            # pool query so this stays fast; the visible page is re-scored
+            # against full text afterwards.
+            fetch_limit = min(max(offset + page_size * 8, 1500), 12000)
+            fetch_offset = 0
         elif post_filter_since or post_filter_before:
             fetch_limit = min(max(offset + page_size * 8, 500), 2500)
             fetch_offset = 0
@@ -1236,6 +1275,10 @@ async def list_jobs(
             not filters.get("source")
             and hasattr(db, "get_jobs_source_balanced")
             and not taxonomy_filter_active
+            # title_terms feeds need the deterministic full-inventory query —
+            # the per-source cap of the balanced query would silently drop
+            # matching jobs from high-volume sources.
+            and not filters.get("title_terms")
             and (personalized or free_text_search_active or not filters.get("title_terms"))
         )
         if source_balanced_fetch:
@@ -1368,8 +1411,18 @@ async def list_jobs(
 
         # Score the filtered candidate pool before slicing so the frontend
         # projection can be genuinely ATS-ranked, not just baseline-ranked.
+        # CPU guard: resume-scoring is O(pool). Beyond ~600 rows (the new
+        # full-inventory personalized feeds) rank by recency/preference and
+        # baseline signals instead — the visible page still gets exact
+        # full-text resume scores in the rescore step below.
+        deep_pool = len(decorated) > 600
         for job_data in decorated:
-            _score_visible_job(job_data)
+            if deep_pool:
+                job_data["match_score"] = _baseline_ats_score(job_data)
+                job_data["score_type"] = "baseline_ats"
+                job_data["preference_match"] = _job_matches_preferences(job_data, preferred_roles, preferred_locations)
+            else:
+                _score_visible_job(job_data)
 
         # 0-10 yr prioritization remains as a tie-breaker; the primary
         # projection is date bucket + ATS score below.
@@ -1401,6 +1454,22 @@ async def list_jobs(
             decorated.sort(key=_entry_score)
 
         decorated.sort(key=lambda row: _projection_sort_key(row, tz_offset_minutes=tz_offset))
+
+        # Honest totals: fetch_offset is always 0, so when the DB returned
+        # fewer rows than requested, `decorated` IS the complete result set.
+        # Reporting the 50k heuristic in that case rendered page buttons that
+        # all pointed at empty/duplicate slices — pagination now only offers
+        # pages that really exist.
+        if len(jobs) < fetch_limit:
+            total = len(decorated)
+            total_pages = max(1, math.ceil(total / page_size)) if total else 1
+        elif not taxonomy_filter_active and not exact_count_active:
+            # Broad-view ceiling: the pool query stops growing at 2500 rows,
+            # so pages past that point can never be served. Don't advertise
+            # them — deeper exploration goes through country/role filters,
+            # which re-pool from the full table.
+            total = min(total, 2500)
+            total_pages = max(1, math.ceil(total / page_size))
 
         # Cap to the requested page_size. For taxonomy/category filters we
         # slice from the full pool; for the standard path the over-fetch ×4
@@ -1776,6 +1845,30 @@ async def export_all_jobs(_: None = Depends(require_internal_api_key), db=Depend
     except Exception as e:
         logger.error(f"Job export failed: {e}")
         raise HTTPException(status_code=500, detail="Job export failed")
+
+
+@router.post("/ingest/careers-page")
+async def ingest_careers_page(
+    payload: dict = Body(...),
+    _: None = Depends(require_internal_api_key),
+    db=Depends(get_db),
+):
+    """Scrape EVERY open position from a company careers page or ATS board URL.
+
+    Body: {"url": "https://www.strategy.com/careers"} or a direct ATS link
+    (SmartRecruiters / Greenhouse / Lever / Ashby / Workable / Recruitee /
+    Teamtailor / BambooHR). Detects the board, ingests all open postings with
+    first-party descriptions and direct apply links, and syncs master_jobs.
+    """
+    from app.services.careers_page_ingest import ingest_careers_url
+
+    url = str((payload or {}).get("url") or "").strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="Body must include {'url': '<careers page or ATS URL>'}")
+    result = await ingest_careers_url(url, db)
+    if not result.get("ok"):
+        raise HTTPException(status_code=422, detail=result.get("error") or "Ingestion failed")
+    return result
 
 
 @router.get("/detail/{job_id}")
