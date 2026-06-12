@@ -32,6 +32,9 @@ const JobDetailRoute = lazy(() =>
 const AlertsPage = lazy(() =>
   import("./components/dashboard/AlertsPage").then((m) => ({ default: m.AlertsPage }))
 );
+const TailorResumePage = lazy(() =>
+  import("./components/dashboard/TailorResumePage").then((m) => ({ default: m.TailorResumePage }))
+);
 const ApplicationsPage = lazy(() =>
   import("./components/dashboard/ApplicationsPage").then((m) => ({ default: m.ApplicationsPage }))
 );
@@ -112,6 +115,7 @@ export const router = createBrowserRouter([
           { path: "resumes", Component: authedGuarded(ResumePage) },
           { path: "jobs", Component: authedGuarded(JobsRoute) },
           { path: "jobs/:jobId", Component: authedGuarded(JobDetailRoute) },
+          { path: "tailor", Component: authedGuarded(TailorResumePage) },
           { path: "alerts", Component: authedGuarded(AlertsPage) },
           { path: "applications", Component: authedGuarded(ApplicationsPage) },
           { path: "analytics", Component: authedGuarded(AnalyticsPage) },
@@ -134,4 +138,3 @@ export const router = createBrowserRouter([
     ],
   },
 ]);
-

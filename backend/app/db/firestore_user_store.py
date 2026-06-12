@@ -416,6 +416,85 @@ def list_user_applications(user_id: str, limit: int = 500) -> list[dict]:
     return [snap.to_dict() | {"id": snap.id} for snap in rows]
 
 
+def _tailor_day_key(value: Optional[datetime] = None) -> str:
+    dt = value or datetime.now(tz=timezone.utc)
+    return dt.astimezone(timezone.utc).date().isoformat()
+
+
+def list_tailor_queue(user_id: str, limit: int = 100) -> list[dict]:
+    rows = (
+        _client()
+        .collection("user_tailor_queue")
+        .where("user_id", "==", user_id)
+        .limit(limit)
+        .stream()
+    )
+    items = [snap.to_dict() | {"id": snap.id} for snap in rows]
+    items.sort(key=lambda item: item.get("created_at") or "", reverse=True)
+    return items
+
+
+def count_tailor_requests_today(user_id: str, day_key: Optional[str] = None) -> int:
+    day = day_key or _tailor_day_key()
+    return sum(1 for item in list_tailor_queue(user_id, limit=250) if item.get("queued_day") == day)
+
+
+def upsert_tailor_queue_item(user_id: str, payload: dict, *, daily_limit: int = 25) -> dict:
+    job_id = str(payload.get("job_id") or "").strip()
+    if not job_id:
+        raise ValueError("job_id is required")
+    item_id = f"{user_id}_{job_id}".replace("/", "_")
+    ref = _doc("user_tailor_queue", item_id)
+    existing = ref.get()
+    now = _now_iso()
+    day_key = _tailor_day_key()
+    if not existing.exists and count_tailor_requests_today(user_id, day_key) >= daily_limit:
+        raise ValueError(f"Daily tailor queue limit reached ({daily_limit} jobs). Try again tomorrow.")
+    data = {
+        "id": item_id,
+        "user_id": user_id,
+        "job_id": job_id,
+        "title": payload.get("title") or "",
+        "company": payload.get("company") or "",
+        "location": payload.get("location") or "",
+        "job_url": payload.get("job_url") or "",
+        "description": (payload.get("description") or "")[:50000],
+        "match_score": int(payload.get("match_score") or 0),
+        "status": (existing.to_dict() or {}).get("status", "queued") if existing.exists else "queued",
+        "queued_day": (existing.to_dict() or {}).get("queued_day", day_key) if existing.exists else day_key,
+        "updated_at": now,
+    }
+    if not existing.exists:
+        data["created_at"] = now
+    ref.set(data, merge=True)
+    return (ref.get().to_dict() or data) | {"id": item_id}
+
+
+def get_tailor_queue_item(user_id: str, item_id: str) -> Optional[dict]:
+    ref = _doc("user_tailor_queue", item_id)
+    snap = ref.get()
+    if not snap.exists:
+        return None
+    data = snap.to_dict() or {}
+    if data.get("user_id") != user_id:
+        return None
+    return data | {"id": snap.id}
+
+
+def update_tailor_queue_item(user_id: str, item_id: str, fields: dict[str, Any]) -> Optional[dict]:
+    existing = get_tailor_queue_item(user_id, item_id)
+    if not existing:
+        return None
+    allowed = {
+        "status", "ats_score", "generated_at", "keyword_targets",
+        "last_format", "filename", "summary",
+    }
+    updates = {k: v for k, v in fields.items() if k in allowed}
+    updates["updated_at"] = _now_iso()
+    _doc("user_tailor_queue", item_id).set(updates, merge=True)
+    return get_tailor_queue_item(user_id, item_id)
+
+
 def create_auth_session(
     user_id: str,
     *,

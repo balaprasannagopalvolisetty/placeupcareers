@@ -1453,7 +1453,21 @@ async def list_jobs(
                 return (bucket, score)
             decorated.sort(key=_entry_score)
 
-        decorated.sort(key=lambda row: _projection_sort_key(row, tz_offset_minutes=tz_offset))
+        if sort == "recent":
+            # Pure recency ordering (newest postings first, id tiebreak) —
+            # powers the "Recently posted" sort option in the UI.
+            def _recency_key(row: dict) -> tuple:
+                eff = _coerce_datetime(row.get("posted_at") or row.get("scraped_at") or row.get("last_seen_at"))
+                return (-(eff.timestamp() if eff else 0.0), str(row.get("id") or ""))
+            decorated.sort(key=_recency_key)
+        elif sort == "match":
+            def _match_key(row: dict) -> tuple:
+                score = int(row.get("match_score") or row.get("match") or 0)
+                eff = _coerce_datetime(row.get("posted_at") or row.get("scraped_at") or row.get("last_seen_at"))
+                return (-score, -(eff.timestamp() if eff else 0.0), str(row.get("id") or ""))
+            decorated.sort(key=_match_key)
+        else:
+            decorated.sort(key=lambda row: _projection_sort_key(row, tz_offset_minutes=tz_offset))
 
         # Honest totals: fetch_offset is always 0, so when the DB returned
         # fewer rows than requested, `decorated` IS the complete result set.
@@ -1476,6 +1490,8 @@ async def list_jobs(
         # means we have more than page_size rows after dropping non-US/CA
         # and out-of-experience-range items, so we still trim to page_size.
         if taxonomy_filter_active:
+            page_jobs = decorated[offset:offset + page_size]
+        elif sort in {"match", "recent"}:
             page_jobs = decorated[offset:offset + page_size]
         else:
             page_jobs = decorated[offset:offset + page_size] if filters.get("source") else _source_diverse_page(decorated, page_size, page)

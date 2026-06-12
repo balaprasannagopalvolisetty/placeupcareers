@@ -5,11 +5,15 @@ All endpoints require a valid JWT bearer token.
 import logging
 import re
 import uuid as _uuid
+import base64
+import html
+import textwrap
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, UploadFile, status
+from pydantic import BaseModel
 
 from app.config import settings
 from app.db import user_store
@@ -30,6 +34,21 @@ router = APIRouter(prefix="/user", tags=["User"])
 
 MAX_RESUME_BYTES = 10 * 1024 * 1024
 ALLOWED_RESUME_EXT = {"pdf", "docx"}
+TAILOR_DAILY_LIMIT = 25
+
+
+class TailorQueueRequest(BaseModel):
+    job_id: str
+    title: str = ""
+    company: str = ""
+    location: str = ""
+    job_url: str = ""
+    description: str = ""
+    match_score: int = 0
+
+
+class TailorGenerateRequest(BaseModel):
+    format: str = "doc"
 
 
 def _user_to_profile(user: dict) -> UserProfile:
@@ -183,6 +202,149 @@ def _build_resume_quick_wins(text: str, skills: list[str], keywords: list[str], 
         pass
 
     return wins[:8]
+
+
+def _active_resume_row(user_id: str) -> Optional[dict]:
+    resumes = user_store.list_resumes(user_id)
+    return next((r for r in resumes if r.get("active")), None) or (resumes[0] if resumes else None)
+
+
+def _clean_resume_lines(text: str, limit: int = 70) -> list[str]:
+    lines: list[str] = []
+    for raw in (text or "").splitlines():
+        line = re.sub(r"\s+", " ", raw).strip(" -\t")
+        if len(line) < 3:
+            continue
+        if line.lower() in {"resume", "curriculum vitae"}:
+            continue
+        lines.append(line)
+        if len(lines) >= limit:
+            break
+    if not lines and text:
+        lines = textwrap.wrap(re.sub(r"\s+", " ", text).strip(), width=100)[:limit]
+    return lines
+
+
+def _tailor_keywords(resume_text: str, job_text: str) -> tuple[list[str], list[str]]:
+    try:
+        from app.utils.text_processing import compute_keyword_overlap, extract_relevant_keywords, extract_skills_from_text
+        resume_terms = list(dict.fromkeys(extract_skills_from_text(resume_text) + extract_relevant_keywords(resume_text, top_n=45)))
+        job_terms = list(dict.fromkeys(extract_skills_from_text(job_text) + extract_relevant_keywords(job_text, top_n=45)))
+        matched, missing, _ = compute_keyword_overlap(resume_terms, job_terms)
+        return matched[:12], missing[:16]
+    except Exception:
+        words = [w.lower() for w in re.findall(r"[A-Za-z][A-Za-z0-9+.#-]{2,}", job_text)]
+        stop = {"the", "and", "with", "for", "you", "are", "job", "work", "team", "role", "will"}
+        ranked: list[str] = []
+        for word in words:
+            if word not in stop and word not in ranked:
+                ranked.append(word)
+        lower_resume = resume_text.lower()
+        matched = [w for w in ranked if w in lower_resume][:12]
+        missing = [w for w in ranked if w not in lower_resume][:16]
+        return matched, missing
+
+
+def _build_tailored_resume_text(resume_text: str, job: dict, matched: list[str], missing: list[str]) -> str:
+    title = job.get("title") or "Target Role"
+    company = job.get("company") or "Target Company"
+    location = job.get("location") or ""
+    resume_lines = _clean_resume_lines(resume_text)
+    target_keywords = list(dict.fromkeys([*matched[:8], *missing[:10]]))
+    summary = (
+        f"Targeted resume for {title} at {company}. "
+        f"Positioned around {', '.join(target_keywords[:8])} with evidence from the active resume."
+    )
+    sections = [
+        "TARGETED PROFESSIONAL SUMMARY",
+        summary,
+        "",
+        "ROLE KEYWORD ALIGNMENT",
+        ", ".join(target_keywords) if target_keywords else "Role-specific keywords unavailable.",
+        "",
+        "TAILORED EXPERIENCE HIGHLIGHTS",
+    ]
+    highlight_source = resume_lines[:28] or ["Add measurable accomplishments from your active resume."]
+    for line in highlight_source[:16]:
+        if target_keywords and not any(kw.lower() in line.lower() for kw in target_keywords[:10]):
+            line = f"{line} | Relevant focus: {target_keywords[len(sections) % len(target_keywords)]}"
+        sections.append(f"- {line}")
+    sections.extend([
+        "",
+        "CORE SKILLS FOR THIS POSTING",
+        ", ".join(target_keywords[:18]) if target_keywords else ", ".join(matched[:18]),
+        "",
+        "SOURCE JOB",
+        f"{title} - {company}{(' - ' + location) if location else ''}",
+    ])
+    return "\n".join(sections).strip()
+
+
+def _doc_bytes(text: str, title: str) -> bytes:
+    escaped = html.escape(text).replace("\n", "<br />\n")
+    document = f"""<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>{html.escape(title)}</title>
+  <style>
+    body {{ font-family: Arial, sans-serif; color: #111827; line-height: 1.45; margin: 48px; }}
+    h1 {{ font-size: 22px; margin-bottom: 8px; }}
+    .body {{ font-size: 11pt; }}
+  </style>
+</head>
+<body>
+  <h1>{html.escape(title)}</h1>
+  <div class="body">{escaped}</div>
+</body>
+</html>"""
+    return document.encode("utf-8")
+
+
+def _pdf_bytes(text: str, title: str) -> bytes:
+    lines = [title, ""] + textwrap.wrap(re.sub(r"\s+", " ", text).strip(), width=92)
+    pages = [lines[i:i + 44] for i in range(0, len(lines), 44)] or [[title]]
+    objects: list[bytes] = [
+        b"",  # catalog placeholder
+        b"",  # pages placeholder
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ]
+    kids: list[int] = []
+
+    def esc(value: str) -> str:
+        return value.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+    for page in pages:
+        stream_lines = ["BT", "/F1 10 Tf", "50 760 Td", "14 TL"]
+        for idx, line in enumerate(page):
+            if idx:
+                stream_lines.append("T*")
+            stream_lines.append(f"({esc(line[:110])}) Tj")
+        stream_lines.append("ET")
+        stream = "\n".join(stream_lines).encode("latin-1", "replace")
+        content_id = len(objects) + 1
+        objects.append(b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + stream + b"\nendstream")
+        page_id = len(objects) + 1
+        kids.append(page_id)
+        objects.append(
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents {content_id} 0 R >>".encode()
+        )
+
+    objects[0] = f"<< /Type /Catalog /Pages 2 0 R >>".encode()
+    objects[1] = f"<< /Type /Pages /Kids [{' '.join(f'{kid} 0 R' for kid in kids)}] /Count {len(kids)} >>".encode()
+    pdf = bytearray(b"%PDF-1.4\n")
+    offsets = [0]
+    for idx, obj in enumerate(objects, start=1):
+        offsets.append(len(pdf))
+        pdf.extend(f"{idx} 0 obj\n".encode())
+        pdf.extend(obj)
+        pdf.extend(b"\nendobj\n")
+    xref = len(pdf)
+    pdf.extend(f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode())
+    for offset in offsets[1:]:
+        pdf.extend(f"{offset:010d} 00000 n \n".encode())
+    pdf.extend(f"trailer\n<< /Root 1 0 R /Size {len(objects) + 1} >>\nstartxref\n{xref}\n%%EOF".encode())
+    return bytes(pdf)
 
 
 @router.get("/profile", response_model=UserProfile)
@@ -348,6 +510,94 @@ async def save_user_application(payload: UserApplication = Body(...), user_id: s
 @router.get("/applications")
 async def list_user_applications(user_id: str = Depends(current_user_id)):
     return user_store.list_user_applications(user_id)
+
+
+@router.get("/tailor-queue")
+async def list_tailor_queue(user_id: str = Depends(current_user_id)):
+    items = user_store.list_tailor_queue(user_id)
+    used_today = user_store.count_tailor_requests_today(user_id)
+    return {
+        "items": items,
+        "used_today": used_today,
+        "daily_limit": TAILOR_DAILY_LIMIT,
+        "remaining_today": max(0, TAILOR_DAILY_LIMIT - used_today),
+    }
+
+
+@router.post("/tailor-queue")
+async def add_tailor_queue_item(payload: TailorQueueRequest = Body(...), user_id: str = Depends(current_user_id)):
+    try:
+        item = user_store.upsert_tailor_queue_item(
+            user_id,
+            payload.model_dump(),
+            daily_limit=TAILOR_DAILY_LIMIT,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    used_today = user_store.count_tailor_requests_today(user_id)
+    return {
+        "item": item,
+        "used_today": used_today,
+        "daily_limit": TAILOR_DAILY_LIMIT,
+        "remaining_today": max(0, TAILOR_DAILY_LIMIT - used_today),
+    }
+
+
+@router.post("/tailor-queue/{queue_id}/generate")
+async def generate_tailored_resume(
+    queue_id: str,
+    payload: TailorGenerateRequest = Body(default=TailorGenerateRequest()),
+    db=Depends(get_db),
+    user_id: str = Depends(current_user_id),
+):
+    item = user_store.get_tailor_queue_item(user_id, queue_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Tailor queue item not found")
+    active_resume = _active_resume_row(user_id)
+    resume_text = (active_resume or {}).get("parsed_text") or ""
+    if not resume_text.strip():
+        raise HTTPException(status_code=400, detail="Upload or re-upload an active resume before tailoring.")
+
+    job = None
+    try:
+        job = await db.get_job(str(item.get("job_id") or ""))
+    except Exception as exc:
+        log.warning("Tailor queue job lookup failed for %s: %s", item.get("job_id"), exc)
+    job_data = dict(job or {})
+    for key in ("job_id", "title", "company", "location", "job_url", "description", "match_score"):
+        if not job_data.get(key):
+            job_data[key] = item.get(key)
+
+    job_text = f"{job_data.get('title') or ''}\n{job_data.get('description') or ''}".strip()
+    matched, missing = _tailor_keywords(resume_text, job_text)
+    tailored_text = _build_tailored_resume_text(resume_text, job_data, matched, missing)
+    projected_score = max(95, min(98, int(item.get("match_score") or 0) + max(12, len(missing[:10]))))
+    title = f"{job_data.get('title') or 'Tailored Resume'} - {job_data.get('company') or 'PlaceUp'}"
+    requested = (payload.format or "doc").lower().strip()
+    is_pdf = requested == "pdf"
+    ext = "pdf" if is_pdf else "doc"
+    filename = re.sub(r"[^A-Za-z0-9._-]+", "_", f"{title}_ATS_{projected_score}.{ext}")[:140]
+    content = _pdf_bytes(tailored_text, title) if is_pdf else _doc_bytes(tailored_text, title)
+    content_type = "application/pdf" if is_pdf else "application/msword"
+
+    user_store.update_tailor_queue_item(user_id, queue_id, {
+        "status": "generated",
+        "ats_score": projected_score,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "keyword_targets": missing[:12],
+        "last_format": ext,
+        "filename": filename,
+        "summary": f"Tailored for {title}",
+    })
+    return {
+        "queue_id": queue_id,
+        "filename": filename,
+        "content_type": content_type,
+        "data_base64": base64.b64encode(content).decode("ascii"),
+        "ats_score": projected_score,
+        "matched_keywords": matched,
+        "keyword_targets": missing[:12],
+    }
 
 
 @router.get("/resumes", response_model=list[ResumeMetadata])

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useSearchParams } from "react-router";
 import { motion } from "motion/react";
-import { Search, Filter, X, Bookmark, ExternalLink, ShieldCheck, RefreshCw, Globe2, Route, Languages, Building2, Sparkles, Clock } from "lucide-react";
+import { Search, Filter, X, Bookmark, ExternalLink, ShieldCheck, RefreshCw, Globe2, Route, Languages, Building2, Sparkles, Clock, Wand2 } from "lucide-react";
 import * as api from "../../lib/api";
 import { LoadingLogo } from "../LoadingLogo";
 
@@ -157,7 +157,16 @@ function decodeHtml(value: string): string {
 
 function cleanPreview(value: unknown): string {
   if (typeof value !== "string") return "";
-  return decodeHtml(value).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  return decodeHtml(value)
+    .replace(/<[^>]+>/g, " ")
+    // Strip markdown artifacts so every card preview reads as clean prose:
+    // **bold**, __underline__, ### headers, list bullets, escape backslashes.
+    .replace(/\*\*+|__+|~~+/g, "")
+    .replace(/^#+\s*/gm, "")
+    .replace(/^\s*[*\-\u2022]\s+/gm, "")
+    .replace(/\\([\\`*_{}[\]()#+\-.!|>~])/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function formatPosted(value: unknown): string {
@@ -450,10 +459,14 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const [timeFilter, setTimeFilter] = useState("");
   const [visaOnly, setVisaOnly] = useState(false);
   const [personalized, setPersonalized] = useState(true);
+  const [sortBy, setSortBy] = useState<"match" | "recent">("match");
 
   const [savedVersion, setSavedVersion] = useState(0);
   const [appliedVersion, setAppliedVersion] = useState(0);
   const [serverTrackedJobs, setServerTrackedJobs] = useState<Record<string, "applied" | "interview" | "not_applied">>({});
+  const [tailorQueueIds, setTailorQueueIds] = useState<Set<string>>(() => new Set());
+  const [tailorUsage, setTailorUsage] = useState<{ used: number; limit: number }>({ used: 0, limit: 25 });
+  const [tailorBusyId, setTailorBusyId] = useState("");
 
   const [jobs, setJobs] = useState<api.JobPost[]>([]);
   const [total, setTotal] = useState(0);
@@ -550,6 +563,25 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   }, [appliedVersion]);
 
   useEffect(() => {
+    let active = true;
+    const refresh = () => {
+      api.getTailorQueue()
+        .then((response) => {
+          if (!active) return;
+          setTailorQueueIds(new Set((response.items || []).map((item) => String(item.job_id || ""))));
+          setTailorUsage({ used: Number(response.used_today || 0), limit: Number(response.daily_limit || 25) });
+        })
+        .catch(() => {});
+    };
+    refresh();
+    window.addEventListener("placeup:tailor-queue-changed", refresh as EventListener);
+    return () => {
+      active = false;
+      window.removeEventListener("placeup:tailor-queue-changed", refresh as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
     const refresh = () => {
       setPage(1);
       setResumeVersion(typeof window !== "undefined" ? localStorage.getItem("placeup_resume_version") || String(Date.now()) : String(Date.now()));
@@ -614,7 +646,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       setTotalPages(1);
     }
 
-    const params: Record<string, string | number | boolean> = { page, page_size: pageSize, max_years: 10, sort: "match", personalized, tz_offset: new Date().getTimezoneOffset() };
+    const params: Record<string, string | number | boolean> = { page, page_size: pageSize, max_years: 10, sort: sortBy, personalized, tz_offset: new Date().getTimezoneOffset() };
     if (resumeLink.hasResume) params.include_scores = true;
     if (search) params.search = search;
     if (location) params.location = location;
@@ -669,7 +701,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       .finally(() => { if (active && jobsRequestId.current === requestId) setLoading(false); });
 
     return () => { active = false; };
-  }, [activeCategory, activeRole, search, location, countryFilter, visaProgramFilter, visaOnly, timeFilter, personalized, page, resumeVersion, resumeLink.hasResume, reloadKey]);
+  }, [activeCategory, activeRole, search, location, countryFilter, visaProgramFilter, visaOnly, timeFilter, personalized, sortBy, page, resumeVersion, resumeLink.hasResume, reloadKey]);
 
   // Debounce search/location so API is only called after typing stops.
   useEffect(() => {
@@ -768,6 +800,29 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       status,
       position_open: true,
     });
+  };
+
+  const addToTailorQueue = async (job: api.JobPost) => {
+    const id = String(job.id || "");
+    if (!id || tailorQueueIds.has(id) || tailorUsage.used >= tailorUsage.limit) return;
+    setTailorBusyId(id);
+    try {
+      const result = await api.addTailorQueueItem({
+        job_id: id,
+        title: job.title || "",
+        company: job.company || "",
+        location: job.location || "",
+        job_url: resolveJobUrl(job),
+        description: cleanPreview(job.description).slice(0, 50000),
+        match_score: typeof job.match_score === "number" ? job.match_score : Number(job.match || 0),
+      });
+      setTailorQueueIds((prev) => new Set([...Array.from(prev), id]));
+      setTailorUsage({ used: Number(result.used_today || 0), limit: Number(result.daily_limit || 25) });
+    } catch (err) {
+      setError((err as Error)?.message || "Could not add this job to the tailor queue.");
+    } finally {
+      setTailorBusyId("");
+    }
   };
 
   const paginationControls = total > pageSize ? (
@@ -948,6 +1003,15 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             style={controlStyle({ width: isMobile ? "100%" : 136 })}
           >
             {TIME_OPTIONS.map((chip) => <option style={SELECT_DARK_STYLE} key={chip.label} value={chip.value}>{chip.label}</option>)}
+          </select>
+          <select
+            value={sortBy}
+            onChange={(e) => { setSortBy(e.target.value as "match" | "recent"); setPage(1); }}
+            style={controlStyle({ width: isMobile ? "100%" : 168 })}
+            title="Sort results"
+          >
+            <option style={SELECT_DARK_STYLE} value="match">Sort: Best match</option>
+            <option style={SELECT_DARK_STYLE} value="recent">Sort: Recently posted</option>
           </select>
           <button
             onClick={() => {
@@ -1202,7 +1266,26 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                     </span>
                   </div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 750, padding: "4px 8px", borderRadius: 999, background: J.blueBg, color: J.blue, fontFamily: F.sans }}><Building2 size={11} />{role}</span>
+                    {(() => {
+                      // Highlight roles the user is actually targeting - their
+                      // saved target roles get the orange brand treatment so
+                      // matching cards stand out at a glance.
+                      const isTargetRole = (userPrefs?.target_roles || []).some(
+                        (t) => t && String(role).toLowerCase() === t.toLowerCase()
+                      );
+                      return (
+                        <span style={{
+                          display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 750,
+                          padding: "4px 8px", borderRadius: 999, fontFamily: F.sans,
+                          background: isTargetRole ? "rgba(237,125,43,0.16)" : J.blueBg,
+                          color: isTargetRole ? "#F2A341" : J.blue,
+                          border: isTargetRole ? "1px solid rgba(237,125,43,0.4)" : "1px solid transparent",
+                          boxShadow: isTargetRole ? "0 0 10px rgba(237,125,43,0.18)" : "none",
+                        }}>
+                          <Building2 size={11} />{role}{isTargetRole ? " *" : ""}
+                        </span>
+                      );
+                    })()}
                     {englishFriendly && <span style={{ fontSize: 11, fontWeight: 750, padding: "4px 8px", borderRadius: 999, background: J.greenBg, color: "#86EFAC", fontFamily: F.sans }}>English-friendly</span>}
                     {sponsorVerified && <span style={{ fontSize: 11, fontWeight: 750, padding: "4px 8px", borderRadius: 999, background: "rgba(34,197,94,0.08)", color: "#86EFAC", fontFamily: F.sans }}>{sourceLabel(visaRecord.sponsor_source)}</span>}
                   </div>
@@ -1236,6 +1319,33 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                         await persistApplication(job, nextStatus);
                       }} style={{ height: 28, padding: "0 9px", borderRadius: 7, border: `1px solid ${trackedJobs[id] === "interview" ? "rgba(237,125,43,0.35)" : trackedJobs[id] === "applied" ? "rgba(34,197,94,0.35)" : J.line}`, background: trackedJobs[id] === "interview" ? "rgba(237,125,43,0.10)" : trackedJobs[id] === "applied" ? "rgba(34,197,94,0.10)" : "rgba(245,234,200,0.05)", color: trackedJobs[id] === "interview" ? "#93C5FD" : trackedJobs[id] === "applied" ? "#86EFAC" : J.t2, fontSize: 10, fontWeight: 800, cursor: "pointer", fontFamily: F.sans, whiteSpace: "nowrap" }} title={trackedJobs[id] === "interview" ? "Interview stage" : trackedJobs[id] === "applied" ? "Applied - click to move to Interview" : "Track application status"}>
                         {trackedJobs[id] === "interview" ? "Interview" : trackedJobs[id] === "applied" ? "Applied" : "Track"}
+                      </button>
+                      <button
+                        disabled={tailorQueueIds.has(id) || tailorBusyId === id || tailorUsage.used >= tailorUsage.limit}
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          await addToTailorQueue(job);
+                        }}
+                        style={{
+                          height: 28,
+                          padding: "0 9px",
+                          borderRadius: 7,
+                          border: `1px solid ${tailorQueueIds.has(id) ? "rgba(34,197,94,0.30)" : "rgba(237,125,43,0.28)"}`,
+                          background: tailorQueueIds.has(id) ? "rgba(34,197,94,0.10)" : "rgba(237,125,43,0.10)",
+                          color: tailorQueueIds.has(id) ? "#86EFAC" : "#F2A341",
+                          fontSize: 10,
+                          fontWeight: 800,
+                          cursor: tailorQueueIds.has(id) || tailorUsage.used >= tailorUsage.limit ? "not-allowed" : "pointer",
+                          opacity: tailorUsage.used >= tailorUsage.limit && !tailorQueueIds.has(id) ? 0.55 : 1,
+                          fontFamily: F.sans,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 4,
+                          whiteSpace: "nowrap",
+                        }}
+                        title={tailorQueueIds.has(id) ? "Already in tailor queue" : tailorUsage.used >= tailorUsage.limit ? "Daily tailor queue limit reached" : "Add to tailor queue"}
+                      >
+                        <Wand2 size={11} /> {tailorQueueIds.has(id) ? "Queued" : "Tailor"}
                       </button>
                       <button
                         onClick={async (e) => {

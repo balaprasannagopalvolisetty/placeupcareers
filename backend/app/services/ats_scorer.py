@@ -293,16 +293,28 @@ def score_resume_quality(resume_text: str) -> float:
     has_email = bool(re.search(r"[a-z0-9._-]+@[a-z0-9.-]+\.[a-z]{2,}", text_lower))
     has_links = bool(re.search(r"\b(github\.com|linkedin\.com|portfolio|gitlab\.com)\b", text_lower))
 
+    # Achievement language: distinct strong action verbs indicate real bullet
+    # writing ("Led", "Implemented", "Reduced") vs. passive duty lists. ATS
+    # screens and recruiters both reward this; it was previously unscored.
+    action_verbs = (
+        "led", "managed", "built", "designed", "implemented", "developed", "launched",
+        "automated", "migrated", "optimized", "reduced", "increased", "improved",
+        "delivered", "architected", "deployed", "secured", "resolved", "streamlined",
+        "mentored", "owned", "created", "established", "spearheaded", "configured",
+    )
+    distinct_verbs = sum(1 for verb in action_verbs if re.search(rf"\b{verb}\b", text_lower))
+
     # Component scores — each capped so no single signal can dominate.
     skills_pts  = min(20.0, len(skills) * 1.4)
-    keyword_pts = min(8.0,  len(set(keywords)) * 0.15)
+    keyword_pts = min(6.0,  len(set(keywords)) * 0.12)
     section_pts = min(20.0, sections * 3.0)
-    length_pts  = min(12.0, max(0.0, min(word_count, 1100) - 280) / 70.0)
+    length_pts  = min(10.0, max(0.0, min(word_count, 1100) - 280) / 82.0)
     date_pts    = min(10.0, date_ranges * 2.5)
     metrics_pts = min(10.0, metrics * 1.5)
+    verb_pts    = min(6.0,  distinct_verbs * 0.75)
     contact_pts = (4.0 if has_email else 0.0) + (4.0 if has_links else 0.0)
 
-    score = 8.0 + skills_pts + keyword_pts + section_pts + length_pts + date_pts + metrics_pts + contact_pts
+    score = 8.0 + skills_pts + keyword_pts + section_pts + length_pts + date_pts + metrics_pts + verb_pts + contact_pts
 
     # Hard penalties for missing structural pillars.
     if not has_experience: score -= 18.0

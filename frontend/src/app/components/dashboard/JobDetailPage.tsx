@@ -163,6 +163,11 @@ function renderJobDescription(raw: string): ReactNode {
   text = text.replace(/<br\s*\/?>/gi, "\n");
   text = text.replace(/<\/?(p|div|li|ul|ol|h[1-6]|section)\b[^>]*>/gi, "\n");
   text = text.replace(/<[^>]+>/g, "");
+  // Markdown artifacts from scraped sources (**bold**, ### headers, escapes)
+  // render as literal symbols — strip them so every JD reads consistently.
+  text = text.replace(/\*\*+|__+|~~+/g, "");
+  text = text.replace(/^#+\s*/gm, "");
+  text = text.replace(/\\([\\`*_{}[\]()#+\-.!|>~])/g, "$1");
 
   // Normalize: collapse horizontal whitespace only; preserve line breaks
   const lines = text.split("\n").map((l) => l.replace(/[ \t]+/g, " ").trim());

@@ -106,6 +106,28 @@ DOMAIN_KEYWORDS = {
 }
 
 
+# Generic verbs/qualifiers that glue themselves onto real skills in JDs and
+# produce junk bigrams ("need linux", "proficiency python", "aws oversee",
+# "availability aws"). A phrase containing any of these is filler, not a
+# skill — showing them as "missing keywords" made the match score look random.
+PHRASE_FILLER_WORDS = {
+    "need", "needs", "needed", "oversee", "overseeing", "using", "use", "used",
+    "strong", "proficiency", "proficient", "experience", "experienced", "knowledge",
+    "ability", "able", "including", "include", "includes", "various", "within",
+    "across", "ensure", "ensuring", "support", "supporting", "supported", "working",
+    "work", "works", "related", "relevant", "preferred", "required", "require",
+    "requires", "plus", "good", "excellent", "solid", "demonstrated", "familiarity",
+    "familiar", "understanding", "understand", "hands", "level", "years", "team",
+    "teams", "global", "skills", "skill", "tools", "tool", "environment",
+    "environments", "platform", "platforms", "solutions", "service", "services",
+    "systems", "system", "best", "practices", "new", "existing", "multiple",
+    "availability", "high", "low", "highly", "daily", "day", "etc", "based",
+    "develop", "developing", "build", "building", "manage", "managing", "maintain",
+    "maintaining", "implement", "implementing", "design", "designing", "deliver",
+    "provide", "providing", "perform", "performing", "lead", "leading",
+}
+
+
 def is_relevant_keyword(keyword: str) -> bool:
     """Return True for skill-like ATS terms and False for JD filler text."""
     raw = (keyword or "").strip().lower()
@@ -120,13 +142,18 @@ def is_relevant_keyword(keyword: str) -> bool:
         return False
     if normalized in TECH_SKILLS or normalized in DOMAIN_KEYWORDS:
         return True
-    if any(ch.isdigit() or ch in "+#./-" for ch in normalized):
-        return True
     parts = normalized.split()
     if len(parts) > 1:
-        if any(part in NOISY_KEYWORDS for part in parts):
+        # Multi-word phrases must be REAL compound skills: no filler words,
+        # no noisy words, and every part either a known skill/domain word or
+        # a tight technical token. "active directory" passes; "aws oversee",
+        # "proficiency python", "integration technical" do not.
+        if any(part in NOISY_KEYWORDS or part in PHRASE_FILLER_WORDS for part in parts):
             return False
-        return any(part in TECH_SKILLS or part in DOMAIN_KEYWORDS for part in parts)
+        known = sum(1 for part in parts if part in TECH_SKILLS or part in DOMAIN_KEYWORDS)
+        return known == len(parts)
+    if any(ch.isdigit() or ch in "+#./-" for ch in normalized):
+        return True
     # Single generic nouns are usually bad ATS advice unless we know them.
     return False
 
@@ -295,29 +322,76 @@ def compute_keyword_overlap(
     Returns:
         Tuple of (matched_keywords, missing_keywords, overlap_percentage)
     """
+    aliases = {
+        "js": "javascript",
+        "node": "node.js",
+        "nodejs": "node.js",
+        "postgres": "postgresql",
+        "k8s": "kubernetes",
+        "kubernetes": "kubernetes",
+        "g suite": "google workspace",
+        "m365": "microsoft 365",
+        "o365": "office 365",
+        "ad": "active directory",
+        "powerbi": "power bi",
+        "ci cd": "ci/cd",
+        "cicd": "ci/cd",
+        "gcp": "google cloud",
+        "google cloud platform": "google cloud",
+        "amazon web services": "aws",
+        "ms azure": "azure",
+        "microsoft azure": "azure",
+        "tf": "terraform",
+        "iac": "infrastructure as code",
+        "ts": "typescript",
+        "py": "python",
+        "vuln management": "vulnerability management",
+        "pen testing": "penetration testing",
+        "pentest": "penetration testing",
+        "pentesting": "penetration testing",
+        "infosec": "information security",
+        "appsec": "application security",
+    }
+
+    def _singular(word: str) -> str:
+        # Light plural folding: "integrations"->"integration", "policies"->"policy".
+        if len(word) > 4 and word.endswith("ies"):
+            return word[:-3] + "y"
+        if len(word) > 3 and word.endswith("s") and not word.endswith(("ss", "us", "is", "ws", "os")):
+            return word[:-1]
+        return word
+
     def norm(value: str) -> str:
         text = value.lower().strip()
-        aliases = {
-            "js": "javascript",
-            "node": "node.js",
-            "nodejs": "node.js",
-            "postgres": "postgresql",
-            "k8s": "kubernetes",
-            "g suite": "google workspace",
-            "m365": "microsoft 365",
-            "o365": "office 365",
-            "ad": "active directory",
-            "powerbi": "power bi",
-            "ci cd": "ci/cd",
-        }
         text = re.sub(r"[^a-z0-9+#./]+", " ", text).strip()
+        text = aliases.get(text, text)
+        text = " ".join(_singular(w) for w in text.split())
         return aliases.get(text, text)
 
     set1 = {norm(k) for k in keywords1 if str(k).strip()}
     set2 = {norm(k) for k in keywords2 if str(k).strip()}
 
-    matched = sorted(set1 & set2)
-    missing = sorted(set2 - set1)
+    # Token universe of the resume side: lets multi-word JD phrases count as
+    # matched when the resume demonstrably covers every content word.
+    # ("systems integration" matches a resume containing "system" +
+    # "integration" even without the exact phrase — that's how a human
+    # recruiter reads it, and exact-phrase misses were the top source of
+    # bogus "missing keywords".)
+    tokens1: set = set()
+    for kw in set1:
+        tokens1.update(kw.split())
+
+    matched: list[str] = []
+    missing: list[str] = []
+    for kw in sorted(set2):
+        if kw in set1:
+            matched.append(kw)
+            continue
+        parts = kw.split()
+        if len(parts) > 1 and all(part in tokens1 for part in parts):
+            matched.append(kw)
+            continue
+        missing.append(kw)
 
     overlap_pct = (len(matched) / len(set2) * 100) if set2 else 0.0
 

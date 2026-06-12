@@ -163,6 +163,7 @@ async function request<T>(path: string, init: RequestInit = {}, retryOnAuth = tr
 if (typeof window !== "undefined") {
   window.addEventListener("placeup:resume-changed", () => invalidateApiCache());
   window.addEventListener("placeup:application-changed", () => invalidateApiCache("/api/user/"));
+  window.addEventListener("placeup:tailor-queue-changed", () => invalidateApiCache("/api/user/tailor-queue"));
 }
 
 // ─── Types ───
@@ -596,6 +597,41 @@ export interface UserApplicationRow {
   updated_at?: string;
 }
 
+export interface TailorQueueItem {
+  id: string;
+  job_id: string;
+  title?: string;
+  company?: string;
+  location?: string;
+  job_url?: string;
+  description?: string;
+  match_score?: number;
+  status?: string;
+  queued_day?: string;
+  ats_score?: number;
+  filename?: string;
+  keyword_targets?: string[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface TailorQueueResponse {
+  items: TailorQueueItem[];
+  used_today: number;
+  daily_limit: number;
+  remaining_today: number;
+}
+
+export interface TailoredResumeDownload {
+  queue_id: string;
+  filename: string;
+  content_type: string;
+  data_base64: string;
+  ats_score: number;
+  matched_keywords: string[];
+  keyword_targets: string[];
+}
+
 export async function saveUserApplication(payload: Omit<UserApplicationRow, "created_at" | "updated_at">) {
   const result = await request<Record<string, unknown>>(
     "/api/user/applications",
@@ -612,6 +648,32 @@ export async function saveUserApplication(payload: Omit<UserApplicationRow, "cre
 
 export async function getUserApplications() {
   return request<UserApplicationRow[]>("/api/user/applications");
+}
+
+export async function getTailorQueue() {
+  return request<TailorQueueResponse>("/api/user/tailor-queue");
+}
+
+export async function addTailorQueueItem(payload: Omit<TailorQueueItem, "id" | "created_at" | "updated_at" | "status">) {
+  const result = await request<{ item: TailorQueueItem; used_today: number; daily_limit: number; remaining_today: number }>(
+    "/api/user/tailor-queue",
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("placeup:tailor-queue-changed", { detail: result.item }));
+  }
+  return result;
+}
+
+export async function generateTailoredResume(queueId: string, format: "doc" | "pdf") {
+  const result = await request<TailoredResumeDownload>(
+    `/api/user/tailor-queue/${encodeURIComponent(queueId)}/generate`,
+    { method: "POST", body: JSON.stringify({ format }) },
+  );
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("placeup:tailor-queue-changed", { detail: { queueId, format } }));
+  }
+  return result;
 }
 
 export async function getResumeList() { return request<ResumeMetadata[]>("/api/user/resumes"); }
