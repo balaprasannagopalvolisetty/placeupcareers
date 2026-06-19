@@ -476,6 +476,36 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const [personalized, setPersonalized] = useState(true);
   const [sortBy, setSortBy] = useState<"match" | "recent">("match");
 
+  // Persist + restore the filter setup across navigation (opening a job and
+  // coming back used to reset every filter — #3a). Restored once on mount.
+  const filtersRestored = useRef(false);
+  useEffect(() => {
+    if (filtersRestored.current) return;
+    filtersRestored.current = true;
+    let f: any = {};
+    try { f = JSON.parse(sessionStorage.getItem("placeup_jobs_filters") || "{}"); } catch { f = {}; }
+    if (f && Object.keys(f).length) {
+      if (f.searchRaw) { setSearchRaw(f.searchRaw); setSearch(f.searchRaw); }
+      if (f.locationRaw) { setLocationRaw(f.locationRaw); setLocation(f.locationRaw); }
+      if (f.countryFilter) setCountryFilter(f.countryFilter);
+      if (f.visaProgramFilter) setVisaProgramFilter(f.visaProgramFilter);
+      if (f.timeFilter) setTimeFilter(f.timeFilter);
+      if (typeof f.maxYears === "number") setMaxYears(f.maxYears);
+      if (typeof f.visaOnly === "boolean") setVisaOnly(f.visaOnly);
+      if (f.sortBy === "match" || f.sortBy === "recent") setSortBy(f.sortBy);
+      if (f.activeCategory) setActiveCategory(f.activeCategory);
+      if (f.activeRole) setActiveRole(f.activeRole);
+    }
+  }, []);
+  useEffect(() => {
+    try {
+      sessionStorage.setItem("placeup_jobs_filters", JSON.stringify({
+        searchRaw, locationRaw, countryFilter, visaProgramFilter, timeFilter,
+        maxYears, visaOnly, sortBy, activeCategory, activeRole,
+      }));
+    } catch { /* storage disabled */ }
+  }, [searchRaw, locationRaw, countryFilter, visaProgramFilter, timeFilter, maxYears, visaOnly, sortBy, activeCategory, activeRole]);
+
   const [savedVersion, setSavedVersion] = useState(0);
   const [appliedVersion, setAppliedVersion] = useState(0);
   const [serverTrackedJobs, setServerTrackedJobs] = useState<Record<string, "applied" | "interview" | "not_applied">>({});

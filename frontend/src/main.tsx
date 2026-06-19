@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import App from "./app/App.tsx";
 import { AuthProvider } from "./app/context/AuthContext";
+import { CookieConsent } from "./app/components/CookieConsent";
 import { initObservability } from "./app/lib/observability";
 import "./styles/index.css";
 
@@ -14,5 +15,6 @@ initObservability().catch(() => {
 createRoot(document.getElementById("root")!).render(
   <AuthProvider>
     <App />
+    <CookieConsent />
   </AuthProvider>,
 );

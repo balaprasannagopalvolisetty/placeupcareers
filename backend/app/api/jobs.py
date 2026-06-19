@@ -1324,6 +1324,7 @@ async def list_jobs(
             is_senior_title,
             in_scope_country,
             is_target_experience,
+            requires_us_clearance,
         )
         decorated: list[dict] = []
         for j in jobs:
@@ -1355,6 +1356,14 @@ async def list_jobs(
             cat, rname = categorize(f"{j.get('title') or ''} {j.get('company') or ''}")
             j = _apply_job_specific_visa_rules(dict(j))
             visa_payload = j.get("visa") or {}
+            # US clearance / citizenship-only roles can never sponsor a visa.
+            # Strip any visa-friendly signals so they never show as visa-friendly,
+            # and drop them entirely from visa-only / visa-program feeds.
+            if requires_us_clearance(f"{j.get('title') or ''} {j.get('description') or ''}"):
+                if filters.get("visa_only") or filters.get("visa_program"):
+                    continue
+                visa_payload = {**visa_payload, "visa_score": 0, "visa_programs": [], "requires_clearance": True}
+                j["visa"] = visa_payload
             if filters.get("country") and visa_payload.get("visa_country") != filters["country"]:
                 continue
             if filters.get("visa_program") and filters["visa_program"] not in (visa_payload.get("visa_programs") or []):

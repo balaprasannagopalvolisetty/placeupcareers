@@ -101,11 +101,15 @@ async def get_analytics_dashboard(user_id: Optional[str] = Depends(optional_user
 async def get_market_analytics(db=Depends(get_db)):
     """Live job-market analytics straight from the jobs database.
 
-    Unlike the per-user dashboard (which is empty until the user applies), this
-    is always populated, so the Analytics page has real graphs to show: how many
-    active positions exist, how many are added per day, and the country/source
-    mix. Postgres-only; other backends return empty arrays gracefully.
+    Cached 2 min so the Analytics page loads instantly instead of re-running
+    COUNT/GROUP BY each open. Postgres-only; other backends return empty arrays.
     """
+    from app.services.cache import cache_get_json, cache_set_json
+
+    cached = cache_get_json("analytics:market:v1")
+    if cached is not None:
+        return cached
+
     out: dict = {"total_active": 0, "added_series": [], "by_country": [], "by_source": []}
     try:
         out["total_active"] = await db.count_jobs(filters={"status": "active"})
@@ -132,4 +136,5 @@ async def get_market_analytics(db=Depends(get_db)):
             out["by_source"] = [{"key": r["k"], "count": int(r["c"])} for r in source_rows]
     except Exception:
         pass
+    cache_set_json("analytics:market:v1", out, ttl=120)
     return out

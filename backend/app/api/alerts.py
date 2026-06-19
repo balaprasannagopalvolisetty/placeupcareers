@@ -69,6 +69,12 @@ async def alerts_digest(user_id: str = Depends(current_user_id), db=Depends(get_
     from datetime import timedelta
 
     from app.api.jobs import _taxonomy_terms
+    from app.services.cache import cache_get_json, cache_set_json
+
+    _ck = f"alerts:digest:{user_id}"
+    _cached = cache_get_json(_ck)
+    if _cached is not None:
+        return _cached
 
     prefs = user_store.get_preferences(user_id)
     roles = [str(r).strip() for r in (prefs.get("target_roles") or []) if str(r).strip()][:6]
@@ -96,13 +102,15 @@ async def alerts_digest(user_id: str = Depends(current_user_id), db=Depends(get_
         total_7d += count_7d
         role_counts.append({"role": role, "new_24h": count_24h, "new_7d": count_7d})
 
-    return {
+    _result = {
         "generated_at": now.isoformat(),
         "target_roles": role_counts,
         "total_new_24h": total_24h,
         "total_new_7d": total_7d,
         "has_target_roles": bool(roles),
     }
+    cache_set_json(_ck, _result, ttl=180)
+    return _result
 
 
 @router.get("/added-series")
@@ -118,7 +126,13 @@ async def alerts_added_series(
     saved target roles; ``scope=all`` counts every new active posting. Always
     returns a dense, zero-filled series so the chart has no gaps.
     """
+    from app.services.cache import cache_get_json, cache_set_json
+
     days = max(7, min(int(days), 60))
+    _ck = f"alerts:series:{user_id}:{scope}:{days}"
+    _cached = cache_get_json(_ck)
+    if _cached is not None:
+        return _cached
     title_terms: list[str] | None = None
     if scope != "all":
         from app.api.jobs import _taxonomy_terms
@@ -139,13 +153,15 @@ async def alerts_added_series(
         series = []
     total = sum(int(point.get("count") or 0) for point in series)
     peak = max((int(point.get("count") or 0) for point in series), default=0)
-    return {
+    _result = {
         "days": days,
         "scope": "targets" if title_terms else "all",
         "series": series,
         "total_added": total,
         "peak_day": peak,
     }
+    cache_set_json(_ck, _result, ttl=180)
+    return _result
 
 
 @router.post("", response_model=AlertItem)

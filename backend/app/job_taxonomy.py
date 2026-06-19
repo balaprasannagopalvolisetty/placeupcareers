@@ -169,6 +169,15 @@ CATEGORIES: tuple[Category, ...] = (
     )),
 )
 
+# Merge in the supplementary Top-200 roles (Sales, HR, Operations, Customer
+# Service, Skilled Trades, Admin, non-software engineering, extra healthcare/
+# finance). Kept in a separate module so this core literal stays manageable.
+try:
+    from app.job_taxonomy_extra import EXTRA_CATEGORIES as _EXTRA_CATEGORIES
+    CATEGORIES = CATEGORIES + _EXTRA_CATEGORIES
+except Exception:  # pragma: no cover - never break the core taxonomy
+    pass
+
 
 # ─── Synonym expansion ─────────────────────────────────────────────────
 #

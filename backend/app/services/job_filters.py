@@ -143,3 +143,26 @@ def is_high_level_title(title: str) -> bool:
 def is_early_career_title(title: str) -> bool:
     """True for explicit junior/new-grad/intern/associate titles."""
     return any(pattern.search(title or "") for pattern in EARLY_CAREER_TITLE_PATTERNS)
+
+
+# US security-clearance roles require citizenship, so they can NEVER be
+# visa-sponsorship-friendly for non-citizens. The previous detector was too
+# narrow ("secret clearance required" only); this catches the common variants.
+_CLEARANCE_PATTERNS = (
+    re.compile(r"\b(top\s*secret|ts/?sci|sci\s+clearance)\b", re.I),
+    re.compile(r"\b(security|secret|dod|active|interim|public\s+trust)\s+clearance\b", re.I),
+    re.compile(r"\bclearance\s+(?:is\s+)?(?:required|eligible|mandatory)\b", re.I),
+    re.compile(r"\b(?:must|ability)\s+(?:be\s+able\s+)?to\s+obtain\s+(?:a\s+)?(?:security\s+)?clearance\b", re.I),
+    re.compile(r"\bpolygraph\b", re.I),
+    re.compile(r"\b(?:u\.?s\.?\s+)?(?:citizenship\s+required|citizens?\s+only|must\s+be\s+a\s+u\.?s\.?\s+citizen|u\.?s\.?\s+person)\b", re.I),
+)
+
+
+def requires_us_clearance(text: str) -> bool:
+    """True when a posting needs US citizenship / a security clearance.
+
+    Such roles cannot sponsor a visa, so they must never appear as
+    visa-friendly and are dropped from visa-only / sponsorship feeds.
+    """
+    t = text or ""
+    return any(p.search(t) for p in _CLEARANCE_PATTERNS)

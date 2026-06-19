@@ -9,7 +9,7 @@ from typing import Iterable
 from sqlalchemy.orm import Session
 
 from app.db.postgres import PostgresClient
-from app.etl.api_sources.connectors import adzuna, greenhouse, remoteok, remotive, jobicy
+from app.etl.api_sources.connectors import adzuna, greenhouse, remoteok, remotive, jobicy, career_site_feed
 from app.etl.api_sources.firestore_sink import upsert_jobs as upsert_firestore_jobs
 from app.etl.api_sources.registry import ADZUNA_COUNTRIES, load_registry
 from app.etl.api_sources.schema import FetchParams, NormalizedJob
@@ -56,6 +56,13 @@ async def fetch_all(
     for name, module in (("remoteok", remoteok), ("remotive", remotive), ("jobicy", jobicy)):
         if name in enabled:
             tasks.append((name, asyncio.create_task(module.fetch())))
+
+    # Direct ATS / career-site feed via Apify (full JD, real apply links, no
+    # aggregator duplicates). Needs APIFY_TOKEN; no-op otherwise.
+    if "career_site_feed" in enabled:
+        tasks.append(("career_site_feed", asyncio.create_task(
+            career_site_feed.fetch(queries, limit=400)
+        )))
 
     for label, task in tasks:
         try:
