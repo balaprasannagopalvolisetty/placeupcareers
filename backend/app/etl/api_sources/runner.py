@@ -57,6 +57,19 @@ async def fetch_all(
         if name in enabled:
             tasks.append((name, asyncio.create_task(module.fetch())))
 
+    # FREE direct-ATS connectors — public, unauthenticated JSON APIs that return
+    # full job descriptions + canonical career-page apply links (the no-cost
+    # equivalent of a paid career-site feed). Company tokens come from the
+    # existing H-1B sponsor board registry.
+    from app.etl.api_sources.connectors import lever, ashby, smartrecruiters
+    from app.services.h1b_sponsor_boards import by_ats
+    for ats_name, ats_module in (("lever", lever), ("ashby", ashby), ("smartrecruiters", smartrecruiters)):
+        if ats_name in enabled:
+            for entry in by_ats(ats_name):
+                tok = str(entry.get("token") or "").strip()
+                if tok and entry.get("active", True):
+                    tasks.append((f"{ats_name}:{tok}", asyncio.create_task(ats_module.fetch_board(tok))))
+
     # Direct ATS / career-site feed via Apify (full JD, real apply links, no
     # aggregator duplicates). Needs APIFY_TOKEN; no-op otherwise.
     if "career_site_feed" in enabled:

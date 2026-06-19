@@ -1,17 +1,9 @@
 /**
  * Frontend error reporting hook.
  *
- * Goals:
- *   1. Catch unhandled errors (window.onerror) and unhandled promise
- *      rejections so silent failures become visible.
- *   2. Forward them to a remote tracker IF one is configured via
- *      VITE_SENTRY_DSN. Without the env var, we just console.error
- *      so dev tooling still works.
- *
- * Why not "import * as Sentry from @sentry/react"? Adding the SDK to
- * the bundle even when it is not configured ships ~80 KB to every
- * user. Instead we lazy-import on first init, which keeps the default
- * bundle lean.
+ * Catches unhandled errors + promise rejections and, when VITE_SENTRY_DSN is
+ * set, forwards them to Sentry (lazy-loaded). Without the DSN it just
+ * console.errors, so dev tooling still works and the bundle stays lean.
  */
 
 const DSN_KEY = "VITE_SENTRY_DSN";
@@ -48,8 +40,9 @@ export async function initObservability(): Promise<void> {
   if (!dsn) return;
 
   try {
-    const sentryModuleName = "@sentry/react";
-    const Sentry: any = await import(/* @vite-ignore */ sentryModuleName);
+    // Literal dynamic import so Vite code-splits @sentry/react into a lazy
+    // chunk only fetched when a DSN is configured (guarded by the return above).
+    const Sentry: any = await import("@sentry/react");
     Sentry.init({
       dsn,
       environment: env[ENV_KEY] || (import.meta.env.PROD ? "production" : "development"),
@@ -69,6 +62,6 @@ export async function initObservability(): Promise<void> {
     };
     console.info("[observability] Sentry initialised");
   } catch (err) {
-    console.warn("[observability] Sentry init skipped (package not installed)", err);
+    console.warn("[observability] Sentry init skipped", err);
   }
 }
