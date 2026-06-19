@@ -166,7 +166,7 @@ gcloud.cmd run jobs deploy placeup-backfill-catchup `
   --set-cloudsql-instances "$ProjectId`:$Region`:$DbInstance" `
   --set-env-vars $ScraperEnv `
   --set-secrets $ScraperSecrets `
-  --memory 2Gi `
+  --memory 4Gi `
   --cpu 2 `
   --max-retries 1 `
   --task-timeout 168h
