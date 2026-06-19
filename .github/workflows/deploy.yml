@@ -120,7 +120,7 @@ jobs:
             --project "$BACKEND_PROJECT_ID" \
             --memory 2Gi \
             --cpu 2 \
-            --task-timeout 21600s \
+            --task-timeout 168h \
             --command python \
             --args -m,app.etl.jobs_scraper_6h \
             --max-retries 1 \

@@ -10,13 +10,14 @@ import argparse
 import asyncio
 import logging
 import os
+import time
 
 from sqlalchemy import text
 
 from app.db.postgres import PostgresClient
 from app.etl.jobs_scraper import run
 from app.etl.api_sources.runner import run_api_connectors_to_postgres
-from app.etl.purge_jobs_except_today import purge_except_day
+from app.etl.purge_jobs_except_today import purge_except_day, purge_outside_window
 from app.config import settings
 from app.job_taxonomy import (
     all_balanced_taxonomy_scrape_search_terms,
@@ -30,9 +31,8 @@ from app.utils.terminal_table import render_table
 
 logger = logging.getLogger(__name__)
 
-# Public/API pass must cover every taxonomy role, not just USAJobs. Keep this
-# env-tunable because RapidAPI/Dice quotas are operational limits, but the
-# production default should collect from all currently wired public sources.
+# Public/API passes must cover every taxonomy role, not just USAJobs. Keep the
+# public-source set env-tunable because provider availability changes.
 FREE_OPEN_PUBLIC_SOURCES = os.getenv(
     "SCRAPER_PUBLIC_SOURCES",
     "linkedin~indeed~glassdoor~ziprecruiter~google~usajobs~dice",
@@ -57,11 +57,35 @@ except ValueError:
     PUBLIC_BATCH_CONCURRENCY = 0
 PURGE_EXCEPT_TODAY = os.getenv("SCRAPER_PURGE_EXCEPT_TODAY", "false").strip().lower() not in {"0", "false", "no", "off"}
 PURGE_TIMEZONE = os.getenv("SCRAPER_PURGE_TIMEZONE", "America/Chicago").strip() or "America/Chicago"
+# Rolling retention is OPT-IN. Default 0 == never delete anything (matches the
+# previous safe behavior where SCRAPER_PURGE_EXCEPT_TODAY=false did no purge).
+# Set SCRAPER_RETENTION_DAYS=N (>0) to prune only postings older than N days —
+# a thin/failed run still can't wipe the board because recent rows are kept.
+# The stale-jobs sweeper (separate daily job) already marks >30d as inactive.
+try:
+    RETENTION_DAYS = max(0, int(os.getenv("SCRAPER_RETENTION_DAYS", "0")))
+except ValueError:
+    RETENTION_DAYS = 0
 ADVISORY_LOCK_KEY = 6412226682826
 try:
     COVERAGE_AUDIT_FLOOR = max(0, int(os.getenv("SCRAPER_ROLE_COUNTRY_AUDIT_FLOOR", "70")))
 except ValueError:
     COVERAGE_AUDIT_FLOOR = 70
+try:
+    # Zero disables the application-level deadline. Cloud Run still enforces
+    # its platform maximum, while the advisory lock below prevents overlap.
+    RUN_BUDGET_SECONDS = max(0, int(os.getenv("SCRAPER_RUN_BUDGET_SECONDS", "0")))
+except ValueError:
+    RUN_BUDGET_SECONDS = 0
+try:
+    PUBLIC_MAX_BATCHES_PER_RUN = max(0, int(os.getenv("SCRAPER_PUBLIC_MAX_BATCHES_PER_RUN", "12")))
+except ValueError:
+    PUBLIC_MAX_BATCHES_PER_RUN = 12
+try:
+    PUBLIC_BATCH_OFFSET = max(0, int(os.getenv("SCRAPER_PUBLIC_BATCH_OFFSET", "0")))
+except ValueError:
+    PUBLIC_BATCH_OFFSET = 0
+COVERAGE_FLOOR_ENABLED = os.getenv("SCRAPER_COVERAGE_FLOOR_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _encoded_terms(terms: list[str]) -> str:
@@ -109,25 +133,35 @@ def _base_args(**overrides) -> argparse.Namespace:
         "tiers": "T1~T2",
         "schedule_type": "6h",
         "dry_run": False,
+        "skip_master_sync": False,
     }
     values.update(overrides)
     return argparse.Namespace(**values)
 
 
 async def _run_batched() -> int:
+    started_at = time.monotonic()
+
+    def budget_remaining() -> float:
+        if RUN_BUDGET_SECONDS == 0:
+            return float("inf")
+        return RUN_BUDGET_SECONDS - (time.monotonic() - started_at)
+
+    def budget_available(min_remaining: int = 900) -> bool:
+        return budget_remaining() > min_remaining
+
     roles = all_role_names()
     linkedin_style_roles = all_linkedin_style_role_names()
     terms = all_balanced_taxonomy_scrape_search_terms()
     countries = list(sorted(TARGET_COUNTRIES))
     country_locations = _target_locations()
     role_country_pairs = len(roles) * len(countries)
-    batches = [terms[i:i + BATCH_SIZE] for i in range(0, len(terms), BATCH_SIZE)]
-    canonical_role_batches = [
-        linkedin_style_roles[i:i + CANONICAL_ROLE_BATCH_SIZE]
-        for i in range(0, len(linkedin_style_roles), CANONICAL_ROLE_BATCH_SIZE)
-    ]
-    public_concurrency = PUBLIC_BATCH_CONCURRENCY or len(batches) or 1
-    semaphore = asyncio.Semaphore(public_concurrency)
+    public_role_batches = [roles[i:i + BATCH_SIZE] for i in range(0, len(roles), BATCH_SIZE)]
+    if public_role_batches and PUBLIC_BATCH_OFFSET:
+        offset = PUBLIC_BATCH_OFFSET % len(public_role_batches)
+        public_role_batches = [*public_role_batches[offset:], *public_role_batches[:offset]]
+    if PUBLIC_MAX_BATCHES_PER_RUN:
+        public_role_batches = public_role_batches[:PUBLIC_MAX_BATCHES_PER_RUN]
     failures = 0
 
     logger.info(
@@ -166,88 +200,134 @@ async def _run_batched() -> int:
         return 1 if failures >= 2 else 0
 
     async def _run_public_batch(index: int, total: int, batch: list[str], *, phase: str, batch_size: int) -> int:
-        async with semaphore:
-            logger.info(
-                "6h scraper %s batch %s/%s publishing %s terms across %s countries (%s role-country attempts)",
-                phase,
-                index,
-                total,
-                len(batch),
-                len(countries),
-                len(batch) * len(countries),
-            )
-            code = await run(_base_args(
-                queries=_encoded_terms(batch),
-                locations=country_locations,
-                sources=public_sources,
-                schedule_type=f"6h-public-{phase}-{index:02d}",
-                max_per_source=batch_size,
-            ))
-            if code:
-                logger.warning("6h scraper public %s batch %s/%s failed with code %s", phase, index, total, code)
-            return code
+        logger.info(
+            "6h scraper %s batch %s/%s publishing %s terms across %s countries (%s role-country attempts)",
+            phase,
+            index,
+            total,
+            len(batch),
+            len(countries),
+            len(batch) * len(countries),
+        )
+        code = await run(_base_args(
+            queries=_encoded_terms(batch),
+            locations=country_locations,
+            sources=public_sources,
+            schedule_type=f"6h-public-{phase}-{index:02d}",
+            max_per_source=batch_size,
+            skip_master_sync=True,
+        ))
+        if code:
+            logger.warning("6h scraper public %s batch %s/%s failed with code %s", phase, index, total, code)
+        return code
 
     logger.info(
-        "6h scraper launching %s LinkedIn-style canonical public batches and %s synonym/coverage batches for %s current roles / %s canonical search names / %s search terms with concurrency %s",
-        len(canonical_role_batches),
-        len(batches),
+        "6h scraper launching %s budgeted public role batches for %s current roles / %s canonical search names / %s search terms with batch concurrency %s (run budget remaining %.0fs)",
+        len(public_role_batches),
         len(roles),
         len(linkedin_style_roles),
         len(terms),
-        public_concurrency,
+        PUBLIC_BATCH_CONCURRENCY or 1,
+        budget_remaining(),
     )
-    canonical_results = await asyncio.gather(*[
-        _run_public_batch(index, len(canonical_role_batches), batch, phase="canonical", batch_size=90)
-        for index, batch in enumerate(canonical_role_batches, start=1)
+    batch_concurrency = max(1, PUBLIC_BATCH_CONCURRENCY or 1)
+    batch_semaphore = asyncio.Semaphore(batch_concurrency)
+
+    async def _run_public_batch_guarded(index: int, batch: list[str]) -> int:
+        async with batch_semaphore:
+            if not budget_available(min_remaining=900):
+                logger.warning(
+                    "6h scraper skipping public batch %s/%s because run budget remaining is %.0fs",
+                    index,
+                    len(public_role_batches),
+                    budget_remaining(),
+                )
+                return 0
+            return await _run_public_batch(
+                index,
+                len(public_role_batches),
+                batch,
+                phase="roles",
+                batch_size=60,
+            )
+
+    public_results = await asyncio.gather(*[
+        _run_public_batch_guarded(index, batch)
+        for index, batch in enumerate(public_role_batches, start=1)
     ])
-    synonym_results = await asyncio.gather(*[
-        _run_public_batch(index, len(batches), batch, phase="synonyms", batch_size=60)
-        for index, batch in enumerate(batches, start=1)
-    ])
-    public_results = [*canonical_results, *synonym_results]
     failures += sum(1 for code in public_results if code)
 
-    coverage_floor_terms = all_role_backfill_search_terms()
-    coverage_floor_sources = _merge_sources(
-        public_sources,
-        "monster~jooble",
-        "remoteok~remotive~arbeitnow~jobicy~weworkremotely",
-        "jobtech~eures~uk_findajob~nhs_jobs~jobbank_ca~ba_jobsuche~france_travail~mycareersfuture~tyomarkkinatori~nav_arbeidsplassen",
-        "h1b_sponsor~tier1_ats~scrapling_discovery",
-    )
-    logger.info(
-        "6h scraper running coverage-floor backfill: %s role-focused terms across %s countries via %s",
-        len(coverage_floor_terms),
-        len(countries),
-        coverage_floor_sources,
-    )
-    coverage_floor_code = await run(_base_args(
-        queries=_encoded_terms(coverage_floor_terms),
-        locations=country_locations,
-        sources=coverage_floor_sources,
-        max_per_source=140,
-        max_per_sponsor=600,
-        h1b_sponsor_concurrency=10,
-        jobspy_hours_old=336,
-        jobspy_page_size=50,
-        jobspy_max_pages=50,
-        schedule_type="6h-coverage-floor",
-    ))
-    if coverage_floor_code:
-        failures += 1
-        logger.warning("6h scraper coverage-floor backfill failed with code %s", coverage_floor_code)
+    if public_results:
+        try:
+            client = PostgresClient()
+            with client.session() as db:
+                from app.etl.master_jobs import rebuild_master_jobs
+                rebuild_master_jobs(db=db)
+                db.commit()
+            logger.info("6h scraper master jobs sync complete after public role batches")
+        except Exception as exc:
+            failures += 1
+            logger.warning("6h scraper master jobs sync after public role batches failed: %s", exc)
+
+    if COVERAGE_FLOOR_ENABLED and budget_available(min_remaining=1800):
+        coverage_floor_terms = all_role_backfill_search_terms()
+        coverage_floor_sources = _merge_sources(
+            public_sources,
+            "monster~jooble",
+            "remoteok~remotive~arbeitnow~jobicy~weworkremotely",
+            "jobtech~eures~uk_findajob~nhs_jobs~jobbank_ca~ba_jobsuche~france_travail~mycareersfuture~tyomarkkinatori~nav_arbeidsplassen",
+            "h1b_sponsor~tier1_ats~scrapling_discovery",
+        )
+        logger.info(
+            "6h scraper running coverage-floor backfill: %s role-focused terms across %s countries via %s",
+            len(coverage_floor_terms),
+            len(countries),
+            coverage_floor_sources,
+        )
+        coverage_floor_code = await run(_base_args(
+            queries=_encoded_terms(coverage_floor_terms),
+            locations=country_locations,
+            sources=coverage_floor_sources,
+            max_per_source=140,
+            max_per_sponsor=600,
+            h1b_sponsor_concurrency=10,
+            jobspy_hours_old=336,
+            jobspy_page_size=50,
+            jobspy_max_pages=50,
+            schedule_type="6h-coverage-floor",
+        ))
+        if coverage_floor_code:
+            failures += 1
+            logger.warning("6h scraper coverage-floor backfill failed with code %s", coverage_floor_code)
+    elif COVERAGE_FLOOR_ENABLED:
+        logger.warning("6h scraper skipped coverage-floor backfill because run budget remaining is %.0fs", budget_remaining())
 
     if PURGE_EXCEPT_TODAY:
+        # Destructive, opt-in only. Logged loudly because this deletes every
+        # posting not dated "today" and was the cause of positions vanishing
+        # between runs. Prefer the rolling-window purge below.
         try:
             counts = purge_except_day(day=None, tz_name=PURGE_TIMEZONE, dry_run=False)
-            logger.info("6h scraper post-run today-only purge: %s", counts)
+            logger.warning("6h scraper post-run DESTRUCTIVE today-only purge ran: %s", counts)
         except Exception as exc:
             failures += 1
             logger.warning("6h scraper post-run today-only purge failed: %s", exc)
+    elif RETENTION_DAYS > 0:
+        # Opt-in rolling window: prune only postings older than the window so the
+        # board never collapses to a single thin run's output. Disabled (0) by
+        # default — nothing is deleted, preserving every scraped position.
+        try:
+            counts = purge_outside_window(retention_days=RETENTION_DAYS, dry_run=False)
+            logger.info("6h scraper post-run rolling-window purge (keep %sd): %s", RETENTION_DAYS, counts)
+        except Exception as exc:
+            failures += 1
+            logger.warning("6h scraper post-run rolling-window purge failed: %s", exc)
+    else:
+        logger.info("6h scraper post-run purge skipped (no retention window set; nothing deleted).")
 
     _log_role_country_coverage(floor=COVERAGE_AUDIT_FLOOR)
 
-    total_failure_slots = 2 + len(canonical_role_batches) + len(batches)
+    total_failure_slots = 2 + max(1, len(public_role_batches))
     return 1 if failures >= total_failure_slots else 0
 
 

@@ -250,6 +250,38 @@ def _contains_alias(haystack: str, aliases: tuple[str, ...]) -> bool:
     return any(re.search(rf"\b{re.escape(alias)}\b", haystack) for alias in aliases)
 
 
+# 2-letter codes that are BOTH a US state and a target country. A bare
+# "City, XX" suffix is ambiguous (California vs Canada, Delaware vs Germany,
+# Indiana vs India), so decide via an explicit country name or a distinctive
+# major city; otherwise default to the US state, since "City, XX" is the US
+# postal convention and non-US listings almost always spell out the country.
+_AMBIGUOUS_STATE_COUNTRY: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    "CA": (("canada",), ("toronto", "vancouver", "montreal", "calgary", "ottawa",
+                          "edmonton", "winnipeg", "mississauga", "brampton",
+                          "gatineau", "saskatoon", "regina", "burnaby", "markham")),
+    "DE": (("germany", "deutschland"), ("berlin", "munich", "münchen", "muenchen",
+                                        "hamburg", "frankfurt", "cologne", "köln",
+                                        "koeln", "stuttgart", "düsseldorf",
+                                        "dusseldorf", "dortmund", "leipzig",
+                                        "dresden", "nuremberg", "nürnberg",
+                                        "mannheim", "karlsruhe")),
+    "IN": (("india",), ("bengaluru", "bangalore", "mumbai", "hyderabad", "pune",
+                        "chennai", "kolkata", "gurgaon", "gurugram", "noida",
+                        "ahmedabad", "new delhi", "jaipur", "kochi")),
+}
+
+
+def _disambiguate_state_or_country(suffix: str, text: str | None) -> str:
+    low = f" {(text or '').lower()} "
+    names, cities = _AMBIGUOUS_STATE_COUNTRY[suffix]
+    # Word-boundary match so "india" doesn't match inside "Indianapolis" and
+    # "berlin" doesn't match inside a longer token.
+    for token in (*names, *cities):
+        if re.search(rf"\b{re.escape(token)}\b", low):
+            return suffix  # country reading: CA=Canada, DE=Germany, IN=India
+    return STATE_OR_PROVINCE_TO_COUNTRY.get(suffix, suffix)  # US-state reading
+
+
 def resolve_country(text: str | None, *, default: str | None = None) -> str | None:
     haystack = f" {(text or '').lower()} "
     explicit = normalize_country_code((text or "").strip())
@@ -261,8 +293,16 @@ def resolve_country(text: str | None, *, default: str | None = None) -> str | No
     m_any_country = re.search(r"(?:,\s*|\s)([A-Z]{2})\b\s*$", (text or "").strip(), re.I)
     if m_any_country:
         suffix = m_any_country.group(1).upper()
-        if suffix in TARGET_COUNTRIES:
-            return suffix
+        # Normalize aliases first ("UK" -> "GB", target codes -> themselves) so
+        # a "London, UK" location isn't stored as the invalid code "UK" and then
+        # filtered out of every target-country view.
+        normalized = normalize_country_code(suffix)
+        if normalized:
+            # CA/DE/IN double as US state codes — disambiguate so a
+            # "San Francisco, CA" isn't mislabeled Canada.
+            if suffix in _AMBIGUOUS_STATE_COUNTRY:
+                return _disambiguate_state_or_country(suffix, text)
+            return normalized
         if suffix not in STATE_OR_PROVINCE_TO_COUNTRY:
             return suffix
     m = re.search(r"\b([A-Z]{2})\b\s*$", (text or "").strip())
@@ -318,7 +358,10 @@ def classify_global_visa(
     sponsor_verified: bool = False,
     sponsor_source: str | None = None,
 ) -> dict:
-    country = normalize_country_code(country_code) or resolve_country(location) or "US"
+    # Do NOT default to "US": an unknown country must stay unknown so postings
+    # aren't mislabeled US. Empty is handled downstream (NULL/"" passes the
+    # target-country prefilter and just won't match a specific country filter).
+    country = normalize_country_code(country_code) or resolve_country(location) or ""
     rule = COUNTRY_RULES.get(country)
     text = f"{title or ''}\n{company or ''}\n{location or ''}\n{description or ''}".lower()
     score, keyword_hits = _keyword_score(text, GLOBAL_POSITIVE_KEYWORDS)

@@ -87,11 +87,14 @@ function formatSalary(salary: unknown): string {
   if (!salary) return "—";
   if (typeof salary === "string") return salary;
   if (typeof salary === "object") {
-    const min = (salary as any).min_salary, max = (salary as any).max_salary;
-    if (typeof min === "number" && typeof max === "number") return `$${Math.round(min/1000)}K–$${Math.round(max/1000)}K`;
-    if (typeof min === "number") return `$${Math.round(min/1000)}K+`;
-    if (typeof max === "number") return `Up to $${Math.round(max/1000)}K`;
-    if ((salary as any).display) return String((salary as any).display);
+    // A2: treat 0 / negative as "no data" — never render $0K–$0K.
+    const rawMin = (salary as any).min_salary, rawMax = (salary as any).max_salary;
+    const min = typeof rawMin === "number" && rawMin > 0 ? rawMin : undefined;
+    const max = typeof rawMax === "number" && rawMax > 0 ? rawMax : undefined;
+    if (min !== undefined && max !== undefined) return `$${Math.round(min/1000)}K–$${Math.round(max/1000)}K`;
+    if (min !== undefined) return `$${Math.round(min/1000)}K+`;
+    if (max !== undefined) return `Up to $${Math.round(max/1000)}K`;
+    if ((salary as any).display && !/\$0K/.test(String((salary as any).display))) return String((salary as any).display);
   }
   return "—";
 }
@@ -264,17 +267,19 @@ function sourceLabel(value: unknown): string {
 
 function controlStyle(extra: CSSProperties = {}): CSSProperties {
   return {
-    height: 38,
-    padding: "0 12px",
-    borderRadius: 7,
+    height: 40,
+    padding: "0 13px",
+    borderRadius: 10,
     border: `1px solid ${J.line}`,
-    background: J.card,
+    background: "rgba(245,234,200,0.04)",
     color: J.text,
-    fontSize: 12,
+    fontSize: 12.5,
+    fontWeight: 600,
     fontFamily: F.sans,
     outline: "none",
-    boxShadow: "0 1px 2px rgba(1,17,38,0.18)",
+    boxShadow: "none",
     backdropFilter: "blur(16px)",
+    transition: "border-color 0.15s ease, background 0.15s ease",
     ...extra,
   };
 }
@@ -409,8 +414,17 @@ function ATSRing({ score, size = 60 }: { score: number | null | undefined; size?
   );
 }
 
-function getScoreMeta(score: number | null | undefined) {
+function getScoreMeta(score: number | null | undefined, scoreType?: string) {
   if (typeof score !== "number" || !Number.isFinite(score)) {
+    if (scoreType === "insufficient_jd") {
+      return {
+        label: "Job details incomplete",
+        detail: "Waiting for a complete description",
+        color: T.t3,
+        bg: "rgba(245,234,200,0.05)",
+        border: T.border,
+      };
+    }
     return {
       label: "Resume needed",
       detail: "Upload resume for score",
@@ -457,6 +471,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const [countryFilter, setCountryFilter] = useState("");
   const [visaProgramFilter, setVisaProgramFilter] = useState("");
   const [timeFilter, setTimeFilter] = useState("");
+  const [maxYears, setMaxYears] = useState(10);
   const [visaOnly, setVisaOnly] = useState(false);
   const [personalized, setPersonalized] = useState(true);
   const [sortBy, setSortBy] = useState<"match" | "recent">("match");
@@ -646,7 +661,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       setTotalPages(1);
     }
 
-    const params: Record<string, string | number | boolean> = { page, page_size: pageSize, max_years: 10, sort: sortBy, personalized, tz_offset: new Date().getTimezoneOffset() };
+    const params: Record<string, string | number | boolean> = { page, page_size: pageSize, max_years: maxYears, sort: sortBy, personalized, tz_offset: new Date().getTimezoneOffset() };
     if (resumeLink.hasResume) params.include_scores = true;
     if (search) params.search = search;
     if (location) params.location = location;
@@ -701,7 +716,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       .finally(() => { if (active && jobsRequestId.current === requestId) setLoading(false); });
 
     return () => { active = false; };
-  }, [activeCategory, activeRole, search, location, countryFilter, visaProgramFilter, visaOnly, timeFilter, personalized, sortBy, page, resumeVersion, resumeLink.hasResume, reloadKey]);
+  }, [activeCategory, activeRole, search, location, countryFilter, visaProgramFilter, visaOnly, timeFilter, maxYears, personalized, sortBy, page, resumeVersion, resumeLink.hasResume, reloadKey]);
 
   // Debounce search/location so API is only called after typing stops.
   useEffect(() => {
@@ -722,7 +737,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
 
   useEffect(() => {
     setPage(1);
-  }, [activeCategory, activeRole, search, location, countryFilter, visaProgramFilter, visaOnly, timeFilter, personalized]);
+  }, [activeCategory, activeRole, search, location, countryFilter, visaProgramFilter, visaOnly, timeFilter, maxYears, personalized]);
 
   const savedIds = useMemo(() => getSavedIds(), [savedVersion]);
   const trackedJobs = useMemo(() => ({ ...getTrackedJobs(), ...serverTrackedJobs }), [appliedVersion, serverTrackedJobs]);
@@ -768,7 +783,6 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
     [visibleVisaPrograms, isMobile],
   );
   const allJobsCount = Number(pipelineStatus?.total_jobs || pipelineStatus?.active_jobs || total || 0);
-  const openPositionsCount = hasServerFilters ? total : allJobsCount;
   const safeTotalPages = Math.max(1, totalPages);
   const pageNumbers = useMemo(
     () => paginationPages(page, safeTotalPages, isMobile ? 5 : 7),
@@ -781,6 +795,9 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const taxonomyRoleCount = Number(taxonomyMeta?.role_count || allRoles.length || 0);
   const scrapeTermCount = Number(taxonomyMeta?.scrape_term_count || 0);
   const targetRoleCount = userPrefs?.target_roles?.length || 0;
+  const savedRoleMode = personalized && targetRoleCount > 0;
+  const globalOpenPositionsCount = allJobsCount || total;
+  const matchingPositionsCount = total;
 
   const persistApplication = async (job: api.JobPost, status: "applied" | "interview" | "not_applied") => {
     const id = String(job.id || "");
@@ -937,7 +954,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
               {[
                 { icon: Globe2, label: "Countries", value: targetCountries.length || 25, color: T.blue },
                 { icon: Route, label: "Visa routes", value: visaPrograms.length || 58, color: T.violet },
-                { icon: Building2, label: "Open roles", value: openPositionsCount, color: "#86EFAC" },
+                { icon: Building2, label: savedRoleMode ? "Global roles" : "Open roles", value: globalOpenPositionsCount, color: "#86EFAC" },
                 { icon: Languages, label: "English signals", value: "Active", color: T.fuchsia },
               ].map((item) => {
                 const Icon = item.icon;
@@ -960,16 +977,37 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          style={{ background: J.card, border: `1px solid ${J.line}`, borderRadius: 16, padding: isMobile ? "10px" : "12px 14px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", boxShadow: J.shadow, backdropFilter: "blur(24px)" }}
+          style={{ background: J.card, border: `1px solid ${J.line}`, borderRadius: 16, padding: isMobile ? "12px" : "14px 16px", display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap", rowGap: 10, boxShadow: J.shadow, backdropFilter: "blur(24px)" }}
         >
           <select
             value={activeRole || ""}
             onChange={(e) => { setActiveRole(e.target.value || null); setActiveCategory(null); setPage(1); }}
             style={controlStyle({ minWidth: isMobile ? "100%" : 220, fontSize: 13 })}
           >
-            <option style={SELECT_DARK_STYLE} value="">All saved roles</option>
+            <option style={SELECT_DARK_STYLE} value="">{savedRoleMode ? `All ${targetRoleCount} saved roles` : "All roles"}</option>
             {[...allRoles].sort((a, b) => a.localeCompare(b)).map((role) => <option style={SELECT_DARK_STYLE} key={role} value={role}>{role}</option>)}
           </select>
+          {targetRoleCount > 0 && (
+            <button
+              onClick={() => { setPersonalized((value) => !value); setPage(1); }}
+              style={{
+                ...controlStyle(),
+                border: `1px solid ${savedRoleMode ? "rgba(237,125,43,0.32)" : J.line}`,
+                background: savedRoleMode ? J.blueBg : J.card,
+                color: savedRoleMode ? J.blue : J.t2,
+                cursor: "pointer",
+                fontWeight: 800,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 7,
+              }}
+              title={savedRoleMode ? "Showing jobs matched to your saved target roles" : "Showing all active roles"}
+            >
+              <Sparkles size={13} />
+              {savedRoleMode ? `Saved roles (${targetRoleCount})` : "All roles"}
+            </button>
+          )}
           <div style={controlStyle({ display: "flex", alignItems: "center", gap: 8, flex: "1 1 240px", minWidth: isMobile ? "100%" : 200 })}>
             <Search size={13} color={J.t3} />
             <input value={searchRaw} onChange={(e) => setSearchRaw(e.target.value)} placeholder="Search title, company, JD..."
@@ -977,6 +1015,9 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
           </div>
           <input value={locationRaw} onChange={(e) => setLocationRaw(e.target.value)} placeholder="Location"
             style={controlStyle({ width: isMobile ? "100%" : 140, flex: isMobile ? "1 1 100%" : "0 0 auto", fontSize: 13 })} />
+          {/* Row break: primary search controls above, refine dropdowns below — keeps the bar tidy instead of one dense wrapping row. */}
+          <div style={{ flexBasis: "100%", height: 0, margin: 0 }} aria-hidden />
+          <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", color: J.t3, fontFamily: F.sans, alignSelf: "center", marginRight: 2 }}>Refine</span>
           <select
             value={countryFilter}
             onChange={(e) => { setCountryFilter(e.target.value); setVisaProgramFilter(""); setPage(1); }}
@@ -1005,6 +1046,17 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             {TIME_OPTIONS.map((chip) => <option style={SELECT_DARK_STYLE} key={chip.label} value={chip.value}>{chip.label}</option>)}
           </select>
           <select
+            value={maxYears}
+            onChange={(e) => { setMaxYears(Number(e.target.value)); setPage(1); }}
+            style={controlStyle({ width: isMobile ? "100%" : 154 })}
+            title="Maximum required experience"
+          >
+            <option style={SELECT_DARK_STYLE} value={2}>Experience: 0-2 yrs</option>
+            <option style={SELECT_DARK_STYLE} value={5}>Experience: 0-5 yrs</option>
+            <option style={SELECT_DARK_STYLE} value={10}>Experience: 0-10 yrs</option>
+            <option style={SELECT_DARK_STYLE} value={50}>Experience: Any</option>
+          </select>
+          <select
             value={sortBy}
             onChange={(e) => { setSortBy(e.target.value as "match" | "recent"); setPage(1); }}
             style={controlStyle({ width: isMobile ? "100%" : 168 })}
@@ -1023,12 +1075,23 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             <RefreshCw size={13} />
             Refresh
           </button>
+          {hasServerFilters && (
+            <button
+              onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setCountryFilter(""); setVisaProgramFilter(""); setVisaOnly(false); setTimeFilter(""); setMaxYears(10); setActiveCategory(null); setActiveRole(null); setPersonalized(true); setPage(1); }}
+              style={{ ...controlStyle(), cursor: "pointer", fontWeight: 800, color: J.t2, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+              title="Reset all filters"
+            >
+              <X size={13} />
+              Clear filters
+            </button>
+          )}
           <div style={{ flexBasis: "100%", color: J.t2, fontSize: 11, fontFamily: F.sans }}>
             {filtered.length.toLocaleString()} visible
-            {openPositionsCount ? ` / ${openPositionsCount.toLocaleString()} open` : ""}
+            {matchingPositionsCount ? ` / ${matchingPositionsCount.toLocaleString()} ${savedRoleMode || hasServerFilters ? "matching" : "open"}` : ""}
+            {savedRoleMode && globalOpenPositionsCount ? ` - ${globalOpenPositionsCount.toLocaleString()} global open` : ""}
             {taxonomyRoleCount ? ` - ${taxonomyRoleCount.toLocaleString()} current roles` : ""}
             {scrapeTermCount ? ` / ${scrapeTermCount.toLocaleString()} scrape terms` : ""}
-            {personalized && targetRoleCount ? ` - personalized from ${targetRoleCount} saved roles` : ""}
+            {savedRoleMode ? ` - personalized from ${targetRoleCount} saved roles` : ""}
             {pipelineStatus?.last_scraped_at ? ` - refreshed ${formatPosted(pipelineStatus.last_scraped_at)}` : ""}
           </div>
           {priorityRoutes.length > 0 && (
@@ -1199,19 +1262,19 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
               <motion.div
                 key={id}
                 initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
-                whileHover={{ y: -4, boxShadow: "0 16px 36px rgba(1,17,38,0.35)" }}
+                whileHover={{ y: -4, borderColor: "rgba(237,125,43,0.32)", boxShadow: "0 18px 40px rgba(1,17,38,0.4)" }}
                 onClick={() => onJobClick(id)}
                 style={{
                   minHeight: isMobile ? 248 : 176,
-                  background: "linear-gradient(135deg, rgba(1,17,38,0.86), rgba(64,18,18,0.58))",
+                  background: "rgba(8,18,38,0.55)",
                   border: `1px solid ${J.line}`,
-                  boxShadow: "0 12px 28px rgba(1,17,38,0.24)",
-                  borderRadius: 16,
-                  padding: 14,
+                  boxShadow: "0 1px 2px rgba(1,17,38,0.3)",
+                  borderRadius: 14,
+                  padding: 16,
                   cursor: "pointer",
                   display: "grid",
-                  gridTemplateColumns: "minmax(0, 1fr)",
-                  gap: 12,
+                  gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) 136px",
+                  gap: 14,
                   alignItems: "stretch",
                   color: J.text,
                   backdropFilter: "blur(24px)",
@@ -1255,7 +1318,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                         <div style={{ fontSize: 12, color: J.t2, fontFamily: F.sans, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{job.company || "Unknown"}</div>
                       </div>
                     </div>
-                    <ATSRing score={match} size={48} />
+                    {isMobile && <ATSRing score={match} size={48} />}
                   </div>
                   <div style={{ height: 1, background: "rgba(237,125,43,0.22)", marginTop: 2 }} />
                   <div style={{ display: "flex", gap: 8, fontSize: 11, color: J.t2, fontFamily: F.sans, flexWrap: "wrap", alignItems: "center" }}>
@@ -1338,7 +1401,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                       {visaBadges.length === 0 && <span style={{ fontSize: 10, color: J.t3, fontFamily: F.sans }}>Visa not verified</span>}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, borderTop: `1px solid ${J.line}`, paddingTop: 9 }}>
-                      <span style={{ color: J.t3, fontSize: 10, fontFamily: F.sans }}>{getScoreMeta(match).label}</span>
+                      <span style={{ color: J.t3, fontSize: 10, fontFamily: F.sans }}>{getScoreMeta(match, job.score_type).label}</span>
                       <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
                       <button onClick={(e) => {
                         e.stopPropagation();
@@ -1368,6 +1431,13 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                     </div>
                   </div>
                 </div>
+                {!isMobile && (
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 9, padding: "16px 8px", borderRadius: 12, background: "rgba(1,17,38,0.5)", border: "1px solid rgba(237,125,43,0.2)" }}>
+                    <ATSRing score={match} size={66} />
+                    <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: "0.04em", textTransform: "uppercase", color: getScoreMeta(match, job.score_type).color, fontFamily: F.sans, textAlign: "center", lineHeight: 1.3 }}>{getScoreMeta(match, job.score_type).label}</div>
+                    {sponsorVerified && <div style={{ fontSize: 10, color: "#86EFAC", fontFamily: F.sans, display: "flex", alignItems: "center", gap: 4, textAlign: "center", lineHeight: 1.3 }}><ShieldCheck size={11} /> Sponsor likely</div>}
+                  </div>
+                )}
               </motion.div>
             );
           })}

@@ -38,12 +38,14 @@ function StyledInput({
   value,
   onChange,
   rightEl,
+  onEnter,
 }: {
   label: string;
   type?: string;
   value: string;
   onChange: (v: string) => void;
   rightEl?: React.ReactNode;
+  onEnter?: () => void;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -53,6 +55,12 @@ function StyledInput({
           type={type}
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && onEnter) {
+              e.preventDefault();
+              onEnter();
+            }
+          }}
           style={{
             width: "100%",
             height: 48,
@@ -178,12 +186,13 @@ export default function SignIn() {
               Sign in to access your job matches, alerts, and analytics.
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 16 }}>
-              <StyledInput label="Email or Phone" type="text" value={identifier} onChange={setIdentifier} />
+              <StyledInput label="Email or Phone" type="text" value={identifier} onChange={setIdentifier} onEnter={handleSubmit} />
               <StyledInput
                 label="Password"
                 type={showPass ? "text" : "password"}
                 value={password}
                 onChange={setPassword}
+                onEnter={handleSubmit}
                 rightEl={
                   <button onClick={() => setShowPass(!showPass)} style={{ background: "none", border: "none", cursor: "pointer", color: T.t3 }}>
                     {showPass ? <EyeOff size={15} /> : <Eye size={15} />}

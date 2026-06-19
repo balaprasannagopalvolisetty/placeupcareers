@@ -1,0 +1,115 @@
+/* ============================================================
+   App-wide polish — professional / minimal / futuristic.
+   Pure CSS, applied globally without touching any component.
+   Accent: #ED7D2B (burnt orange)  ·  Text: #F2EEB3 (cream)
+   ============================================================ */
+
+:root {
+  --pu-accent: #ED7D2B;
+  --pu-accent-soft: rgba(237, 125, 43, 0.35);
+  --pu-cream: #F2EEB3;
+}
+
+html { scroll-behavior: smooth; }
+
+* {
+  /* Crisp text everywhere */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Smooth, consistent interaction feedback on every control. Component
+   inline styles still win for color; this just adds easing + lift so the
+   whole app feels responsive instead of static. */
+button, a, input, select, textarea, [role="button"], [role="tab"] {
+  transition: background-color .16s ease, border-color .16s ease,
+              color .16s ease, box-shadow .18s ease, transform .12s ease;
+}
+
+button:not(:disabled):hover,
+[role="button"]:hover {
+  filter: brightness(1.06);
+}
+button:not(:disabled):active,
+[role="button"]:active {
+  transform: translateY(1px);
+}
+
+/* Keyboard focus ring — accessible and on-brand (mouse clicks stay clean). */
+:focus-visible {
+  outline: 2px solid var(--pu-accent);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* Themed text selection */
+::selection {
+  background: var(--pu-accent-soft);
+  color: #fff;
+}
+
+/* Slim, themed scrollbars (futuristic, unobtrusive) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(237, 125, 43, 0.45) transparent;
+}
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: rgba(237, 125, 43, 0.35);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(237, 125, 43, 0.6);
+  background-clip: padding-box;
+}
+
+/* Native dropdown option list readable on the dark theme */
+select option {
+  background: #0b1326;
+  color: var(--pu-cream);
+}
+
+/* Honor users who prefer less motion */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+  }
+}
+
+/* ---- Extended app-wide polish ---------------------------------------- */
+
+/* Inputs & selects: subtle accent on hover/focus for a responsive feel
+   (works alongside component inline borders without overriding color). */
+input:hover, select:hover, textarea:hover {
+  border-color: rgba(237, 125, 43, 0.28);
+}
+input:focus, select:focus, textarea:focus {
+  box-shadow: 0 0 0 3px rgba(237, 125, 43, 0.16);
+}
+
+/* Placeholders stay legible but quiet */
+::placeholder { color: rgba(245, 234, 200, 0.4); opacity: 1; }
+
+/* Disabled controls read as disabled everywhere */
+button:disabled, [aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Interactive elements use a pointer cursor by default */
+button, [role="button"], a, summary { cursor: pointer; }
+
+/* Images never overflow their cards and fade in cleanly */
+img { max-width: 100%; }
+
+/* Soft entrance for content mounted into the dashboard shell */
+@keyframes pu-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}

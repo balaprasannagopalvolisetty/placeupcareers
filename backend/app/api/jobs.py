@@ -28,7 +28,11 @@ from app.services.job_description_details import (
     is_thin_description,
 )
 from app.services.global_visa_rules import COUNTRY_RULES, country_options, normalize_country_code, visa_program_options
-from app.utils.job_quality import has_usable_job_description, is_probably_fake_or_scam_job
+from app.utils.job_quality import (
+    has_usable_job_description,
+    is_probably_fake_or_scam_job,
+    sanitize_job_description_html,
+)
 from app.utils.terminal_table import render_table
 
 logger = logging.getLogger(__name__)
@@ -1078,7 +1082,7 @@ def _split_description_points(description: str) -> dict[str, list[str]]:
 
 async def _visa_stats_for_company(company: str, db) -> dict:
     if not company:
-        return {"approvalRate": 0, "petitions": 0}
+        return {"approvalRate": None, "petitions": None}
     try:
         rows = await db.get_h1b_sponsors(employer=company, limit=25)
     except Exception:
@@ -1092,8 +1096,8 @@ async def _visa_stats_for_company(company: str, db) -> dict:
         petitions += int(row.get("total_petitions") or 0)
     total = approvals + denials
     return {
-        "approvalRate": round((approvals / total) * 100) if total else 0,
-        "petitions": petitions or total,
+        "approvalRate": round((approvals / total) * 100) if total else None,
+        "petitions": (petitions or total) if (petitions or total) else None,
     }
 
 
@@ -1164,6 +1168,10 @@ async def list_jobs(
     filters["status"] = status or "active"
     if visa_only:
         filters["visa_only"] = True
+    if job_type and job_type.strip():
+        filters["job_type"] = job_type.strip()
+    if min_salary is not None:
+        filters["min_salary"] = float(min_salary)
     fresh_since, fresh_before = _posted_window(time_filter, tz_offset_minutes=tz_offset)
     visible_cutoff = _visible_jobs_cutoff()
     post_filter_since: Optional[datetime] = None
@@ -1193,6 +1201,21 @@ async def list_jobs(
 
     offset = (page - 1) * page_size
 
+    async def _safe_count(count_filters: dict, *, fallback: int) -> int:
+        """Exact COUNT(*) that degrades to an estimate instead of 500-ing.
+
+        Filter clicks were raising "Error listing jobs" because an exact
+        COUNT(*) on the large master_jobs table can exceed the DB statement
+        timeout (or the Cloud Run request budget) while the scraper is writing.
+        A slow/failed count must never break the page — pagination only needs a
+        workable upper bound, which `fallback` provides.
+        """
+        try:
+            return await db.count_jobs(filters=count_filters)
+        except Exception as count_exc:  # pragma: no cover - depends on live DB load
+            logger.warning("count_jobs degraded to estimate (%s): %s", fallback, count_exc)
+            return fallback
+
     try:
         free_text_search_active = bool(search and search.strip())
         # Taxonomy filters are derived from title/category matching. Counting
@@ -1210,6 +1233,8 @@ async def list_jobs(
             "source",
             "visa_only",
             "seen_before",
+            "job_type",
+            "min_salary",
         }
         exact_count_active = any(key in filters for key in exact_count_filters)
         # The live master_jobs table is large. Exact COUNT(*) on the broad
@@ -1233,7 +1258,7 @@ async def list_jobs(
             if _cached and _time.monotonic() - _cached[0] < 300:
                 total = _cached[1]
             else:
-                total = await db.count_jobs(filters=filters)
+                total = await _safe_count(filters, fallback=_cached[1] if _cached else 50000)
                 if len(_title_count_cache) > 500:
                     _title_count_cache.clear()
                 _title_count_cache[_count_key] = (_time.monotonic(), total)
@@ -1245,13 +1270,13 @@ async def list_jobs(
                 or post_filter_since
                 or post_filter_before
                 or not exact_count_active
-            ) else await db.count_jobs(filters=filters)
+            ) else await _safe_count(filters, fallback=50000)
         # Category and role are derived from titles in Python. Only those
         # filters need a full pool scan. The normal All Jobs path fetches the
         # requested page directly so the dashboard does not wait on thousands
         # of rows just to render the first 100 cards.
         if taxonomy_filter_active:
-            fetch_limit = min(max(total, page_size), 30000)
+            fetch_limit = min(max(total, page_size), 12000)
             fetch_offset = 0
             filters["coverage_scan"] = True
         elif title_terms_active and not free_text_search_active:
@@ -1324,6 +1349,7 @@ async def list_jobs(
                 meta.get("years_min"),
                 meta.get("years_max"),
                 max_years=max_years,
+                description=j.get("description") or "",
             ):
                 continue
             cat, rname = categorize(f"{j.get('title') or ''} {j.get('company') or ''}")
@@ -1393,11 +1419,11 @@ async def list_jobs(
                     )
                     j["score_type"] = "resume_match"
                 else:
-                    j["match_score"] = _baseline_ats_score(j)
-                    j["score_type"] = "description_required"
+                    j["match_score"] = None
+                    j["score_type"] = "insufficient_jd"
             else:
-                j["match_score"] = _baseline_ats_score(j)
-                j["score_type"] = "baseline_ats"
+                j["match_score"] = None
+                j["score_type"] = "resume_required"
             pref_bonus = 0
             hay = f"{j.get('title') or ''} {j.get('role') or ''} {j.get('taxonomy_category') or ''}".lower()
             loc_hay = f"{j.get('location') or ''}".lower()
@@ -1515,14 +1541,24 @@ async def list_jobs(
                             resume_text, f"{jt}\n{full}", resume_cache=resume_cache,
                         )
                         j["score_type"] = "resume_match"
+                    else:
+                        j["match_score"] = None
+                        j["score_type"] = "insufficient_jd"
             except Exception as exc:
                 logger.debug("Full-text page rescore skipped: %s", exc)
+        elif not resume_text:
+            for j in page_jobs:
+                j["match_score"] = None
+                j["score_type"] = "resume_required"
 
         # Convert to JobPost models for the response. Stash the taxonomy
         # extras and re-attach them post-validation so the strict JobPost
         # enum doesn't reject "Technology & Engineering" etc.
         job_posts: list = []
         for job_data in page_jobs:
+            metadata = dict(job_data.get("extra_metadata") or {})
+            metadata.pop("description_html", None)
+            job_data["extra_metadata"] = metadata
             tax_cat = job_data.pop("taxonomy_category", None)
             tax_role = job_data.pop("role", None)
             try:
@@ -1570,7 +1606,44 @@ async def list_jobs(
         if stale is not None:
             logger.warning("Serving stale jobs page for key=%s due to: %s", _stale_key[:80], e)
             return {**stale, "stale": True}
-        raise HTTPException(status_code=500, detail="Error listing jobs")
+        # Last resort: a single filter click should never show a red error.
+        # Retry with a cheap, bounded query (no count, no coverage scan, small
+        # pool) so the user still gets a usable first page; only return an
+        # empty-but-valid payload if even that fails.
+        try:
+            light_filters = {
+                k: v for k, v in filters.items()
+                if k not in {"coverage_scan", "title_terms"}
+            }
+            light_filters.setdefault("status", status or "active")
+            light_filters["effective_since"] = visible_cutoff
+            light_jobs = await db.get_jobs(filters=light_filters, limit=page_size, offset=0)
+            light_posts: list = []
+            for job_data in light_jobs[:page_size]:
+                try:
+                    light_posts.append(JobPost(**job_data).model_dump(mode="json"))
+                except Exception:
+                    light_posts.append(dict(job_data))
+            return {
+                "jobs": light_posts,
+                "total": len(light_posts),
+                "page": 1,
+                "page_size": page_size,
+                "total_pages": 1,
+                "degraded": True,
+                "filters_applied": {k: v for k, v in filters.items() if k != "coverage_scan"},
+            }
+        except Exception as fallback_exc:
+            logger.error("Jobs fallback query also failed: %s", fallback_exc)
+            return {
+                "jobs": [],
+                "total": 0,
+                "page": 1,
+                "page_size": page_size,
+                "total_pages": 1,
+                "degraded": True,
+                "filters_applied": {},
+            }
 
 
 @router.get("/stats", response_model=JobStats)
@@ -1909,6 +1982,11 @@ async def get_job_detail(
     payload = _apply_job_specific_visa_rules(dict(job))
     payload["taxonomy_category"] = cat
     payload["role"] = rname
+    metadata = payload.get("extra_metadata") or {}
+    stored_html = metadata.get("description_html") if isinstance(metadata, dict) else None
+    description_html = sanitize_job_description_html(stored_html or description)
+    if description_html:
+        payload["description_html"] = description_html
 
     resume_text = await _active_resume_text(user_id)
     if resume_text:
@@ -1918,7 +1996,7 @@ async def get_job_detail(
         # complaints that the match number "feels random".
         breakdown = score_breakdown(resume_text, combined)
         payload["match_score"] = breakdown["score"]
-        payload["score_type"] = "resume_match" if breakdown["score"] is not None else "description_required"
+        payload["score_type"] = "resume_match" if breakdown["score"] is not None else "insufficient_jd"
         payload["score_breakdown"] = breakdown
     else:
         payload["match_score"] = None
@@ -2009,16 +2087,16 @@ async def get_top_matches(
                 )
                 item["score_type"] = "resume_match"
             else:
-                item["match_score"] = _baseline_ats_score(item)
-                item["score_type"] = "description_required"
+                item["match_score"] = None
+                item["score_type"] = "insufficient_jd"
         else:
-            item["match_score"] = _baseline_ats_score(item)
-            item["score_type"] = "baseline_ats"
+            item["match_score"] = None
+            item["score_type"] = "resume_required"
         hay = f"{item.get('title') or ''} {rname} {cat}".lower()
         loc_hay = f"{item.get('location') or ''}".lower()
-        if preferred_roles and any(term in hay for term in preferred_roles):
+        if isinstance(item.get("match_score"), int) and preferred_roles and any(term in hay for term in preferred_roles):
             item["match_score"] = min(98, int(item["match_score"] or 0) + 6)
-        if preferred_locations and any(term in loc_hay for term in preferred_locations):
+        if isinstance(item.get("match_score"), int) and preferred_locations and any(term in loc_hay for term in preferred_locations):
             item["match_score"] = min(98, int(item["match_score"] or 0) + 3)
         item["preference_match"] = _job_matches_preferences(item, preferred_roles, preferred_locations)
         ranked.append(item)

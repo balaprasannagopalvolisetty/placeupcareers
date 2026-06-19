@@ -9,6 +9,7 @@ import {
 import { Navbar } from "../components/Navbar";
 import { HowItWorksScrollStory } from "../components/HowItWorksScrollStory";
 import { FloatingParticles } from "../components/FloatingParticles";
+import * as api from "../lib/api";
 
 // ─── Design Tokens ───
 const T = {
@@ -385,11 +386,31 @@ export default function Home() {
 // ═══════════════════════════
 function HeroSection() {
   const { isMobile } = useViewportFlags();
+  // Live, credible numbers instead of static marketing claims. Falls back to
+  // sensible defaults if the public stats endpoint is slow/unavailable.
+  const [liveJobs, setLiveJobs] = useState<number | null>(null);
+  const [liveCategories, setLiveCategories] = useState<number | null>(null);
+  useEffect(() => {
+    let active = true;
+    api.getJobStats()
+      .then((s) => {
+        if (!active) return;
+        if (typeof s?.total_jobs === "number") setLiveJobs(s.total_jobs);
+        const cats = s?.by_category ? Object.keys(s.by_category).length : 0;
+        if (cats) setLiveCategories(cats);
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+
+  const jobsLabel = liveJobs && liveJobs > 0
+    ? (liveJobs >= 1000 ? `${(liveJobs / 1000).toFixed(liveJobs >= 10000 ? 0 : 1)}k+` : `${liveJobs}+`)
+    : "1k+";
   const stats = [
-    { val: "300+", label: "Jobs", delay: 0 },
-    { val: "10",   label: "Categories", delay: 0.1 },
-    { val: "87%",  label: "Placement", delay: 0.2 },
-    { val: "2hr",  label: "Refresh", delay: 0.3 },
+    { val: jobsLabel, label: "Live roles", delay: 0 },
+    { val: liveCategories ? String(liveCategories) : "10", label: "Categories", delay: 0.1 },
+    { val: "25", label: "Countries", delay: 0.2 },
+    { val: "6hr", label: "Refresh", delay: 0.3 },
   ];
 
   return (
@@ -436,7 +457,7 @@ function HeroSection() {
               style={{ width: 6, height: 6, borderRadius: "50%", background: T.red, boxShadow: `0 0 6px ${T.red}` }}
             />
             <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: T.burnt, fontFamily: F.sans }}>
-              Visa-friendly roles across 25 countries · updated every few hours
+              Visa-friendly roles · 25 countries · refreshed every 6 hours
             </span>
           </motion.div>
 
@@ -461,8 +482,8 @@ function HeroSection() {
 
           {/* Subheading */}
           <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.8, delay: 0.65 }}
-            style={{ fontSize: 17, lineHeight: 1.75, color: T.t2, fontFamily: F.sans, fontWeight: 400, maxWidth: 560, margin: "0 auto 40px" }}>
-            We surface freshly-posted, visa-friendly roles across 25 countries — H-1B, EU Blue Card, Skilled Worker, Employment Pass and more — then score every job against your résumé in real time, so you only apply where you can actually get hired and sponsored.
+            style={{ fontSize: 17, lineHeight: 1.7, color: T.t2, fontFamily: F.sans, fontWeight: 400, maxWidth: 540, margin: "0 auto 40px" }}>
+            Freshly-posted, visa-friendly roles across 25 countries — H-1B, EU Blue Card, Skilled Worker, Employment Pass and more — each scored against your résumé in real time. Apply only where you can actually get hired and sponsored.
           </motion.p>
 
           {/* CTA Buttons */}

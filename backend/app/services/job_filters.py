@@ -69,14 +69,34 @@ def is_entry_level(years_min: Optional[int]) -> bool:
     return 0 <= years_min <= 5
 
 
+# Approximate floor of years a seniority signal implies when the JD doesn't
+# state an explicit number. Used so the Experience filter actually narrows the
+# list when the user picks a tight band (0-2 / 0-5) instead of silently keeping
+# every senior/lead role that happens to omit a "X+ years" line.
+_SENIOR_TITLE_IMPLIED_MIN = 5
+
+
+def is_senior_title(title: str) -> bool:
+    """True for senior-ish titles that can be kept but should sort below junior/mid."""
+    return any(pattern.search(title or "") for pattern in SENIOR_TITLE_PATTERNS)
+
+
 def is_target_experience(
     title: str,
     years_min: Optional[int],
     years_max: Optional[int],
     *,
     max_years: int = 10,
+    description: str | None = None,
 ) -> bool:
-    """Return True for roles appropriate for 0 through max_years experience."""
+    """Return True for roles appropriate for 0 through max_years experience.
+
+    When the user narrows the Experience band (max_years < 10) the filter must
+    visibly bite. Most rows have no parsed years in metadata, so we (a) parse a
+    range from the JD/title text as a fallback, and (b) treat senior/lead titles
+    as implying ~5 yrs when nothing explicit is stated. max_years >= 50 ("Any")
+    stays fully permissive.
+    """
     title = title or ""
     try:
         years_min = int(years_min) if years_min is not None else None
@@ -88,6 +108,18 @@ def is_target_experience(
         years_max = None
     if any(pattern.search(title) for pattern in HIGH_LEVEL_TITLE_PATTERNS):
         return False
+    # "Any" -- do not narrow at all.
+    if max_years >= 50:
+        return years_min is None or years_min <= max_years
+
+    # Fall back to text-parsed years when metadata is missing.
+    if years_min is None and years_max is None and description:
+        parsed_min, parsed_max = parse_years(description)
+        if parsed_min is not None:
+            years_min = parsed_min
+        if parsed_max is not None:
+            years_max = parsed_max
+
     if years_min is not None and years_min > max_years:
         return False
     if any(pattern.search(title) for pattern in EARLY_CAREER_TITLE_PATTERNS):
@@ -96,17 +128,16 @@ def is_target_experience(
         return years_min <= max_years
     if years_max is not None:
         return years_max <= max_years
+    # Unknown years: for a tight band, a senior/lead title implies more years
+    # than the band allows, so drop it; otherwise keep (unknown = eligible).
+    if max_years < _SENIOR_TITLE_IMPLIED_MIN and is_senior_title(title):
+        return False
     return True
 
 
 def is_high_level_title(title: str) -> bool:
     """True for titles we do not want in the default 0-10 student-friendly pool."""
     return any(pattern.search(title or "") for pattern in HIGH_LEVEL_TITLE_PATTERNS)
-
-
-def is_senior_title(title: str) -> bool:
-    """True for senior-ish titles that can be kept but should sort below junior/mid."""
-    return any(pattern.search(title or "") for pattern in SENIOR_TITLE_PATTERNS)
 
 
 def is_early_career_title(title: str) -> bool:

@@ -45,6 +45,8 @@ from app.utils.terminal_table import render_table
 logger = logging.getLogger(__name__)
 
 _rapidapi_disabled_until = 0.0
+_provider_disabled_until: dict[str, float] = {}
+_provider_empty_streaks: dict[str, int] = {}
 
 
 def _env_float(name: str, default: float) -> float:
@@ -56,11 +58,86 @@ def _env_float(name: str, default: float) -> float:
 
 RAPIDAPI_REQUEST_DELAY_SECONDS = _env_float("RAPIDAPI_REQUEST_DELAY_SECONDS", 3.0)
 RAPIDAPI_RATE_LIMIT_COOLDOWN_SECONDS = _env_float("RAPIDAPI_RATE_LIMIT_COOLDOWN_SECONDS", 900.0)
+PROVIDER_BLOCK_COOLDOWN_SECONDS = _env_float("SCRAPER_PROVIDER_BLOCK_COOLDOWN_SECONDS", 1800.0)
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+PROVIDER_EMPTY_CIRCUIT_THRESHOLD = max(
+    1,
+    _env_int("SCRAPER_PROVIDER_EMPTY_CIRCUIT_THRESHOLD", 4),
+)
+BLOCK_PRONE_JOBSPY_SOURCES = {"google", "glassdoor", "zip_recruiter"}
 
 
 def _normalize_source_name(source: str) -> str:
     """Normalize source labels so metrics and logs stay consistent."""
     return source.strip().lower().replace("-", "_")
+
+
+def _provider_circuit_open(source: str) -> bool:
+    until = _provider_disabled_until.get(_normalize_source_name(source), 0.0)
+    return time.monotonic() < until
+
+
+def _provider_circuit_remaining(source: str) -> int:
+    until = _provider_disabled_until.get(_normalize_source_name(source), 0.0)
+    return max(0, int(until - time.monotonic()))
+
+
+def _open_provider_circuit(source: str, reason: str) -> None:
+    normalized = _normalize_source_name(source)
+    _provider_disabled_until[normalized] = time.monotonic() + PROVIDER_BLOCK_COOLDOWN_SECONDS
+    logger.warning(
+        "%s provider circuit opened for %ss: %s",
+        normalized,
+        int(PROVIDER_BLOCK_COOLDOWN_SECONDS),
+        reason,
+    )
+
+
+def _close_unawaited(awaitable_job) -> None:
+    close = getattr(awaitable_job, "close", None)
+    if callable(close):
+        close()
+
+
+def _looks_like_provider_block(exc: Exception) -> bool:
+    text = str(exc).lower()
+    block_markers = (
+        "429",
+        "403",
+        "too many requests",
+        "forbidden",
+        "cf-waf",
+        "cloudflare",
+        "/sorry/",
+        "captcha",
+        "rate limit",
+        "responseerror",
+    )
+    return any(marker in text for marker in block_markers)
+
+
+def _record_provider_result(source: str, count: int) -> None:
+    normalized = _normalize_source_name(source)
+    if normalized not in BLOCK_PRONE_JOBSPY_SOURCES:
+        return
+    if count > 0:
+        _provider_empty_streaks[normalized] = 0
+        return
+    streak = _provider_empty_streaks.get(normalized, 0) + 1
+    _provider_empty_streaks[normalized] = streak
+    if streak >= PROVIDER_EMPTY_CIRCUIT_THRESHOLD and not _provider_circuit_open(normalized):
+        _open_provider_circuit(
+            normalized,
+            f"{streak} consecutive empty responses from a block-prone public provider",
+        )
 
 
 def _resolve_greenhouse_tokens(request: ScrapeRequest) -> list[str]:
@@ -97,6 +174,16 @@ async def scrape_jobspy(
     Returns:
         List of normalized JobPost objects
     """
+    if site_names:
+        source_name = _normalize_source_name(site_names[0])
+        if _provider_circuit_open(source_name):
+            logger.info(
+                "JobSpy: skipping %s for %ss because provider circuit is open",
+                source_name,
+                _provider_circuit_remaining(source_name),
+            )
+            return []
+
     try:
         from jobspy import scrape_jobs as jobspy_scrape
 
@@ -175,6 +262,9 @@ async def scrape_jobspy(
         if not jobs:
             logger.info(f"JobSpy: No results for '{search_term}' on {site_names}")
 
+        if site_names:
+            _record_provider_result(site_names[0], len(jobs))
+
         logger.info(f"JobSpy: Got {len(jobs)} jobs for '{search_term}' from {site_names}")
         return jobs
 
@@ -182,6 +272,8 @@ async def scrape_jobspy(
         logger.error("python-jobspy not installed. Run: pip install python-jobspy")
         return []
     except Exception as e:
+        if site_names and _looks_like_provider_block(e):
+            _open_provider_circuit(site_names[0], str(e))
         logger.info(f"JobSpy provider skipped for {site_names}: {e}")
         return []
 
@@ -494,7 +586,17 @@ async def scrape_linkedin_rapidapi(
     global _rapidapi_disabled_until
     rapidapi_key = (settings.rapidapi_key or "").strip()
     if not rapidapi_key or rapidapi_key.lower().startswith("your_"):
+        # Missing credentials are permanent for this execution. Opening the
+        # circuit prevents every queued role/location task from sleeping and
+        # repeating this warning until the Cloud Run deadline is reached.
+        _open_provider_circuit("rapidapi", "API key not configured")
         logger.warning("LinkedIn RapidAPI: API key not configured")
+        return []
+    if _provider_circuit_open("rapidapi"):
+        logger.info(
+            "LinkedIn RapidAPI: provider circuit open for %ss; skipping",
+            _provider_circuit_remaining("rapidapi"),
+        )
         return []
     if time.monotonic() < _rapidapi_disabled_until:
         logger.info("LinkedIn RapidAPI: temporarily paused after provider rate limiting")
@@ -518,6 +620,7 @@ async def scrape_linkedin_rapidapi(
             response = await client.get(url, headers=headers, params=params)
             if response.status_code in {403, 429}:
                 _rapidapi_disabled_until = time.monotonic() + RAPIDAPI_RATE_LIMIT_COOLDOWN_SECONDS
+                _open_provider_circuit("rapidapi", f"HTTP {response.status_code}")
                 logger.warning(
                     "LinkedIn RapidAPI returned %s; pausing remaining RapidAPI requests for this run",
                     response.status_code,
@@ -785,8 +888,23 @@ async def run_scrape_cycle(
         google_semaphore = asyncio.Semaphore(1)
 
         async def _guarded_capture(source_tag: str, awaitable_job):
+            normalized_tag = _normalize_source_name(source_tag.split(":", 1)[0])
+            def _skip_open_circuit():
+                _close_unawaited(awaitable_job)
+                logger.info(
+                    "Scrape task skipped for %s: provider circuit open for %ss",
+                    source_tag,
+                    _provider_circuit_remaining(normalized_tag),
+                )
+                return source_tag, [], None
+
+            if _provider_circuit_open(normalized_tag):
+                return _skip_open_circuit()
             async with semaphore:
                 try:
+                    if _provider_circuit_open(normalized_tag):
+                        return _skip_open_circuit()
+
                     def _task_timeout_seconds() -> int:
                         normalized = _normalize_source_name(source_tag.split(":", 1)[0])
                         if normalized in {"h1b_sponsor", "clean_sources"}:
@@ -801,18 +919,38 @@ async def run_scrape_cycle(
 
                     if _normalize_source_name(source_tag) == "google":
                         async with google_semaphore:
+                            if _provider_circuit_open(normalized_tag):
+                                return _skip_open_circuit()
                             await asyncio.sleep(2.5)
-                            return source_tag, await _with_timeout(), None
+                            if _provider_circuit_open(normalized_tag):
+                                return _skip_open_circuit()
+                            outcome = await _with_timeout()
+                            if isinstance(outcome, list):
+                                _record_provider_result(source_tag, len(outcome))
+                            return source_tag, outcome, None
                     if _normalize_source_name(source_tag) == "rapidapi":
                         async with rapidapi_semaphore:
+                            if _provider_circuit_open(normalized_tag):
+                                return _skip_open_circuit()
                             await asyncio.sleep(RAPIDAPI_REQUEST_DELAY_SECONDS)
-                            return source_tag, await _with_timeout(), None
-                    return source_tag, await _with_timeout(), None
+                            if _provider_circuit_open(normalized_tag):
+                                return _skip_open_circuit()
+                            outcome = await _with_timeout()
+                            if isinstance(outcome, list):
+                                _record_provider_result(source_tag, len(outcome))
+                            return source_tag, outcome, None
+                    outcome = await _with_timeout()
+                    if isinstance(outcome, list):
+                        _record_provider_result(source_tag, len(outcome))
+                    return source_tag, outcome, None
                 except asyncio.TimeoutError as exc:
+                    _open_provider_circuit(source_tag, f"timed out after {_task_timeout_seconds()}s")
                     return source_tag, None, TimeoutError(
                         f"timed out after {_task_timeout_seconds()}s"
                     )
                 except Exception as exc:
+                    if _looks_like_provider_block(exc):
+                        _open_provider_circuit(source_tag, str(exc))
                     return source_tag, None, exc
 
         results = await asyncio.gather(*[

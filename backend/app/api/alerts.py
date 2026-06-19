@@ -85,8 +85,11 @@ async def alerts_digest(user_id: str = Depends(current_user_id), db=Depends(get_
         except Exception:
             terms = [role]
         try:
-            count_24h = await db.count_jobs(filters={"status": "active", "title_terms": terms, "seen_since": since_24h})
-            count_7d = await db.count_jobs(filters={"status": "active", "title_terms": terms, "seen_since": since_7d})
+            # first_seen_since (not seen_since): the scraper re-sees active jobs
+            # every cycle, so last_seen_at is recent for almost everything and
+            # made 24h ~= 7d ~= total. first_seen_at counts genuinely NEW rows.
+            count_24h = await db.count_jobs(filters={"status": "active", "title_terms": terms, "first_seen_since": since_24h})
+            count_7d = await db.count_jobs(filters={"status": "active", "title_terms": terms, "first_seen_since": since_7d})
         except Exception:
             count_24h, count_7d = 0, 0
         total_24h += count_24h
@@ -99,6 +102,49 @@ async def alerts_digest(user_id: str = Depends(current_user_id), db=Depends(get_
         "total_new_24h": total_24h,
         "total_new_7d": total_7d,
         "has_target_roles": bool(roles),
+    }
+
+
+@router.get("/added-series")
+async def alerts_added_series(
+    days: int = 14,
+    scope: str = "targets",
+    user_id: str = Depends(current_user_id),
+    db=Depends(get_db),
+):
+    """Daily count of NEW positions added to the database (by first_seen_at).
+
+    Powers the interactive Alerts chart. ``scope=targets`` limits to the user's
+    saved target roles; ``scope=all`` counts every new active posting. Always
+    returns a dense, zero-filled series so the chart has no gaps.
+    """
+    days = max(7, min(int(days), 60))
+    title_terms: list[str] | None = None
+    if scope != "all":
+        from app.api.jobs import _taxonomy_terms
+
+        prefs = user_store.get_preferences(user_id)
+        roles = [str(r).strip() for r in (prefs.get("target_roles") or []) if str(r).strip()][:8]
+        terms: list[str] = []
+        for role in roles:
+            try:
+                terms.extend(_taxonomy_terms(None, role) or [role])
+            except Exception:
+                terms.append(role)
+        title_terms = list(dict.fromkeys(terms)) or None
+
+    try:
+        series = await db.jobs_added_daily(days=days, title_terms=title_terms)
+    except Exception:
+        series = []
+    total = sum(int(point.get("count") or 0) for point in series)
+    peak = max((int(point.get("count") or 0) for point in series), default=0)
+    return {
+        "days": days,
+        "scope": "targets" if title_terms else "all",
+        "series": series,
+        "total_added": total,
+        "peak_day": peak,
     }
 
 

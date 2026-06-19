@@ -200,6 +200,9 @@ See `/docs/backend-pipeline.md` for full details.
 
 - `placeup-job-scraper-6h` runs every 6 hours as a Cloud Run Job using
   `app.etl.jobs_scraper_6h`.
+- RapidAPI/JSearch is not part of the scheduled pipeline and its secret is not
+  bound to the API or scraping jobs. Direct public, official, and ATS sources
+  continue independently.
 - The scraper covers the current full taxonomy: 12 categories, 100 roles, and
   533 scrape terms.
 - Production scraping is free/open-source only by default: `usajobs`, `dice`,
@@ -342,12 +345,10 @@ gcloud.cmd run jobs execute placeup-job-scraper-6h --region us-east1 --project s
 - Latest backend deploy target after scraper fixes: project
   `steel-shine-492401-u6`, service `placeup-api`, region `us-east1`,
   revision `placeup-api-00160-zhq`.
-- The 6-hour scraper now runs public batches across `rapidapi~usajobs~dice`,
-  but Dice is constrained to `United States` only because Dice's public API
-  uses `countryCode2=US` and returns noisy errors for global locations.
-- RapidAPI calls are paced with `RAPIDAPI_REQUEST_DELAY_SECONDS=3` and
-  `RAPIDAPI_RATE_LIMIT_COOLDOWN_SECONDS=900`; 403/429 responses pause the
-  provider for the current run instead of retrying every role/country.
+- The 6-hour scraper runs direct public batches independently of paid
+  aggregators. Dice is constrained to `United States` because its public API
+  uses `countryCode2=US`; LinkedIn and the other configured public sources
+  remain enabled behind per-provider circuit breakers.
 - LinkedIn JD repair now treats descriptions under 1200 chars as thin,
   processes up to 5000 rows per run, and uses single-request concurrency to
   reduce guest-page 429s:
@@ -362,10 +363,9 @@ gcloud.cmd run jobs execute placeup-job-scraper-6h --region us-east1 --project s
   5,303 unique normalized jobs before the DB load phase.
 - Operational caveat: the USAJobs secrets currently contain placeholder values,
   so USAJobs is disabled until real `USAJOBS_API_KEY` and `USAJOBS_EMAIL`
-  Secret Manager versions are installed. RapidAPI returned 403 for the current
-  LinkedIn endpoint/key, so LinkedIn API collection depends on fixing that
-  subscription/key outside code. LinkedIn full-JD guest-page repair is
-  best-effort and can still be limited by LinkedIn 429s.
+  Secret Manager versions are installed. LinkedIn public collection and
+  full-JD guest-page repair are best-effort and can still be limited by
+  LinkedIn 429s.
 
 Useful live commands:
 

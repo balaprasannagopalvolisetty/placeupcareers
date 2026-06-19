@@ -250,6 +250,8 @@ export interface JobPost {
   posted?: string;
   status?: string;
   description?: string;
+  description_html?: string;
+  score_type?: "resume_match" | "insufficient_jd" | "resume_required" | string;
   job_url?: string;
   source_url?: string;
   taxonomy_category?: string;
@@ -263,8 +265,8 @@ export interface JobPost {
   strongKeywords?: string[];
   missingKeywords?: { kw: string; impact: string }[];
   benefits?: string[];
-  approvalRate?: number;
-  petitions?: number;
+  approvalRate?: number | null;
+  petitions?: number | null;
 }
 
 export interface JobListResponse {
@@ -714,6 +716,25 @@ export interface AlertsDigest {
 
 export async function getAlertsDigest() { return request<AlertsDigest>("/api/alerts/digest"); }
 
+export interface AlertsAddedSeriesPoint { date: string; count: number }
+export interface AlertsAddedSeries {
+  days: number;
+  scope: string;
+  series: AlertsAddedSeriesPoint[];
+  total_added: number;
+  peak_day: number;
+}
+export async function getAlertsAddedSeries(params: { days?: number; scope?: "targets" | "all" } = {}) {
+  const query = new URLSearchParams();
+  if (params.days) query.append("days", String(params.days));
+  if (params.scope) query.append("scope", params.scope);
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return request<AlertsAddedSeries>(`/api/alerts/added-series${suffix}`);
+}
+
+// (Resume Tailor client functions live above with the /api/user/tailor-queue
+// endpoints — single source of truth.)
+
 export async function getTopMatches(params: Record<string, string | number | boolean | undefined> = {}) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => {
@@ -725,6 +746,29 @@ export async function getTopMatches(params: Record<string, string | number | boo
 
 export async function getJobDetail(jobId: string) { return request<JobPost>(`/api/jobs/detail/${encodeURIComponent(jobId)}`); }
 export async function getJob(jobId: string) { return request<JobPost>(`/api/jobs/${encodeURIComponent(jobId)}`); }
+
+export interface AtsBreakdownItem { label: string; score: number; max: number; color: "success" | "warning" | "danger" }
+export interface AtsRedFlag { original: string; suggestion: string; category: string; impact?: string }
+export interface AtsMissingKw { keyword: string; impact: string; category: string }
+export interface AtsAnalysis {
+  has_resume: boolean;
+  insufficient_jd?: boolean;
+  score?: number;
+  match_score?: number;
+  recommendation?: string;
+  breakdown?: AtsBreakdownItem[];
+  matched_keywords?: Record<string, string[]>;
+  missing_keywords?: Record<string, string[]>;
+  missing_with_impact?: AtsMissingKw[];
+  matched_count?: number;
+  missing_count?: number;
+  coverage_pct?: number;
+  semantic_similarity?: number;
+  red_flags?: AtsRedFlag[];
+}
+export async function getActiveAtsAnalysis(jobId: string) {
+  return request<AtsAnalysis>(`/api/match/active-analysis?job_id=${encodeURIComponent(jobId)}`);
+}
 export async function getJobStats() { return request<{ total_jobs: number; by_category: Record<string, number> }>("/api/jobs/stats"); }
 export async function getJobPipelineStatus() {
   return request<{
@@ -774,6 +818,15 @@ export async function deleteAlert(alertId: string) {
 
 export async function getAnalyticsDashboard() { return request<AnalyticsDashboard>("/api/analytics/dashboard"); }
 export const getAnalytics = getAnalyticsDashboard;
+
+export interface MarketBreakdownItem { key: string; count: number }
+export interface MarketAnalytics {
+  total_active: number;
+  added_series: { date: string; count: number }[];
+  by_country: MarketBreakdownItem[];
+  by_source: MarketBreakdownItem[];
+}
+export async function getMarketAnalytics() { return request<MarketAnalytics>("/api/analytics/market"); }
 
 // ─── Resume / ATS ───
 

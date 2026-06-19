@@ -11,6 +11,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends
 
 from app.db import user_store
+from app.dependencies import get_db
 from app.models.analytics import (
     AnalyticsDashboard,
     MetricCard,
@@ -94,3 +95,41 @@ async def get_analytics_dashboard(user_id: Optional[str] = Depends(optional_user
         applications_over_time=applications_over_time,
         ats_score_history=score_history,
     )
+
+
+@router.get("/market")
+async def get_market_analytics(db=Depends(get_db)):
+    """Live job-market analytics straight from the jobs database.
+
+    Unlike the per-user dashboard (which is empty until the user applies), this
+    is always populated, so the Analytics page has real graphs to show: how many
+    active positions exist, how many are added per day, and the country/source
+    mix. Postgres-only; other backends return empty arrays gracefully.
+    """
+    out: dict = {"total_active": 0, "added_series": [], "by_country": [], "by_source": []}
+    try:
+        out["total_active"] = await db.count_jobs(filters={"status": "active"})
+    except Exception:
+        pass
+    try:
+        out["added_series"] = await db.jobs_added_daily(days=14)
+    except Exception:
+        pass
+    try:
+        from sqlalchemy import text
+
+        table = "master_jobs" if getattr(db, "_master_jobs_available", lambda: False)() else "jobs"
+        with db.session() as s:
+            country_rows = s.execute(text(
+                f"SELECT COALESCE(NULLIF(country, ''), 'Other') AS k, COUNT(*) AS c "
+                f"FROM {table} WHERE status = 'active' GROUP BY 1 ORDER BY c DESC LIMIT 8"
+            )).mappings().all()
+            out["by_country"] = [{"key": r["k"], "count": int(r["c"])} for r in country_rows]
+            source_rows = s.execute(text(
+                f"SELECT COALESCE(NULLIF(source_name, ''), 'Other') AS k, COUNT(*) AS c "
+                f"FROM {table} WHERE status = 'active' GROUP BY 1 ORDER BY c DESC LIMIT 8"
+            )).mappings().all()
+            out["by_source"] = [{"key": r["k"], "count": int(r["c"])} for r in source_rows]
+    except Exception:
+        pass
+    return out

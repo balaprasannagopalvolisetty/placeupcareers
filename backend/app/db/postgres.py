@@ -40,6 +40,14 @@ def _company_link_url(meta: dict) -> Optional[str]:
     return None
 
 
+def _salary_payload(minimum, maximum, currency: str | None) -> Optional[dict]:
+    min_value = float(minimum) if minimum is not None and float(minimum) > 0 else None
+    max_value = float(maximum) if maximum is not None and float(maximum) > 0 else None
+    if min_value is None and max_value is None:
+        return None
+    return {"min_salary": min_value, "max_salary": max_value, "currency": currency or "USD"}
+
+
 def stable_hash(payload: dict) -> str:
     raw = json.dumps(payload, sort_keys=True, default=json_default)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -240,9 +248,13 @@ class PostgresClient:
         """
         filters = filters or {}
         if filters.get("coverage_scan"):
-            return min(max(limit, 500), 30000)
-        if limit > 500:
+            # Was 30000. A 30k-row scan for a single category/role click was a
+            # top cause of statement-timeout 500s on the Jobs page; 12k still
+            # leaves a deep pool after the Python taxonomy/quality filters while
+            # keeping the query inside the request budget.
             return min(max(limit, 500), 12000)
+        if limit > 500:
+            return min(max(limit, 500), 8000)
         return min(max(limit * 5, limit + 20), 500)
 
     def _needs_full_description(self, filters: dict | None) -> bool:
@@ -406,6 +418,48 @@ class PostgresClient:
             stmt = select(func.count()).select_from(Job).join(Company, Job.company_id == Company.id, isouter=True)
             stmt = self._apply_job_filters(stmt, filters)
             return int(db.execute(stmt).scalar() or 0)
+
+    async def jobs_added_daily(self, *, days: int = 14, title_terms: list[str] | None = None) -> list[dict]:
+        """Count NEW postings per calendar day by first_seen_at (not last_seen).
+
+        Powers the Alerts "positions added" chart. Using first_seen_at means the
+        numbers reflect genuinely new inventory instead of the near-constant
+        re-scrape activity that last_seen_at records.
+        """
+        days = max(1, min(int(days), 90))
+        use_master = self._master_jobs_available()
+        table = "master_jobs" if use_master else "jobs"
+        title_col = "title"
+        clauses = ["first_seen_at >= now() - (:days || ' days')::interval", "status = 'active'"]
+        params: dict = {"days": days}
+        terms = [str(t).strip() for t in (title_terms or []) if str(t).strip()][:40]
+        if terms:
+            ors = []
+            for i, term in enumerate(terms):
+                key = f"t{i}"
+                ors.append(f"{title_col} ILIKE :{key}")
+                params[key] = f"%{term}%"
+            clauses.append("(" + " OR ".join(ors) + ")")
+        where = " AND ".join(clauses)
+        sql = f"""
+            SELECT to_char(date_trunc('day', first_seen_at), 'YYYY-MM-DD') AS day,
+                   COUNT(*) AS count
+              FROM {table}
+             WHERE {where}
+             GROUP BY 1
+             ORDER BY 1
+        """
+        with self.session() as db:
+            rows = db.execute(text(sql), params).mappings().all()
+        by_day = {row["day"]: int(row["count"]) for row in rows}
+        # Dense series: fill missing days with 0 so the chart has no gaps.
+        from datetime import timedelta
+        today = datetime.utcnow().date()
+        series = []
+        for offset in range(days - 1, -1, -1):
+            d = (today - timedelta(days=offset)).isoformat()
+            series.append({"date": d, "count": by_day.get(d, 0)})
+        return series
 
     async def deactivate_old_jobs(self, days_old: int = 15) -> int:
         cutoff = datetime.utcnow() - timedelta(days=days_old)
@@ -610,6 +664,8 @@ class PostgresClient:
             stmt = stmt.where(Job.last_seen_at >= filters["seen_since"])
         if filters.get("seen_before"):
             stmt = stmt.where(Job.last_seen_at < filters["seen_before"])
+        if filters.get("first_seen_since"):
+            stmt = stmt.where(Job.first_seen_at >= filters["first_seen_since"])
         if filters.get("posted_since"):
             stmt = stmt.where(Job.posted_at >= filters["posted_since"])
         if filters.get("posted_before"):
@@ -617,11 +673,10 @@ class PostgresClient:
         if filters.get("title_terms"):
             terms = [str(t).strip() for t in filters["title_terms"] if str(t).strip()]
             if terms:
-                stmt = stmt.where(or_(*[
-                    clause
-                    for term in terms[:80]
-                    for clause in (Job.title.ilike(f"%{term}%"), Company.name.ilike(f"%{term}%"))
-                ]))
+                # Role filters belong on job titles. Including company names
+                # here disabled the title trigram index and forced a full scan
+                # for personalized feeds with many role aliases.
+                stmt = stmt.where(or_(*[Job.title.ilike(f"%{term}%") for term in terms[:80]]))
         if filters.get("search"):
             q = f"%{filters['search']}%"
             stmt = stmt.where(or_(Job.title.ilike(q), Company.name.ilike(q), Job.description.ilike(q)))
@@ -677,6 +732,8 @@ class PostgresClient:
             stmt = stmt.where(MasterJob.last_seen_at >= filters["seen_since"])
         if filters.get("seen_before"):
             stmt = stmt.where(MasterJob.last_seen_at < filters["seen_before"])
+        if filters.get("first_seen_since"):
+            stmt = stmt.where(MasterJob.first_seen_at >= filters["first_seen_since"])
         if filters.get("posted_since"):
             stmt = stmt.where(MasterJob.posted_at >= filters["posted_since"])
         if filters.get("posted_before"):
@@ -684,10 +741,11 @@ class PostgresClient:
         if filters.get("title_terms"):
             terms = [str(t).strip() for t in filters["title_terms"] if str(t).strip()]
             if terms:
+                # ix_master_jobs_title_trgm supports these wildcard role
+                # searches. OR-ing company ILIKE clauses into the same filter
+                # made PostgreSQL abandon that index and hit statement_timeout.
                 stmt = stmt.where(or_(*[
-                    clause
-                    for term in terms[:80]
-                    for clause in (MasterJob.title.ilike(f"%{term}%"), MasterJob.company.ilike(f"%{term}%"))
+                    MasterJob.title.ilike(f"%{term}%") for term in terms[:80]
                 ]))
         if filters.get("search"):
             q = f"%{filters['search']}%"
@@ -696,6 +754,22 @@ class PostgresClient:
             stmt = stmt.where(MasterJob.visa_score >= 30)
         if filters.get("visa_program"):
             stmt = stmt.where(MasterJob.extra_metadata.op("->")("visa_programs").op("?")(filters["visa_program"]))
+        if filters.get("job_type"):
+            # employment_type is free-form across sources ("Full-time", "Full
+            # Time", "FULLTIME", "Permanent"...). Match on the core token.
+            jt = str(filters["job_type"]).strip().lower()
+            token = {
+                "full-time": "full", "full time": "full", "fulltime": "full", "permanent": "full",
+                "part-time": "part", "part time": "part", "parttime": "part",
+                "contract": "contract", "contractor": "contract",
+                "internship": "intern", "intern": "intern",
+                "temporary": "temp", "temp": "temp",
+            }.get(jt, jt)
+            stmt = stmt.where(MasterJob.employment_type.ilike(f"%{token}%"))
+        if filters.get("min_salary") is not None:
+            # A job qualifies when the top of its range meets the floor; rows
+            # with no salary data are excluded (expected for a salary filter).
+            stmt = stmt.where(MasterJob.salary_max >= filters["min_salary"])
         return stmt
 
     def _visa_payload(
@@ -777,11 +851,7 @@ class PostgresClient:
             "job_url": job.source_url or "",
             "category": meta.get("category") or "Other",
             "job_type": job.employment_type or "",
-            "salary": {
-                "min_salary": float(job.salary_min) if job.salary_min is not None else None,
-                "max_salary": float(job.salary_max) if job.salary_max is not None else None,
-                "currency": job.currency or "USD",
-            },
+            "salary": _salary_payload(job.salary_min, job.salary_max, job.currency),
             "visa": self._visa_payload(
                 meta=meta,
                 country=job.country,
@@ -818,11 +888,7 @@ class PostgresClient:
             "job_url": row.get("source_url") or "",
             "category": meta.get("category") or "Other",
             "job_type": row.get("employment_type") or "",
-            "salary": {
-                "min_salary": float(row.get("salary_min")) if row.get("salary_min") is not None else None,
-                "max_salary": float(row.get("salary_max")) if row.get("salary_max") is not None else None,
-                "currency": row.get("currency") or "USD",
-            },
+            "salary": _salary_payload(row.get("salary_min"), row.get("salary_max"), row.get("currency")),
             "visa": self._visa_payload(
                 meta=meta,
                 country=row.get("country"),
@@ -857,11 +923,7 @@ class PostgresClient:
             "job_url": job.source_url or "",
             "category": job.category or "Other",
             "job_type": job.employment_type or "",
-            "salary": {
-                "min_salary": float(job.salary_min) if job.salary_min is not None else None,
-                "max_salary": float(job.salary_max) if job.salary_max is not None else None,
-                "currency": job.currency or "USD",
-            },
+            "salary": _salary_payload(job.salary_min, job.salary_max, job.currency),
             "visa": self._visa_payload(
                 meta=job.extra_metadata or {},
                 country=getattr(job, "country", None),
@@ -892,7 +954,6 @@ class PostgresClient:
             "company": company,
             "location": row.get("location") or "",
             "description": description,
-            "job_url": row.get("source_url") or "",
             "category": row.get("category") or "Other",
             "job_type": row.get("employment_type") or "",
             "salary": {

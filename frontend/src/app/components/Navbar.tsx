@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { Menu, X } from "lucide-react";
 import { useState, useCallback } from "react";
 import { C, F } from "../theme";
+import { useAuth } from "../context/AuthContext";
 
 const navItems = [
   { label: "How It Works", id: "how-it-works" },
@@ -12,6 +13,7 @@ const navItems = [
 ];
 
 export function Navbar() {
+  const { isAuthenticated } = useAuth();
   const [open, setOpen] = useState(false);
   const location = useLocation();
   const isHome = location.pathname === "/";
@@ -38,7 +40,7 @@ export function Navbar() {
       <div style={{ maxWidth: 1280, margin: "0 auto", padding: "0 32px", height: "100%", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
 
         {/* Logo */}
-        <Link to="/" style={{ display: "flex", alignItems: "center", textDecoration: "none" }}>
+        <Link to={isAuthenticated ? "/dashboard" : "/"} style={{ display: "flex", alignItems: "center", textDecoration: "none" }}>
           <img src="/logo_light.png" alt="PlaceUp Career" style={{ height: 42, width: "auto", objectFit: "contain", display: "block" }} />
         </Link>
 

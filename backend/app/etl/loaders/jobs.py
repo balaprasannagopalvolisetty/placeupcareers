@@ -19,8 +19,6 @@ def load_normalized_jobs(db: Session, jobs: list[dict]) -> int:
 
     for job in jobs:
         normalized = job if "company_name" in job else _compat_normalize(job)
-        if _validation_errors(normalized):
-            continue
         if not normalized.get("id") or not normalized.get("title") or not normalized.get("company_name"):
             continue
 

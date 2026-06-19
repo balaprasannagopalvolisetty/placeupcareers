@@ -10,7 +10,7 @@ from typing import Optional
 
 from app.dependencies import get_db
 from app.models.match import MatchResponse, BatchMatchResult
-from app.security import current_user_id
+from app.security import current_user_id, optional_user_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/match", tags=["Match Scoring"])
@@ -103,6 +103,80 @@ async def match_resume_to_job(
     except Exception as e:
         logger.error("Match scoring failed for %s: %s", user_id, e)
         raise HTTPException(status_code=500, detail="Match scoring failed")
+
+
+@router.post("/analyze")
+async def analyze_resume_against_job(
+    file: UploadFile = File(..., description="Resume file (PDF or DOCX)"),
+    job_id: Optional[str] = Form(None, description="Job posting ID to analyze against"),
+    job_description: Optional[str] = Form(None, description="Override JD (optional)"),
+    job_title: Optional[str] = Form(None, description="Job title (optional)"),
+    user_id: str = Depends(current_user_id),
+    db=Depends(get_db),
+):
+    """Detailed ATS / match analysis for the redesigned resume + job views.
+
+    Returns a weighted breakdown (keyword match, bullet quality, section
+    completeness, formatting, impact quantification), matched/missing keywords
+    grouped by category, and red-flag bullets with concrete rewrite suggestions.
+    Deterministic and local (no LLM cost).
+    """
+    try:
+        jd_text = job_description
+        jt = job_title or ""
+        company = ""
+        if not jd_text and job_id:
+            job = await db.get_job(job_id)
+            if job:
+                jd_text = job.get("description", "")
+                jt = jt or job.get("title", "")
+                company = job.get("company", "")
+        if not jd_text or len(jd_text.strip()) < 30:
+            raise HTTPException(status_code=400, detail="Job description is too short to analyze.")
+
+        content = await file.read()
+        from app.services.resume_parser import parse_resume_file
+        parsed_file = await parse_resume_file(content, file.filename or "resume.pdf")
+        resume_text = parsed_file["text"]
+        if not resume_text or len(resume_text.strip()) < 50:
+            raise HTTPException(status_code=400, detail="Could not extract text from resume.")
+
+        from app.services.ats_analysis import analyze as ats_analyze
+        return ats_analyze(resume_text, jd_text, job_title=jt, company=company)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("ATS analysis failed for %s: %s", user_id, e)
+        raise HTTPException(status_code=500, detail="ATS analysis failed")
+
+
+@router.get("/active-analysis")
+async def active_resume_analysis(
+    job_id: str,
+    user_id: Optional[str] = Depends(optional_user_id),
+    db=Depends(get_db),
+):
+    """Advanced ATS analysis of the caller's ACTIVE resume vs a job (no upload).
+
+    Powers the redesigned job-detail ATS panel: weighted breakdown, categorized
+    matched/missing keywords with impact, and red-flag bullets — using the resume
+    the user already has on file.
+    """
+    from app.api.jobs import _active_resume_text
+
+    resume_text = await _active_resume_text(user_id)
+    if not resume_text:
+        return {"has_resume": False}
+    job = await db.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    jd_text = job.get("description", "")
+    if not jd_text or len(jd_text.strip()) < 30:
+        return {"has_resume": True, "insufficient_jd": True}
+    from app.services.ats_analysis import analyze as ats_analyze
+
+    result = ats_analyze(resume_text, jd_text, job_title=job.get("title", ""), company=job.get("company", ""))
+    return {"has_resume": True, **result}
 
 
 @router.post("/batch", response_model=BatchMatchResult)

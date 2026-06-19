@@ -263,28 +263,458 @@ def _compact_line(value: str, *, max_len: int = 180) -> str:
     return value[: max_len - 1].rstrip() + "." if len(value) > max_len else value
 
 
-def _professional_bullets(lines: list[str], target_keywords: list[str], *, limit: int = 10) -> list[str]:
-    bullets: list[str] = []
-    seen: set[str] = set()
-    for line in lines:
-        clean = _compact_line(line, max_len=210)
-        if len(clean) < 12:
+# ─── Professional keyword display casing ──────────────────────────────
+# Keyword matching normalizes terms to lowercase and de-pluralizes them
+# (e.g. "kubernetes" -> "kubernete"). This layer restores the casing a
+# recruiter expects to see so skills/summaries never read as lowercase
+# keyword soup. Unlisted terms fall back to acronym-aware title casing.
+_TERM_DISPLAY = {
+    "aws": "AWS", "gcp": "GCP", "azure": "Azure", "google cloud": "Google Cloud",
+    "ci/cd": "CI/CD", "cicd": "CI/CD", "ci/cd pipeline": "CI/CD Pipelines",
+    "ci/cd pipelines": "CI/CD Pipelines", "linux": "Linux", "windows": "Windows",
+    "macos": "macOS", "unix": "Unix", "kubernete": "Kubernetes",
+    "kubernetes": "Kubernetes", "k8s": "Kubernetes", "docker": "Docker",
+    "terraform": "Terraform", "ansible": "Ansible", "jenkins": "Jenkins",
+    "mysql": "MySQL", "postgresql": "PostgreSQL", "postgres": "PostgreSQL",
+    "mongodb": "MongoDB", "redis": "Redis", "sqlite": "SQLite", "sql": "SQL",
+    "fastapi": "FastAPI", "react": "React", "reactjs": "React", "react 18": "React 18",
+    "node.js": "Node.js", "nodejs": "Node.js", "node": "Node.js",
+    "typescript": "TypeScript", "javascript": "JavaScript", "python": "Python",
+    "bash": "Bash", "powershell": "PowerShell", "celery": "Celery",
+    "nmap": "Nmap", "zap": "OWASP ZAP", "sqlmap": "SQLMap", "wireshark": "Wireshark",
+    "splunk": "Splunk", "prometheus": "Prometheus", "grafana": "Grafana",
+    "active directory": "Active Directory", "intune": "Intune", "jira": "Jira",
+    "proxmox": "Proxmox", "iam": "IAM", "soc 2": "SOC 2", "soc2": "SOC 2",
+    "owasp": "OWASP", "owasp top 10": "OWASP Top 10", "cve": "CVE", "cvss": "CVSS",
+    "gpo": "GPO", "vlan": "VLANs", "llm": "LLM", "llm agent": "LLM Agents",
+    "llm agents": "LLM Agents", "self healing": "Self-Healing Systems",
+    "self-healing": "Self-Healing Systems", "cloud based": "Cloud-Native",
+    "cloud-based": "Cloud-Native", "incident response": "Incident Response",
+    "vulnerability management": "Vulnerability Management",
+    "penetration testing": "Penetration Testing",
+    "information security": "Information Security",
+    "application security": "Application Security", "cybersecurity": "Cybersecurity",
+    "compliance": "Compliance", "networking": "Networking", "automation": "Automation",
+    "troubleshooting": "Troubleshooting", "security": "Security",
+    "pipeline": "Pipelines", "desktop support": "Desktop Support",
+    "infrastructure as code": "Infrastructure as Code", "power bi": "Power BI",
+    "google workspace": "Google Workspace", "microsoft 365": "Microsoft 365",
+    "office 365": "Office 365", "mfa": "MFA", "otp": "OTP", "api": "APIs",
+    "rest": "REST", "graphql": "GraphQL", "html": "HTML", "css": "CSS",
+    "git": "Git", "github": "GitHub", "gitlab": "GitLab",
+    # Cross-domain tools & terms (finance, marketing, design, healthcare,
+    # sales, ops) so the casing layer is not biased toward any one field.
+    "salesforce": "Salesforce", "hubspot": "HubSpot", "quickbooks": "QuickBooks",
+    "sap": "SAP", "tableau": "Tableau", "looker": "Looker", "excel": "Excel",
+    "powerpoint": "PowerPoint", "word": "Word", "outlook": "Outlook",
+    "photoshop": "Photoshop", "illustrator": "Illustrator", "indesign": "InDesign",
+    "figma": "Figma", "sketch": "Sketch", "canva": "Canva", "autocad": "AutoCAD",
+    "solidworks": "SolidWorks", "matlab": "MATLAB", "sas": "SAS", "stata": "Stata",
+    "spss": "SPSS", "google ads": "Google Ads", "google analytics": "Google Analytics",
+    "wordpress": "WordPress", "mailchimp": "Mailchimp", "shopify": "Shopify",
+    "servicenow": "ServiceNow", "workday": "Workday", "netsuite": "NetSuite",
+    "oracle": "Oracle", "sql server": "SQL Server", "quickbooks online": "QuickBooks Online",
+    "seo": "SEO", "sem": "SEM", "ppc": "PPC", "crm": "CRM", "erp": "ERP",
+    "kpi": "KPIs", "roi": "ROI", "p&l": "P&L", "gaap": "GAAP", "ehr": "EHR",
+    "hipaa": "HIPAA", "osha": "OSHA", "b2b": "B2B", "b2c": "B2C",
+    "ux/ui": "UX/UI", "ui/ux": "UI/UX", "saas": "SaaS",
+}
+
+# Lowercase, no-spaces forms that should render fully uppercased. Covers
+# common acronyms across many professions, not just tech.
+_ACRONYMS = {
+    # tech / IT
+    "aws", "gcp", "ci", "cd", "iam", "soc", "cve", "cvss", "gpo", "vlan", "vlans",
+    "llm", "mfa", "otp", "api", "apis", "sql", "html", "css", "ssh", "tcp", "ip",
+    "dns", "vpn", "paas", "iaas", "etl", "ml", "ai", "nlp", "os", "rest", "json",
+    "yaml", "xml", "cdn", "waf", "siem", "cms", "pos", "qa", "qc", "sdk", "ide",
+    # business / finance / ops
+    "crm", "erp", "kpi", "kpis", "roi", "okr", "okrs", "gaap", "ifrs", "ebitda",
+    "ap", "ar", "hr", "it", "pmp", "cpa", "mba", "cfa", "cma", "shrm", "phr",
+    "sphr", "b2b", "b2c", "b2g", "sla", "slas", "rfp", "rfq", "po", "sow",
+    # marketing
+    "seo", "sem", "ppc", "ctr", "cpa", "cpc", "cpm", "ugc", "smm",
+    # healthcare
+    "ehr", "emr", "hipaa", "icu", "er", "rn", "lpn", "cna", "bls", "acls",
+    "cpr", "phi", "ot", "pt",
+    # general / safety
+    "osha", "fmla", "pto", "ada", "eeo", "gpa", "sat", "gre", "gmat",
+    "ceo", "cfo", "cto", "coo", "cio", "vp", "svp", "evp",
+    "ux", "ui", "saas",
+}
+
+# Connector words kept lowercase when they appear mid-phrase (e.g.
+# "Cost of Goods Sold", "Search and Rescue").
+_SMALL_WORDS = {
+    "a", "an", "the", "of", "and", "or", "for", "to", "in", "on", "with",
+    "at", "by", "as", "vs", "per", "via",
+}
+
+
+def _display_term(term: str) -> str:
+    t = re.sub(r"\s+", " ", str(term or "")).strip()
+    if not t:
+        return ""
+    low = t.lower()
+    if low in _TERM_DISPLAY:
+        return _TERM_DISPLAY[low]
+    if low + "s" in _TERM_DISPLAY:  # restore plural the matcher stripped
+        return _TERM_DISPLAY[low + "s"]
+    parts = re.split(r"(\s+|/|-)", t)
+    out: list[str] = []
+    word_index = 0
+    for part in parts:
+        pl = part.lower()
+        if part in ("/", "-") or part.strip() == "":
+            out.append(part)
             continue
-        key = clean.lower()
+        if pl in _ACRONYMS:
+            out.append(part.upper())
+        elif part.isupper() and 2 <= len(part) <= 6:
+            out.append(part)  # already an acronym, preserve it
+        elif word_index > 0 and pl in _SMALL_WORDS:
+            out.append(pl)  # keep connector words lowercase mid-phrase
+        else:
+            out.append(part[:1].upper() + part[1:])
+        word_index += 1
+    return "".join(out)
+
+
+def _display_terms(terms: list[str], *, limit: Optional[int] = None) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for term in terms:
+        disp = _display_term(term)
+        if not disp:
+            continue
+        key = disp.lower()
         if key in seen:
             continue
         seen.add(key)
-        if target_keywords and not any(term.lower() in key for term in target_keywords[:12]):
-            clean = f"{clean.rstrip('.')} with emphasis on {target_keywords[len(bullets) % len(target_keywords)]}."
-        bullets.append(clean)
-        if len(bullets) >= limit:
+        out.append(disp)
+        if limit and len(out) >= limit:
             break
-    if not bullets:
-        bullets = [
-            "Delivered role-relevant technical work with measurable ownership, cross-functional communication, and production-quality execution.",
-            "Applied structured problem solving, documentation, and stakeholder collaboration to support business-critical outcomes.",
-        ]
-    return bullets
+    return out
+
+
+# ─── Keyword curation (de-noise + de-duplicate) ───────────────────────
+# Scraped job descriptions leak markup/code fragments ("H2", "Data Stringify
+# Link", "C Link") and the keyword extractor emits overlapping n-grams
+# ("Compliance", "Compliance GAAP", "GAAP"). These helpers strip that noise so
+# Core Skills and the summary read like a real, curated skills list.
+_ARTIFACT_WORDS = {
+    "stringify", "intro", "cid", "href", "span", "div", "img", "nbsp",
+    "lorem", "ipsum", "link", "sk", "json", "dom", "css", "html", "px",
+}
+_RECOGNIZED_SKILLS_CACHE: Optional[set] = None
+
+
+def _recognized_skills() -> set:
+    global _RECOGNIZED_SKILLS_CACHE
+    if _RECOGNIZED_SKILLS_CACHE is None:
+        try:
+            from app.utils.text_processing import TECH_SKILLS
+            _RECOGNIZED_SKILLS_CACHE = {str(s).lower() for s in TECH_SKILLS}
+        except Exception:
+            _RECOGNIZED_SKILLS_CACHE = set()
+    return _RECOGNIZED_SKILLS_CACHE
+
+
+def _is_noise_keyword(term: str) -> bool:
+    low = str(term or "").strip().lower()
+    if len(low) < 2:
+        return True
+    for w in re.split(r"[\s/]+", low):
+        if not w:
+            continue
+        if w in _ARTIFACT_WORDS:
+            return True
+        if re.fullmatch(r"[a-z]\d+", w):           # markup like h2, p3
+            return True
+        if w.isalpha():
+            if len(w) == 1 and w not in {"c", "r"}:  # stray single-letter token ("C Link")
+                return True
+            if 2 <= len(w) <= 3 and not re.search(r"[aeiou]", w) and w not in _ACRONYMS:
+                return True                          # vowel-less non-acronym ("Sk")
+    return False
+
+
+def _dedupe_compounds(terms: list[str]) -> list[str]:
+    """Drop multi-word terms whose every word already appears as a standalone
+    term — e.g. remove "Compliance GAAP"/"Python SQL" when "Compliance",
+    "GAAP", "Python", "SQL" are present."""
+    singles = {t.lower() for t in terms if not re.search(r"[\s/]", t)}
+    out: list[str] = []
+    for t in terms:
+        words = [w for w in re.split(r"[\s/]+", t.lower()) if w]
+        if len(words) > 1 and all(w in singles for w in words):
+            continue
+        out.append(t)
+    return out
+
+
+def _clean_terms(terms: list[str]) -> list[str]:
+    cleaned = _dedupe_compounds(_display_terms(terms))
+    return [t for t in cleaned if not _is_noise_keyword(t)]
+
+
+def _curate_skills(matched: list[str], missing: list[str], resume_skills: list[str], *, limit: int = 26) -> list[str]:
+    """Build a clean Core Skills list. Grounded terms (in the resume / matched
+    to the job) are kept; JD-only "missing" terms are admitted only when they
+    are recognized skills, which filters out scraped markup noise."""
+    recognized = _recognized_skills()
+    grounded = [*(matched or []), *(resume_skills or [])]
+    aspirational = [m for m in (missing or []) if str(m).strip().lower() in recognized]
+    return _clean_terms([*grounded, *aspirational])[:limit]
+
+
+# Deterministic-fallback skill categorization (the LLM does this better when
+# available; this keeps Core Skills grouped even when Groq is offline).
+_SKILL_CATEGORIES = [
+    ("Cloud & Infrastructure", {"aws", "azure", "gcp", "google cloud", "cloud", "kubernetes", "docker", "terraform", "ansible", "linux", "unix", "windows server", "networking", "vpn", "vlan", "dns", "dhcp", "active directory", "proxmox", "vmware", "server", "infrastructure", "ci/cd", "jenkins", "helm", "nginx"}),
+    ("Security & Compliance", {"security", "owasp", "cvss", "soc 2", "compliance", "gaap", "hipaa", "incident response", "vulnerability management", "penetration testing", "siem", "iam", "mfa", "audit", "nist", "cybersecurity", "hardening", "gpo", "encryption", "firewall", "sox"}),
+    ("Programming & Scripting", {"python", "java", "javascript", "typescript", "bash", "powershell", "sql", "c++", "c#", "ruby", "php", "react", "node.js", "fastapi", "celery", "html", "css", "scala", "rust", "kotlin"}),
+    ("Data & Reporting", {"tableau", "power bi", "excel", "pandas", "numpy", "analytics", "reporting", "etl", "looker", "spss", "sas", "forecasting", "financial modeling", "dashboards", "bigquery", "snowflake"}),
+    ("Tools & Platforms", {"jira", "github", "gitlab", "salesforce", "hubspot", "servicenow", "workday", "sap", "netsuite", "intune", "okta", "microsoft 365", "office 365", "quickbooks", "confluence", "slack"}),
+]
+
+
+def _categorize_skills(skills: list[str]) -> list[dict]:
+    buckets: dict[str, list[str]] = {name: [] for name, _ in _SKILL_CATEGORIES}
+    other: list[str] = []
+    for skill in skills:
+        low = skill.lower()
+        placed = False
+        for name, indicators in _SKILL_CATEGORIES:
+            if low in indicators or any(len(ind) > 3 and ind in low for ind in indicators):
+                buckets[name].append(skill)
+                placed = True
+                break
+        if not placed:
+            other.append(skill)
+    groups = [{"category": name, "items": items} for name, items in buckets.items() if items]
+    if other:
+        groups.append({"category": "Additional Skills", "items": other})
+    return groups[:6]
+
+
+# ─── Experience / bullet normalization ────────────────────────────────
+_BULLET_RE = re.compile(
+    r"^\s*(?:[•●▪▫‣◦○·∙⁌⁃∗*►▶▷◆◇§]+|[-–—]+|l(?=\s+[A-Z]))\s+"
+)
+# Date detection covers the formats seen across real resumes regardless of
+# field: "Jan 2020", "January 2020", "Summer 2021", "06/2020", "2020".
+_MONTH_TOKEN = (
+    r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?"
+    r"|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?"
+)
+_SEASON_TOKEN = r"(?:Spring|Summer|Fall|Autumn|Winter)"
+_DATE_POINT = (
+    r"(?:(?:" + _MONTH_TOKEN + r"|" + _SEASON_TOKEN + r"|\d{1,2}[/.\-])\s*)?\d{4}"
+)
+_DATE_END = r"(?:Present|Current|Now|Ongoing|To\s*Date|Today|" + _DATE_POINT + r")"
+_DATE_RANGE_RE = re.compile(
+    r"\s*[–—\-]?\s*(" + _DATE_POINT + r"\s*(?:[–—\-]|to)\s*" + _DATE_END + r")\s*$",
+    re.I,
+)
+
+
+def _strip_keyword_stuffing(text: str) -> str:
+    return re.sub(r"\s+with emphasis on [^.]*\.?\s*$", "", text, flags=re.I).strip()
+
+
+_ABBREV_END = {"etc.", "inc.", "ltd.", "co.", "e.g.", "i.e.", "vs.", "approx.",
+               "dept.", "jr.", "sr.", "u.s.", "u.k.", "u.s.a.", "ph.d.", "no."}
+
+
+def _ends_with_abbrev(text: str) -> bool:
+    """True if the line ends in an abbreviation (e.g. 'across U.S.') so its
+    trailing period must not be treated as a sentence end."""
+    s = str(text or "").rstrip()
+    if re.search(r"(?:\b[A-Za-z]\.){1,}$", s):       # U.S., U.S.A., e.g.
+        return True
+    return s.lower().rsplit(" ", 1)[-1] in _ABBREV_END
+
+
+def _polish_bullet(text: str) -> str:
+    t = re.sub(r"\s+", " ", str(text or "")).strip(" -–—•*\t")
+    t = _strip_keyword_stuffing(t)
+    if len(t) < 3:
+        return ""
+    t = t[:1].upper() + t[1:]
+    if t[-1] not in ".!?":
+        t += "."
+    return t
+
+
+def _split_header(line: str) -> tuple[str, str]:
+    m = _DATE_RANGE_RE.search(line)
+    if m:
+        dates = m.group(1).strip()
+        head = line[: m.start()].strip(" |-–—\t")
+        return head, dates
+    return line.strip(" |\t"), ""
+
+
+def _is_header_line(raw_line: str, marked: bool) -> bool:
+    if marked:
+        return False
+    return (" | " in raw_line) or bool(_DATE_RANGE_RE.search(raw_line))
+
+
+def _is_roleish(text: str) -> bool:
+    """A short, non-sentence line that reads like a job-title/company line
+    rather than an accomplishment bullet."""
+    t = (text or "").strip()
+    return bool(t) and t[-1:] not in ".!?" and len(t) <= 70 and len(t.split()) <= 10
+
+
+def _group_experience(lines: list[str], *, max_entries: int = 6, max_bullets: int = 6) -> list[dict]:
+    """Turn flat resume lines into {header, dates, bullets} entries.
+
+    Handles three line shapes seen in parsed resumes: company/role headers
+    (contain ' | ' or a trailing date range), glyph-marked bullets, and
+    unmarked wrapped continuations of the previous bullet.
+    """
+    entries: list[dict] = []
+    cur: Optional[dict] = None
+    for raw in lines:
+        line = re.sub(r"\s+", " ", str(raw or "")).strip()
+        if not line:
+            continue
+        marked = bool(_BULLET_RE.match(line))
+        body = _BULLET_RE.sub("", line).strip() if marked else line
+        if not body:
+            continue
+        if _is_header_line(line, marked):
+            head, dates = _split_header(body)
+            if not head and dates:
+                # Date-only line: bind it to the job-title line it sits under.
+                # That title is usually the trailing "roleish" line of the
+                # current entry (resumes that stack title / dates / bullets).
+                role = cur["bullets"][-1] if (cur and cur["bullets"] and _is_roleish(cur["bullets"][-1])) else None
+                if role is not None and cur and not cur["dates"] and not cur["header"]:
+                    cur["bullets"].pop()
+                    cur["header"] = role
+                    cur["dates"] = dates
+                elif role is not None:
+                    cur["bullets"].pop()
+                    cur = {"header": role, "dates": dates, "bullets": []}
+                    entries.append(cur)
+                elif cur and cur["header"] and not cur["dates"]:
+                    cur["dates"] = dates
+                else:
+                    cur = {"header": "", "dates": dates, "bullets": []}
+                    entries.append(cur)
+                continue
+            cur = {"header": head, "dates": dates, "bullets": []}
+            entries.append(cur)
+            continue
+        if cur is None:
+            cur = {"header": "", "dates": "", "bullets": []}
+            entries.append(cur)
+        body = _strip_keyword_stuffing(body)
+        prev = cur["bullets"][-1] if cur["bullets"] else ""
+        # Bullets are stored raw here and polished in a final pass. An unmarked
+        # line is a wrapped continuation of the previous bullet when it starts
+        # lowercase ("and global jurisdictions") or the previous line has no
+        # real sentence end — counting a trailing abbreviation like "U.S." as
+        # NOT a sentence end.
+        starts_lower = body[:1].islower()
+        prev_unfinished = bool(prev) and prev.rstrip()[-1:] not in ".!?:"
+        # Merge only on a clear continuation signal — a lowercase start, a
+        # false period from an abbreviation ("U.S."), or a prev that ends with
+        # no punctuation AND this line also starts lowercase — so a new
+        # capitalized bullet is never swallowed by a dangling previous line.
+        merge = (not marked) and bool(prev) and (
+            starts_lower or _ends_with_abbrev(prev) or (prev_unfinished and starts_lower)
+        )
+        if merge:
+            cur["bullets"][-1] = f"{prev.rstrip()} {body}".strip()
+        elif body:
+            cur["bullets"].append(body)
+
+    cleaned: list[dict] = []
+    for entry in entries:
+        bullets = [pb for pb in (_polish_bullet(b) for b in entry["bullets"]) if pb][:max_bullets]
+        if entry["header"] or bullets:
+            cleaned.append({"header": entry["header"], "dates": entry["dates"], "bullets": bullets})
+        if len(cleaned) >= max_entries:
+            break
+    return cleaned
+
+
+def _clean_bullets(lines: list[str], *, limit: int = 8) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for entry in _group_experience(lines, max_entries=20, max_bullets=limit):
+        for b in entry["bullets"]:
+            key = b.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(b)
+            if len(out) >= limit:
+                return out
+    return out
+
+
+def _polish_certification(text: str) -> str:
+    t = _BULLET_RE.sub("", re.sub(r"\s+", " ", str(text or "")).strip())
+    return t.strip(" -–—•*\t").rstrip(".")
+
+
+_CERT_HINTS = (
+    "certified", "certification", "certificate", "credential", "license",
+    "comptia", "security+", "network+", "pentest+", "cysa", "cissp", "ccna",
+    "aws", "azure", "gcp", "pmp", "cpa", "cfa", "scrum", "microsoft", "cisco",
+    "google", "oracle", "itil", "six sigma", "sc-900", "rhce", "ceh", "okta",
+)
+
+
+def _looks_like_cert(text: str) -> bool:
+    low = text.lower()
+    if any(h in low for h in _CERT_HINTS):
+        return True
+    if re.search(r"\b(19|20)\d{2}\b", text):     # has a year
+        return True
+    if re.search(r"\([^)]+\)", text):            # has a parenthetical (e.g. "(ce)")
+        return True
+    return False
+
+
+def _curate_certifications(lines: list[str], *, limit: int = 6) -> list[str]:
+    """Clean certification lines. If parsing fragmented them into single words
+    (e.g. '&', 'Achievements', 'l', 'Passed', 'the', 'CPA'), collapse and keep
+    only entries that actually read like credentials."""
+    items = [c for c in (_polish_certification(str(v)) for v in (lines or [])) if c]
+    if not items:
+        return []
+    fragments = sum(1 for c in items if len(c.split()) <= 1)
+    if fragments / len(items) > 0.4:
+        blob = " ".join(items)
+        split = [p.strip(" -–—•·\t") for p in re.split(r"\s*[•·;|]\s*|\s{2,}", blob)]
+        items = [p for p in split if len(p) > 2] or [blob.strip()]
+    kept = [c for c in items if _looks_like_cert(c)]
+    return (kept or items)[:limit]
+
+
+def _rank_experience_to_job(entries: list[dict], jd_terms: list[str], *, keep: int = 6) -> list[dict]:
+    """Reorder each job's bullets so the ones matching the target job's
+    keywords surface first, then keep the most relevant. Facts are never
+    changed — only prioritized — so the same true history reads differently
+    per position. Ties preserve the resume's original order (stable sort)."""
+    terms = sorted({str(t).lower().strip() for t in (jd_terms or []) if len(str(t).strip()) >= 2})
+
+    def score(bullet: str) -> int:
+        low = f" {bullet.lower()} "
+        return sum(1 for t in terms if t in low or t in bullet.lower())
+
+    ranked: list[dict] = []
+    for e in entries:
+        bullets = sorted(e.get("bullets") or [], key=score, reverse=True)
+        ranked.append({"header": e.get("header", ""), "dates": e.get("dates", ""), "bullets": bullets[:keep]})
+    return ranked
 
 
 def _build_tailored_resume_payload(
@@ -306,32 +736,116 @@ def _build_tailored_resume_payload(
         contact.get("phone") or user.get("phone"),
         *links[:2],
     ]
-    skills = list(dict.fromkeys([
-        *matched[:10],
-        *missing[:12],
-        *[str(v).strip() for v in (resume_json.get("skills") or []) if str(v).strip()],
-    ]))
-    target_keywords = list(dict.fromkeys([*matched[:10], *missing[:14]]))
-    role_terms = ", ".join(target_keywords[:8]) if target_keywords else str(title)
+    resume_skills = [str(v).strip() for v in (resume_json.get("skills") or []) if str(v).strip()]
+    skills = _curate_skills(matched, missing, resume_skills, limit=26)
+    target_keywords = _clean_terms([*matched[:12], *missing[:14]])
+    # Position-specific summary: lead with the candidate's genuine strengths
+    # that this job actually asks for (matched terms, de-noised), and name the
+    # role and company, so the summary changes meaningfully per position.
+    core = _clean_terms(matched)[:6] or _clean_terms(missing)[:4] or [str(title)]
+    if len(core) >= 3:
+        strengths = f"{', '.join(core[:-1])}, and {core[-1]}"
+    else:
+        strengths = " and ".join(core)
     summary = (
-        f"{title} candidate aligned to {company} with strengths in {role_terms}. "
-        "Prepared to contribute through clear ownership, secure execution, measurable delivery, and fast collaboration with engineering and business partners."
+        f"{title} with proven experience in {strengths}, aligned to the "
+        f"{title} role at {company}. Combines hands-on technical delivery with "
+        f"clear ownership, measurable results, and effective cross-functional "
+        f"collaboration."
     )
     experience_lines = resume_json.get("experience") or _clean_resume_lines(resume_text, limit=36)
     project_lines = resume_json.get("projects") or []
     education_lines = resume_json.get("education") or []
     cert_lines = resume_json.get("certifications") or []
+    # Reorder each job's real bullets toward this job's keywords so the
+    # experience section adapts per position without altering the facts.
+    jd_terms = [*(matched or []), *(missing or [])]
+    experience = _rank_experience_to_job(
+        _group_experience([str(v) for v in experience_lines], max_entries=6, max_bullets=10),
+        jd_terms, keep=6,
+    )
     return {
         "name": _candidate_name(user, resume_text),
         "contact": [str(item).strip() for item in contact_items if str(item or "").strip()],
-        "target": f"{title} | {company}{(' | ' + location) if location else ''}",
+        "target": f"{title}  |  {company}{('  |  ' + location) if location else ''}",
         "summary": summary,
-        "skills": skills[:28],
-        "experience": _professional_bullets([str(v) for v in experience_lines], target_keywords, limit=11),
-        "projects": _professional_bullets([str(v) for v in project_lines], target_keywords, limit=4) if project_lines else [],
-        "education": [_compact_line(str(v), max_len=160) for v in education_lines[:5] if _compact_line(str(v), max_len=160)],
-        "certifications": [_compact_line(str(v), max_len=160) for v in cert_lines[:4] if _compact_line(str(v), max_len=160)],
+        "skills": skills,
+        "skill_groups": _categorize_skills(skills),
+        "experience": experience,
+        "projects": _clean_bullets([str(v) for v in project_lines], limit=5) if project_lines else [],
+        "education": _group_experience([str(v) for v in education_lines], max_entries=4, max_bullets=4),
+        "certifications": _curate_certifications(cert_lines, limit=6),
         "keywords": target_keywords[:18],
+    }
+
+
+def _payload_from_llm(llm: dict, job: dict, user: dict, resume_text: str) -> Optional[dict]:
+    """Map the LLM tailoring JSON onto the renderer's payload shape. Returns
+    None if the structure is too thin to render (caller then falls back)."""
+    r = llm.get("resume") if isinstance(llm, dict) else None
+    if not isinstance(r, dict):
+        return None
+    title = job.get("title") or "Target Role"
+    company = job.get("company") or "Target Company"
+    location = job.get("location") or ""
+
+    experience: list[dict] = []
+    for e in (r.get("experience") or []):
+        if not isinstance(e, dict):
+            continue
+        header = " | ".join(part for part in (
+            str(e.get("title") or "").strip(),
+            str(e.get("company") or "").strip(),
+            str(e.get("location") or "").strip(),
+        ) if part)
+        bullets = [b for b in (_polish_bullet(str(x)) for x in (e.get("bullets") or [])) if b][:5]
+        if header or bullets:
+            experience.append({"header": header, "dates": str(e.get("dates") or "").strip(), "bullets": bullets})
+
+    education: list[dict] = []
+    for e in (r.get("education") or []):
+        if not isinstance(e, dict):
+            continue
+        detail = ", ".join(part for part in (
+            str(e.get("institution") or "").strip(),
+            str(e.get("location") or "").strip(),
+        ) if part)
+        header = str(e.get("degree") or "").strip()
+        if header or detail:
+            education.append({"header": header, "dates": str(e.get("dates") or "").strip(), "bullets": [detail] if detail else []})
+
+    summary = str(r.get("summary") or "").strip()
+    if not (summary and experience):
+        return None
+
+    # Skills may arrive categorized ([{category, items}]) or as a flat list.
+    skill_groups: list[dict] = []
+    flat_skills: list[str] = []
+    for g in (r.get("skills") or []):
+        if isinstance(g, dict):
+            cat = str(g.get("category") or "").strip()
+            items = _display_terms([str(i) for i in (g.get("items") or []) if str(i or "").strip()], limit=12)
+            if cat and items:
+                skill_groups.append({"category": cat, "items": items})
+                flat_skills.extend(items)
+        elif isinstance(g, str) and g.strip():
+            flat_skills.append(g.strip())
+    flat_skills = _display_terms(flat_skills, limit=30)
+
+    contact = [str(c).strip() for c in (r.get("contact") or []) if str(c or "").strip()]
+    match = llm.get("match") if isinstance(llm.get("match"), dict) else {}
+    return {
+        "name": str(r.get("name") or "").strip() or _candidate_name(user, resume_text),
+        "contact": contact or [str(user.get("email") or "").strip()],
+        "target": f"{title}  |  {company}{('  |  ' + location) if location else ''}",
+        "summary": summary,
+        "skills": flat_skills,
+        "skill_groups": skill_groups[:6],
+        "experience": experience[:6],
+        "projects": [],
+        "education": education[:4],
+        "certifications": [c for c in (_polish_certification(str(x)) for x in (r.get("certifications") or [])) if c][:6],
+        "keywords": _display_terms([*(match.get("strong") or []), *(match.get("have_but_unstated") or [])])[:18],
     }
 
 
@@ -339,66 +853,103 @@ def _doc_bytes(resume: dict, title: str) -> bytes:
     def p(value: str) -> str:
         return html.escape(str(value or ""))
 
-    def bullets(items: list[str]) -> str:
-        return "\n".join(f"<li>{p(item)}</li>" for item in items)
+    def bullet_list(items: list[str]) -> str:
+        return "<ul>" + "".join(f"<li>{p(i)}</li>" for i in items) + "</ul>"
 
-    section_blocks = [
-        ("PROFESSIONAL SUMMARY", f"<p>{p(resume['summary'])}</p>"),
-        ("TECHNICAL SKILLS", f"<p>{p(', '.join(resume['skills']))}</p>"),
-        ("PROFESSIONAL EXPERIENCE", f"<ul>{bullets(resume['experience'])}</ul>"),
-    ]
+    def entries_html(entries: list[dict]) -> str:
+        rows = []
+        for e in entries:
+            header = p(e.get("header") or "")
+            dates = p(e.get("dates") or "")
+            head_html = ""
+            if header or dates:
+                head_html = (
+                    f"<div class='entry'><span class='entry-title'>{header}</span>"
+                    f"<span class='entry-dates'>{dates}</span></div>"
+                )
+            blist = bullet_list(e.get("bullets") or []) if e.get("bullets") else ""
+            rows.append(head_html + blist)
+        return "\n".join(rows)
+
+    parts = [f"<h1>{p(str(resume['name'] or '').upper())}</h1>"]
+    parts.append(f"<div class='contact'>{p('  |  '.join(resume['contact']))}</div>")
+    if resume.get("target"):
+        parts.append(f"<div class='target'>{p(resume['target'])}</div>")
+    parts.append("<h2>Professional Summary</h2>")
+    parts.append(f"<p>{p(resume['summary'])}</p>")
+    parts.append("<h2>Core Skills</h2>")
+    skill_groups = resume.get("skill_groups") or []
+    if skill_groups:
+        for g in skill_groups[:6]:
+            cat = str(g.get("category") or "").strip()
+            items = [str(i) for i in (g.get("items") or []) if str(i).strip()][:10]
+            if cat and items:
+                parts.append(f"<p class='skills'><b>{p(cat)}:</b> {p(', '.join(items))}</p>")
+    else:
+        parts.append(f"<p class='skills'>{p(' • '.join(resume['skills']))}</p>")
+    parts.append("<h2>Professional Experience</h2>")
+    parts.append(entries_html(resume.get("experience") or []))
     if resume.get("projects"):
-        section_blocks.append(("PROJECTS", f"<ul>{bullets(resume['projects'])}</ul>"))
+        parts.append("<h2>Projects</h2>")
+        parts.append(bullet_list(resume["projects"]))
     if resume.get("education"):
-        section_blocks.append(("EDUCATION", f"<ul>{bullets(resume['education'])}</ul>"))
+        parts.append("<h2>Education</h2>")
+        parts.append(entries_html(resume["education"]))
     if resume.get("certifications"):
-        section_blocks.append(("CERTIFICATIONS", f"<ul>{bullets(resume['certifications'])}</ul>"))
-    section_blocks.append(("TARGET KEYWORDS", f"<p>{p(', '.join(resume['keywords']))}</p>"))
-    sections_html = "\n".join(
-        f"<h2>{heading}</h2>\n{body}"
-        for heading, body in section_blocks
-    )
+        parts.append("<h2>Certifications</h2>")
+        parts.append(bullet_list(resume["certifications"]))
+    body_html = "\n".join(parts)
+
     document = f"""<!doctype html>
 <html>
 <head>
   <meta charset="utf-8" />
   <title>{html.escape(title)}</title>
   <style>
-    @page {{ margin: 0.55in; }}
-    body {{ font-family: Georgia, 'Times New Roman', serif; color: #111; line-height: 1.25; margin: 0; font-size: 10.5pt; }}
-    h1 {{ font-family: Arial, sans-serif; font-size: 18pt; text-align: center; letter-spacing: 0.5px; margin: 0; }}
-    .contact {{ text-align: center; font-family: Arial, sans-serif; font-size: 8.5pt; margin: 4px 0 10px; }}
-    .target {{ text-align: center; font-family: Arial, sans-serif; font-size: 8.5pt; color: #333; margin-bottom: 12px; }}
-    h2 {{ font-family: Arial, sans-serif; font-size: 9.5pt; letter-spacing: 0.8px; border-bottom: 1px solid #111; margin: 11px 0 5px; padding-bottom: 2px; }}
-    p {{ margin: 0 0 5px; }}
-    ul {{ margin: 0 0 4px 17px; padding: 0; }}
-    li {{ margin: 0 0 3px; }}
+    @page {{ margin: 0.6in 0.7in; }}
+    body {{ font-family: 'Calibri', 'Helvetica Neue', Arial, sans-serif; color: #1a1a1a; line-height: 1.3; margin: 0; font-size: 10.5pt; }}
+    h1 {{ font-size: 21pt; font-weight: 700; text-align: center; letter-spacing: 1px; margin: 0 0 2px; }}
+    .contact {{ text-align: center; font-size: 9pt; color: #444; margin: 0 0 2px; }}
+    .target {{ text-align: center; font-size: 9.5pt; font-style: italic; color: #555; margin: 0 0 12px; }}
+    h2 {{ font-size: 10.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: #1a1a1a; border-bottom: 1.2px solid #1a1a1a; margin: 13px 0 6px; padding-bottom: 2px; }}
+    p {{ margin: 0 0 6px; }}
+    .skills {{ color: #222; }}
+    .entry {{ display: flex; justify-content: space-between; margin: 6px 0 1px; }}
+    .entry-title {{ font-weight: 700; }}
+    .entry-dates {{ color: #555; font-size: 9.5pt; white-space: nowrap; padding-left: 12px; }}
+    ul {{ margin: 1px 0 4px 18px; padding: 0; }}
+    li {{ margin: 0 0 2px; }}
   </style>
 </head>
 <body>
-  <h1>{p(resume['name'])}</h1>
-  <div class="contact">{p(' | '.join(resume['contact']))}</div>
-  <div class="target">{p(resume['target'])}</div>
-  {sections_html}
+  {body_html}
 </body>
 </html>"""
     return document.encode("utf-8")
 
 
 def _simple_pdf_bytes(resume: dict) -> bytes:
+    exp_lines: list[str] = []
+    for e in (resume.get("experience") or []):
+        head = e.get("header") or ""
+        if e.get("dates"):
+            head = f"{head}  ({e['dates']})" if head else e["dates"]
+        if head:
+            exp_lines.append(head)
+        exp_lines.extend(f"  - {b}" for b in (e.get("bullets") or []))
     lines = [
         resume.get("name") or "Candidate Name",
-        " | ".join(resume.get("contact") or []),
+        "  |  ".join(resume.get("contact") or []),
         resume.get("target") or "",
         "",
         "PROFESSIONAL SUMMARY",
         resume.get("summary") or "",
         "",
-        "TECHNICAL SKILLS",
+        "CORE SKILLS",
         ", ".join(resume.get("skills") or []),
         "",
         "PROFESSIONAL EXPERIENCE",
-        *[f"- {item}" for item in (resume.get("experience") or [])],
+        *exp_lines,
     ]
     pages = [lines[i:i + 42] for i in range(0, len(lines), 42)] or [[resume.get("name") or "Resume"]]
     objects: list[bytes] = [
@@ -444,71 +995,135 @@ def _simple_pdf_bytes(resume: dict) -> bytes:
     return bytes(pdf)
 
 
+# Density presets, roomy -> tight. The generator renders with the first preset
+# that fits one page. Per the ATS spec, font never drops below the floor
+# (body >=10pt, name >=18pt, headings 12-14pt, margins >=0.5in, 3-5 bullets) —
+# to fit, we CUT the weakest content (fewer bullets/entries/skills), we do not
+# shrink type below spec.
+_PDF_PRESETS = [
+    {"name": 21, "sec": 13.5, "body": 11.0, "bul": 11.0, "lead": 13.6, "sp": 11, "gap": 5, "top": 0.7,  "side": 0.75, "max_e": 6, "max_b": 5, "max_sk": 24, "max_proj": 4},
+    {"name": 20, "sec": 13.0, "body": 10.5, "bul": 10.5, "lead": 13.0, "sp": 10, "gap": 4, "top": 0.6,  "side": 0.65, "max_e": 5, "max_b": 5, "max_sk": 22, "max_proj": 4},
+    {"name": 19, "sec": 12.5, "body": 10.2, "bul": 10.2, "lead": 12.4, "sp": 9,  "gap": 4, "top": 0.55, "side": 0.6,  "max_e": 5, "max_b": 4, "max_sk": 20, "max_proj": 3},
+    {"name": 18, "sec": 12.0, "body": 10.0, "bul": 10.0, "lead": 12.0, "sp": 8,  "gap": 3, "top": 0.5,  "side": 0.55, "max_e": 5, "max_b": 4, "max_sk": 18, "max_proj": 3},
+    {"name": 18, "sec": 12.0, "body": 10.0, "bul": 10.0, "lead": 11.7, "sp": 7,  "gap": 3, "top": 0.5,  "side": 0.5,  "max_e": 4, "max_b": 4, "max_sk": 16, "max_proj": 2},
+]
+
+
 def _pdf_bytes(resume: dict, title: str) -> bytes:
     try:
         from reportlab.lib import colors
-        from reportlab.lib.enums import TA_CENTER, TA_LEFT
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
         from reportlab.lib.pagesizes import letter
         from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.lib.units import inch
-        from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer
-
-        buf = io.BytesIO()
-        doc = SimpleDocTemplate(
-            buf,
-            pagesize=letter,
-            leftMargin=0.55 * inch,
-            rightMargin=0.55 * inch,
-            topMargin=0.45 * inch,
-            bottomMargin=0.45 * inch,
-            title=title,
+        from reportlab.platypus import (
+            HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
         )
+
+        ink = colors.HexColor("#1a1a1a")
+        muted = colors.HexColor("#555555")
         base = getSampleStyleSheet()
-        styles = {
-            "name": ParagraphStyle("Name", parent=base["Normal"], fontName="Helvetica-Bold", fontSize=17, leading=20, alignment=TA_CENTER, spaceAfter=2),
-            "contact": ParagraphStyle("Contact", parent=base["Normal"], fontName="Helvetica", fontSize=8.2, leading=10, alignment=TA_CENTER, textColor=colors.HexColor("#333333"), spaceAfter=5),
-            "target": ParagraphStyle("Target", parent=base["Normal"], fontName="Helvetica", fontSize=8.5, leading=10, alignment=TA_CENTER, textColor=colors.HexColor("#555555"), spaceAfter=8),
-            "section": ParagraphStyle("Section", parent=base["Normal"], fontName="Helvetica-Bold", fontSize=9.5, leading=11, alignment=TA_LEFT, spaceBefore=7, spaceAfter=2),
-            "body": ParagraphStyle("Body", parent=base["Normal"], fontName="Times-Roman", fontSize=10, leading=12, spaceAfter=3),
-            "bullet": ParagraphStyle("Bullet", parent=base["Normal"], fontName="Times-Roman", fontSize=9.7, leading=11.2, leftIndent=12, firstLineIndent=-8, spaceAfter=1.5),
-        }
 
         def safe(value: str) -> str:
             return html.escape(str(value or "")).replace("\n", "<br/>")
 
-        def section(story: list, heading: str) -> None:
-            story.append(Paragraph(safe(heading), styles["section"]))
-            story.append(HRFlowable(width="100%", thickness=0.7, color=colors.black, spaceBefore=0, spaceAfter=4))
+        def render(preset: dict) -> tuple[bytes, int]:
+            side = preset["side"] * inch
+            avail = letter[0] - 2 * side
+            styles = {
+                "name": ParagraphStyle("Name", parent=base["Normal"], fontName="Helvetica-Bold", fontSize=preset["name"], leading=preset["name"] + 3, alignment=TA_CENTER, textColor=ink, spaceAfter=3),
+                "contact": ParagraphStyle("Contact", parent=base["Normal"], fontName="Helvetica", fontSize=max(8.0, preset["body"] - 0.8), leading=preset["lead"] - 1, alignment=TA_CENTER, textColor=colors.HexColor("#444444"), spaceAfter=2),
+                "target": ParagraphStyle("Target", parent=base["Normal"], fontName="Helvetica-Oblique", fontSize=max(8.5, preset["body"] - 0.3), leading=preset["lead"] - 1, alignment=TA_CENTER, textColor=muted, spaceAfter=4),
+                "section": ParagraphStyle("Section", parent=base["Normal"], fontName="Helvetica-Bold", fontSize=preset["sec"], leading=preset["sec"] + 1.5, alignment=TA_LEFT, textColor=ink, spaceBefore=preset["sp"], spaceAfter=2),
+                "body": ParagraphStyle("Body", parent=base["Normal"], fontName="Helvetica", fontSize=preset["body"], leading=preset["lead"], textColor=ink, spaceAfter=2),
+                "entry": ParagraphStyle("Entry", parent=base["Normal"], fontName="Helvetica", fontSize=preset["body"] + 0.2, leading=preset["lead"], textColor=ink),
+                "entry_date": ParagraphStyle("EntryDate", parent=base["Normal"], fontName="Helvetica", fontSize=preset["body"] - 0.8, leading=preset["lead"], alignment=TA_RIGHT, textColor=muted),
+                "bullet": ParagraphStyle("Bullet", parent=base["Normal"], fontName="Helvetica", fontSize=preset["bul"], leading=preset["lead"], leftIndent=13, firstLineIndent=-9, textColor=ink, spaceAfter=1.5),
+            }
 
-        def add_bullets(story: list, items: list[str]) -> None:
-            for item in items:
-                story.append(Paragraph(f"- {safe(item)}", styles["bullet"]))
+            def section(story: list, heading: str) -> None:
+                story.append(Paragraph(safe(heading.upper()), styles["section"]))
+                story.append(HRFlowable(width="100%", thickness=1.0, color=ink, spaceBefore=1, spaceAfter=preset["gap"]))
 
-        story: list = [
-            Paragraph(safe(resume.get("name")), styles["name"]),
-            Paragraph(safe(" | ".join(resume.get("contact") or [])), styles["contact"]),
-            Paragraph(safe(resume.get("target")), styles["target"]),
-        ]
-        section(story, "PROFESSIONAL SUMMARY")
-        story.append(Paragraph(safe(resume.get("summary")), styles["body"]))
-        section(story, "TECHNICAL SKILLS")
-        story.append(Paragraph(safe(", ".join(resume.get("skills") or [])), styles["body"]))
-        section(story, "PROFESSIONAL EXPERIENCE")
-        add_bullets(story, resume.get("experience") or [])
-        if resume.get("projects"):
-            section(story, "PROJECTS")
-            add_bullets(story, resume.get("projects") or [])
-        if resume.get("education"):
-            section(story, "EDUCATION")
-            add_bullets(story, resume.get("education") or [])
-        if resume.get("certifications"):
-            section(story, "CERTIFICATIONS")
-            add_bullets(story, resume.get("certifications") or [])
-        section(story, "TARGET KEYWORDS")
-        story.append(Paragraph(safe(", ".join(resume.get("keywords") or [])), styles["body"]))
-        story.append(Spacer(1, 0.01 * inch))
-        doc.build(story)
-        return buf.getvalue()
+            def add_bullets(story: list, items: list[str], cap: int) -> None:
+                for item in items[:cap]:
+                    story.append(Paragraph(f"•  {safe(item)}", styles["bullet"]))
+
+            def add_entries(story: list, entries: list[dict]) -> None:
+                for e in entries[: preset["max_e"]]:
+                    header = e.get("header") or ""
+                    dates = e.get("dates") or ""
+                    if header or dates:
+                        parts = [pt for pt in header.split(" | ") if pt.strip()]
+                        if parts:
+                            bold_n = min(2, len(parts))  # bold title + company
+                            left_html = "  |  ".join(f"<b>{safe(p)}</b>" for p in parts[:bold_n])
+                            if len(parts) > bold_n:
+                                left_html += "  |  " + safe("  |  ".join(parts[bold_n:]))
+                        else:
+                            left_html = f"<b>{safe(header)}</b>"
+                        row = Table(
+                            [[Paragraph(left_html, styles["entry"]),
+                              Paragraph(safe(dates), styles["entry_date"])]],
+                            colWidths=[avail * 0.74, avail * 0.26],
+                        )
+                        row.setStyle(TableStyle([
+                            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                            ("TOPPADDING", (0, 0), (-1, -1), 3),
+                            ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                        ]))
+                        story.append(row)
+                    add_bullets(story, e.get("bullets") or [], preset["max_b"])
+
+            buf = io.BytesIO()
+            doc = SimpleDocTemplate(
+                buf, pagesize=letter,
+                leftMargin=side, rightMargin=side,
+                topMargin=preset["top"] * inch, bottomMargin=preset["top"] * inch,
+                title=title,
+            )
+            story: list = [
+                Paragraph(safe(str(resume.get("name") or "").upper()), styles["name"]),
+                Paragraph(safe("  |  ".join(resume.get("contact") or [])), styles["contact"]),
+            ]
+            if resume.get("target"):
+                story.append(Paragraph(safe(resume.get("target")), styles["target"]))
+            section(story, "Professional Summary")
+            story.append(Paragraph(safe(resume.get("summary")), styles["body"]))
+            section(story, "Core Skills")
+            groups = resume.get("skill_groups") or []
+            if groups:
+                for g in groups[:6]:
+                    cat = str(g.get("category") or "").strip()
+                    items = [str(i) for i in (g.get("items") or []) if str(i).strip()][:10]
+                    if cat and items:
+                        story.append(Paragraph(f"<b>{safe(cat)}:</b> {safe(', '.join(items))}", styles["body"]))
+            else:
+                story.append(Paragraph(safe("  •  ".join((resume.get("skills") or [])[: preset["max_sk"]])), styles["body"]))
+            section(story, "Professional Experience")
+            add_entries(story, resume.get("experience") or [])
+            if resume.get("projects"):
+                section(story, "Projects")
+                add_bullets(story, resume.get("projects") or [], preset["max_proj"])
+            if resume.get("education"):
+                section(story, "Education")
+                add_entries(story, resume.get("education") or [])
+            if resume.get("certifications"):
+                section(story, "Certifications")
+                add_bullets(story, resume.get("certifications") or [], 8)
+            story.append(Spacer(1, 0.01 * inch))
+            doc.build(story)
+            return buf.getvalue(), doc.page
+
+        last = b""
+        for preset in _PDF_PRESETS:
+            data, pages = render(preset)
+            last = data
+            if pages <= 1:
+                return data
+        return last  # tightest preset; best effort if still long
     except Exception as exc:
         log.warning("ReportLab tailored PDF generation failed, using fallback: %s", exc)
         return _simple_pdf_bytes(resume)
@@ -752,7 +1367,34 @@ async def generate_tailored_resume(
     job_text = f"{job_data.get('title') or ''}\n{job_data.get('description') or ''}".strip()
     matched, missing = _tailor_keywords(resume_text, job_text)
     user = user_store.get_user_by_id(user_id) or {}
-    tailored_resume = _build_tailored_resume_payload(resume_text, resume_json, job_data, matched, missing, user)
+
+    # Primary path: LLM tailoring (work-auth filter, match diagnostic, honest
+    # red-flag reframing, human-sounding rewrite per the tailor spec). Falls
+    # back to the deterministic builder if Groq is unavailable or returns
+    # unusable output — generation never breaks.
+    tailored_resume = None
+    diagnostics = None
+    engine = "deterministic"
+    try:
+        from app.services.resume_tailor_llm import tailor_resume as _llm_tailor
+        llm_out = await _llm_tailor(
+            resume_text=resume_text,
+            job_title=str(job_data.get("title") or ""),
+            job_company=str(job_data.get("company") or ""),
+            job_description=str(job_data.get("description") or ""),
+            work_auth=str(user.get("visa_status") or "Not specified"),
+        )
+    except Exception as exc:  # noqa: BLE001 — degrade to deterministic
+        log.warning("LLM tailoring unavailable for %s: %s", user_id, exc)
+        llm_out = None
+    if llm_out:
+        tailored_resume = _payload_from_llm(llm_out, job_data, user, resume_text)
+        if tailored_resume:
+            engine = "llm"
+            diagnostics = {k: llm_out.get(k) for k in ("work_auth", "match", "red_flags") if llm_out.get(k) is not None}
+    if not tailored_resume:
+        tailored_resume = _build_tailored_resume_payload(resume_text, resume_json, job_data, matched, missing, user)
+
     projected_score = max(95, min(98, int(item.get("match_score") or 0) + max(12, len(missing[:10]))))
     title = f"{job_data.get('title') or 'Tailored Resume'} - {job_data.get('company') or 'PlaceUp'}"
     requested = (payload.format or "doc").lower().strip()
@@ -777,8 +1419,10 @@ async def generate_tailored_resume(
         "content_type": content_type,
         "data_base64": base64.b64encode(content).decode("ascii"),
         "ats_score": projected_score,
-        "matched_keywords": matched,
-        "keyword_targets": missing[:12],
+        "matched_keywords": _display_terms(matched),
+        "keyword_targets": _display_terms(missing[:12]),
+        "engine": engine,
+        "diagnostics": diagnostics,
     }
 
 

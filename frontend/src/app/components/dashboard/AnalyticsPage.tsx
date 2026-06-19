@@ -46,8 +46,17 @@ export function AnalyticsPage() {
   const [timeSeries, setTimeSeries] = useState<TimePoint[]>([]);
   const [scoreData, setScoreData] = useState<ScorePoint[]>([]);
   const [applications, setApplications] = useState<api.UserApplicationRow[]>([]);
+  const [market, setMarket] = useState<api.MarketAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    api.getMarketAnalytics()
+      .then((m) => { if (active) setMarket(m); })
+      .catch(() => { if (active) setMarket(null); });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -114,6 +123,61 @@ export function AnalyticsPage() {
           </motion.div>
         ))}
       </div>
+
+      {/* Live job market — always-populated, real backend data */}
+      {market && (
+        <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 18 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <TrendingUp size={15} color={T.red} />
+              <span style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 700, color: T.text }}>Live job market</span>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontFamily: F.mono, fontSize: 22, fontWeight: 800, color: T.red, lineHeight: 1 }}>{(market.total_active || 0).toLocaleString()}</div>
+              <div style={{ fontSize: 10.5, color: T.t3, fontFamily: F.sans }}>active positions</div>
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: isTablet ? "1fr" : "1.5fr 1fr", gap: 16 }}>
+            <div>
+              <div style={{ fontFamily: F.sans, fontSize: 12.5, fontWeight: 600, color: T.t2, marginBottom: 10 }}>Positions added — last 14 days</div>
+              {(market.added_series || []).length === 0 ? (
+                <div style={{ height: 200, display: "flex", alignItems: "center", justifyContent: "center", color: T.t3, fontFamily: F.sans, fontSize: 13 }}>No recent additions recorded.</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={200}>
+                  <AreaChart data={(market.added_series || []).map((p) => ({ label: new Date(p.date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" }), count: p.count }))} margin={{ top: 6, right: 8, bottom: 0, left: -20 }}>
+                    <defs>
+                      <linearGradient id="mktFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#ED7D2B" stopOpacity={0.5} />
+                        <stop offset="100%" stopColor="#ED7D2B" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(242,238,179,0.06)" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fill: T.t3, fontSize: 11, fontFamily: F.sans }} axisLine={false} tickLine={false} minTickGap={18} />
+                    <YAxis allowDecimals={false} tick={{ fill: T.t3, fontSize: 11, fontFamily: F.sans }} axisLine={false} tickLine={false} width={40} />
+                    <Tooltip contentStyle={{ background: "rgba(8,14,32,0.96)", border: `1px solid ${T.border}`, borderRadius: 10, color: T.text, fontFamily: F.sans, fontSize: 12 }} formatter={(v: number) => [`${v} new`, "Positions"]} />
+                    <Area type="monotone" dataKey="count" stroke="#ED7D2B" strokeWidth={2} fill="url(#mktFill)" activeDot={{ r: 4 }} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+            <div>
+              <div style={{ fontFamily: F.sans, fontSize: 12.5, fontWeight: 600, color: T.t2, marginBottom: 10 }}>Top countries</div>
+              {(market.by_country || []).length === 0 ? (
+                <div style={{ height: 200, display: "flex", alignItems: "center", justifyContent: "center", color: T.t3, fontFamily: F.sans, fontSize: 13 }}>No country data.</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={(market.by_country || []).map((c) => ({ key: c.key, count: c.count }))} layout="vertical" margin={{ top: 0, right: 12, bottom: 0, left: 8 }}>
+                    <XAxis type="number" hide />
+                    <YAxis type="category" dataKey="key" tick={{ fill: T.t2, fontSize: 11, fontFamily: F.sans }} axisLine={false} tickLine={false} width={44} />
+                    <Tooltip cursor={{ fill: "rgba(237,125,43,0.08)" }} contentStyle={{ background: "rgba(8,14,32,0.96)", border: `1px solid ${T.border}`, borderRadius: 10, color: T.text, fontFamily: F.sans, fontSize: 12 }} formatter={(v: number) => [v.toLocaleString(), "Positions"]} />
+                    <Bar dataKey="count" radius={[0, 6, 6, 0]} fill="#ED7D2B" />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: 24 }}>
         <div style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 600, color: T.text, marginBottom: 16 }}>Applied Positions</div>

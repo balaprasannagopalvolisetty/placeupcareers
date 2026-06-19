@@ -229,7 +229,15 @@ def _lever_item_to_jobpost(item: dict, board_token: str) -> Optional[JobPost]:
         company = board_token
 
     location = _safe_str(categories.get("location"))
-    description_html = _safe_str(item.get("descriptionPlain") or item.get("description"))
+    description_parts = [_safe_str(item.get("description") or item.get("descriptionPlain"))]
+    for section in item.get("lists") or []:
+        if not isinstance(section, dict):
+            continue
+        heading = _safe_str(section.get("text"))
+        content = _safe_str(section.get("content"))
+        if heading or content:
+            description_parts.append(f"<h3>{heading}</h3>{content}" if heading else content)
+    description_html = "\n".join(part for part in description_parts if part)
     job_url = _safe_str(item.get("hostedUrl") or item.get("applyUrl"))
     source_id = _safe_str(item.get("id"))
     posted = _parse_dt(item.get("createdAt"))

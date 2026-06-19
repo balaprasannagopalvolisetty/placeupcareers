@@ -39,25 +39,28 @@ function normalizeVisa(visa: unknown): string[] {
 }
 
 function formatSalary(salary: unknown): string {
-  if (!salary) return "Not specified";
+  if (!salary) return "";
   if (typeof salary === "string") return salary;
   if (typeof salary === "object") {
-    const min = (salary as any).min_salary;
-    const max = (salary as any).max_salary;
-    if (typeof min === "number" && typeof max === "number") {
+    // A2: treat 0 / negative as "no data" — never render $0K–$0K.
+    const rawMin = (salary as any).min_salary;
+    const rawMax = (salary as any).max_salary;
+    const min = typeof rawMin === "number" && rawMin > 0 ? rawMin : undefined;
+    const max = typeof rawMax === "number" && rawMax > 0 ? rawMax : undefined;
+    if (min !== undefined && max !== undefined) {
       return `$${Math.round(min / 1000)}K–$${Math.round(max / 1000)}K`;
     }
-    if (typeof min === "number") {
+    if (min !== undefined) {
       return `$${Math.round(min / 1000)}K+`;
     }
-    if (typeof max === "number") {
+    if (max !== undefined) {
       return `Up to $${Math.round(max / 1000)}K`;
     }
-    if ((salary as any).display) {
+    if ((salary as any).display && !/\$0K/.test(String((salary as any).display))) {
       return String((salary as any).display);
     }
   }
-  return "Not specified";
+  return "";
 }
 
 function formatPostDate(value: unknown): string {
@@ -100,8 +103,17 @@ function ATSRingLarge({ score }: { score: number | null | undefined }) {
   );
 }
 
-function getScoreMeta(score: number | null | undefined) {
+function getScoreMeta(score: number | null | undefined, scoreType?: string) {
   if (typeof score !== "number" || !Number.isFinite(score)) {
+    if (scoreType === "insufficient_jd") {
+      return {
+        label: "Job details incomplete",
+        detail: "This role needs a complete job description before it can be scored.",
+        color: T.t3,
+        bg: "rgba(242,238,179,0.05)",
+        border: T.border,
+      };
+    }
     return {
       label: "Resume match unavailable",
       detail: "Upload or activate a resume to calculate a real score.",
@@ -235,6 +247,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
   const [savingApplication, setSavingApplication] = useState(false);
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [atsAnalysis, setAtsAnalysis] = useState<api.AtsAnalysis | null>(null);
   const [applyNotes, setApplyNotes] = useState("");
   const [heardBack, setHeardBack] = useState<"unknown" | "yes" | "no">("unknown");
   const [positionOpen, setPositionOpen] = useState<"unknown" | "yes" | "no">("unknown");
@@ -272,6 +285,16 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
         if (active) setLoading(false);
       });
 
+    return () => { active = false; };
+  }, [jobId, resumeVersion]);
+
+  // Advanced ATS analysis of the user's active resume vs this job (no upload).
+  useEffect(() => {
+    let active = true;
+    setAtsAnalysis(null);
+    api.getActiveAtsAnalysis(String(jobId))
+      .then((res) => { if (active) setAtsAnalysis(res); })
+      .catch(() => { if (active) setAtsAnalysis(null); });
     return () => { active = false; };
   }, [jobId, resumeVersion]);
 
@@ -338,8 +361,8 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
     strongKeywords: job?.strongKeywords ?? [],
     missingKeywords: Array.isArray(job?.missingKeywords) ? (job?.missingKeywords as any) : [],
     benefits: job?.benefits ?? [],
-    approvalRate: job?.approvalRate ?? 0,
-    petitions: job?.petitions ?? 0,
+    approvalRate: typeof job?.approvalRate === "number" ? job.approvalRate : null,
+    petitions: typeof job?.petitions === "number" ? job.petitions : null,
     jobUrl: resolvedJobUrl,
   };
 
@@ -502,7 +525,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
     }
     return out;
   };
-  const scoreMeta = getScoreMeta(currentJob.match);
+  const scoreMeta = getScoreMeta(currentJob.match, job?.score_type);
   const visibleKeywords = (currentJob.strongKeywords ?? []).slice(0, 10);
   const visibleMissing = (currentJob.missingKeywords ?? []).slice(0, 10);
   const role = (job as any)?.role || (job as any)?.taxonomy_category || currentJob.status;
@@ -523,149 +546,168 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
   ].filter((card) => card.items.length);
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: isTablet ? "1fr" : "1.8fr 1fr",
-        gap: isMobile ? 14 : 20,
-      }}
-    >
+    <div style={{ display: "grid", gridTemplateColumns: isTablet ? "1fr" : "1.8fr 1fr", gap: isMobile ? 14 : 20 }}>
       {/* MAIN */}
       <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
-        {/* Back */}
         <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", color: T.t2, fontSize: 13, fontFamily: F.sans, width: "fit-content" }}>
-          <ArrowLeft size={14} /> All Jobs
+          <ArrowLeft size={14} /> All jobs
         </button>
 
         {/* Header card */}
-        <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: isMobile ? 16 : 24 }}>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) 170px", gap: 18, alignItems: "start", marginBottom: 18 }}>
+        <div style={{ background: "rgba(8,18,38,0.55)", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 18, padding: isMobile ? 18 : 24 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) 230px", gap: 20, alignItems: "start" }}>
             <div style={{ minWidth: 0 }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 7 }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, padding: "4px 8px", borderRadius: 999, background: "rgba(242,238,179,0.05)", color: T.t2, border: `1px solid ${T.border}`, fontFamily: F.sans }}>{role}</span>
-                  <span style={{ fontSize: 10, fontWeight: 700, padding: "4px 8px", borderRadius: 999, background: scoreMeta.bg, color: scoreMeta.color, border: `1px solid ${scoreMeta.border}`, fontFamily: F.sans }}>{scoreMeta.label}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                <div style={{ width: 38, height: 38, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "#fff", fontSize: 16, fontFamily: F.sans, background: `linear-gradient(135deg, ${T.red}, #011126)` }}>
+                  {(currentJob.company || "?").charAt(0).toUpperCase()}
                 </div>
-                <h2 style={{ fontFamily: F.sans, fontSize: 22, fontWeight: 700, color: T.text, marginBottom: 4, lineHeight: 1.2 }}>{currentJob.title}</h2>
-                <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 14, color: T.t2, fontFamily: F.sans, fontWeight: 500 }}>{currentJob.company}</span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13, color: T.t3, fontFamily: F.sans }}><MapPin size={12} />{currentJob.location}</span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13, color: T.t3, fontFamily: F.sans }}><DollarSign size={12} />{currentJob.salary}</span>
-                  <span style={{ fontSize: 12, color: T.t3, fontFamily: F.sans }}>{currentJob.posted}</span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: T.text, fontFamily: F.sans, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{currentJob.company}</div>
+                  <div style={{ fontSize: 11.5, color: T.t3, fontFamily: F.sans }}>{currentJob.posted}</div>
                 </div>
               </div>
-            </div>
-            <div style={{ borderRadius: 16, border: `1px solid ${scoreMeta.border}`, background: scoreMeta.bg, padding: 12, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-              <ATSRingLarge score={currentJob.match} />
-              <div style={{ textAlign: "center", fontSize: 11, color: T.t3, fontFamily: F.sans, lineHeight: 1.4 }}>{scoreMeta.detail}</div>
-            </div>
-          </div>
 
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
-            {(currentJob.visa ?? []).map((v) => {
-              const s = visaBadge[v] ?? { bg: "rgba(64,18,18,0.1)", color: T.t2, border: T.border };
-              return <span key={v} style={{ fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 4, background: s.bg, color: s.color, border: `1px solid ${s.border}`, fontFamily: F.sans, letterSpacing: "0.04em" }}>{v}</span>;
-            })}
-            {applied && <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 4, background: "rgba(34,197,94,0.1)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.25)", fontFamily: F.sans }}>✓ Applied</span>}
-          </div>
+              <h2 style={{ fontFamily: F.sans, fontSize: isMobile ? 22 : 26, fontWeight: 800, color: T.text, margin: "0 0 14px", lineHeight: 1.18, letterSpacing: "-0.01em" }}>{currentJob.title}</h2>
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              onClick={openCompanyApply}
-              title={currentJob.jobUrl ? currentJob.jobUrl : "Open a Google search for this role"}
-              style={{
-                display: "flex", alignItems: "center", gap: 6, padding: "11px 20px",
-                borderRadius: 10, border: "none", background: T.grad, color: "#fff",
-                fontSize: 13, fontWeight: 600, fontFamily: F.sans, cursor: "pointer",
-                boxShadow: "0 0 20px rgba(237,125,43,0.35)",
-              }}
-            >
-              <ExternalLink size={14} /> {applyLabel}
-            </button>
-            <button
-              type="button"
-              onClick={toggleSave}
-              style={{
-                display: "flex", alignItems: "center", gap: 6, padding: "11px 16px",
-                borderRadius: 10,
-                border: `1px solid ${saved ? "rgba(237,125,43,0.35)" : T.border}`,
-                background: saved ? "rgba(237,125,43,0.10)" : "transparent",
-                color: saved ? T.red : T.t2,
-                fontSize: 13, fontFamily: F.sans, cursor: "pointer",
-              }}
-            >
-              <Bookmark size={14} fill={saved ? T.red : "none"} /> {saved ? "Saved" : "Save"}
-            </button>
-            <button
-              type="button"
-              onClick={shareJob}
-              style={{
-                display: "flex", alignItems: "center", gap: 6, padding: "11px 16px",
-                borderRadius: 10, border: `1px solid ${T.border}`, background: "transparent",
-                color: copied ? T.red : T.t2, fontSize: 13, fontFamily: F.sans, cursor: "pointer",
-              }}
-            >
-              <Share2 size={14} /> {copied ? "Copied!" : "Share"}
-            </button>
-          </div>
-        </div>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "9px 18px", fontSize: 12.5, color: T.t2, fontFamily: F.sans, marginBottom: 16 }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}><MapPin size={13} color={T.red} style={{ flexShrink: 0 }} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentJob.location}</span></span>
+                {currentJob.salary ? <span style={{ display: "flex", alignItems: "center", gap: 6 }}><DollarSign size={13} color={T.red} style={{ flexShrink: 0 }} /> {currentJob.salary}</span> : null}
+                <span style={{ display: "flex", alignItems: "center", gap: 6, textTransform: "capitalize", minWidth: 0 }}><Briefcase size={13} color={T.red} style={{ flexShrink: 0 }} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{role}</span></span>
+                {(currentJob.visa ?? []).length ? <span style={{ display: "flex", alignItems: "center", gap: 6 }}><ShieldCheck size={13} color={T.red} style={{ flexShrink: 0 }} /> {(currentJob.visa ?? []).length} visa signal{(currentJob.visa ?? []).length > 1 ? "s" : ""}</span> : null}
+              </div>
 
-        {/* ATS Breakdown */}
-        <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: 24 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 18 }}>
-            <div>
-              <h3 style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 700, color: T.text, marginBottom: 4 }}>Resume Match Breakdown</h3>
-              <div style={{ fontFamily: F.sans, fontSize: 12, color: T.t3 }}>{currentJob.match == null ? "A score appears after a resume is active." : "Based on overlap between your active resume and this posting."}</div>
-            </div>
-            <div style={{ fontFamily: F.mono, fontSize: 22, fontWeight: 700, color: scoreMeta.color }}>{typeof currentJob.match === "number" ? `${currentJob.match}%` : "--"}</div>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: T.t3, fontFamily: F.sans, marginBottom: 10 }}>Strong Keywords ✓</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {visibleKeywords.map((kw) => (
-                  <span key={kw} style={{ fontSize: 11, padding: "4px 9px", borderRadius: 4, background: "rgba(237,125,43,0.1)", color: T.red, border: "1px solid rgba(237,125,43,0.25)", fontFamily: F.sans, display: "flex", alignItems: "center", gap: 4 }}>
-                    <Check size={9} /> {kw}
-                  </span>
+              <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 18 }}>
+                {(currentJob.visa ?? []).map((v) => (
+                  <span key={v} style={{ fontSize: 11, fontWeight: 700, padding: "5px 11px", borderRadius: 999, background: "rgba(52,211,153,0.12)", color: "#6EE7B7", border: "1px solid rgba(52,211,153,0.3)", fontFamily: F.sans, display: "inline-flex", alignItems: "center", gap: 5 }}><Check size={11} /> {v}</span>
                 ))}
+                {applied && <span style={{ fontSize: 11, fontWeight: 700, padding: "5px 11px", borderRadius: 999, background: "rgba(52,211,153,0.12)", color: "#6EE7B7", border: "1px solid rgba(52,211,153,0.3)", fontFamily: F.sans }}>Applied</span>}
+              </div>
+
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button type="button" onClick={openCompanyApply} title={currentJob.jobUrl ? currentJob.jobUrl : "Open a Google search for this role"}
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "11px 22px", borderRadius: 10, border: "none", background: T.grad, color: "#fff", fontSize: 13, fontWeight: 800, fontFamily: F.sans, cursor: "pointer" }}>
+                  <ExternalLink size={14} /> {applyLabel}
+                </button>
+                <button type="button" onClick={toggleSave}
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "11px 16px", borderRadius: 10, border: `1px solid ${saved ? "rgba(237,125,43,0.35)" : T.border}`, background: saved ? "rgba(237,125,43,0.10)" : "rgba(245,234,200,0.03)", color: saved ? T.red : T.t2, fontSize: 13, fontWeight: 700, fontFamily: F.sans, cursor: "pointer" }}>
+                  <Bookmark size={14} fill={saved ? T.red : "none"} /> {saved ? "Saved" : "Save"}
+                </button>
+                <button type="button" onClick={shareJob}
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "11px 16px", borderRadius: 10, border: `1px solid ${T.border}`, background: "rgba(245,234,200,0.03)", color: copied ? T.red : T.t2, fontSize: 13, fontWeight: 700, fontFamily: F.sans, cursor: "pointer" }}>
+                  <Share2 size={14} /> {copied ? "Copied!" : "Share"}
+                </button>
               </div>
             </div>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: T.t3, fontFamily: F.sans, marginBottom: 10 }}>Missing Keywords ✗</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {visibleMissing.map(({ kw, impact }) => (
-                  <span key={kw} style={{ fontSize: 11, padding: "4px 9px", borderRadius: 4, background: "rgba(64,18,18,0.12)", color: "rgba(242,238,179,0.5)", border: "1px solid rgba(64,18,18,0.25)", fontFamily: F.sans }}>
-                    {kw}
-                    <span style={{ marginLeft: 4, fontSize: 9, color: impact === "High" ? "#ef4444" : T.t3 }}>{impact}</span>
-                  </span>
-                ))}
+
+            {/* Match panel */}
+            <div style={{ background: "rgba(237,125,43,0.08)", border: "1px solid rgba(237,125,43,0.25)", borderRadius: 14, overflow: "hidden" }}>
+              <div style={{ padding: "14px 16px", display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, borderBottom: "1px solid rgba(237,125,43,0.18)" }}>
+                <span style={{ fontSize: 30, fontWeight: 800, color: T.text, fontFamily: F.sans, lineHeight: 1 }}>{typeof currentJob.match === "number" ? currentJob.match : "--"}<span style={{ fontSize: 15, color: T.t3 }}>{typeof currentJob.match === "number" ? "%" : ""}</span></span>
+                <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.05em", textTransform: "uppercase", color: scoreMeta.color, fontFamily: F.sans, textAlign: "right" }}>{scoreMeta.label}</span>
+              </div>
+              <div style={{ padding: "13px 16px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, fontFamily: F.sans, marginBottom: 6 }}>
+                  <span style={{ color: T.t2 }}>Keywords matched</span>
+                  <span style={{ color: T.text, fontWeight: 700 }}>{visibleKeywords.length}/{visibleKeywords.length + visibleMissing.length}</span>
+                </div>
+                <div style={{ height: 5, borderRadius: 999, background: "rgba(245,234,200,0.1)", marginBottom: 12 }}>
+                  <div style={{ height: 5, borderRadius: 999, background: T.red, width: `${(visibleKeywords.length + visibleMissing.length) ? Math.round((visibleKeywords.length / (visibleKeywords.length + visibleMissing.length)) * 100) : 0}%` }} />
+                </div>
+                <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, lineHeight: 1.5 }}>{scoreMeta.detail}</div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Job Description */}
-        <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: isMobile ? 16 : 24, overflow: "hidden" }}>
-          <div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", gap: 12, flexDirection: isMobile ? "column" : "row", marginBottom: 18 }}>
-            <div>
-              <div style={{ fontFamily: F.sans, fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: T.t3, marginBottom: 6 }}>Full posting</div>
-              <h3 style={{ fontFamily: F.sans, fontSize: 18, fontWeight: 800, color: T.text, margin: 0 }}>Job Description</h3>
+        {/* ATS keyword analysis */}
+        {(visibleKeywords.length > 0 || visibleMissing.length > 0) && (
+          <div style={{ background: "rgba(8,18,38,0.55)", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 18, padding: isMobile ? 18 : 24 }}>
+            <h3 style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 800, color: T.text, margin: "0 0 4px" }}>ATS keyword analysis</h3>
+            <div style={{ fontFamily: F.sans, fontSize: 12, color: T.t3, marginBottom: 16 }}>How your active resume lines up with this posting.</div>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6EE7B7", fontFamily: F.sans, marginBottom: 10 }}>You have</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                  {visibleKeywords.length ? visibleKeywords.map((kw) => (
+                    <span key={kw} style={{ fontSize: 11.5, padding: "5px 10px", borderRadius: 8, background: "rgba(52,211,153,0.12)", color: "#6EE7B7", border: "1px solid rgba(52,211,153,0.28)", fontFamily: F.sans, display: "inline-flex", alignItems: "center", gap: 5 }}><Check size={11} /> {kw}</span>
+                  )) : <span style={{ fontSize: 12, color: T.t3, fontFamily: F.sans }}>Activate a resume to see matches.</span>}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: T.t3, fontFamily: F.sans, marginBottom: 10 }}>Missing</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                  {visibleMissing.length ? visibleMissing.map(({ kw, impact }) => (
+                    <span key={kw} style={{ fontSize: 11.5, padding: "5px 10px", borderRadius: 8, background: "rgba(245,234,200,0.05)", color: T.t2, border: `1px solid ${T.border}`, fontFamily: F.sans }}>{kw}<span style={{ marginLeft: 5, fontSize: 9.5, color: impact === "High" ? "#ef4444" : T.t3 }}>{impact}</span></span>
+                  )) : <span style={{ fontSize: 12, color: T.t3, fontFamily: F.sans }}>No gaps detected.</span>}
+                </div>
+              </div>
             </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          </div>
+        )}
+
+        {/* Advanced ATS breakdown + red flags */}
+        {atsAnalysis?.breakdown && atsAnalysis.breakdown.length > 0 && (() => {
+          const cmap: Record<string, string> = { success: "#6EE7B7", warning: "#F2A341", danger: "#ef4444" };
+          return (
+            <div style={{ background: "rgba(8,18,38,0.55)", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 18, padding: isMobile ? 18 : 24 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+                <div>
+                  <h3 style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 800, color: T.text, margin: "0 0 4px" }}>ATS score breakdown</h3>
+                  <div style={{ fontFamily: F.sans, fontSize: 12, color: T.t3 }}>{atsAnalysis.recommendation} · {atsAnalysis.coverage_pct ?? 0}% keyword coverage · {atsAnalysis.semantic_similarity ?? 0}% semantic</div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontFamily: F.mono, fontSize: 26, fontWeight: 800, color: T.red, lineHeight: 1 }}>{atsAnalysis.score ?? 0}<span style={{ fontSize: 14, color: T.t3 }}>/100</span></div>
+                  <div style={{ fontSize: 10, color: T.t3, fontFamily: F.sans }}>ATS score</div>
+                </div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {atsAnalysis.breakdown.map((b) => (
+                  <div key={b.label}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontFamily: F.sans, marginBottom: 5 }}>
+                      <span style={{ color: T.t2 }}>{b.label}</span>
+                      <span style={{ fontWeight: 700, color: cmap[b.color] || T.text }}>{b.score}/{b.max}</span>
+                    </div>
+                    <div style={{ height: 5, borderRadius: 999, background: "rgba(245,234,200,0.1)" }}>
+                      <div style={{ height: 5, borderRadius: 999, width: `${Math.round((b.score / b.max) * 100)}%`, background: cmap[b.color] || T.red }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {atsAnalysis.red_flags && atsAnalysis.red_flags.length > 0 && (
+                <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${T.border}` }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "#F2A341", fontFamily: F.sans, marginBottom: 10 }}>Bullets to strengthen</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {atsAnalysis.red_flags.slice(0, 5).map((f, idx) => (
+                      <div key={idx} style={{ border: `1px solid ${T.border}`, borderRadius: 12, background: "rgba(1,17,38,0.3)", padding: 12 }}>
+                        <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase", color: f.impact === "High" ? "#ef4444" : T.t3, fontFamily: F.sans, marginBottom: 6 }}>{f.category}{f.impact ? ` · ${f.impact}` : ""}</div>
+                        <div style={{ fontSize: 12, color: T.t3, fontFamily: F.sans, lineHeight: 1.5, marginBottom: 6, textDecoration: "line-through", textDecorationColor: "rgba(239,68,68,0.5)" }}>{f.original}</div>
+                        <div style={{ fontSize: 12, color: T.text, fontFamily: F.sans, lineHeight: 1.5, display: "flex", gap: 6 }}><span style={{ color: "#6EE7B7", flexShrink: 0 }}>→</span>{f.suggestion}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* Job description */}
+        <div style={{ background: "rgba(8,18,38,0.55)", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 18, padding: isMobile ? 18 : 24, overflow: "hidden" }}>
+          <div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", gap: 12, flexDirection: isMobile ? "column" : "row", marginBottom: 16 }}>
+            <h3 style={{ fontFamily: F.sans, fontSize: 16, fontWeight: 800, color: T.text, margin: 0 }}>Job description</h3>
+            <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
               {jdSignals.map((signal) => (
-                <div key={signal.label} style={{ padding: "7px 10px", borderRadius: 999, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", fontFamily: F.sans }}>
+                <span key={signal.label} style={{ padding: "6px 10px", borderRadius: 999, border: `1px solid ${T.border}`, background: "rgba(245,234,200,0.04)", fontFamily: F.sans }}>
                   <span style={{ fontSize: 10, color: T.t3, marginRight: 6 }}>{signal.label}</span>
                   <span style={{ fontSize: 11, fontWeight: 800, color: T.text }}>{signal.value}</span>
-                </div>
+                </span>
               ))}
             </div>
           </div>
-
           {highlightCards.length > 0 && (
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : `repeat(${Math.min(highlightCards.length, 3)}, minmax(0, 1fr))`, gap: 12, marginBottom: 18 }}>
               {highlightCards.map((card) => (
-                <div key={card.title} style={{ border: `1px solid ${T.border}`, borderRadius: 16, background: card.tone, padding: 14 }}>
+                <div key={card.title} style={{ border: `1px solid ${T.border}`, borderRadius: 14, background: card.tone, padding: 14 }}>
                   <div style={{ fontFamily: F.sans, fontSize: 12, fontWeight: 800, color: T.text, marginBottom: 10 }}>{card.title}</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {card.items.slice(0, 4).map((item) => (
@@ -679,17 +721,18 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
               ))}
             </div>
           )}
-
-          <div style={{ border: `1px solid ${T.border}`, borderRadius: 18, background: "rgba(1,17,38,0.22)", padding: isMobile ? 14 : 20 }}>
-            {renderJobDescription(descriptionText)}
+          <div style={{ border: `1px solid ${T.border}`, borderRadius: 14, background: "rgba(1,17,38,0.22)", padding: isMobile ? 14 : 20 }}>
+            {job?.description_html ? (
+              <div style={{ fontSize: 13, color: T.t2, fontFamily: F.sans, lineHeight: 1.75 }} dangerouslySetInnerHTML={{ __html: job.description_html }} />
+            ) : renderJobDescription(descriptionText)}
           </div>
         </div>
       </div>
 
       {/* SIDEBAR */}
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: 20 }}>
-          <h4 style={{ fontFamily: F.sans, fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 14 }}>Posting Snapshot</h4>
+        <div style={{ background: "rgba(8,18,38,0.55)", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 18, padding: 20 }}>
+          <h4 style={{ fontFamily: F.sans, fontSize: 13, fontWeight: 800, color: T.text, marginBottom: 14 }}>Posting snapshot</h4>
           {[
             { label: "Role", value: role || "Active", icon: Briefcase },
             { label: "Location", value: currentJob.location, icon: MapPin },
@@ -711,16 +754,14 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
           })}
         </div>
 
-        {/* Visa Info */}
-        <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: 20 }}>
-          <h4 style={{ fontFamily: F.sans, fontSize: 13, fontWeight: 600, color: T.text, marginBottom: 14 }}>Visa Sponsorship Info</h4>
+        {(currentJob.visa.length > 0 || (currentJob.approvalRate != null && currentJob.petitions != null)) && <div style={{ background: "rgba(8,18,38,0.55)", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 18, padding: 20 }}>
+          <h4 style={{ fontFamily: F.sans, fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 14 }}>Visa sponsorship info</h4>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
-            {(currentJob.visa ?? []).map((v) => {
-              const s = { "H-1B": { bg: "rgba(140,58,39,0.15)", color: T.burnt, border: "rgba(140,58,39,0.35)" }, "F1-OPT": { bg: "rgba(237,125,43,0.12)", color: T.red, border: "rgba(237,125,43,0.3)" } }[v] ?? { bg: "rgba(64,18,18,0.1)", color: T.t2, border: T.border };
-              return <span key={v} style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: s.bg, color: s.color, border: `1px solid ${s.border}`, fontFamily: F.sans }}>{v}</span>;
-            })}
+            {(currentJob.visa ?? []).map((v) => (
+              <span key={v} style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 999, background: "rgba(52,211,153,0.12)", color: "#6EE7B7", border: "1px solid rgba(52,211,153,0.3)", fontFamily: F.sans }}>{v}</span>
+            ))}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {currentJob.approvalRate != null && currentJob.petitions != null && <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div style={{ position: "relative", width: 60, height: 60 }}>
               <svg viewBox="0 0 60 60" style={{ transform: "rotate(-90deg)", width: "100%", height: "100%" }}>
                 <circle cx="30" cy="30" r="24" fill="none" stroke="rgba(242,238,179,0.07)" strokeWidth="6" />
@@ -739,12 +780,11 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
               <div style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: F.sans }}>{currentJob.approvalRate}% approval rate</div>
               <div style={{ fontSize: 12, color: T.t3, fontFamily: F.sans }}>Last year: {currentJob.petitions.toLocaleString()} petitions</div>
             </div>
-          </div>
-        </div>
+          </div>}
+        </div>}
 
-        {/* Benefits */}
-        <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: 20 }}>
-          <h4 style={{ fontFamily: F.sans, fontSize: 13, fontWeight: 600, color: T.text, marginBottom: 12 }}>Benefits & Perks</h4>
+        {(currentJob.benefits ?? []).length > 0 && <div style={{ background: "rgba(8,18,38,0.55)", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 18, padding: 20 }}>
+          <h4 style={{ fontFamily: F.sans, fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 12 }}>Benefits & perks</h4>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {(currentJob.benefits ?? []).map((b) => (
               <div key={b} style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -755,7 +795,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
               </div>
             ))}
           </div>
-        </div>
+        </div>}
       </div>
 
       {/* Apply Modal */}
@@ -786,12 +826,11 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
                 <strong style={{ color: T.text }}>{currentJob.title}</strong> at <strong style={{ color: T.text }}>{currentJob.company}</strong> opened in a new tab.
               </div>
 
-              {/* Follow-up question */}
               <div style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: F.sans, marginBottom: 10 }}>Did you complete the application?</div>
 
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
                 <button disabled={savingApplication} onClick={() => recordApplication("applied")} style={{ flex: "1 1 180px", padding: "13px", borderRadius: 12, border: "none", background: T.grad, color: "#fff", fontSize: 14, fontWeight: 600, fontFamily: F.sans, cursor: "pointer" }}>
-                  Yes, I Applied! 🎉
+                  Yes, I applied
                 </button>
                 <button disabled={savingApplication} onClick={() => recordApplication("not_applied", "will_apply_later")} style={{ flex: "1 1 180px", padding: "13px", borderRadius: 12, border: `1px solid ${T.border}`, background: "transparent", color: T.t2, fontSize: 14, fontFamily: F.sans, cursor: "pointer" }}>
                   Will apply later
@@ -838,7 +877,6 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
                 }}
               />
 
-              {/* Notes section */}
               <div style={{ fontSize: 12, fontWeight: 600, color: T.t3, fontFamily: F.sans, marginBottom: 8, letterSpacing: "0.04em", textTransform: "uppercase" }}>Notes (optional)</div>
               <textarea
                 placeholder="Salary range mentioned, interview timeline, referral contact, or anything else..."
@@ -852,7 +890,6 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
                 }}
               />
 
-              {/* Why not */}
               <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${T.border}` }}>
                 <div style={{ fontSize: 12, color: T.t3, fontFamily: F.sans, marginBottom: 10 }}>Or mark as skipped:</div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

@@ -355,6 +355,10 @@ def compute_keyword_overlap(
 
     def _singular(word: str) -> str:
         # Light plural folding: "integrations"->"integration", "policies"->"policy".
+        # Do not fold known skills: several legitimate singular names end in
+        # "s" (for example kubernetes, pandas, and ansys).
+        if word in TECH_SKILLS:
+            return word
         if len(word) > 4 and word.endswith("ies"):
             return word[:-3] + "y"
         if len(word) > 3 and word.endswith("s") and not word.endswith(("ss", "us", "is", "ws", "os")):

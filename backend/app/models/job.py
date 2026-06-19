@@ -277,7 +277,10 @@ class ScrapeRequest(BaseModel):
             JobSource.GLASSDOOR,
             JobSource.ZIPRECRUITER,
             JobSource.GOOGLE,
-            JobSource.RAPIDAPI,
+            # RAPIDAPI removed from defaults: its /active-jb-24h feed was
+            # failing (403/429 -> cooldown) and its tasks starved other
+            # sources via the shared concurrency + single-slot semaphore.
+            # Re-enable explicitly per request if the provider quota is fixed.
             JobSource.USAJOBS,
             JobSource.DICE,
             JobSource.MONSTER,

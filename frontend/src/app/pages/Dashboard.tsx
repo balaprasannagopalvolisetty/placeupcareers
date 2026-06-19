@@ -71,7 +71,7 @@ function normalizeVisa(visa: unknown): string[] {
 }
 
 function formatSalary(salary: unknown): string {
-  if (!salary) return "Not specified";
+  if (!salary) return "";
   if (typeof salary === "string") return salary;
   if (typeof salary === "object") {
     const min = (salary as any).min_salary;
@@ -163,12 +163,18 @@ function GlowCard({ children, style = {}, hoverY = -6, onClick }: {
 // ═══════════════════════════
 // OVERVIEW PAGE
 // ═══════════════════════════
+type FeaturedJob = { id: string | number; title: string; company: string; location: string; salary: string; match: number | null; visa: string[]; posted: string };
+
+// Module-level snapshot so returning to Overview renders the last result
+// instantly instead of flashing an empty "Featured Positions Today" while the
+// network refetches. Survives route changes; refreshed in the background.
+const _overviewSnapshot: { featured: FeaturedJob[] } = { featured: [] };
+
 export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number) => void }) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { isMobile, isTablet } = useViewportFlags();
-  type FeaturedJob = { id: string | number; title: string; company: string; location: string; salary: string; match: number | null; visa: string[]; posted: string };
-  const [featuredJobs, setFeaturedJobs] = useState<FeaturedJob[]>([]);
+  const [featuredJobs, setFeaturedJobs] = useState<FeaturedJob[]>(_overviewSnapshot.featured);
   const [resumeScore, setResumeScore] = useState(0);
   const [hasResume, setHasResume] = useState(false);
   const [activeResumeName, setActiveResumeName] = useState("");
@@ -193,21 +199,42 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
   // matched subset and made the Overview look like there were only ~43 jobs.
   useEffect(() => {
     let active = true;
+    const mapJobs = (jobs: api.JobPost[]): FeaturedJob[] => jobs.map((job) => ({
+      id: job.id ?? "",
+      title: job.title ?? "Untitled role",
+      company: job.company ?? "Unknown",
+      location: job.location ?? "Remote",
+      salary: formatSalary(job.salary),
+      match: typeof job.match_score === "number" ? job.match_score : null,
+      visa: normalizeVisa(job.visa),
+      posted: job.posted_at ?? "Recently",
+    }));
+    const commit = (jobs: FeaturedJob[]) => {
+      if (!active) return;
+      _overviewSnapshot.featured = jobs;
+      setFeaturedJobs(jobs);
+    };
+    // Prefer today's matches, but never leave "Featured Positions Today" empty:
+    // if nothing was posted/scraped today, fall back to the most recent matches
+    // so the section always shows positions.
     api.getTopMatches({ limit: 20, time_filter: "today", tz_offset: new Date().getTimezoneOffset() })
       .then((response) => {
         if (!active) return;
-        setFeaturedJobs(response.jobs.map((job) => ({
-          id: job.id ?? "",
-          title: job.title ?? "Untitled role",
-          company: job.company ?? "Unknown",
-          location: job.location ?? "Remote",
-          salary: formatSalary(job.salary),
-          match: typeof job.match_score === "number" ? job.match_score : null,
-          visa: normalizeVisa(job.visa),
-          posted: job.posted_at ?? "Recently",
-        })));
+        const todayJobs = mapJobs(response.jobs);
+        if (todayJobs.length > 0) {
+          commit(todayJobs);
+          return;
+        }
+        api.getTopMatches({ limit: 20, tz_offset: new Date().getTimezoneOffset() })
+          .then((fallback) => commit(mapJobs(fallback.jobs)))
+          .catch(() => {});
       })
-      .catch(() => {});
+      .catch(() => {
+        // Network/timeout: keep any cached snapshot rather than blanking.
+        api.getTopMatches({ limit: 20, tz_offset: new Date().getTimezoneOffset() })
+          .then((fallback) => commit(mapJobs(fallback.jobs)))
+          .catch(() => {});
+      });
     return () => { active = false; };
   }, []);
 
@@ -358,7 +385,7 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
                 </div>
                 <div style={{ display: "flex", gap: 8, fontSize: 11, color: T.t3, fontFamily: F.sans }}>
                   <span style={{ display: "flex", alignItems: "center", gap: 3 }}><MapPin size={10} />{job.location}</span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 3 }}><DollarSign size={10} />{job.salary}</span>
+                  {job.salary && <span style={{ display: "flex", alignItems: "center", gap: 3 }}><DollarSign size={10} />{job.salary}</span>}
                 </div>
                 <div style={{ height: 3, borderRadius: 2, background: "rgba(242,238,179,0.05)", marginTop: 12, overflow: "hidden" }}>
                   <motion.div initial={{ width: 0 }} animate={{ width: `${job.match ?? 0}%` }} transition={{ duration: 1, ease: "easeOut", delay: 0.3 + i * 0.08 }}

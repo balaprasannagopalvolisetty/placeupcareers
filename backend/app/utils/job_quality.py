@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import re
+import html as html_lib
 from datetime import datetime, timedelta, timezone
 from typing import Any
+
+from bs4 import BeautifulSoup
+
+from app.utils.glued_words import deglue_text, looks_glued
 
 
 _BOARD_COMPANIES = {"linkedin", "indeed", "glassdoor", "ziprecruiter", "zip_recruiter", "google"}
@@ -110,6 +115,50 @@ def clean_job_description(description: Any) -> str:
     return text
 
 
+_SAFE_DESCRIPTION_TAGS = {"p", "br", "ul", "ol", "li", "strong", "b", "em", "i", "h2", "h3", "h4"}
+_BLOCKED_DESCRIPTION_TAGS = {"script", "style", "iframe", "object", "embed", "form", "input", "button"}
+
+
+def sanitize_job_description_html(description: Any) -> str | None:
+    """Keep useful JD structure while removing executable or decorative markup."""
+    raw = clean_job_description(description)
+    if not raw or not re.search(r"</?[a-z][^>]*>", raw, flags=re.I):
+        return None
+    soup = BeautifulSoup(raw, "html.parser")
+    for tag in list(soup.find_all(_BLOCKED_DESCRIPTION_TAGS)):
+        tag.decompose()
+    for tag in list(soup.find_all(True)):
+        if tag.name not in _SAFE_DESCRIPTION_TAGS:
+            tag.unwrap()
+            continue
+        tag.attrs = {}
+    cleaned = str(soup).strip()
+    return cleaned or None
+
+
+def job_description_text(description: Any) -> str:
+    """Create readable scoring/search text without flattening every section together."""
+    raw = clean_job_description(description)
+    if not raw:
+        return ""
+    if re.search(r"</?[a-z][^>]*>", raw, flags=re.I):
+        soup = BeautifulSoup(raw, "html.parser")
+        for tag in soup.find_all(["br", "p", "li", "ul", "ol", "h1", "h2", "h3", "h4", "div", "section"]):
+            if tag.name == "li":
+                tag.insert_before("\n- ")
+            else:
+                tag.insert_before("\n")
+        raw = soup.get_text(" ")
+    raw = html_lib.unescape(raw).replace("\xa0", " ")
+    # A3: repair glued words ("WhatYou'llDo") left by HTML-stripped sources.
+    # Gated on looks_glued so clean text is never touched and tech tokens
+    # (JavaScript, GitHub) are preserved by deglue_text itself.
+    if looks_glued(raw):
+        raw = deglue_text(raw)
+    lines = [re.sub(r"[ \t]+", " ", line).strip() for line in raw.splitlines()]
+    return "\n".join(line for line in lines if line).strip()
+
+
 def is_probably_job_search_page(title: Any, company: Any = "", description: Any = "", source: Any = "") -> bool:
     """Reject search/category pages that masquerade as job cards.
 
@@ -156,9 +205,11 @@ def is_probably_fake_or_scam_job(title: Any, company: Any = "", description: Any
     return False
 
 
-def has_usable_job_description(description: Any, *, min_words: int = 35) -> bool:
-    text = str(description or "").strip()
+def has_usable_job_description(description: Any, *, min_words: int = 35, min_chars: int = 250) -> bool:
+    text = job_description_text(description)
     if not text:
+        return False
+    if len(text) < min_chars:
         return False
     words = re.findall(r"\b[a-zA-Z][a-zA-Z0-9+#./-]*\b", text)
     if len(words) >= min_words:

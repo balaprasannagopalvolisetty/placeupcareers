@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { Bell, BellOff, Trash2, MapPin, DollarSign, Check, Sparkles, TrendingUp } from "lucide-react";
 import { Link } from "react-router";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import * as api from "../../lib/api";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif" };
@@ -21,6 +22,17 @@ export function AlertsPage() {
   // Per-target-role "new positions" digest + personalized top picks.
   const [digest, setDigest] = useState<api.AlertsDigest | null>(null);
   const [topPicks, setTopPicks] = useState<any[]>([]);
+  // Daily "positions added" series for the interactive chart.
+  const [addedSeries, setAddedSeries] = useState<api.AlertsAddedSeries | null>(null);
+  const [chartScope, setChartScope] = useState<"targets" | "all">("targets");
+
+  useEffect(() => {
+    let active = true;
+    api.getAlertsAddedSeries({ days: 14, scope: chartScope })
+      .then((d) => { if (active) setAddedSeries(d); })
+      .catch(() => { if (active) setAddedSeries(null); });
+    return () => { active = false; };
+  }, [chartScope]);
 
   useEffect(() => {
     let active = true;
@@ -118,8 +130,76 @@ export function AlertsPage() {
     return <div style={{ color: T.text, fontFamily: F.sans, textAlign: 'center', padding: 40 }}>Loading alerts...</div>;
   }
 
+  const chartData = (addedSeries?.series || []).map((p) => ({
+    label: new Date(p.date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+    date: p.date,
+    count: p.count,
+  }));
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      {/* Interactive "positions added" chart */}
+      <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: "18px 22px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <TrendingUp size={15} color={T.red} />
+            <span style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 600, color: T.text }}>Positions added</span>
+            <span style={{ fontSize: 12, color: T.t3, fontFamily: F.sans }}>last 14 days</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 16 }}>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 18, fontWeight: 800, color: T.text, fontFamily: F.sans, lineHeight: 1 }}>{(addedSeries?.total_added ?? 0).toLocaleString()}</div>
+                <div style={{ fontSize: 10.5, color: T.t3, fontFamily: F.sans }}>total added</div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 18, fontWeight: 800, color: T.red, fontFamily: F.sans, lineHeight: 1 }}>{(addedSeries?.peak_day ?? 0).toLocaleString()}</div>
+                <div style={{ fontSize: 10.5, color: T.t3, fontFamily: F.sans }}>busiest day</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", borderRadius: 9, overflow: "hidden", border: `1px solid ${T.border}` }}>
+              {([["targets", "My roles"], ["all", "All"]] as const).map(([value, label]) => (
+                <button key={value} onClick={() => setChartScope(value)}
+                  style={{ padding: "6px 12px", fontSize: 11.5, fontWeight: 700, fontFamily: F.sans, cursor: "pointer", border: "none",
+                    background: chartScope === value ? "rgba(237,125,43,0.16)" : "transparent",
+                    color: chartScope === value ? T.red : T.t3 }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div style={{ height: 200 }}>
+          {chartData.length === 0 ? (
+            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: T.t3, fontFamily: F.sans, fontSize: 13 }}>
+              No new positions recorded in this window yet.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData} margin={{ top: 6, right: 8, bottom: 0, left: -22 }}>
+                <defs>
+                  <linearGradient id="addedFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#ED7D2B" stopOpacity={0.55} />
+                    <stop offset="100%" stopColor="#ED7D2B" stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(242,238,179,0.06)" vertical={false} />
+                <XAxis dataKey="label" tick={{ fill: "rgba(242,238,179,0.45)", fontSize: 11, fontFamily: F.sans }} tickLine={false} axisLine={false} minTickGap={18} />
+                <YAxis allowDecimals={false} tick={{ fill: "rgba(242,238,179,0.45)", fontSize: 11, fontFamily: F.sans }} tickLine={false} axisLine={false} width={42} />
+                <Tooltip
+                  cursor={{ stroke: "rgba(237,125,43,0.4)", strokeWidth: 1 }}
+                  contentStyle={{ background: "rgba(8,14,32,0.96)", border: `1px solid ${T.border}`, borderRadius: 12, fontFamily: F.sans, color: T.text }}
+                  labelStyle={{ color: T.t2, fontSize: 12 }}
+                  itemStyle={{ color: T.red, fontSize: 13, fontWeight: 700 }}
+                  formatter={(value: number) => [`${value} new`, "Positions"]}
+                />
+                <Area type="monotone" dataKey="count" stroke="#ED7D2B" strokeWidth={2} fill="url(#addedFill)" activeDot={{ r: 4, fill: "#ED7D2B" }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
       {/* New-positions digest for the user's target roles */}
       {digest?.has_target_roles && (
         <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: "18px 22px" }}>

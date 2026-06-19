@@ -50,10 +50,12 @@ Upsert-SchedulerJob `
   -Schedule "0 */6 * * *" `
   -Uri "$JobRunBase/placeup-job-scraper-6h:run"
 
-Upsert-SchedulerJob `
-  -Name "placeup-external-api-12h" `
-  -Schedule "30 */12 * * *" `
-  -Uri "$JobRunBase/placeup-external-api-12h:run"
+# NOTE: the separate placeup-external-api-12h job was removed. RapidAPI is
+# intentionally disabled; the 6-hour job uses public and direct ATS sources.
+# Delete the old
+# scheduler job + Cloud Run job once (see PRODUCTION_DEPLOYMENT notes):
+#   gcloud scheduler jobs delete placeup-external-api-12h --location us-east1
+#   gcloud run jobs delete placeup-external-api-12h --region us-east1
 
 Upsert-SchedulerJob `
   -Name "placeup-taxonomy-role-backfill" `
@@ -82,9 +84,6 @@ Upsert-SchedulerJob `
 # Daily FinalScout multi-key enrichment. Runs at 04:00 local — well
 # after stale-jobs sweeper, before the morning ops digest at 06:00, so
 # the new emails it discovers land in the operations Sheet the same day.
-Upsert-SchedulerJob `
-  -Name "placeup-finalscout-batch-daily" `
-  -Schedule "0 4 * * *" `
-  -Uri "$JobRunBase/placeup-finalscout-batch:run"
 
+# No Upsert-SchedulerJob call follows for FinalScout by design.
 Write-Host "Cloud Scheduler jobs created."

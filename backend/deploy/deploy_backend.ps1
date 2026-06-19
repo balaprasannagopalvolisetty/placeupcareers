@@ -9,7 +9,12 @@ param(
   # Scaling knobs. Defaults fit the CURRENT 20-vCPU regional quota
   # (2 vCPU x 10 instances). After a quota increase, raise ApiMaxInstances
   # here instead of editing the script body. See SCALING_PLAYBOOK.md.
-  [int]$ApiMinInstances = 3,
+  # ApiMinInstances was 3 (three 2-vCPU/2-GiB containers kept warm 24/7 =
+  # the bulk of Cloud Run cost). Lowered to 1 for preview-stage traffic: one
+  # warm instance keeps logins fast while cutting ~2/3 of always-on cost.
+  # Set to 0 to scale fully to zero (cheapest; adds a cold start on the first
+  # request after idle).
+  [int]$ApiMinInstances = 0,
   [int]$ApiMaxInstances = 10
 )
 
@@ -24,10 +29,10 @@ if ($FrontendUrl) {
 # DB_POOL_SIZE/DB_MAX_OVERFLOW=2: background jobs get a tiny connection
 # budget so a running scrape can NEVER starve the user-facing API of
 # database connections (the API keeps the default 5+10 per instance).
-$ScraperEnv = "APP_ENV=production,DATABASE_BACKEND=postgres,DB_POOL_SIZE=2,DB_MAX_OVERFLOW=2,SCRAPE_INTERVAL_HOURS=6,SCRAPEGRAPH_ENABLED=false,SCRAPEGRAPH_DISCOVERY_ENABLED=false,SCRAPEGRAPH_DISCOVERY_MAX_URLS=220,SCRAPEGRAPH_DISCOVERY_CONCURRENCY=3,SCRAPLING_DISCOVERY_MAX_TARGETS=1400,SCRAPLING_H1B_EXCEL_COMPANY_LIMIT=1000,SCRAPLING_DISCOVERY_CONCURRENCY=8,SCRAPE_MAX_CONCURRENCY=10,SCRAPER_PUBLIC_SOURCES=linkedin~indeed~glassdoor~ziprecruiter~google~usajobs~dice,SCRAPER_ROLE_BATCH_SIZE=8,SCRAPER_PUBLIC_BATCH_CONCURRENCY=2,SCRAPER_PURGE_EXCEPT_TODAY=false,API_CONNECTOR_SOURCES=adzuna~greenhouse~remoteok~remotive~jobicy,SCRAPE_GLASSDOOR_JOBSPY_ENABLED=false,SCRAPE_ZIPRECRUITER_JOBSPY_ENABLED=false,SCRAPER_JD_HYDRATE_MAX_JOBS=1200,SCRAPER_JD_HYDRATE_CONCURRENCY=8,SCRAPER_JD_HYDRATE_TIMEOUT_SECONDS=28,RAPIDAPI_REQUEST_DELAY_SECONDS=3,RAPIDAPI_RATE_LIMIT_COOLDOWN_SECONDS=900,LINKEDIN_REQUESTS_PER_MINUTE=4,LINKEDIN_THIN_DESCRIPTION_CHARS=1200,LINKEDIN_ENRICH_MAX_JOBS_PER_RUN=800,LINKEDIN_ENRICH_CONCURRENCY=1"
-$ApiSecrets = "DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,RAPIDAPI_KEY=RAPIDAPI_KEY:latest,USAJOBS_API_KEY=USAJOBS_API_KEY:latest,USAJOBS_EMAIL=USAJOBS_EMAIL:latest,HUNTER_API_KEY=HUNTER_API_KEY:latest,FINALSCOUT_API_KEY=FINALSCOUT_API_KEY:latest"
-$ScraperSecrets = "DATABASE_URL=DATABASE_URL:latest,RAPIDAPI_KEY=RAPIDAPI_KEY:latest,USAJOBS_API_KEY=USAJOBS_API_KEY:latest,USAJOBS_EMAIL=USAJOBS_EMAIL:latest,HUNTER_API_KEY=HUNTER_API_KEY:latest,FINALSCOUT_API_KEY=FINALSCOUT_API_KEY:latest"
-$ExternalSecrets = "DATABASE_URL=DATABASE_URL:latest,RAPIDAPI_KEY=RAPIDAPI_KEY:latest,USAJOBS_API_KEY=USAJOBS_API_KEY:latest,USAJOBS_EMAIL=USAJOBS_EMAIL:latest"
+$ScraperEnv = "APP_ENV=production,DATABASE_BACKEND=postgres,DB_POOL_SIZE=3,DB_MAX_OVERFLOW=3,SCRAPE_INTERVAL_HOURS=6,SCRAPEGRAPH_ENABLED=false,SCRAPEGRAPH_DISCOVERY_ENABLED=false,SCRAPEGRAPH_DISCOVERY_MAX_URLS=220,SCRAPEGRAPH_DISCOVERY_CONCURRENCY=3,SCRAPLING_DISCOVERY_MAX_TARGETS=1400,SCRAPLING_H1B_EXCEL_COMPANY_LIMIT=1000,SCRAPLING_DISCOVERY_CONCURRENCY=2,SCRAPE_MAX_CONCURRENCY=4,SCRAPER_PUBLIC_SOURCES=linkedin~indeed~glassdoor~ziprecruiter~google~usajobs~dice,SCRAPER_ROLE_BATCH_SIZE=4,SCRAPER_PUBLIC_BATCH_CONCURRENCY=3,SCRAPER_PUBLIC_MAX_BATCHES_PER_RUN=0,SCRAPER_RUN_BUDGET_SECONDS=0,SCRAPER_PROVIDER_BLOCK_COOLDOWN_SECONDS=1800,SCRAPER_PROVIDER_EMPTY_CIRCUIT_THRESHOLD=4,SCRAPER_PURGE_EXCEPT_TODAY=false,SCRAPER_COVERAGE_FLOOR_ENABLED=false,API_CONNECTOR_SOURCES=adzuna~greenhouse~remoteok~remotive~jobicy,SCRAPE_GLASSDOOR_JOBSPY_ENABLED=true,SCRAPE_ZIPRECRUITER_JOBSPY_ENABLED=true,SCRAPER_JD_HYDRATE_MAX_JOBS=0,SCRAPER_JD_HYDRATE_CONCURRENCY=8,SCRAPER_JD_HYDRATE_TIMEOUT_SECONDS=28,LINKEDIN_REQUESTS_PER_MINUTE=2,LINKEDIN_THIN_DESCRIPTION_CHARS=1200,LINKEDIN_ENRICH_MAX_JOBS_PER_RUN=0,LINKEDIN_ENRICH_CONCURRENCY=1,SCRAPER_CANONICAL_ROLE_BATCH_SIZE=3"
+$ApiSecrets = "DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,USAJOBS_API_KEY=USAJOBS_API_KEY:latest,USAJOBS_EMAIL=USAJOBS_EMAIL:latest,HUNTER_API_KEY=HUNTER_API_KEY:latest"
+$ScraperSecrets = "DATABASE_URL=DATABASE_URL:latest,USAJOBS_API_KEY=USAJOBS_API_KEY:latest,USAJOBS_EMAIL=USAJOBS_EMAIL:latest,HUNTER_API_KEY=HUNTER_API_KEY:latest"
+$ExternalSecrets = "DATABASE_URL=DATABASE_URL:latest,USAJOBS_API_KEY=USAJOBS_API_KEY:latest,USAJOBS_EMAIL=USAJOBS_EMAIL:latest"
 
 gcloud.cmd config set project $ProjectId
 function Test-SecretExists([string]$SecretName) {
@@ -51,12 +56,6 @@ $OpenRouterSecret = Test-SecretExists "OPENROUTER_API_KEY"
 if ($OpenRouterSecret) {
   $ApiSecrets = "$ApiSecrets,OPENROUTER_API_KEY=OPENROUTER_API_KEY:latest"
   $ScraperSecrets = "$ScraperSecrets,OPENROUTER_API_KEY=OPENROUTER_API_KEY:latest"
-}
-
-$FinalScoutKeysSecret = Test-SecretExists "FINALSCOUT_API_KEYS"
-if ($FinalScoutKeysSecret) {
-  $ApiSecrets = "$ApiSecrets,FINALSCOUT_API_KEYS=FINALSCOUT_API_KEYS:latest"
-  $ScraperSecrets = "$ScraperSecrets,FINALSCOUT_API_KEYS=FINALSCOUT_API_KEYS:latest"
 }
 
 foreach ($PaymentSecretName in @("PAYMENT_BASIC_CHECKOUT_URL", "PAYMENT_PRO_CHECKOUT_URL", "PAYMENT_ELITE_CHECKOUT_URL")) {
@@ -156,21 +155,26 @@ gcloud.cmd run jobs deploy placeup-job-scraper-6h `
   --memory 2Gi `
   --cpu 2 `
   --max-retries 0 `
-  --task-timeout 28800
+  --task-timeout 168h
 
-gcloud.cmd run jobs deploy placeup-external-api-12h `
+gcloud.cmd run jobs deploy placeup-backfill-catchup `
   --image $Image `
   --region $Region `
   --service-account "placeup-etl-sa@$ProjectId.iam.gserviceaccount.com" `
   --command python `
-  --args="-m,app.etl.external_api_ingest,--schedule-type,12h" `
+  --args="-m,app.etl.backfill_catchup,--hours-old,720" `
   --set-cloudsql-instances "$ProjectId`:$Region`:$DbInstance" `
-  --set-env-vars "APP_ENV=production,DATABASE_BACKEND=postgres,DB_POOL_SIZE=2,DB_MAX_OVERFLOW=2,RAPIDAPI_REQUEST_DELAY_SECONDS=3,RAPIDAPI_RATE_LIMIT_COOLDOWN_SECONDS=900,LINKEDIN_REQUESTS_PER_MINUTE=4,LINKEDIN_THIN_DESCRIPTION_CHARS=1200,LINKEDIN_REPAIR_THIN_DESCRIPTION_CHARS=1200,LINKEDIN_ENRICH_MAX_JOBS_PER_RUN=500,LINKEDIN_ENRICH_CONCURRENCY=1" `
-  --set-secrets $ExternalSecrets `
-  --memory 1Gi `
-  --cpu 1 `
+  --set-env-vars $ScraperEnv `
+  --set-secrets $ScraperSecrets `
+  --memory 2Gi `
+  --cpu 2 `
   --max-retries 1 `
-  --task-timeout 21600
+  --task-timeout 168h
+
+# placeup-external-api-12h is retired. RapidAPI is intentionally not bound to
+# scheduled jobs; the free public and ATS connectors remain in the 6h scraper.
+# Delete the stale Cloud Run job once if it still exists:
+#   gcloud run jobs delete placeup-external-api-12h --region us-east1 --project <ProjectId>
 
 gcloud.cmd run jobs deploy placeup-taxonomy-role-backfill `
   --image $Image `
@@ -179,7 +183,7 @@ gcloud.cmd run jobs deploy placeup-taxonomy-role-backfill `
   --command python `
   --args="-m,app.etl.taxonomy_role_backfill" `
   --set-cloudsql-instances "$ProjectId`:$Region`:$DbInstance" `
-  --set-env-vars "APP_ENV=production,DATABASE_BACKEND=postgres,DB_POOL_SIZE=2,DB_MAX_OVERFLOW=2,RAPIDAPI_REQUEST_DELAY_SECONDS=3,RAPIDAPI_RATE_LIMIT_COOLDOWN_SECONDS=900,LINKEDIN_REQUESTS_PER_MINUTE=4,LINKEDIN_THIN_DESCRIPTION_CHARS=1200,LINKEDIN_REPAIR_THIN_DESCRIPTION_CHARS=1200,LINKEDIN_ENRICH_MAX_JOBS_PER_RUN=500,LINKEDIN_ENRICH_CONCURRENCY=1" `
+  --set-env-vars "APP_ENV=production,DATABASE_BACKEND=postgres,DB_POOL_SIZE=2,DB_MAX_OVERFLOW=2,LINKEDIN_REQUESTS_PER_MINUTE=4,LINKEDIN_THIN_DESCRIPTION_CHARS=1200,LINKEDIN_REPAIR_THIN_DESCRIPTION_CHARS=1200,LINKEDIN_ENRICH_MAX_JOBS_PER_RUN=500,LINKEDIN_ENRICH_CONCURRENCY=1" `
   --set-secrets $ExternalSecrets `
   --memory 2Gi `
   --cpu 2 `
@@ -263,14 +267,14 @@ gcloud.cmd run jobs deploy placeup-board-discovery-sweep `
   --region $Region `
   --service-account "placeup-etl-sa@$ProjectId.iam.gserviceaccount.com" `
   --command python `
-  --args="-m,app.workers.board_discovery_sweep,--limit,600,--concurrency,8" `
+  --args="-m,app.workers.board_discovery_sweep,--limit,250,--concurrency,1" `
   --set-cloudsql-instances "$ProjectId`:$Region`:$DbInstance" `
   --set-env-vars "APP_ENV=production,DATABASE_BACKEND=postgres,DB_POOL_SIZE=2,DB_MAX_OVERFLOW=2" `
   --set-secrets "DATABASE_URL=DATABASE_URL:latest" `
   --memory 1Gi `
   --cpu 1 `
   --max-retries 1 `
-  --task-timeout 21600
+  --task-timeout 3600
 
 # Resolves each third-party posting (LinkedIn/Dice/Glassdoor/...) to the
 # employer's OFFICIAL careers page / ATS posting and upgrades the JD +
@@ -402,7 +406,7 @@ $ErrorActionPreference = $previousErrorAction
 if ($BoardSweepScheduleExists) {
   gcloud.cmd scheduler jobs update http placeup-board-discovery-sweep-6h `
     --location $Region `
-    --schedule "0 1,7,13,19 * * *" `
+    --schedule "0 1 * * *" `
     --time-zone "America/Chicago" `
     --uri $BoardSweepScheduleUri `
     --http-method POST `
@@ -410,7 +414,7 @@ if ($BoardSweepScheduleExists) {
 } else {
   gcloud.cmd scheduler jobs create http placeup-board-discovery-sweep-6h `
     --location $Region `
-    --schedule "0 1,7,13,19 * * *" `
+    --schedule "0 1 * * *" `
     --time-zone "America/Chicago" `
     --uri $BoardSweepScheduleUri `
     --http-method POST `
