@@ -12,13 +12,19 @@ from zipfile import ZipFile, is_zipfile
 logger = logging.getLogger(__name__)
 
 MAX_PDF_PAGES = 8
+# We extract TEXT ONLY here — PyPDF2 never renders or executes the PDF — and the
+# original file is NOT stored or re-served. So benign-but-common markers that
+# appear in ordinary resumes exported from Word, Canva, LaTeX, Google Docs, etc.
+# must NOT cause a rejection:
+#   /OpenAction  -> initial view/zoom ("fit page") set on open
+#   /AA          -> additional-action triggers on links/form fields
+#   /EmbeddedFile-> attached fonts or the source document
+# Blocking those produced false positives like "PDF contains active or embedded
+# content and cannot be accepted" on legitimate resumes. We now only reject
+# clear script/launch actions.
 PDF_ACTIVE_CONTENT_MARKERS = (
     b"/JavaScript",
-    b"/JS",
-    b"/OpenAction",
-    b"/AA",
     b"/Launch",
-    b"/EmbeddedFile",
 )
 DOCX_BLOCKED_PARTS = (
     "vbaProject.bin",
