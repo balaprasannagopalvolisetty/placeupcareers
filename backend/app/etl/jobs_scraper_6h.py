@@ -392,26 +392,57 @@ def _log_role_country_coverage(*, floor: int) -> None:
 
 
 def main() -> int:
+    """Run the 6h scrape and ALWAYS exit 0.
+
+    The scheduled run must never be marked "Failed" in Cloud Run for a
+    recoverable reason: a brief DB hiccup at startup, a provider outage, or a
+    partial source failure are all expected and must not break the every-6h
+    cadence. We therefore (a) catch every exception, (b) downgrade any non-zero
+    internal code to 0, and (c) log loudly so problems are still visible in
+    Cloud Logging. The only things that can still surface as a failed execution
+    are infrastructure kills (OOM / platform timeout), which are handled by the
+    job's memory budget and --max-retries, not by this process.
+    """
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
-    client = PostgresClient()
-    with client.session() as db:
-        locked = bool(db.execute(
-            text("SELECT pg_try_advisory_lock(:lock_key)"),
-            {"lock_key": ADVISORY_LOCK_KEY},
-        ).scalar())
-        if not locked:
-            logger.warning("Another 6h scraper execution is already running; skipping this run.")
-            return 0
-        try:
-            return asyncio.run(_run_batched())
-        finally:
-            db.execute(
-                text("SELECT pg_advisory_unlock(:lock_key)"),
+    try:
+        client = PostgresClient()
+        with client.session() as db:
+            locked = bool(db.execute(
+                text("SELECT pg_try_advisory_lock(:lock_key)"),
                 {"lock_key": ADVISORY_LOCK_KEY},
+            ).scalar())
+            if not locked:
+                logger.warning("Another 6h scraper execution is already running; skipping this run.")
+                return 0
+            try:
+                result = asyncio.run(_run_batched())
+            finally:
+                try:
+                    db.execute(
+                        text("SELECT pg_advisory_unlock(:lock_key)"),
+                        {"lock_key": ADVISORY_LOCK_KEY},
+                    )
+                except Exception as unlock_exc:
+                    # The advisory lock is session-scoped; closing the session
+                    # releases it anyway, so an unlock failure is non-fatal.
+                    logger.warning("6h scraper advisory unlock failed (session close releases it): %s", unlock_exc)
+        if result:
+            logger.error(
+                "6h scraper finished with internal code=%s (some passes failed). "
+                "Exiting 0 so the every-6h schedule is never marked failed; see warnings above.",
+                result,
             )
+        return 0
+    except Exception as exc:  # noqa: BLE001 - deliberately catch-all
+        logger.exception(
+            "6h scraper top-level failure (likely DB connect/lock at startup). "
+            "Exiting 0 to keep the 6h schedule healthy; investigate via Cloud Logging: %s",
+            exc,
+        )
+        return 0
 
 
 if __name__ == "__main__":
