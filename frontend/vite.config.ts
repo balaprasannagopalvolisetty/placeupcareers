@@ -34,31 +34,31 @@ export default defineConfig({
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
 
-  // Production build tuning. The pre-split bundle was a single 998 KB
-  // chunk — too large for first-paint on mobile. We split out the
-  // common heavyweight libraries so the browser can parallelise the
-  // download and cache them across deploys.
+  // Production build tuning. We split heavyweight libraries so the browser can
+  // parallelise downloads and cache them across deploys.
   build: {
-    // Most of our screens render at the same time the user lands on
-    // /signin or /dashboard, so a slightly higher per-chunk ceiling
-    // is fine — but we still want vendor splits.
     chunkSizeWarningLimit: 600,
     sourcemap: false,
     rollupOptions: {
       output: {
         manualChunks(id: string) {
           if (!id.includes('node_modules')) return undefined
-          // Heaviest bundles first — pin them so they cache across
-          // deploys whenever their version doesn't change.
-          if (id.includes('react-router')) return 'router'
-          if (id.includes('react-dom')) return 'react-dom'
-          if (id.includes('react/') || id.endsWith('react')) return 'react-core'
-          if (id.includes('motion') || id.includes('framer-motion')) return 'motion'
-          if (id.includes('lucide-react')) return 'icons'
-          if (id.includes('recharts') || id.includes('d3-')) return 'charts'
-          // Everything else stays in a shared vendor chunk so we don't
-          // explode into hundreds of tiny files (HTTP/2 helps but
-          // there's still overhead).
+          const m = id.replace(/\\/g, '/')
+          // The React RUNTIME must be fully self-contained in ONE chunk that
+          // every other chunk depends on. Splitting react-is/scheduler out, or
+          // greedily matching "react/" (which pulled @sentry/react in and its
+          // @sentry/core dep created a circular chunk dependency), causes a
+          // "Cannot read properties of undefined (reading 'PureComponent')"
+          // crash at boot. Anchor strictly to node_modules/<pkg>/.
+          if (/\/node_modules\/(react|react-dom|react-is|scheduler|prop-types|use-sync-external-store|object-assign|react\/jsx-runtime)\//.test(m)) {
+            return 'react-core'
+          }
+          if (m.includes('/node_modules/react-router')) return 'router'
+          if (m.includes('/node_modules/motion') || m.includes('framer-motion')) return 'motion'
+          if (m.includes('/node_modules/lucide-react')) return 'icons'
+          if (m.includes('/node_modules/recharts') || m.includes('/node_modules/d3-') || m.includes('/node_modules/victory') || m.includes('/node_modules/internmap')) return 'charts'
+          // Everything else (incl. @sentry/*) shares a vendor chunk that
+          // cleanly imports React from react-core — one-way, no cycle.
           return 'vendor'
         },
       },
