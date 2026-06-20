@@ -299,42 +299,75 @@ def _tf_cosine(a: str, b: str) -> float:
 
 
 def _split_bullets(resume_text: str) -> list[str]:
-    """Return real resume bullets — glyph-led lines, or action-verb-led lines as
-    a fallback. Excludes the name, contact line, section headers, dates, and
-    skill-list rows. Never splits a wrapped sentence into fragments."""
-    glyph_lines: list[str] = []
-    verb_lines: list[str] = []
+    """Return real resume bullets, REJOINING wrapped continuation lines.
+
+    PDF text extraction breaks one long bullet across several physical lines;
+    only the first carries the bullet glyph. We reattach the wrapped remainder
+    so feedback critiques a COMPLETE sentence, never a fragment. Names, contact
+    lines, section headers, date headers and skill-list rows are excluded.
+    """
+    _CONT = re.compile(r"^(and|or|nor|but|then|the|a|an|to|with|within|across|including|by|for|in|of|on|that|which|who|whose|using|via|through|from|as|at|into|while|where|when|so)\b", re.I)
+
+    def _is_break(s: str) -> bool:
+        low = s.lower().strip(": ").strip()
+        if low in _SECTION_HEADERS:
+            return True
+        if " | " in s:
+            return True
+        if re.search(r"\b(19|20)\d{2}\b\s*[-–—]\s*(present|current|(19|20)\d{2})", low):
+            return True
+        if "@" in s or re.search(r"https?://|linkedin\.com|github\.com|\+?\d[\d \-()]{7,}", s):
+            return True
+        return False
+
+    logical: list[str] = []
+    cur: Optional[str] = None
     for raw in (resume_text or "").splitlines():
-        line = raw.strip()
-        if not line:
+        s = raw.strip()
+        if not s:
+            if cur:
+                logical.append(cur)
+                cur = None
             continue
-        starts_glyph = line[0] in _BULLET_GLYPHS
-        s = re.sub(r"^[•‣◦▪●○·\-\*–—\s]+", "", line).strip()
+        if s[0] in _BULLET_GLYPHS:
+            if cur:
+                logical.append(cur)
+            cur = re.sub(r"^[•‣◦▪●○·\-\*–—\s]+", "", s).strip()
+            continue
+        if _is_break(s):
+            if cur:
+                logical.append(cur)
+                cur = None
+            logical.append(s)
+            continue
+        if cur is not None and (s[0].islower() or _CONT.match(s)):
+            cur = (cur + " " + s).strip()
+            continue
+        if cur:
+            logical.append(cur)
+            cur = None
+        logical.append(s)
+    if cur:
+        logical.append(cur)
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for s in logical:
         low = s.lower().strip(":").strip()
-        if not (24 <= len(s) <= 400) or not re.search(r"[a-zA-Z]", s):
+        if not (24 <= len(s) <= 500) or not re.search(r"[a-zA-Z]", s):
             continue
         if low in _SECTION_HEADERS:
             continue
         if "@" in s or re.search(r"https?://|linkedin\.com|github\.com|\+?\d[\d \-()]{7,}", s):
             continue
         first = (low.split() or [""])[0].strip(":,.")
-        starts_verb = first in _ALL_VERBS
-        # Skip "Label: a, b, c" skill/tool rows — not accomplishment bullets.
-        if ":" in s[:42] and s.count(",") >= 2 and not starts_verb:
+        if ":" in s[:42] and s.count(",") >= 2 and first not in _ALL_VERBS:
             continue
-        if starts_glyph:
-            glyph_lines.append(s)
-        elif starts_verb:
-            verb_lines.append(s)
-    bullets = glyph_lines if len(glyph_lines) >= 3 else (glyph_lines + verb_lines)
-    seen: set[str] = set()
-    res: list[str] = []
-    for b in bullets:
-        if b.lower() in seen:
+        if s.lower() in seen:
             continue
-        seen.add(b.lower())
-        res.append(b)
-    return res
+        seen.add(s.lower())
+        out.append(s)
+    return out
 
 
 def _accomplishment_bullets(resume_text: str) -> list[str]:

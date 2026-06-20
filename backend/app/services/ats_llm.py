@@ -48,24 +48,36 @@ _SYSTEM = (
 )
 
 
-def _provider() -> Optional[tuple[str, str, str, dict]]:
-    """(url, api_key, model, extra_headers) for the first configured provider."""
+def _provider() -> Optional[tuple[str, str, list[str], dict]]:
+    """(url, api_key, [models to try in order], extra_headers) for the first
+    configured provider. OpenRouter gets a FALLBACK CHAIN of free models so a
+    single rate-limited (429) model never kills the analysis."""
     enabled = os.getenv("ATS_LLM_ENABLED", "auto").strip().lower()
     if enabled in {"0", "false", "off", "no", "disabled"}:
         return None
     if (settings.openrouter_api_key or "").strip():
-        model = os.getenv("ATS_LLM_MODEL", "").strip() or "meta-llama/llama-3.3-70b-instruct:free"
+        env_model = os.getenv("ATS_LLM_MODEL", "").strip()
+        if env_model:
+            models = [m.strip() for m in env_model.split(",") if m.strip()]
+        else:
+            models = [
+                "deepseek/deepseek-v4-flash:free",
+                "google/gemma-4-31b-it:free",
+                "moonshotai/kimi-k2.6:free",
+                "nvidia/nemotron-3-super-120b-a12b:free",
+                "google/gemma-4-26b-a4b-it:free",
+            ]
         url = settings.openrouter_base_url.rstrip("/") + "/chat/completions"
         headers = {
             "HTTP-Referer": settings.openrouter_referer or "https://placeupcareer.com",
             "X-Title": "PlaceUp ATS",
         }
-        return (url, settings.openrouter_api_key.strip(), model, headers)
+        return (url, settings.openrouter_api_key.strip(), models, headers)
     if (settings.groq_api_key or "").strip():
-        return ("https://api.groq.com/openai/v1/chat/completions", settings.groq_api_key.strip(), settings.llm_model, {})
+        return ("https://api.groq.com/openai/v1/chat/completions", settings.groq_api_key.strip(), [settings.llm_model], {})
     if (settings.openai_api_key or "").strip():
         model = os.getenv("ATS_LLM_MODEL", "").strip() or "gpt-4o-mini"
-        return ("https://api.openai.com/v1/chat/completions", settings.openai_api_key.strip(), model, {})
+        return ("https://api.openai.com/v1/chat/completions", settings.openai_api_key.strip(), [model], {})
     return None
 
 
@@ -90,37 +102,49 @@ def _extract_json(text: str) -> Optional[dict]:
     return None
 
 
-async def _call_llm(resume_text: str, jd: str, title: str, company: str, *, timeout: float = 18.0) -> Optional[dict]:
+async def _call_llm(resume_text: str, jd: str, title: str, company: str, *, timeout: float = 15.0) -> Optional[dict]:
     prov = _provider()
     if not prov:
         return None
-    url, key, model, extra_headers = prov
+    url, key, models, extra_headers = prov
     user = (
         f"JOB TITLE: {title}\nCOMPANY: {company}\n\n"
         f"JOB DESCRIPTION:\n{(jd or '')[:6000]}\n\n"
         f"CANDIDATE RESUME:\n{(resume_text or '')[:6000]}"
     )
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": _SYSTEM},
-            {"role": "user", "content": user},
-        ],
-        "temperature": 0.2,
-        "max_tokens": 1200,
-    }
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json", **extra_headers}
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.post(url, json=payload, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
-        content = data["choices"][0]["message"]["content"]
-    except (httpx.HTTPError, KeyError, IndexError, TypeError) as exc:
-        logger.warning("ATS LLM call failed; using deterministic analysis: %s", exc)
+            for model in models:
+                payload = {
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": _SYSTEM},
+                        {"role": "user", "content": user},
+                    ],
+                    "temperature": 0.2,
+                    "max_tokens": 1200,
+                }
+                try:
+                    resp = await client.post(url, json=payload, headers=headers)
+                    if resp.status_code == 429:
+                        logger.warning("ATS LLM model %s rate-limited (429); trying next", model)
+                        continue
+                    resp.raise_for_status()
+                    data = resp.json()
+                    content = data["choices"][0]["message"]["content"]
+                except (httpx.HTTPError, KeyError, IndexError, TypeError) as exc:
+                    logger.warning("ATS LLM model %s failed (%s); trying next", model, exc)
+                    continue
+                parsed = _extract_json(content)
+                if isinstance(parsed, dict):
+                    logger.info("ATS LLM analysis succeeded via %s", model)
+                    return parsed
+                logger.warning("ATS LLM model %s returned non-JSON; trying next", model)
+    except Exception as exc:
+        logger.warning("ATS LLM call failed entirely; deterministic fallback: %s", exc)
         return None
-    parsed = _extract_json(content)
-    return parsed if isinstance(parsed, dict) else None
+    return None
 
 
 def _impact(val: object) -> str:
