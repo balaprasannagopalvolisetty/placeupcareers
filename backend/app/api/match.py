@@ -142,7 +142,9 @@ async def analyze_resume_against_job(
             raise HTTPException(status_code=400, detail="Could not extract text from resume.")
 
         from app.services.ats_analysis import analyze as ats_analyze
-        return ats_analyze(resume_text, jd_text, job_title=jt, company=company)
+        from app.services.ats_llm import maybe_refine
+        base = ats_analyze(resume_text, jd_text, job_title=jt, company=company)
+        return await maybe_refine(resume_text, jd_text, jt, company, base)
     except HTTPException:
         raise
     except Exception as e:
@@ -174,8 +176,10 @@ async def active_resume_analysis(
     if not jd_text or len(jd_text.strip()) < 30:
         return {"has_resume": True, "insufficient_jd": True}
     from app.services.ats_analysis import analyze as ats_analyze
+    from app.services.ats_llm import maybe_refine
 
     result = ats_analyze(resume_text, jd_text, job_title=job.get("title", ""), company=job.get("company", ""))
+    result = await maybe_refine(resume_text, jd_text, job.get("title", ""), job.get("company", ""), result)
     return {"has_resume": True, **result}
 
 

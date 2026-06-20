@@ -179,7 +179,15 @@ function renderJobDescription(raw: string): ReactNode {
   // render as literal symbols — strip them so every JD reads consistently.
   text = text.replace(/\*\*+|__+|~~+/g, "");
   text = text.replace(/^#+\s*/gm, "");
-  text = text.replace(/\\([\\`*_{}[\]()#+\-.!|>~])/g, "$1");
+  // Unescape ALL backslash-escaped punctuation from scraped markdown
+  // ("\&" -> "&", "\(" -> "(", "\-" -> "-"). The old class missed "&", so
+  // JDs rendered ugly literals like "Education \& Experience".
+  text = text.replace(/\\([^\w\s])/g, "$1");
+  // Setext headings: a short label underlined with --- or === ("Location\n----")
+  // becomes a real heading instead of a line of dashes.
+  text = text.replace(/^[ \t]*([^\n]{1,60})\n[ \t]*[-=]{3,}[ \t]*$/gm, "## $1");
+  // Drop any remaining horizontal-rule / underline separator lines.
+  text = text.replace(/^[ \t]*[-=_*]{3,}[ \t]*$/gm, "");
 
   // Normalize: collapse horizontal whitespace only; preserve line breaks
   const lines = text.split("\n").map((l) => l.replace(/[ \t]+/g, " ").trim());
@@ -223,8 +231,8 @@ function renderJobDescription(raw: string): ReactNode {
       blocks.push(<div key={`bh-${i}`} style={{ fontSize: 14, fontWeight: 700, color: T.text, fontFamily: F.sans, marginTop: 18, marginBottom: 6, paddingBottom: 4, borderBottom: `1px solid ${T.border}` }}>{line.replace(/\*\*/g, "").replace(/:$/, "").trim()}</div>);
       return;
     }
-    // Bullet / numbered list item
-    const bm = line.match(/^(?:[*\-•·]|\d+[.)]) +(.*)/);
+    // Bullet / numbered list item (incl. "+" sub-bullets and unicode glyphs)
+    const bm = line.match(/^(?:[*\-•·+▪◦‣●○]|\d+[.)]) +(.*)/);
     if (bm) { listItems.push(bm[1]); return; }
 
     // Regular paragraph

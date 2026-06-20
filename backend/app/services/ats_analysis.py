@@ -1,20 +1,21 @@
 """Advanced ATS / match analysis (deterministic, local — no LLM cost).
 
-Produces the recruiter-grade analysis the redesigned UI and the resume tailor
-consume:
+Recruiter-grade analysis for the redesigned UI and the resume tailor:
 
-  * an overall match score blending keyword coverage, weighted-keyword
-    importance, and TF cosine similarity (semantic overlap),
+  * an overall match score blending weighted-keyword coverage and TF cosine
+    similarity (semantic overlap),
   * a weighted breakdown that sums to 100 (keyword match, bullet quality,
     section completeness, formatting, impact quantification),
   * matched / missing keywords grouped by category, each missing keyword ranked
-    by impact (High / Medium / Low) from JD frequency + section placement,
-  * red-flag bullets (passive voice, weak verbs, missing quantification,
-    first-person, overlong) with a concrete rewrite for each.
+    High / Medium / Low by JD frequency + requirement-section placement,
+  * accomplishment-bullet feedback (passive voice, weak verbs, missing
+    quantification) with a concrete rewrite for each — never the candidate's
+    name, contact line, section headers, skill lists, or sentence fragments.
 
-Robustness features: alias normalization (k8s→kubernetes, js→javascript…),
-multi-word skill phrase matching ("machine learning", "incident response"), and
-JD requirement-section weighting.
+The keyword engine is DOMAIN-AGNOSTIC: it surfaces real hard skills for power
+systems (PLC, HMI, switchgear), security (SIEM, EDR, MITRE), or software alike
+by combining acronym detection, a multi-domain hard-skill lexicon, and known
+phrases — then filters generic filler ("data", "back up", "go", "company wide").
 """
 from __future__ import annotations
 
@@ -40,18 +41,22 @@ _TOOLS_PLATFORMS = {
     "figma", "vs code", "linux", "unix", "bash", "nginx", "vercel", "netlify", "cloudflare",
     "postman", "salesforce", "servicenow", "sentinel", "qradar", "crowdstrike", "nessus",
     "qualys", "wireshark", "burp suite", "metasploit", "nmap", "jupyter", "spark", "hadoop",
+    "smartsheet", "excel", "google sheets", "sharepoint", "vmware", "proxmox", "intune",
+    "sentinelone", "microsoft defender", "active directory", "powershell", "factorytalk",
+    "wonderware", "rockwell", "allen-bradley", "modicon", "siemens",
 }
 _METHODOLOGIES = {
     "agile", "scrum", "kanban", "waterfall", "cicd", "tdd", "bdd", "devops",
     "devsecops", "mlops", "sre", "microservices", "rest", "restful", "graphql", "grpc", "oop",
     "design patterns", "pair programming", "code review", "sprint planning",
     "continuous integration", "continuous deployment", "infrastructure as code", "ci/cd",
+    "root cause analysis", "incident response", "change management",
 }
 _CERTIFICATIONS = {
     "aws certified", "aws solutions architect", "azure certified", "gcp certified",
     "cissp", "ccsp", "security+", "comptia", "network+", "ceh", "oscp", "pmp", "csm",
     "ccna", "cka", "ckad", "cisa", "cism", "cpa", "six sigma", "itil", "togaf",
-    "cysa+", "gsec", "sc-200", "splunk certified",
+    "cysa+", "gsec", "sc-200", "splunk certified", "pentest+",
 }
 _SOFT_SKILLS = {
     "communication", "leadership", "collaboration", "teamwork", "problem solving",
@@ -61,16 +66,41 @@ _SOFT_SKILLS = {
     "decision making", "conflict resolution",
 }
 
+# Multi-domain hard skills BEYOND the software-centric TECH_SKILLS dictionary, so
+# the engine recognises real keywords for engineering, IT, security, ops, etc.
+_EXTRA_HARD_SKILLS = {
+    # power / controls / electrical engineering
+    "plc", "hmi", "scada", "switchgear", "generator", "automation", "controls",
+    "commissioning", "schematics", "blueprints", "paralleling", "transfer switch",
+    "low voltage", "medium voltage", "power systems", "electrical", "firmware",
+    "instrumentation", "distributed control systems", "vfd", "relay", "circuit",
+    # IT / infra / security
+    "networking", "firewall", "firewalls", "vlan", "dns", "dhcp", "vpn", "tcp/ip",
+    "windows server", "group policy", "endpoint", "siem", "edr", "soc", "mitre att&ck",
+    "owasp", "vulnerability management", "penetration testing", "threat detection",
+    "phishing", "incident analysis", "log analysis", "cvss", "rbac", "mfa", "sso",
+    "virtualization", "imaging", "autopilot", "mdm", "patch management",
+    "identity", "access management", "entra id", "azure ad", "microsoft 365",
+    # data / general
+    "data analysis", "data engineering", "reporting", "dashboards", "etl",
+    "troubleshooting", "technical support", "root cause", "documentation",
+    "computer vision", "machine learning", "automated testing",
+}
+
 # Variant → canonical, so resume and JD match despite different spellings.
 _ALIASES = {
     "k8s": "kubernetes", "js": "javascript", "ts": "typescript", "py": "python",
-    "gcp": "google cloud", "postgres": "postgresql", "pg": "postgresql",
-    "ml": "machine learning", "ai": "artificial intelligence", "dl": "deep learning",
+    "postgres": "postgresql", "pg": "postgresql",
+    "ml": "machine learning", "dl": "deep learning",
     "nlp": "natural language processing", "ci/cd": "cicd", "ci cd": "cicd",
     "node": "node.js", "nodejs": "node.js", "reactjs": "react", "react.js": "react",
-    "rest api": "rest", "restful": "rest", "oop": "object oriented programming",
+    "rest api": "rest", "restful": "rest",
     "k8": "kubernetes", "tf": "terraform", "gh actions": "github actions",
     "problem-solving": "problem solving", "ci-cd": "cicd",
+    "active directory": "active directory", "ad": "active directory",
+    "allen bradley": "allen-bradley", "att&ck": "mitre att&ck",
+    "transfer switches": "transfer switch", "hmis": "hmi", "plcs": "plc",
+    "firewalls": "firewall", "controls systems": "controls",
 }
 
 # Multi-word skills worth matching as a unit.
@@ -81,8 +111,41 @@ _KNOWN_PHRASES = {
     "product management", "continuous integration", "continuous deployment",
     "infrastructure as code", "object oriented programming", "test driven development",
     "google cloud", "power bi", "burp suite", "github actions", "design patterns",
-    "rest api", "stakeholder management", "cross-functional", "code review",
-} | {p for p in (_TOOLS_PLATFORMS | _METHODOLOGIES | _CERTIFICATIONS | _SOFT_SKILLS) if " " in p}
+    "stakeholder management", "cross-functional", "code review", "root cause analysis",
+    "active directory", "group policy", "power systems", "transfer switch",
+    "windows server", "patch management", "technical support", "log analysis",
+    "distributed control systems", "low voltage", "medium voltage", "access management",
+} | {p for p in (_TOOLS_PLATFORMS | _METHODOLOGIES | _CERTIFICATIONS | _SOFT_SKILLS | _EXTRA_HARD_SKILLS) if " " in p}
+
+# Full hard-skill lexicon used for recognition.
+_HARD_SKILLS = {s.lower() for s in (TECH_SKILLS | _TOOLS_PLATFORMS | _METHODOLOGIES | _CERTIFICATIONS | _EXTRA_HARD_SKILLS)}
+
+# Generic words that are NOT meaningful resume/JD keywords. These used to leak
+# through frequency counting and made the analysis look unintelligent
+# ("back up · High", "data · High", "go · High", "company wide · High").
+_NOISE_TERMS = {
+    "data", "back up", "backup", "go", "company wide", "company-wide", "team", "teams",
+    "work", "working", "experience", "knowledge", "ability", "system", "systems",
+    "end user", "end users", "stakeholder", "stakeholders", "business", "process",
+    "processes", "quality", "field", "role", "position", "opportunity", "requirement",
+    "requirements", "responsibility", "responsibilities", "skill", "skills", "support",
+    "user", "users", "customer", "customers", "service", "services", "solution",
+    "solutions", "project", "projects", "tool", "tools", "environment", "environments",
+    "standard", "standards", "needs", "related", "various", "including", "across",
+    "using", "use", "new", "good", "strong", "level", "based", "etc", "per", "via",
+    "company", "organization", "operations", "operational", "engineer", "engineering",
+    "development", "developer", "design", "designing", "implementation", "management",
+    "analysis", "results", "result", "best practices", "day", "year", "years",
+}
+
+# All-caps tokens that are NOT skills (geography, benefits, legal, degree codes).
+_ACRONYM_STOP = {
+    "us", "usa", "u.s", "eeo", "ada", "pto", "fsa", "hsa", "dcfsa", "401k", "id",
+    "bsee", "bseet", "cat", "epd", "aes", "ok", "hr", "ceo", "cto", "cfo", "vp",
+    "ii", "iii", "iv", "i", "a", "the", "and", "or", "of", "to", "in", "on", "at",
+    "msee", "bs", "ms", "ba", "mba", "phd", "gpa", "am", "pm", "est", "pst", "cst",
+    "faq", "tbd", "n/a", "na", "etc", "inc", "llc", "ltd", "jr", "sr",
+}
 
 _WEAK_OPENERS = (
     "responsible for", "worked on", "helped with", "assisted with", "involved in",
@@ -97,12 +160,29 @@ _STRONG_VERBS = (
     "owned", "scaled", "engineered", "shipped", "accelerated", "cut", "boosted", "generated",
     "negotiated", "orchestrated", "pioneered", "transformed", "championed",
 )
+# Broader action verbs so well-written bullets are recognised as accomplishment
+# statements (and the name / summary / skills lines are NOT).
+_EXTRA_VERBS = (
+    "focused", "strengthened", "sustained", "supported", "replicated", "hardened",
+    "authored", "provisioned", "administered", "mapped", "validated", "identified",
+    "assessed", "documented", "configured", "maintained", "monitored", "analyzed",
+    "investigated", "triaged", "remediated", "collaborated", "coordinated", "executed",
+    "performed", "conducted", "created", "established", "enabled", "enhanced",
+    "integrated", "managed", "oversaw", "partnered", "prepared", "processed", "produced",
+    "programmed", "reviewed", "supervised", "tested", "tracked", "trained", "translated",
+    "troubleshot", "researched", "presented", "facilitated", "consolidated", "standardized",
+    "modernized", "refactored", "diagnosed", "installed", "upgraded", "automating",
+)
+_ALL_VERBS = set(_STRONG_VERBS) | set(_EXTRA_VERBS)
+
 _QUANT_RE = re.compile(r"\d+\s?%|\$\s?\d+|\b\d+x\b|\bby\s+\d+|\b\d+\s?(?:k|m|b|bn)\b|\b\d{2,}\b")
 _SECTION_HEADERS = {
     "experience", "work experience", "professional experience", "education", "skills",
     "technical skills", "projects", "certifications", "summary", "professional summary",
-    "objective", "achievements", "awards", "publications", "contact", "references", "interests",
+    "objective", "achievements", "awards", "publications", "contact", "references",
+    "interests", "security research & community", "security research and community",
 }
+_BULLET_GLYPHS = "•‣◦▪●○·*"
 
 
 def _normalize(term: str) -> str:
@@ -139,33 +219,61 @@ def categorize_keywords(keywords: list[str]) -> dict[str, list[str]]:
     return {c: items for c, items in buckets.items() if items}
 
 
+def _term_present(term: str, low_padded: str) -> bool:
+    """Word-boundary-ish presence test against a space-padded lowered text."""
+    if re.search(r"[ \-/+.#&]", term):
+        return f" {term} " in low_padded or term in low_padded
+    return re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", low_padded) is not None
+
+
+def _acronyms(text: str) -> set[str]:
+    """Real skill acronyms (PLC, HMI, ATS, SIEM, EDR, GPO, RBAC, CI/CD…)."""
+    out: set[str] = set()
+    for m in re.findall(r"\b[A-Z][A-Za-z0-9]{1,5}(?:/[A-Za-z0-9]{1,5})?\b", text or ""):
+        a = m.strip()
+        low = a.lower()
+        if low in _ACRONYM_STOP or a.isdigit() or low in _NOISE_TERMS:
+            continue
+        # Must contain at least one uppercase letter beyond the first to be an
+        # acronym (filters ordinary Capitalised words like "Power", "Remote").
+        if not re.search(r"[A-Z0-9].*[A-Z0-9]", a) and "/" not in a:
+            continue
+        out.add(low)
+    return out
+
+
 def _extract_terms(text: str) -> set[str]:
-    """Normalized skills + known phrases + clean single keywords from text."""
+    """Normalised hard skills + known phrases + acronyms — generic filler removed."""
     low = " " + clean_text(text).lower() + " "
     terms: set[str] = set()
     for ph in _KNOWN_PHRASES:
-        if f" {ph} " in low or ph in low:
+        if _term_present(ph, low):
             terms.add(_normalize(ph))
+    for sk in _HARD_SKILLS:
+        if _term_present(sk, low):
+            terms.add(_normalize(sk))
     for sk in extract_skills_from_text(text):
-        terms.add(_normalize(sk))
-    for kw in extract_relevant_keywords(text, top_n=50):
-        if " " not in kw and len(kw) >= 2:
-            terms.add(_normalize(kw))
-    return terms
+        n = _normalize(sk)
+        if n in _HARD_SKILLS or n in _KNOWN_PHRASES or " " in n:
+            terms.add(n)
+    for ac in _acronyms(text):
+        terms.add(_normalize(ac))
+    # Drop generic filler and trivially short tokens.
+    return {t for t in terms if t and t not in _NOISE_TERMS and len(t) >= 2}
 
 
 def _jd_importance(jd_text: str, terms: set[str]) -> dict[str, str]:
     """Rank each JD term High/Medium/Low by frequency + requirement-section hits."""
     low = clean_text(jd_text).lower()
     req_zone = ""
-    m = re.search(r"(requirements?|qualifications?|must have|what you'll need|required)(.*)", low, re.S)
+    m = re.search(r"(requirements?|qualifications?|must have|what you'll need|what you will have|required|what they need)(.*)", low, re.S)
     if m:
-        req_zone = m.group(2)[:1500]
+        req_zone = m.group(2)[:2500]
     out: dict[str, str] = {}
     for t in terms:
         freq = low.count(t)
         in_req = t in req_zone
-        hard = _normalize(t) in TECH_SKILLS or _category_of(t) in ("Tools & Platforms", "Certifications")
+        hard = _normalize(t) in _HARD_SKILLS or _category_of(t) in ("Tools & Platforms", "Certifications") or len(t) <= 5
         if (freq >= 2 and hard) or (in_req and hard):
             out[t] = "High"
         elif freq >= 2 or in_req or hard:
@@ -191,44 +299,72 @@ def _tf_cosine(a: str, b: str) -> float:
 
 
 def _split_bullets(resume_text: str) -> list[str]:
-    lines = re.split(r"[\n\r]+|(?<=[.;])\s+(?=[A-Z])", resume_text or "")
-    out: list[str] = []
-    for line in lines:
-        s = re.sub(r"^[•‣◦\-\*–—\s]+", "", line).strip()
+    """Return real resume bullets — glyph-led lines, or action-verb-led lines as
+    a fallback. Excludes the name, contact line, section headers, dates, and
+    skill-list rows. Never splits a wrapped sentence into fragments."""
+    glyph_lines: list[str] = []
+    verb_lines: list[str] = []
+    for raw in (resume_text or "").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        starts_glyph = line[0] in _BULLET_GLYPHS
+        s = re.sub(r"^[•‣◦▪●○·\-\*–—\s]+", "", line).strip()
         low = s.lower().strip(":").strip()
-        if not (24 <= len(s) <= 320) or not re.search(r"[a-zA-Z]", s):
+        if not (24 <= len(s) <= 400) or not re.search(r"[a-zA-Z]", s):
             continue
         if low in _SECTION_HEADERS:
             continue
         if "@" in s or re.search(r"https?://|linkedin\.com|github\.com|\+?\d[\d \-()]{7,}", s):
             continue
-        if s.count(",") >= 3 and not any(re.search(rf"\b{v}\b", low) for v in _STRONG_VERBS):
+        first = (low.split() or [""])[0].strip(":,.")
+        starts_verb = first in _ALL_VERBS
+        # Skip "Label: a, b, c" skill/tool rows — not accomplishment bullets.
+        if ":" in s[:42] and s.count(",") >= 2 and not starts_verb:
             continue
-        if len(s.split()) <= 6 and s == s.title() and not any(re.search(rf"\b{v}\b", low) for v in _STRONG_VERBS):
+        if starts_glyph:
+            glyph_lines.append(s)
+        elif starts_verb:
+            verb_lines.append(s)
+    bullets = glyph_lines if len(glyph_lines) >= 3 else (glyph_lines + verb_lines)
+    seen: set[str] = set()
+    res: list[str] = []
+    for b in bullets:
+        if b.lower() in seen:
             continue
-        out.append(s)
+        seen.add(b.lower())
+        res.append(b)
+    return res
+
+
+def _accomplishment_bullets(resume_text: str) -> list[str]:
+    """Bullets that are genuine accomplishment statements (start with an action
+    verb). Critiquing only these keeps feedback off names, certs, and skills."""
+    out: list[str] = []
+    for b in _split_bullets(resume_text):
+        first = (b.lower().split() or [""])[0].strip(":,.")
+        if first in _ALL_VERBS:
+            out.append(b)
     return out
 
 
-def detect_red_flags(resume_text: str, max_flags: int = 10) -> list[dict]:
+def detect_red_flags(resume_text: str, max_flags: int = 8) -> list[dict]:
     flags: list[dict] = []
-    for bullet in _split_bullets(resume_text):
+    for bullet in _accomplishment_bullets(resume_text):
         low = bullet.lower()
         opener = next((w for w in _WEAK_OPENERS if low.startswith(w) or f" {w} " in f" {low} "), None)
         has_quant = bool(_QUANT_RE.search(bullet))
-        has_strong = any(re.search(rf"\b{v}\b", low) for v in _STRONG_VERBS)
+        has_strong = (low.split() or [""])[0].strip(":,.") in _STRONG_VERBS or any(re.search(rf"\b{v}\b", low) for v in _STRONG_VERBS)
         first_person = bool(re.match(r"^(i|my|we|our)\b", low))
-        overlong = len(bullet.split()) > 42
+        overlong = len(bullet.split()) > 46
         if opener:
             category, impact = "Passive voice / weak verb", "High"
         elif first_person:
             category, impact = "First-person phrasing", "Medium"
-        elif not has_quant and not has_strong:
-            category, impact = "Missing quantification", "High"
-        elif overlong:
-            category, impact = "Bullet too long", "Low"
         elif not has_quant:
             category, impact = "Add a measurable result", "Medium"
+        elif overlong:
+            category, impact = "Bullet too long", "Low"
         else:
             continue
         core = bullet
@@ -250,10 +386,11 @@ def detect_red_flags(resume_text: str, max_flags: int = 10) -> list[dict]:
 
 
 def _rewrite(core: str, has_quant: bool) -> str:
-    verb = "Led" if re.search(r"\bteam|people|engineers|developers|staff\b", core, re.I) else "Delivered"
+    has_verb_start = (core.lower().split() or [""])[0] in _ALL_VERBS
     if has_quant:
-        return f"{verb} {core}".strip()
-    return f"{verb} {core} — add a measurable result (e.g. % improvement, $ saved, time reduced)".strip()
+        return core if has_verb_start else f"Delivered {core}".strip()
+    tail = " — add a measurable result (e.g. % improvement, $ saved, time reduced)"
+    return (core if has_verb_start else f"Delivered {core}") + tail
 
 
 def _section_completeness(resume_low: str) -> tuple[float, int]:
@@ -268,31 +405,35 @@ def _formatting_score(resume_text: str, resume_low: str) -> float:
         score += 2.0
     if re.search(r"\b(github\.com|linkedin\.com|gitlab\.com|portfolio)\b", resume_low):
         score += 2.0
-    if len(_split_bullets(resume_text)) >= 5:
+    if len(_accomplishment_bullets(resume_text)) >= 5:
         score += 2.0
     return min(10.0, score)
 
 
 def _impact_score(resume_text: str) -> float:
-    metrics = len(re.findall(r"\d+\s?%|\$\s?\d+[kKmMbB]?|\b\d+x\b|\bby\s+\d+|team of \d+|reduced \d+|increased \d+|saved \d+", resume_text or ""))
-    return min(15.0, metrics * 2.5)
+    bullets = _accomplishment_bullets(resume_text)
+    if not bullets:
+        return 0.0
+    quantified = sum(1 for b in bullets if _QUANT_RE.search(b))
+    ratio = quantified / max(1, len(bullets))
+    return round(min(15.0, ratio * 15.0 + min(quantified, 3)), 1)
 
 
 def _bullet_quality(resume_text: str) -> float:
-    bullets = _split_bullets(resume_text)
+    bullets = _accomplishment_bullets(resume_text)
     if not bullets:
         return 0.0
     strong = 0
     for b in bullets:
         low = b.lower()
-        if any(re.search(rf"\b{v}\b", low) for v in _STRONG_VERBS) and not any(low.startswith(w) for w in _WEAK_OPENERS):
+        if any(re.search(rf"\b{v}\b", low) for v in _ALL_VERBS) and not any(low.startswith(w) for w in _WEAK_OPENERS):
             strong += 1
     return round(min(25.0, (strong / max(1, len(bullets))) * 25.0), 1)
 
 
 def analyze(resume_text: str, job_description: str, *, job_title: str = "", company: str = "") -> dict:
     resume_text = resume_text or ""
-    jd = "\n".join(p for p in [job_title, company, job_description] if p)
+    jd = "\n".join(p for p in [job_title, job_description] if p)
     resume_low = clean_text(resume_text).lower()
 
     jd_terms = _extract_terms(jd)
@@ -302,13 +443,11 @@ def analyze(resume_text: str, job_description: str, *, job_title: str = "", comp
 
     coverage = (len(matched) / len(jd_terms) * 100.0) if jd_terms else 0.0
     importance = _jd_importance(jd, jd_terms)
-    # Weighted coverage: High-impact terms count triple, Medium double.
     w = {"High": 3.0, "Medium": 2.0, "Low": 1.0}
     tot_w = sum(w[importance[t]] for t in jd_terms) or 1.0
     matched_w = sum(w[importance[t]] for t in matched)
     weighted_coverage = matched_w / tot_w * 100.0
     cosine = _tf_cosine(resume_text, jd) * 100.0
-    # Blended match score: weighted coverage (semantic priority) + raw + cosine.
     match_score = round(weighted_coverage * 0.55 + coverage * 0.2 + cosine * 0.25, 0)
 
     keyword_match = round(min(35.0, (weighted_coverage / 100.0) * 35.0), 1)
@@ -330,8 +469,7 @@ def analyze(resume_text: str, job_description: str, *, job_title: str = "", comp
         {"label": "Impact Quantification", "score": round(impact, 1), "max": 15, "color": _band(impact, 15)},
     ]
 
-    # Missing keywords carry their impact rank for the UI ("High"/"Medium").
-    missing_ranked = sorted(missing, key=lambda t: {"High": 0, "Medium": 1, "Low": 2}.get(importance.get(t, "Low"), 3))[:24]
+    missing_ranked = sorted(missing, key=lambda t: {"High": 0, "Medium": 1, "Low": 2}.get(importance.get(t, "Low"), 3))[:20]
     missing_with_impact = [{"keyword": t, "impact": importance.get(t, "Low"), "category": _category_of(t)} for t in missing_ranked]
 
     return {
