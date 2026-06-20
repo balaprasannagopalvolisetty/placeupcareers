@@ -139,7 +139,7 @@ async def _call_llm(resume_text: str, jd: str, title: str, company: str, *, time
                     continue
                 parsed = _extract_json(content)
                 if isinstance(parsed, dict):
-                    logger.info("ATS LLM analysis succeeded via %s", model)
+                    logger.warning("ATS LLM analysis succeeded via %s", model)
                     return parsed
                 logger.warning("ATS LLM model %s returned non-JSON; trying next", model)
     except Exception as exc:
