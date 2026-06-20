@@ -366,8 +366,12 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
     responsibilities: job?.responsibilities ?? [],
     requirements: job?.requirements ?? [],
     niceToHave: job?.niceToHave ?? [],
-    strongKeywords: job?.strongKeywords ?? [],
-    missingKeywords: Array.isArray(job?.missingKeywords) ? (job?.missingKeywords as any) : [],
+    strongKeywords: atsAnalysis?.matched_keywords
+      ? Object.values(atsAnalysis.matched_keywords).flat()
+      : (job?.strongKeywords ?? []),
+    missingKeywords: atsAnalysis?.missing_with_impact
+      ? atsAnalysis.missing_with_impact.map((m) => ({ kw: m.keyword, impact: m.impact }))
+      : (Array.isArray(job?.missingKeywords) ? (job?.missingKeywords as any) : []),
     benefits: job?.benefits ?? [],
     approvalRate: typeof job?.approvalRate === "number" ? job.approvalRate : null,
     petitions: typeof job?.petitions === "number" ? job.petitions : null,
@@ -638,7 +642,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
                   {visibleKeywords.length ? visibleKeywords.map((kw) => (
                     <span key={kw} style={{ fontSize: 11.5, padding: "5px 10px", borderRadius: 8, background: "rgba(52,211,153,0.12)", color: "#6EE7B7", border: "1px solid rgba(52,211,153,0.28)", fontFamily: F.sans, display: "inline-flex", alignItems: "center", gap: 5 }}><Check size={11} /> {kw}</span>
-                  )) : <span style={{ fontSize: 12, color: T.t3, fontFamily: F.sans }}>Activate a resume to see matches.</span>}
+                  )) : <span style={{ fontSize: 12, color: T.t3, fontFamily: F.sans }}>{atsAnalysis?.has_resume ? "No keyword matches for this role." : "Activate a resume to see matches."}</span>}
                 </div>
               </div>
               <div>
