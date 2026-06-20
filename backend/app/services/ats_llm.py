@@ -61,11 +61,12 @@ def _provider() -> Optional[tuple[str, str, list[str], dict]]:
             models = [m.strip() for m in env_model.split(",") if m.strip()]
         else:
             models = [
-                "deepseek/deepseek-v4-flash:free",
                 "google/gemma-4-31b-it:free",
-                "moonshotai/kimi-k2.6:free",
                 "nvidia/nemotron-3-super-120b-a12b:free",
                 "google/gemma-4-26b-a4b-it:free",
+                "poolside/laguna-m.1:free",
+                "poolside/laguna-xs.2:free",
+                "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
             ]
         url = settings.openrouter_base_url.rstrip("/") + "/chat/completions"
         headers = {
