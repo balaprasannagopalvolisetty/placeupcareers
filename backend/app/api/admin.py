@@ -7,10 +7,12 @@ normal navigation, but backend authorization is the real protection.
 from __future__ import annotations
 
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from pydantic import BaseModel
 
 from app.config import settings
 from app.db import user_store
@@ -45,12 +47,12 @@ async def admin_summary(_: dict = Depends(require_admin_user)):
         "users": len(users),
         "plans": plan_counts,
         "payments": {
-            "configured": bool(
+            "configured": True if settings.free_access_enabled else bool(
                 settings.payment_basic_checkout_url
                 and settings.payment_pro_checkout_url
                 and settings.payment_elite_checkout_url
             ),
-            "provider": "hosted_checkout",
+            "provider": "free_access" if settings.free_access_enabled else "hosted_checkout",
         },
         "finalscout": {
             "multi_key_configured": bool(settings.finalscout_api_keys or settings.finalscout_api_key),
@@ -85,7 +87,11 @@ async def admin_users(
 async def admin_payments(_: dict = Depends(require_admin_user)):
     return {
         "payments": [],
-        "note": "Payment provider webhooks are not connected yet; hosted checkout links are configured via environment variables.",
+        "note": (
+            "Payments are temporarily disabled; complete application access is free."
+            if settings.free_access_enabled
+            else "Payment provider webhooks are not connected yet; hosted checkout links are configured via environment variables."
+        ),
     }
 
 
@@ -123,3 +129,194 @@ async def admin_finalscout_csv(
             tmp_path.unlink(missing_ok=True)
         except Exception:
             pass
+
+
+# ─── Role requests (approval queue) ──────────────────────────────────
+
+class RoleRequestDecision(BaseModel):
+    decision: str            # "approved" | "rejected"
+    admin_note: str = ""
+
+
+@router.get("/role-requests")
+async def admin_role_requests(
+    status_filter: Optional[str] = Query(default=None, alias="status"),
+    limit: int = Query(default=300, ge=1, le=1000),
+    admin: dict = Depends(require_admin_user),
+):
+    return {
+        "requests": user_store.list_role_requests(status=status_filter, limit=limit),
+        "pending": user_store.count_role_requests("pending"),
+    }
+
+
+@router.post("/role-requests/{request_id}/decision")
+async def admin_decide_role_request(
+    request_id: str,
+    payload: RoleRequestDecision,
+    admin: dict = Depends(require_admin_user),
+):
+    decision = payload.decision.strip().lower()
+    if decision not in {"approved", "rejected"}:
+        raise HTTPException(status_code=400, detail="decision must be 'approved' or 'rejected'")
+    existing = user_store.get_role_request(request_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Role request not found")
+    updated = user_store.update_role_request(
+        request_id,
+        {
+            "status": decision,
+            "admin_note": payload.admin_note.strip()[:1000],
+            "decided_by": admin.get("email") or admin.get("id") or "admin",
+            "decided_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+    user_store.record_event(
+        kind="role_request_decision",
+        label=f"Role request {decision}",
+        user_id=existing.get("user_id") or "",
+        email=existing.get("email") or "",
+        actor=admin.get("email") or "admin",
+        level="info" if decision == "approved" else "warning",
+        meta={"role": existing.get("role"), "request_id": request_id},
+    )
+    return updated
+
+
+# ─── Signed agreements ───────────────────────────────────────────────
+
+@router.get("/agreements")
+async def admin_agreements(
+    limit: int = Query(default=500, ge=1, le=2000),
+    _: dict = Depends(require_admin_user),
+):
+    return {"agreements": user_store.list_agreements(limit=limit)}
+
+
+# ─── Application / audit event log ───────────────────────────────────
+
+@router.get("/events")
+async def admin_events(
+    limit: int = Query(default=300, ge=1, le=1000),
+    user_id: Optional[str] = Query(default=None),
+    kind: Optional[str] = Query(default=None),
+    _: dict = Depends(require_admin_user),
+):
+    return {"events": user_store.list_events(limit=limit, user_id=user_id, kind=kind)}
+
+
+# ─── Full user detail + account controls ─────────────────────────────
+
+@router.get("/users/{user_id}")
+async def admin_user_detail(user_id: str, _: dict = Depends(require_admin_user)):
+    user = user_store.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    safe = {k: v for k, v in user.items() if k != "password_hash"}
+    try:
+        prefs = user_store.get_preferences(user_id)
+    except Exception:
+        prefs = {}
+    try:
+        resumes = user_store.list_resumes(user_id)
+    except Exception:
+        resumes = []
+    return {
+        "user": safe,
+        "preferences": prefs,
+        "resumes": resumes,
+        "agreement": user_store.get_agreement_for_user(user_id),
+        "role_requests": user_store.list_role_requests(user_id=user_id, limit=100),
+        "events": user_store.list_events(user_id=user_id, limit=100),
+    }
+
+
+@router.post("/users/{user_id}/password-reset")
+async def admin_trigger_password_reset(user_id: str, admin: dict = Depends(require_admin_user)):
+    """Issue a password-reset email for a user (admin-initiated)."""
+    user = user_store.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    try:
+        from app.api.password_reset import forgot_password, ForgotPasswordRequest
+        await forgot_password(ForgotPasswordRequest(email=user["email"]))
+    except Exception as exc:  # pragma: no cover - best effort
+        raise HTTPException(status_code=503, detail=f"Could not send reset email: {exc}")
+    user_store.record_event(
+        kind="admin_password_reset",
+        label="Admin triggered password reset",
+        user_id=user_id,
+        email=user.get("email") or "",
+        actor=admin.get("email") or "admin",
+        level="warning",
+    )
+    return {"ok": True, "email": user["email"]}
+
+
+@router.post("/users/{user_id}/revoke-sessions")
+async def admin_revoke_sessions(user_id: str, admin: dict = Depends(require_admin_user)):
+    revoked = user_store.revoke_user_sessions(user_id)
+    user_store.record_event(
+        kind="admin_revoke_sessions",
+        label="Admin revoked all sessions",
+        user_id=user_id,
+        actor=admin.get("email") or "admin",
+        level="warning",
+        meta={"revoked": revoked},
+    )
+    return {"ok": True, "revoked": revoked}
+
+
+# ─── Scraper coverage (positions + roles per country) ────────────────
+
+# Countries we actively try to cover. Used to render the coverage chart even
+# for countries that currently have zero rows.
+_COVERAGE_COUNTRIES = [
+    "United States", "Canada", "United Kingdom", "Australia", "Germany",
+    "Netherlands", "Ireland", "Singapore", "United Arab Emirates", "India",
+    "New Zealand",
+]
+
+
+@router.get("/coverage")
+async def admin_coverage(_: dict = Depends(require_admin_user)):
+    """Best-effort positions-per-country snapshot from the jobs store."""
+    db = None
+    try:
+        if settings.database_backend == "postgres":
+            from app.db.postgres import PostgresClient
+            db = PostgresClient()
+        elif settings.database_backend == "firestore":
+            from app.db.firebase import FirestoreClient
+            db = FirestoreClient()
+    except Exception:
+        db = None
+
+    total = 0
+    per_country: list[dict] = []
+    if db is not None:
+        if hasattr(db, "admin_coverage_snapshot"):
+            try:
+                return await db.admin_coverage_snapshot(top_limit=10)
+            except Exception:
+                pass
+        try:
+            total = await db.count_jobs()
+        except Exception:
+            total = 0
+        for name in _COVERAGE_COUNTRIES:
+            try:
+                count = await db.count_jobs({"country": name})
+            except Exception:
+                count = 0
+            # Roles the scraper has collected for this country. Best-effort and
+            # read-only — guarded so it can never break the positions snapshot.
+            top_roles: list[dict] = []
+            if count:
+                try:
+                    top_roles = await db.top_roles_by_country(name, limit=8)
+                except Exception:
+                    top_roles = []
+            per_country.append({"country": name, "positions": count, "top_roles": top_roles})
+    per_country.sort(key=lambda r: r["positions"], reverse=True)
+    return {"total_positions": total, "per_country": per_country, "top_roles": []}

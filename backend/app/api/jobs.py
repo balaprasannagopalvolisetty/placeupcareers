@@ -40,6 +40,9 @@ router = APIRouter(prefix="/jobs", tags=["Jobs"])
 DEFAULT_VISIBLE_MAX_AGE_DAYS = 14
 DEFAULT_RECENT_JOB_HOURS = 8
 _detail_repair_recent: dict[str, datetime] = {}
+_match_score_cache: dict[str, tuple[datetime, int]] = {}
+_MATCH_SCORE_CACHE_TTL = timedelta(minutes=30)
+_MATCH_SCORE_CACHE_MAX = 20000
 
 
 async def fast_optional_user_id(
@@ -524,6 +527,37 @@ def _score_job_against_resume(resume_text: str, job_text: str, *, resume_cache: 
         return _baseline_ats_score({"title": "", "description": job_text or ""})
 
 
+def _cached_score_job_against_resume(
+    resume_text: str,
+    job_text: str,
+    *,
+    resume_cache: Optional[dict] = None,
+    job_id: str = "",
+) -> int:
+    """Deterministic ATS score with a short in-process cache."""
+    if not resume_text or not job_text:
+        return 0
+    import hashlib
+
+    resume_sig = hashlib.sha1(resume_text[:50000].encode("utf-8", "ignore")).hexdigest()[:16]
+    job_sig = hashlib.sha1(job_text[:60000].encode("utf-8", "ignore")).hexdigest()[:16]
+    key = f"{resume_sig}:{job_id}:{job_sig}"
+    now = datetime.now(timezone.utc)
+    cached = _match_score_cache.get(key)
+    if cached and now - cached[0] < _MATCH_SCORE_CACHE_TTL:
+        return cached[1]
+    score = _score_job_against_resume(resume_text, job_text, resume_cache=resume_cache)
+    if len(_match_score_cache) > _MATCH_SCORE_CACHE_MAX:
+        cutoff = now - _MATCH_SCORE_CACHE_TTL
+        for cache_key, (seen_at, _) in list(_match_score_cache.items()):
+            if seen_at < cutoff:
+                _match_score_cache.pop(cache_key, None)
+        if len(_match_score_cache) > _MATCH_SCORE_CACHE_MAX:
+            _match_score_cache.clear()
+    _match_score_cache[key] = (now, score)
+    return score
+
+
 def score_breakdown(resume_text: str, job_text: str, *, resume_cache: Optional[dict] = None) -> dict:
     """Return an explainable score: the final number AND the inputs that
     went into it. Powers the "Why this score?" tooltip on the Job Detail
@@ -729,18 +763,26 @@ def _in_datetime_window(value: Any, since: Optional[datetime], before: Optional[
 
 
 def _projection_sort_key(job: dict, tz_offset_minutes: int = 0) -> tuple:
-    """Frontend projection: today high ATS, yesterday high ATS, then high-to-low."""
-    today = (datetime.now(timezone.utc) + timedelta(minutes=-tz_offset_minutes)).date()
-    effective_at = job.get("posted_at") or job.get("scraped_at") or job.get("last_seen_at")
+    """Frontend projection: target roles, newest buckets, then high ATS."""
+    now = datetime.now(timezone.utc)
+    today = (now + timedelta(minutes=-tz_offset_minutes)).date()
+    effective_at = job.get("posted_at") or job.get("first_seen_at") or job.get("scraped_at") or job.get("last_seen_at")
     effective_day = _local_date(effective_at, tz_offset_minutes=tz_offset_minutes)
-    if effective_day == today:
-        date_bucket = 0
-    elif effective_day == today - timedelta(days=1):
-        date_bucket = 1
-    else:
-        date_bucket = 2
-    score = int(job.get("match_score") or 0)
     effective = _coerce_datetime(effective_at)
+    age = (now - effective) if effective else None
+    if age is not None and timedelta(0) <= age <= timedelta(hours=DEFAULT_RECENT_JOB_HOURS):
+        date_bucket = 0
+    elif effective_day == today:
+        date_bucket = 1
+    elif effective_day == today - timedelta(days=1):
+        date_bucket = 2
+    elif age is not None and age <= timedelta(days=7):
+        date_bucket = 3
+    elif age is not None and age <= timedelta(days=30):
+        date_bucket = 4
+    else:
+        date_bucket = 5
+    score = int(job.get("match_score") or 0)
     effective_ts = effective.timestamp() if effective else 0
     posted = _coerce_datetime(job.get("posted_at"))
     posted_ts = posted.timestamp() if posted else effective_ts
@@ -758,6 +800,24 @@ def _job_matches_preferences(job: dict, preferred_roles: list[str], preferred_lo
     role_match = bool(preferred_roles and any(term in hay for term in preferred_roles))
     loc_match = bool(preferred_locations and any(term in loc_hay for term in preferred_locations))
     return role_match or loc_match
+
+
+def _job_matches_role_terms(job: dict, role_names: list[str], role_terms: list[str]) -> bool:
+    """Strict target-role match for personalized feeds.
+
+    The preference boost can use locations as a soft signal, but the default
+    personalized Jobs page must not show unrelated roles just because they are
+    fresh or in the same country.
+    """
+    if not role_names and not role_terms:
+        return True
+    role_value = str(job.get("role") or "").strip().lower()
+    title = str(job.get("title") or "").strip().lower()
+    selected = {str(role).strip().lower() for role in role_names if str(role).strip()}
+    if role_value and role_value in selected:
+        return True
+    terms = [str(term).strip().lower() for term in role_terms if len(str(term).strip()) >= 3]
+    return bool(title and any(term in title for term in terms))
 
 
 def _source_diverse_page(jobs: list[dict], page_size: int, page: int = 1) -> list[dict]:
@@ -1194,8 +1254,9 @@ async def list_jobs(
     taxonomy_filter_active = bool(category or role)
     title_terms = _taxonomy_terms(category, role)
     preferred_roles, preferred_locations = _preference_terms(user_id) if personalized else ([], [])
+    preferred_role_terms = _terms_for_role_names(preferred_roles) if preferred_roles else []
     if personalized and not title_terms and not search and preferred_roles:
-        title_terms = _terms_for_role_names(preferred_roles)
+        title_terms = preferred_role_terms
     if title_terms and not taxonomy_filter_active:
         filters["title_terms"] = title_terms
 
@@ -1386,6 +1447,11 @@ async def list_jobs(
             j["taxonomy_category"] = cat
             j["role"] = rname
             decorated.append(j)
+        if personalized and preferred_roles and not role and not category and not free_text_search_active:
+            decorated = [
+                j for j in decorated
+                if _job_matches_role_terms(j, preferred_roles, preferred_role_terms)
+            ]
         if taxonomy_filter_active:
             total = len(decorated)
             total_pages = max(1, math.ceil(total / page_size))
@@ -1423,16 +1489,16 @@ async def list_jobs(
             jt = j.get("title") or ""
             if resume_text and (jd or jt):
                 if _can_score_job_text(jt, jd):
-                    j["match_score"] = _score_job_against_resume(
-                        resume_text, f"{jt}\n{jd}", resume_cache=resume_cache,
+                    j["match_score"] = _cached_score_job_against_resume(
+                        resume_text, f"{jt}\n{jd}", resume_cache=resume_cache, job_id=str(j.get("id") or ""),
                     )
                     j["score_type"] = "resume_match"
                 else:
                     j["match_score"] = None
                     j["score_type"] = "insufficient_jd"
             else:
-                j["match_score"] = None
-                j["score_type"] = "resume_required"
+                j["match_score"] = _baseline_ats_score(j)
+                j["score_type"] = "baseline_ats"
             pref_bonus = 0
             hay = f"{j.get('title') or ''} {j.get('role') or ''} {j.get('taxonomy_category') or ''}".lower()
             loc_hay = f"{j.get('location') or ''}".lower()
@@ -1444,13 +1510,9 @@ async def list_jobs(
                 j["match_score"] = min(98, int(j["match_score"]) + pref_bonus)
             j["preference_match"] = _job_matches_preferences(j, preferred_roles, preferred_locations)
 
-        # Score the filtered candidate pool before slicing so the frontend
-        # projection can be genuinely ATS-ranked, not just baseline-ranked.
-        # CPU guard: resume-scoring is O(pool). Beyond ~600 rows (the new
-        # full-inventory personalized feeds) rank by recency/preference and
-        # baseline signals instead — the visible page still gets exact
-        # full-text resume scores in the rescore step below.
-        deep_pool = len(decorated) > 600
+        # Rank broad pools with deterministic baseline signals, then compute
+        # exact resume-vs-JD scores only for the visible page below.
+        deep_pool = len(decorated) > max(page_size * 3, 120)
         for job_data in decorated:
             if deep_pool:
                 job_data["match_score"] = _baseline_ats_score(job_data)
@@ -1492,15 +1554,11 @@ async def list_jobs(
             # Pure recency ordering (newest postings first, id tiebreak) —
             # powers the "Recently posted" sort option in the UI.
             def _recency_key(row: dict) -> tuple:
-                eff = _coerce_datetime(row.get("posted_at") or row.get("scraped_at") or row.get("last_seen_at"))
+                eff = _coerce_datetime(row.get("posted_at") or row.get("first_seen_at") or row.get("scraped_at") or row.get("last_seen_at"))
                 return (-(eff.timestamp() if eff else 0.0), str(row.get("id") or ""))
             decorated.sort(key=_recency_key)
         elif sort == "match":
-            def _match_key(row: dict) -> tuple:
-                score = int(row.get("match_score") or row.get("match") or 0)
-                eff = _coerce_datetime(row.get("posted_at") or row.get("scraped_at") or row.get("last_seen_at"))
-                return (-score, -(eff.timestamp() if eff else 0.0), str(row.get("id") or ""))
-            decorated.sort(key=_match_key)
+            decorated.sort(key=lambda row: _projection_sort_key(row, tz_offset_minutes=tz_offset))
         else:
             decorated.sort(key=lambda row: _projection_sort_key(row, tz_offset_minutes=tz_offset))
 
@@ -1531,11 +1589,10 @@ async def list_jobs(
         else:
             page_jobs = decorated[offset:offset + page_size] if filters.get("source") else _source_diverse_page(decorated, page_size, page)
 
-        # Re-score the visible page against FULL descriptions so the list
-        # shows the exact number the Job Detail page computes. Pool ranking
-        # above scores 900-char truncated JDs for speed, which previously
-        # produced mismatches like "74 in detail, 88 in the list".
-        if resume_text and page_jobs:
+        # Hydrate the visible page with FULL descriptions. Pool queries use a
+        # 900-char prefix for speed, but the cards/detail/tailor queue should
+        # operate on the complete JD for the rows the user can actually see.
+        if page_jobs:
             try:
                 get_descriptions = getattr(db, "get_job_descriptions", None)
                 full_descriptions = (
@@ -1543,28 +1600,60 @@ async def list_jobs(
                     if get_descriptions else {}
                 )
                 for j in page_jobs:
-                    full = full_descriptions.get(str(j.get("id") or "")) or j.get("description") or ""
+                    full = full_descriptions.get(str(j.get("id") or "")) or ""
+                    if full and len(full) > len(str(j.get("description") or "")):
+                        j["description"] = full[:50000]
+            except Exception as exc:
+                logger.debug("Full-text page hydration skipped: %s", exc)
+
+        # Re-score the visible page against hydrated descriptions so the list
+        # shows the exact number the Job Detail page computes. Pool ranking
+        # above scores 900-char truncated JDs for speed, which previously
+        # produced mismatches like "74 in detail, 88 in the list".
+        if resume_text and page_jobs:
+            try:
+                for j in page_jobs:
+                    full = j.get("description") or ""
                     jt = j.get("title") or ""
                     if _can_score_job_text(jt, full):
-                        j["match_score"] = _score_job_against_resume(
-                            resume_text, f"{jt}\n{full}", resume_cache=resume_cache,
+                        j["match_score"] = _cached_score_job_against_resume(
+                            resume_text, f"{jt}\n{full}", resume_cache=resume_cache, job_id=str(j.get("id") or ""),
                         )
                         j["score_type"] = "resume_match"
                     else:
                         j["match_score"] = None
                         j["score_type"] = "insufficient_jd"
+                if sort == "recent":
+                    def _rescored_recent_key(row: dict) -> tuple:
+                        effective = _coerce_datetime(
+                            row.get("posted_at") or row.get("first_seen_at") or row.get("scraped_at") or row.get("last_seen_at")
+                        )
+                        return (
+                            -(effective.timestamp() if effective else 0.0),
+                            -int(row.get("match_score") or 0),
+                            str(row.get("id") or ""),
+                        )
+
+                    page_jobs.sort(
+                        key=_rescored_recent_key
+                    )
+                else:
+                    page_jobs.sort(key=lambda row: _projection_sort_key(row, tz_offset_minutes=tz_offset))
             except Exception as exc:
                 logger.debug("Full-text page rescore skipped: %s", exc)
         elif not resume_text:
             for j in page_jobs:
-                j["match_score"] = None
-                j["score_type"] = "resume_required"
+                j["match_score"] = _baseline_ats_score(j)
+                j["score_type"] = "baseline_ats"
 
         # Convert to JobPost models for the response. Stash the taxonomy
         # extras and re-attach them post-validation so the strict JobPost
         # enum doesn't reject "Technology & Engineering" etc.
         job_posts: list = []
         for job_data in page_jobs:
+            if not job_data.get("score_type"):
+                job_data["match_score"] = job_data.get("match_score") or _baseline_ats_score(job_data)
+                job_data["score_type"] = "baseline_ats"
             metadata = dict(job_data.get("extra_metadata") or {})
             metadata.pop("description_html", None)
             job_data["extra_metadata"] = metadata
@@ -1980,6 +2069,41 @@ async def get_job_detail(
     job = await db.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+
+    # Very thin JD (a title + a sentence): try a quick INLINE hydration with a
+    # strict budget so the user who just clicked sees the complete description.
+    # Background repair alone only fixed the row for the NEXT visitor.
+    _desc_now = clean_description_text(job.get("description") or "")
+    if len(_desc_now) < 400:
+        _url = str(job.get("job_url") or job.get("source_url") or "").strip()
+        if _url and is_html_fetch_allowed(_url):
+            try:
+                details = await fetch_full_job_description(_url, timeout=6.0, expand_links=True)
+                if details:
+                    _repaired = clean_description_text(details.description)
+                    if len(_repaired) > len(_desc_now) + 300:
+                        job = dict(job)
+                        job["description"] = details.description
+                        meta = dict(job.get("extra_metadata") or {})
+                        meta["description_hydrated"] = True
+                        meta["description_hydrated_from"] = details.source_url
+                        meta["description_extractor"] = details.extractor
+                        job["extra_metadata"] = meta
+
+                        async def _persist_inline_repair(job_id: str, description: str, source_url: str, meta: dict) -> None:
+                            try:
+                                update_description = getattr(db, "update_job_description", None)
+                                if update_description:
+                                    await update_description(job_id, description, source_url=source_url, extra_metadata=meta)
+                            except Exception as exc:  # noqa: BLE001
+                                logger.debug("Unable to persist inline-repaired JD for %s: %s", job_id, exc)
+
+                        background_tasks.add_task(
+                            _persist_inline_repair, str(job.get("id") or job_id),
+                            _repaired, details.source_url or _url, meta,
+                        )
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Inline JD hydration failed for %s: %s", job_id, exc)
 
     if _should_schedule_detail_repair(job):
         background_tasks.add_task(_repair_detail_description_background, dict(job), db)

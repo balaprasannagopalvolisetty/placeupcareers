@@ -5,9 +5,9 @@ import * as api from "../../lib/api";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 const T = {
-  text: "#F2EEB3", t2: "rgba(242,238,179,0.65)", t3: "rgba(242,238,179,0.45)",
-  border: "rgba(242,238,179,0.08)", glass: "rgba(64,18,18,0.55)",
-  grad: "linear-gradient(135deg, #8C3A27, #A6372D, #401212)", red: "#A6372D", burnt: "#8C3A27",
+  text: "#F1F5F9", t2: "rgba(226,232,240,0.72)", t3: "rgba(148,163,184,0.75)",
+  border: "rgba(148,163,184,0.08)", glass: "rgba(15,30,55,0.55)",
+  grad: "linear-gradient(135deg, #2563EB, #0EA5E9)", red: "#3B82F6", burnt: "#2563EB",
 };
 
 interface SponsorRow {
@@ -142,7 +142,7 @@ export function VisaTrackerPage() {
         {statCards.map((s, i) => (
           <motion.div key={s.label} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
             style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 14, padding: "16px 18px" }}>
-            <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(166,55,45,0.10)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(59,130,246,0.10)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
               <s.icon size={14} color={s.color} />
             </div>
             <div style={{ fontFamily: F.sans, fontSize: 22, fontWeight: 800, color: s.color, lineHeight: 1, marginBottom: 4 }}>{s.value}</div>
@@ -153,7 +153,7 @@ export function VisaTrackerPage() {
 
       {/* Search bar */}
       <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 14, padding: "12px 16px", display: "flex", flexDirection: isMobile ? "column" : "row", gap: 10, alignItems: isMobile ? "stretch" : "center" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, width: isMobile ? "100%" : "auto", height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, width: isMobile ? "100%" : "auto", height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.04)" }}>
           <Search size={13} color={T.t3} />
           <input
             value={search}
@@ -167,7 +167,7 @@ export function VisaTrackerPage() {
           onChange={(e) => { setCountryFilter(e.target.value); setStateFilter(""); setPage(1); }}
           list="visa-country-options"
           placeholder="Country"
-          style={{ width: isMobile ? "100%" : 130, height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", color: T.text, fontSize: 13, outline: "none", fontFamily: F.sans, textTransform: "uppercase" }}
+          style={{ width: isMobile ? "100%" : 130, height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.04)", color: T.text, fontSize: 13, outline: "none", fontFamily: F.sans, textTransform: "uppercase" }}
         />
         <datalist id="visa-country-options">
           {["US", "CA", "GB", "IE", "DE", "NL", "AU", "NZ", "SG", "AE", "JP", "PT", "FR", "ES", "SE", "DK", "NO", "CH", "FI", "BE", "AT", "PL", "EE", "QA", "SA", "IT", "LU", "KR", "TW", "HK", "CZ", "IN"].map((code) => <option key={code} value={code} />)}
@@ -178,7 +178,7 @@ export function VisaTrackerPage() {
           placeholder="State (CA, NY...)"
           maxLength={2}
           disabled={countryFilter !== "US"}
-          style={{ width: isMobile ? "100%" : 110, height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", color: T.text, fontSize: 13, outline: "none", fontFamily: F.sans, textTransform: "uppercase" }}
+          style={{ width: isMobile ? "100%" : 110, height: 36, padding: "0 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.04)", color: T.text, fontSize: 13, outline: "none", fontFamily: F.sans, textTransform: "uppercase" }}
         />
         <span style={{ fontSize: 12, color: T.t3, fontFamily: F.sans, whiteSpace: "nowrap" }}>
           {loading ? "…" : `${total.toLocaleString()} match${total === 1 ? "" : "es"}`}
@@ -190,7 +190,7 @@ export function VisaTrackerPage() {
         <span style={{ color: T.t2 }}>{total ? `${((page - 1) * pageSize + 1).toLocaleString()}-${Math.min(page * pageSize, total).toLocaleString()} of ${total.toLocaleString()}` : "0 records"}</span>
       </div>
       {officialSource && (
-        <div style={{ background: "rgba(242,238,179,0.04)", border: `1px solid ${T.border}`, borderRadius: 12, padding: "12px 14px", display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", gap: 10, alignItems: isMobile ? "stretch" : "center" }}>
+        <div style={{ background: "rgba(148,163,184,0.04)", border: `1px solid ${T.border}`, borderRadius: 12, padding: "12px 14px", display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", gap: 10, alignItems: isMobile ? "stretch" : "center" }}>
           <div>
             <div style={{ fontSize: 12, fontWeight: 750, color: T.text, fontFamily: F.sans }}>{officialSource.route}</div>
             <div style={{ fontSize: 11, color: T.t2, fontFamily: F.sans, marginTop: 2 }}>{officialSource.name}</div>
@@ -245,21 +245,21 @@ export function VisaTrackerPage() {
                     <td style={{ padding: "11px 14px", fontSize: 12.5, fontWeight: 600, color: T.text, fontFamily: F.sans, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={row.employer}>{row.employer}</td>
                     <td style={{ padding: "11px 14px", fontSize: 12, color: T.t2, fontFamily: F.sans, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={location}>{location}</td>
                     <td style={{ padding: "11px 14px", whiteSpace: "nowrap" }}>
-                      <span style={{ fontSize: 9, fontWeight: 700, padding: "3px 7px", borderRadius: 3, background: "rgba(140,58,39,0.15)", color: T.burnt, border: "1px solid rgba(140,58,39,0.3)", fontFamily: F.sans }}>{row.type || "H-1B"}</span>
+                      <span style={{ fontSize: 9, fontWeight: 700, padding: "3px 7px", borderRadius: 3, background: "rgba(37,99,235,0.15)", color: T.burnt, border: "1px solid rgba(37,99,235,0.3)", fontFamily: F.sans }}>{row.type || "H-1B"}</span>
                     </td>
                     <td style={{ padding: "11px 14px", fontSize: 11, color: T.t2, fontFamily: F.mono, whiteSpace: "nowrap" }}>{fy || "All"}</td>
                     <td style={{ padding: "11px 14px", fontSize: 12, fontFamily: F.mono, fontWeight: 600, color: "#22c55e", whiteSpace: "nowrap" }}>{approvals.toLocaleString()}</td>
                     <td style={{ padding: "11px 14px", fontSize: 12, fontFamily: F.mono, fontWeight: 600, color: "#ef4444", whiteSpace: "nowrap" }}>{denials.toLocaleString()}</td>
                     <td style={{ padding: "11px 14px", whiteSpace: "nowrap" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <div style={{ width: 56, height: 4, borderRadius: 2, background: "rgba(242,238,179,0.10)", overflow: "hidden", flexShrink: 0 }}>
+                        <div style={{ width: 56, height: 4, borderRadius: 2, background: "rgba(148,163,184,0.10)", overflow: "hidden", flexShrink: 0 }}>
                           <motion.div initial={{ width: 0 }} animate={{ width: `${Math.max(0, Math.min(100, rate))}%` }} transition={{ duration: 0.7 }} style={{ height: "100%", background: T.grad }} />
                         </div>
                         <span style={{ fontSize: 11, fontWeight: 700, color: T.text, fontFamily: F.mono }}>{rate}%</span>
                       </div>
                     </td>
                     <td style={{ padding: "11px 14px", whiteSpace: "nowrap" }}>
-                      <span style={{ fontSize: 9, padding: "3px 7px", borderRadius: 3, background: status === "Active" ? "rgba(34,197,94,0.10)" : "rgba(242,238,179,0.06)", color: status === "Active" ? "#22c55e" : T.t2, border: `1px solid ${status === "Active" ? "rgba(34,197,94,0.25)" : T.border}`, fontFamily: F.sans, fontWeight: 700 }}>{status}</span>
+                      <span style={{ fontSize: 9, padding: "3px 7px", borderRadius: 3, background: status === "Active" ? "rgba(34,197,94,0.10)" : "rgba(148,163,184,0.06)", color: status === "Active" ? "#22c55e" : T.t2, border: `1px solid ${status === "Active" ? "rgba(34,197,94,0.25)" : T.border}`, fontFamily: F.sans, fontWeight: 700 }}>{status}</span>
                     </td>
                   </motion.tr>
                 );
@@ -277,7 +277,7 @@ export function VisaTrackerPage() {
                 Previous
               </button>
               <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
-                style={{ padding: "6px 12px", borderRadius: 6, border: "none", background: page >= totalPages ? "rgba(242,238,179,0.05)" : T.grad, color: page >= totalPages ? T.t3 : "#fff", fontSize: 11, cursor: page >= totalPages ? "not-allowed" : "pointer", fontFamily: F.sans, fontWeight: 600 }}>
+                style={{ padding: "6px 12px", borderRadius: 6, border: "none", background: page >= totalPages ? "rgba(148,163,184,0.05)" : T.grad, color: page >= totalPages ? T.t3 : "#fff", fontSize: 11, cursor: page >= totalPages ? "not-allowed" : "pointer", fontFamily: F.sans, fontWeight: 600 }}>
                 Next
               </button>
             </div>

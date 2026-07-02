@@ -24,9 +24,9 @@ export default function NotFound() {
           width: "100%",
           padding: 32,
           borderRadius: 20,
-          background: "rgba(64,18,18,0.55)",
-          border: "1px solid rgba(242,238,179,0.1)",
-          color: "#F2EEB3",
+          background: "rgba(15,30,55,0.55)",
+          border: "1px solid rgba(148,163,184,0.1)",
+          color: "#F1F5F9",
           fontFamily: "'Plus Jakarta Sans', sans-serif",
           textAlign: "center",
         }}
@@ -35,7 +35,7 @@ export default function NotFound() {
           style={{
             fontSize: 56,
             fontWeight: 800,
-            background: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)",
+            background: "linear-gradient(135deg, #2563EB, #0EA5E9)",
             WebkitBackgroundClip: "text",
             WebkitTextFillColor: "transparent",
             backgroundClip: "text",
@@ -52,7 +52,7 @@ export default function NotFound() {
           style={{
             fontSize: 14,
             lineHeight: 1.5,
-            color: "rgba(242,238,179,0.65)",
+            color: "rgba(226,232,240,0.72)",
             marginBottom: 22,
           }}
         >
@@ -65,7 +65,7 @@ export default function NotFound() {
             style={{
               padding: "10px 18px",
               borderRadius: 10,
-              background: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)",
+              background: "linear-gradient(135deg, #2563EB, #0EA5E9)",
               color: "#fff",
               fontWeight: 600,
               fontSize: 13,
@@ -79,8 +79,8 @@ export default function NotFound() {
             style={{
               padding: "10px 18px",
               borderRadius: 10,
-              border: "1px solid rgba(242,238,179,0.18)",
-              color: "#F2EEB3",
+              border: "1px solid rgba(148,163,184,0.18)",
+              color: "#F1F5F9",
               fontWeight: 500,
               fontSize: 13,
               textDecoration: "none",

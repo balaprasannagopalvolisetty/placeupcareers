@@ -21,6 +21,7 @@ from app.services.job_description_details import (
 )
 
 logger = logging.getLogger("placeup.workers.job_description_repair")
+ADVISORY_LOCK_KEY = 6412226682827
 
 
 CANDIDATE_SQL = """
@@ -186,30 +187,64 @@ def _write_repairs(repairs: list[dict[str, Any]]) -> dict[str, int]:
 
 async def run(limit: int, concurrency: int, thin_chars: int, thin_words: int, dry_run: bool = False) -> dict[str, Any]:
     started = time.monotonic()
-    rows = _candidate_rows(limit, thin_chars, thin_words)
-    semaphore = asyncio.Semaphore(concurrency)
+    lock_client = PostgresClient()
+    with lock_client.session() as lock_db:
+        locked = bool(lock_db.execute(
+            text("SELECT pg_try_advisory_lock(:lock_key)"),
+            {"lock_key": ADVISORY_LOCK_KEY},
+        ).scalar())
+        if not locked:
+            summary = {
+                "skipped": True,
+                "reason": "another_job_description_repair_execution_is_running",
+                "candidates": 0,
+                "repaired": 0,
+                "missed": 0,
+                "not_better": 0,
+                "dry_run": dry_run,
+                "duration_seconds": round(time.monotonic() - started, 2),
+                "master_updated": 0,
+                "jobs_updated": 0,
+                "silver_updated": 0,
+                "master_rebuilt": 0,
+            }
+            logger.warning("Job description repair skipped: %s", summary)
+            return summary
 
-    async def guarded(row: dict[str, Any]) -> dict[str, Any]:
-        async with semaphore:
-            return await _repair_one(row, thin_chars=thin_chars, thin_words=thin_words)
+        try:
+            rows = _candidate_rows(limit, thin_chars, thin_words)
+            semaphore = asyncio.Semaphore(concurrency)
 
-    results = await asyncio.gather(*(guarded(row) for row in rows))
-    repairs = [result for result in results if result.get("status") == "repaired"]
-    writes = {"master_updated": 0, "jobs_updated": 0, "silver_updated": 0, "master_rebuilt": 0}
-    if repairs and not dry_run:
-        writes = _write_repairs(repairs)
+            async def guarded(row: dict[str, Any]) -> dict[str, Any]:
+                async with semaphore:
+                    return await _repair_one(row, thin_chars=thin_chars, thin_words=thin_words)
 
-    summary = {
-        "candidates": len(rows),
-        "repaired": len(repairs),
-        "missed": sum(1 for result in results if result.get("status") == "miss"),
-        "not_better": sum(1 for result in results if result.get("status") == "not_better"),
-        "dry_run": dry_run,
-        "duration_seconds": round(time.monotonic() - started, 2),
-        **writes,
-    }
-    logger.info("Job description repair complete: %s", summary)
-    return summary
+            results = await asyncio.gather(*(guarded(row) for row in rows))
+            repairs = [result for result in results if result.get("status") == "repaired"]
+            writes = {"master_updated": 0, "jobs_updated": 0, "silver_updated": 0, "master_rebuilt": 0}
+            if repairs and not dry_run:
+                writes = _write_repairs(repairs)
+
+            summary = {
+                "skipped": False,
+                "candidates": len(rows),
+                "repaired": len(repairs),
+                "missed": sum(1 for result in results if result.get("status") == "miss"),
+                "not_better": sum(1 for result in results if result.get("status") == "not_better"),
+                "dry_run": dry_run,
+                "duration_seconds": round(time.monotonic() - started, 2),
+                **writes,
+            }
+            logger.info("Job description repair complete: %s", summary)
+            return summary
+        finally:
+            try:
+                lock_db.execute(
+                    text("SELECT pg_advisory_unlock(:lock_key)"),
+                    {"lock_key": ADVISORY_LOCK_KEY},
+                )
+            except Exception as unlock_exc:  # noqa: BLE001
+                logger.warning("Job description repair advisory unlock failed: %s", unlock_exc)
 
 
 def main() -> int:

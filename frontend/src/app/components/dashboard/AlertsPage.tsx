@@ -7,10 +7,20 @@ import * as api from "../../lib/api";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif" };
 const T = {
-  text: "#F2EEB3", t2: "rgba(242,238,179,0.65)", t3: "rgba(242,238,179,0.45)",
-  border: "rgba(242,238,179,0.08)", glass: "rgba(64,18,18,0.55)",
-  grad: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)", red: "#ED7D2B",
+  text: "#F1F5F9", t2: "rgba(226,232,240,0.72)", t3: "rgba(148,163,184,0.75)",
+  border: "rgba(148,163,184,0.08)", glass: "rgba(15,30,55,0.55)",
+  grad: "linear-gradient(135deg, #2563EB, #0EA5E9)", red: "#3B82F6",
 };
+
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    const timer = window.setTimeout(() => resolve(fallback), ms);
+    promise.then(
+      (value) => { window.clearTimeout(timer); resolve(value); },
+      () => { window.clearTimeout(timer); resolve(fallback); },
+    );
+  });
+}
 
 export function AlertsPage() {
   const [alerts, setAlerts] = useState<any[]>([]);
@@ -61,12 +71,10 @@ export function AlertsPage() {
       .catch(() => { if (active) setTopPicks([]); });
 
     Promise.all([
-      api.getAlerts().then(data => {
+      withTimeout(api.getAlerts(), 8000, []).then(data => {
         if (active) setAlerts(Array.isArray(data) ? data : data.alerts || []);
-      }).catch(() => {
-        if (active) setAlerts([]);
       }),
-      api.getAlertSettings().then(data => {
+      withTimeout(api.getAlertSettings(), 8000, { email_alerts: true, daily_digest: true, weekly_report: false }).then(data => {
         if (active && data) {
           setEnabled({
             email: data.email_alerts !== false,
@@ -74,7 +82,7 @@ export function AlertsPage() {
             weekly: (data as any).weekly_report ?? (data as any).weekly_digest ?? false,
           });
         }
-      }).catch(() => {}),
+      }),
     ]).finally(() => {
       if (active) setLoading(false);
     });
@@ -161,7 +169,7 @@ export function AlertsPage() {
               {([["targets", "My roles"], ["all", "All"]] as const).map(([value, label]) => (
                 <button key={value} onClick={() => setChartScope(value)}
                   style={{ padding: "6px 12px", fontSize: 11.5, fontWeight: 700, fontFamily: F.sans, cursor: "pointer", border: "none",
-                    background: chartScope === value ? "rgba(237,125,43,0.16)" : "transparent",
+                    background: chartScope === value ? "rgba(59,130,246,0.16)" : "transparent",
                     color: chartScope === value ? T.red : T.t3 }}>
                   {label}
                 </button>
@@ -179,21 +187,21 @@ export function AlertsPage() {
               <AreaChart data={chartData} margin={{ top: 6, right: 8, bottom: 0, left: -22 }}>
                 <defs>
                   <linearGradient id="addedFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#ED7D2B" stopOpacity={0.55} />
-                    <stop offset="100%" stopColor="#ED7D2B" stopOpacity={0.02} />
+                    <stop offset="0%" stopColor="#3B82F6" stopOpacity={0.55} />
+                    <stop offset="100%" stopColor="#3B82F6" stopOpacity={0.02} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(242,238,179,0.06)" vertical={false} />
-                <XAxis dataKey="label" tick={{ fill: "rgba(242,238,179,0.45)", fontSize: 11, fontFamily: F.sans }} tickLine={false} axisLine={false} minTickGap={18} />
-                <YAxis allowDecimals={false} tick={{ fill: "rgba(242,238,179,0.45)", fontSize: 11, fontFamily: F.sans }} tickLine={false} axisLine={false} width={42} />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.06)" vertical={false} />
+                <XAxis dataKey="label" tick={{ fill: "rgba(148,163,184,0.75)", fontSize: 11, fontFamily: F.sans }} tickLine={false} axisLine={false} minTickGap={18} />
+                <YAxis allowDecimals={false} tick={{ fill: "rgba(148,163,184,0.75)", fontSize: 11, fontFamily: F.sans }} tickLine={false} axisLine={false} width={42} />
                 <Tooltip
-                  cursor={{ stroke: "rgba(237,125,43,0.4)", strokeWidth: 1 }}
+                  cursor={{ stroke: "rgba(59,130,246,0.4)", strokeWidth: 1 }}
                   contentStyle={{ background: "rgba(8,14,32,0.96)", border: `1px solid ${T.border}`, borderRadius: 12, fontFamily: F.sans, color: T.text }}
                   labelStyle={{ color: T.t2, fontSize: 12 }}
                   itemStyle={{ color: T.red, fontSize: 13, fontWeight: 700 }}
                   formatter={(value: number) => [`${value} new`, "Positions"]}
                 />
-                <Area type="monotone" dataKey="count" stroke="#ED7D2B" strokeWidth={2} fill="url(#addedFill)" activeDot={{ r: 4, fill: "#ED7D2B" }} />
+                <Area type="monotone" dataKey="count" stroke="#3B82F6" strokeWidth={2} fill="url(#addedFill)" activeDot={{ r: 4, fill: "#3B82F6" }} />
               </AreaChart>
             </ResponsiveContainer>
           )}
@@ -213,9 +221,9 @@ export function AlertsPage() {
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {digest.target_roles.map((r) => (
               <Link key={r.role} to={`/dashboard/jobs?role=${encodeURIComponent(r.role)}`}
-                style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 10, background: "rgba(237,125,43,0.08)", border: "1px solid rgba(237,125,43,0.2)", textDecoration: "none" }}>
+                style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 10, background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.2)", textDecoration: "none" }}>
                 <span style={{ fontSize: 12.5, fontWeight: 600, color: T.text, fontFamily: F.sans }}>{r.role}</span>
-                <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 9999, background: r.new_24h > 0 ? T.grad : "rgba(242,238,179,0.08)", color: r.new_24h > 0 ? "#fff" : T.t3, fontFamily: F.sans }}>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 9999, background: r.new_24h > 0 ? T.grad : "rgba(148,163,184,0.08)", color: r.new_24h > 0 ? "#fff" : T.t3, fontFamily: F.sans }}>
                   +{r.new_24h} today
                 </span>
                 <span style={{ fontSize: 11, color: T.t3, fontFamily: F.sans }}>{r.new_7d} this week</span>
@@ -235,7 +243,7 @@ export function AlertsPage() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 10 }}>
             {topPicks.map((job: any) => (
               <Link key={String(job.id)} to={`/dashboard/jobs/${encodeURIComponent(String(job.id))}`}
-                style={{ display: "block", padding: "12px 14px", borderRadius: 12, background: "rgba(242,238,179,0.03)", border: `1px solid ${T.border}`, textDecoration: "none", transition: "border-color 0.2s" }}>
+                style={{ display: "block", padding: "12px 14px", borderRadius: 12, background: "rgba(148,163,184,0.03)", border: `1px solid ${T.border}`, textDecoration: "none", transition: "border-color 0.2s" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
                   <span style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: F.sans, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{job.title}</span>
                   {typeof job.match_score === "number" && (
@@ -265,7 +273,7 @@ export function AlertsPage() {
             </div>
             <button
               onClick={() => handleToggleSetting(item.key as 'email' | 'daily' | 'weekly', !enabled[item.key as keyof typeof enabled])}
-              style={{ width: 44, height: 24, borderRadius: 9999, border: "none", background: enabled[item.key as keyof typeof enabled] ? T.grad : "rgba(242,238,179,0.1)", cursor: "pointer", position: "relative", transition: "background 0.25s", flexShrink: 0 }}
+              style={{ width: 44, height: 24, borderRadius: 9999, border: "none", background: enabled[item.key as keyof typeof enabled] ? T.grad : "rgba(148,163,184,0.1)", cursor: "pointer", position: "relative", transition: "background 0.25s", flexShrink: 0 }}
             >
               <div style={{ position: "absolute", top: 2, left: enabled[item.key as keyof typeof enabled] ? 22 : 2, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left 0.25s", boxShadow: "0 1px 4px rgba(0,0,0,0.3)" }} />
             </button>
@@ -300,9 +308,9 @@ export function AlertsPage() {
         ) : (
           displayAlerts.map((alert, i) => (
             <motion.div key={alert.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.06 }}
-              style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 24px", borderBottom: i < displayAlerts.length - 1 ? `1px solid ${T.border}` : "none", background: alert.unread ? "rgba(237,125,43,0.04)" : "transparent", cursor: "pointer" }}
+              style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 24px", borderBottom: i < displayAlerts.length - 1 ? `1px solid ${T.border}` : "none", background: alert.unread ? "rgba(59,130,246,0.04)" : "transparent", cursor: "pointer" }}
               onClick={() => alert.unread && handleMarkRead(alert.id)}>
-              <div style={{ width: 40, height: 40, borderRadius: "50%", background: alert.match_score ? T.grad : "rgba(242,238,179,0.08)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <div style={{ width: 40, height: 40, borderRadius: "50%", background: alert.match_score ? T.grad : "rgba(148,163,184,0.08)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                 {alert.match_score ? <Bell size={16} color="#fff" /> : <Check size={16} color={T.red} />}
               </div>
               {alert.unread && <div style={{ width: 6, height: 6, borderRadius: "50%", background: T.red, boxShadow: `0 0 6px ${T.red}`, flexShrink: 0 }} />}

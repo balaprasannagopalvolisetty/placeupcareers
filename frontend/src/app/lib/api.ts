@@ -81,6 +81,8 @@ function shouldAttemptRefresh(path: string) {
   return ![
     "/api/auth/signin",
     "/api/auth/signup",
+    "/api/auth/otp/request",
+    "/api/auth/otp/verify",
     "/api/auth/refresh",
     "/api/auth/logout",
     "/api/auth/demo",
@@ -91,12 +93,12 @@ function shouldAttemptRefresh(path: string) {
 // Many components (Overview, JobsPage banner, Resume page) all call
 // getDashboardSummary() within the same React commit. Without this,
 // that's 3 separate network roundtrips. With in-flight dedup they
-// share one Promise. With the 4-second TTL, page navigations also
+// share one Promise. With the 15-second TTL, page navigations also
 // reuse the result instead of refetching — making the "refresh"/
 // "fetching time" feel near-instant.
 const _readCache = new Map<string, { at: number; data: unknown }>();
 const _inflight = new Map<string, Promise<unknown>>();
-const READ_TTL_MS = 4000;
+const READ_TTL_MS = 15000;
 
 function _readCacheKey(path: string, init: RequestInit) {
   return `${(init.method || "GET").toUpperCase()} ${path}`;
@@ -135,7 +137,30 @@ async function request<T>(path: string, init: RequestInit = {}, retryOnAuth = tr
   const headers = buildHeaders(init.headers as Record<string, string> | undefined, body);
 
   const exec = (async () => {
-    const response = await fetch(url, { credentials: "include", ...init, headers, body });
+    // Transient-failure retry for idempotent reads. Cloud Run cold starts /
+    // scale events surface as brief 502/503/504s; without a retry users see
+    // "the app is down" for what is really a 1-2 second blip.
+    let response: Response;
+    let attempt = 0;
+    const maxTransientRetries = method === "GET" ? 2 : 0;
+    for (;;) {
+      try {
+        response = await fetch(url, { credentials: "include", ...init, headers, body });
+      } catch (networkErr) {
+        if (attempt < maxTransientRetries) {
+          attempt += 1;
+          await new Promise((r) => setTimeout(r, 400 * attempt));
+          continue;
+        }
+        throw networkErr;
+      }
+      if ([502, 503, 504].includes(response.status) && attempt < maxTransientRetries) {
+        attempt += 1;
+        await new Promise((r) => setTimeout(r, 500 * attempt));
+        continue;
+      }
+      break;
+    }
     if (response.status === 401 && retryOnAuth && shouldAttemptRefresh(path)) {
       try {
         await refreshAccessToken();
@@ -183,6 +208,7 @@ export interface TokenRefreshResponse {
   access_token: string;
   expires_in: number;
   token_type: string;
+  user?: UserProfile | null;
 }
 
 export interface UserProfile {
@@ -401,15 +427,28 @@ export interface SignupPayload {
   password: string;
   phone?: string;
   visa_status?: string;
+  visa_status_other?: string;
   experience_level?: string;
   current_role?: string;
   current_company?: string;
   location?: string;
+  country?: string;
   linkedin_url?: string;
   target_roles?: string[];
   target_locations?: string[];
   targets?: string[];
+  agreement_accepted?: boolean;
+  agreement_version?: string;
+  payment_plan?: string;
+  payment_reference?: string;
 }
+
+// signup() may either complete immediately (returns AuthResponse with a token)
+// or require email verification (returns { otp_required, email }). The wizard
+// branches on which it got.
+export type SignupResult =
+  | ({ otp_required?: false } & AuthResponse)
+  | { otp_required: true; email: string };
 
 export const VISA_STATUS_OPTIONS = [
   "F1",
@@ -453,24 +492,52 @@ export async function signin(identifier: string, password: string) {
   return payload;
 }
 
-export async function signup(payload: SignupPayload) {
-  const response = await request<AuthResponse>("/api/auth/signup", {
+export async function signup(payload: SignupPayload): Promise<SignupResult> {
+  const response = await request<SignupResult>("/api/auth/signup", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+  // Only store a token when the backend actually issued a session. When email
+  // verification is required there is no token yet.
+  if (!("otp_required" in response) || !response.otp_required) {
+    setStoredToken((response as AuthResponse).access_token);
+  }
+  return response;
+}
+
+// ─── Email OTP (signup verification + login MFA) ───
+export async function requestOtp(email: string, purpose: "signup" | "login") {
+  return request<{ ok: boolean }>("/api/auth/otp/request", {
+    method: "POST",
+    body: JSON.stringify({ email, purpose }),
+  });
+}
+
+export async function verifyOtp(email: string, code: string, purpose: "signup" | "login") {
+  const response = await request<AuthResponse>("/api/auth/otp/verify", {
+    method: "POST",
+    body: JSON.stringify({ email, code, purpose }),
   });
   setStoredToken(response.access_token);
   return response;
 }
 
 export async function refreshAccessToken() {
-  const response = await fetch(`${API_BASE}/api/auth/refresh`, {
-    method: "POST",
-    credentials: "include",
-    headers: { Accept: "application/json" },
-  });
-  const payload = await parseResponse<TokenRefreshResponse>(response);
-  setStoredToken(payload.access_token);
-  return payload;
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 6000);
+  try {
+    const response = await fetch(`${API_BASE}/api/auth/refresh`, {
+      method: "POST",
+      credentials: "include",
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    });
+    const payload = await parseResponse<TokenRefreshResponse>(response);
+    setStoredToken(payload.access_token);
+    return payload;
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 export async function getSession() {
@@ -567,14 +634,12 @@ export async function getMyBilling() {
 }
 
 export async function startCheckout(plan: "basic" | "pro" | "elite") {
-  return request<{ url: string; session_id: string }>(
-    "/api/billing/checkout",
-    { method: "POST", body: JSON.stringify({ plan }) },
-  );
+  void plan;
+  throw new Error("Payments are temporarily disabled. Complete access is free right now.");
 }
 
 export async function openBillingPortal() {
-  return request<{ url: string }>("/api/billing/portal");
+  throw new Error("Payments are temporarily disabled. Complete access is free right now.");
 }
 
 export async function getNotifications() { return request<NotificationItem[]>("/api/user/notifications"); }
@@ -611,6 +676,8 @@ export interface TailorQueueItem {
   status?: string;
   queued_day?: string;
   ats_score?: number;
+  raw_ats_score?: number;
+  score_guarded?: boolean;
   filename?: string;
   keyword_targets?: string[];
   created_at?: string;
@@ -750,6 +817,7 @@ export async function getJob(jobId: string) { return request<JobPost>(`/api/jobs
 export interface AtsBreakdownItem { label: string; score: number; max: number; color: "success" | "warning" | "danger" }
 export interface AtsRedFlag { original: string; suggestion: string; category: string; impact?: string }
 export interface AtsMissingKw { keyword: string; impact: string; category: string }
+export interface AtsKnockoutRisk { label: string; impact: string; jd_signal: string; resume_evidence: boolean; guidance: string }
 export interface AtsAnalysis {
   has_resume: boolean;
   insufficient_jd?: boolean;
@@ -765,6 +833,20 @@ export interface AtsAnalysis {
   coverage_pct?: number;
   semantic_similarity?: number;
   red_flags?: AtsRedFlag[];
+  weak_bullets?: AtsRedFlag[];
+  strongest_bullets?: string[];
+  knockout_risks?: AtsKnockoutRisk[];
+  recruiter_scores?: Record<string, number>;
+  jd_profile?: {
+    required_skills?: string[];
+    preferred_skills?: string[];
+    hidden_skills?: string[];
+    primary_responsibilities?: string[];
+    required_signals?: string[];
+    preferred_signals?: string[];
+  };
+  resume_improvements?: string[];
+  ats_safe_rules?: string[];
 }
 export async function getActiveAtsAnalysis(jobId: string) {
   return request<AtsAnalysis>(`/api/match/active-analysis?job_id=${encodeURIComponent(jobId)}`);
@@ -955,13 +1037,25 @@ export async function getParsedActiveResume() {
 
 // Payments
 export async function getPaymentPlans() {
-  return request<{ plans: PaymentPlan[] }>("/api/payments/plans");
+  return request<{ plans: PaymentPlan[]; free_access_enabled?: boolean; message?: string }>("/api/payments/plans");
 }
 
 export async function createCheckout(plan_id: string) {
-  return request<{ checkout_url: string; plan: PaymentPlan }>("/api/payments/checkout", {
+  void plan_id;
+  throw new Error("Payments are temporarily disabled. Complete access is free right now.");
+}
+
+// Public (no-auth) hosted checkout link — used by the signup wizard, where
+// payment happens before the account exists.
+export async function getPublicCheckoutLink(plan_id: string) {
+  void plan_id;
+  throw new Error("Payments are temporarily disabled. Complete access is free right now.");
+}
+
+export async function submitContactMessage(payload: { name: string; email: string; subject: string; message: string }) {
+  return request<{ ok: boolean; to: string }>("/api/contact", {
     method: "POST",
-    body: JSON.stringify({ plan_id }),
+    body: JSON.stringify(payload),
   });
 }
 
@@ -989,4 +1083,78 @@ export async function uploadAdminFinalScoutCsv(file: File, params: { limit?: num
     method: "POST",
     body: formData,
   });
+}
+
+// ─── Role requests (user) ───
+export interface RoleRequest {
+  id: string;
+  user_id: string;
+  email: string;
+  role: string;
+  country?: string;
+  note?: string;
+  status: "pending" | "approved" | "rejected";
+  admin_note?: string;
+  decided_by?: string;
+  decided_at?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export async function getMyRoleRequests() {
+  return request<{ requests: RoleRequest[] }>("/api/user/role-requests");
+}
+
+export async function createRoleRequest(payload: { role: string; country?: string; note?: string }) {
+  return request<RoleRequest>("/api/user/role-requests", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+// ─── Admin: role requests, agreements, events, user controls, coverage ───
+export async function getAdminRoleRequests(status?: string) {
+  const q = status ? `?status=${encodeURIComponent(status)}` : "";
+  return request<{ requests: RoleRequest[]; pending: number }>(`/api/admin/role-requests${q}`);
+}
+
+export async function decideRoleRequest(id: string, decision: "approved" | "rejected", admin_note = "") {
+  return request<RoleRequest>(`/api/admin/role-requests/${id}/decision`, {
+    method: "POST",
+    body: JSON.stringify({ decision, admin_note }),
+  });
+}
+
+export async function getAdminAgreements(limit = 500) {
+  return request<{ agreements: Array<Record<string, unknown>> }>(`/api/admin/agreements?limit=${limit}`);
+}
+
+export async function getAdminEvents(params: { limit?: number; user_id?: string; kind?: string } = {}) {
+  const q = new URLSearchParams();
+  if (params.limit) q.append("limit", String(params.limit));
+  if (params.user_id) q.append("user_id", params.user_id);
+  if (params.kind) q.append("kind", params.kind);
+  return request<{ events: Array<Record<string, unknown>> }>(`/api/admin/events?${q.toString()}`);
+}
+
+export async function getAdminUserDetail(userId: string) {
+  return request<Record<string, unknown>>(`/api/admin/users/${userId}`);
+}
+
+export async function adminTriggerPasswordReset(userId: string) {
+  return request<{ ok: boolean; email: string }>(`/api/admin/users/${userId}/password-reset`, { method: "POST" });
+}
+
+export async function adminRevokeSessions(userId: string) {
+  return request<{ ok: boolean; revoked: number }>(`/api/admin/users/${userId}/revoke-sessions`, { method: "POST" });
+}
+
+export interface CoverageCountry {
+  country: string;
+  country_name?: string;
+  positions: number;
+  top_roles?: Array<{ role: string; count: number }>;
+}
+export async function getAdminCoverage() {
+  return request<{ total_positions: number; per_country: CoverageCountry[]; top_roles?: Array<{ role: string; count: number }> }>("/api/admin/coverage");
 }

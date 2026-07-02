@@ -3,8 +3,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 from datetime import datetime
-from typing import Iterable
+from typing import Awaitable, Callable, Iterable
 
 from sqlalchemy.orm import Session
 
@@ -28,6 +29,7 @@ async def fetch_all(
     countries: list[str] | None = None,
     sources: str = "adzuna~greenhouse",
     per_page: int = 50,
+    on_batch: Callable[[str, list[NormalizedJob]], Awaitable[None]] | None = None,
 ) -> list[NormalizedJob]:
     enabled = {item.strip().lower() for item in sources.replace(",", "~").split("~") if item.strip()}
     jobs: list[NormalizedJob] = []
@@ -77,13 +79,21 @@ async def fetch_all(
             career_site_feed.fetch(queries, limit=400)
         )))
 
-    for label, task in tasks:
+    async def _labeled(label: str, task: asyncio.Task[list[NormalizedJob]]) -> tuple[str, list[NormalizedJob], Exception | None]:
         try:
-            rows = await task
-            logger.info("api_source fetched source=%s count=%s", label, len(rows))
-            jobs.extend(rows)
+            return label, await task, None
         except Exception as exc:
+            return label, [], exc
+
+    for completed in asyncio.as_completed([_labeled(label, task) for label, task in tasks]):
+        label, rows, exc = await completed
+        if exc:
             logger.warning("api_source failed source=%s error=%s", label, exc)
+            continue
+        logger.info("api_source fetched source=%s count=%s", label, len(rows))
+        if rows and on_batch:
+            await on_batch(label, rows)
+        jobs.extend(rows)
     return _dedupe(jobs)
 
 
@@ -93,16 +103,32 @@ async def run_api_connectors_to_postgres(
     countries: list[str] | None = None,
     sources: str = "adzuna~greenhouse",
 ) -> int:
-    jobs = await fetch_all(queries=queries, countries=countries, sources=sources)
-    if not jobs:
-        return 0
-    normalized = [_to_existing_normalized(job) for job in jobs]
     client = PostgresClient()
-    with client.session() as db:
-        loaded = load_normalized_jobs(db, normalized)
-        rebuild_master_jobs(db=db)
-        db.commit()
-        return loaded
+    loaded_total = 0
+    loaded_batches = 0
+    try:
+        rebuild_every = max(0, int(os.getenv("API_CONNECTOR_MASTER_REBUILD_EVERY", "10")))
+    except ValueError:
+        rebuild_every = 10
+
+    async def persist_batch(label: str, rows: list[NormalizedJob]) -> None:
+        nonlocal loaded_total, loaded_batches
+        normalized = [_to_existing_normalized(job) for job in rows]
+        with client.session() as db:
+            loaded = load_normalized_jobs(db, normalized)
+            loaded_total += loaded
+            loaded_batches += 1
+            if rebuild_every and loaded_batches % rebuild_every == 0:
+                rebuild_master_jobs(db=db)
+            db.commit()
+        logger.info("api_source persisted source=%s loaded=%s total=%s", label, loaded, loaded_total)
+
+    await fetch_all(queries=queries, countries=countries, sources=sources, on_batch=persist_batch)
+    if loaded_total:
+        with client.session() as db:
+            rebuild_master_jobs(db=db)
+            db.commit()
+    return loaded_total
 
 
 async def run_api_connectors_to_firestore(

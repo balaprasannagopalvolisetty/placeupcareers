@@ -1,44 +1,37 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import { Link, useLocation, useNavigate } from "react-router";
-import { Eye, EyeOff, Star } from "lucide-react";
-import { OrbitalSphereSmall } from "../components/OrbitalSphereSmall";
+import { Briefcase, Check, Eye, EyeOff, Globe, ShieldCheck, Target } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { getDemoCredentials, type DemoCredentials } from "../lib/api";
 
-const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
+const F = { sans: "'Plus Jakarta Sans', sans-serif" };
+// Clean, light SaaS palette (matches Home / SignUp).
 const T = {
-  bg: "#011126",
-  surface: "#C75A12",
-  border: "rgba(242,238,179,0.1)",
-  text: "#F2EEB3",
-  t2: "rgba(242,238,179,0.65)",
-  t3: "rgba(242,238,179,0.45)",
-  grad: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)",
-  red: "#ED7D2B",
-  input: "rgba(242,238,179,0.05)",
+  bg: "#F8FAFC",
+  surface: "#FFFFFF",
+  border: "#E2E8F0",
+  text: "#0F172A",
+  t2: "#475569",
+  t3: "#94A3B8",
+  grad: "linear-gradient(135deg, #2563EB, #0EA5E9)",
+  accent: "#2563EB",
+  input: "#F8FAFC",
 };
 
 function useViewportFlags() {
   const getWidth = () => (typeof window === "undefined" ? 1280 : window.innerWidth);
   const [width, setWidth] = useState(getWidth);
-
   useEffect(() => {
     const onResize = () => setWidth(getWidth());
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
-
   return { isMobile: width < 760 };
 }
 
 function StyledInput({
-  label,
-  type = "text",
-  value,
-  onChange,
-  rightEl,
-  onEnter,
+  label, type = "text", value, onChange, rightEl, onEnter, autoComplete,
 }: {
   label: string;
   type?: string;
@@ -46,14 +39,16 @@ function StyledInput({
   onChange: (v: string) => void;
   rightEl?: React.ReactNode;
   onEnter?: () => void;
+  autoComplete?: string;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <label style={{ fontSize: 13, fontWeight: 500, color: T.t2, fontFamily: F.sans }}>{label}</label>
+      <label style={{ fontSize: 13, fontWeight: 600, color: T.t2, fontFamily: F.sans }}>{label}</label>
       <div style={{ position: "relative" }}>
         <input
           type={type}
           value={value}
+          autoComplete={autoComplete}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && onEnter) {
@@ -62,21 +57,14 @@ function StyledInput({
             }
           }}
           style={{
-            width: "100%",
-            height: 48,
-            padding: "0 44px 0 14px",
-            borderRadius: 12,
-            border: `1px solid ${T.border}`,
-            background: T.input,
-            color: T.text,
-            fontSize: 14,
-            fontFamily: F.sans,
-            outline: "none",
-            boxSizing: "border-box",
+            width: "100%", height: 48, padding: "0 44px 0 14px",
+            borderRadius: 12, border: `1px solid ${T.border}`,
+            background: T.input, color: T.text, fontSize: 14.5,
+            fontFamily: F.sans, outline: "none", boxSizing: "border-box",
           }}
           onFocus={(e) => {
-            e.target.style.borderColor = T.red;
-            e.target.style.boxShadow = `0 0 0 3px rgba(237,125,43,0.15)`;
+            e.target.style.borderColor = T.accent;
+            e.target.style.boxShadow = "0 0 0 3px rgba(37,99,235,0.12)";
           }}
           onBlur={(e) => {
             e.target.style.borderColor = T.border;
@@ -92,6 +80,13 @@ function StyledInput({
     </div>
   );
 }
+
+const VALUE_POINTS = [
+  { icon: Target, text: "Every job scored against your resume in real time" },
+  { icon: ShieldCheck, text: "Visa sponsorship signals on every listing" },
+  { icon: Globe, text: "Fresh roles from 25 countries, refreshed every 6 hours" },
+  { icon: Check, text: "Application tracking and smart daily alerts" },
+];
 
 export default function SignIn() {
   const navigate = useNavigate();
@@ -112,7 +107,7 @@ export default function SignIn() {
     let active = true;
     getDemoCredentials()
       .then((d) => { if (active) setDemo(d); })
-      .catch(() => { /* prod or unavailable — hide the demo affordance */ });
+      .catch(() => { /* prod or unavailable: hide the demo affordance */ });
     return () => { active = false; };
   }, []);
 
@@ -151,76 +146,94 @@ export default function SignIn() {
 
   return (
     <div style={{ minHeight: "100vh", display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", background: T.bg }}>
-      <div style={{ position: "relative", overflow: "hidden", background: "linear-gradient(135deg, #011126 0%, #1a0808 100%)", minHeight: isMobile ? 240 : "auto" }}>
-        <div style={{ position: "absolute", top: "10%", left: "5%", width: 300, height: 300, borderRadius: "50%", filter: "blur(80px)", background: "rgba(140,58,39,0.2)" }} />
-        <div style={{ position: "absolute", bottom: "20%", right: "10%", width: 250, height: 250, borderRadius: "50%", filter: "blur(80px)", background: "rgba(237,125,43,0.15)" }} />
-        <div style={{ position: "relative", zIndex: 1, height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: isMobile ? 24 : 48 }}>
-          {!isMobile && <OrbitalSphereSmall />}
-          {!isMobile && <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }} style={{ marginTop: 40, padding: "20px 24px", borderRadius: 16, background: "rgba(64,18,18,0.65)", backdropFilter: "blur(20px)", border: "1px solid rgba(242,238,179,0.08)", maxWidth: 380 }}>
-            <div style={{ display: "flex", gap: 3, marginBottom: 10 }}>
-              {[0, 1, 2, 3, 4].map((i) => (
-                <Star key={i} size={12} fill={T.red} color={T.red} />
+      {/* Left brand panel */}
+      {!isMobile && (
+        <div style={{
+          position: "relative", overflow: "hidden",
+          background: "linear-gradient(160deg, #1E3A8A 0%, #2563EB 55%, #0EA5E9 100%)",
+          display: "flex", flexDirection: "column", justifyContent: "center", padding: 56,
+        }}>
+          <div style={{ position: "absolute", top: "-15%", right: "-10%", width: 420, height: 420, borderRadius: "50%", background: "rgba(255,255,255,0.07)", filter: "blur(10px)" }} />
+          <div style={{ position: "absolute", bottom: "-20%", left: "-10%", width: 380, height: 380, borderRadius: "50%", background: "rgba(255,255,255,0.05)", filter: "blur(10px)" }} />
+          <div style={{ position: "relative", zIndex: 1, maxWidth: 420 }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 10, marginBottom: 28 }}>
+              <span style={{ width: 38, height: 38, borderRadius: 10, background: "rgba(255,255,255,0.16)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                <Briefcase size={18} color="#fff" />
+              </span>
+              <span style={{ fontFamily: F.sans, fontSize: 19, fontWeight: 800, color: "#fff" }}>PlaceUp Career</span>
+            </span>
+            <h2 style={{ fontFamily: F.sans, fontSize: 32, fontWeight: 800, color: "#fff", lineHeight: 1.2, letterSpacing: "-0.02em", marginBottom: 14 }}>
+              Your job search, focused on where you can actually get hired.
+            </h2>
+            <p style={{ fontSize: 15.5, color: "rgba(255,255,255,0.85)", fontFamily: F.sans, lineHeight: 1.7, marginBottom: 32 }}>
+              Sign in to see your matches, ATS scores, and visa-friendly roles.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {VALUE_POINTS.map((point) => (
+                <div key={point.text} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <span style={{ width: 30, height: 30, borderRadius: 8, background: "rgba(255,255,255,0.14)", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <point.icon size={15} color="#fff" />
+                  </span>
+                  <span style={{ fontSize: 14.5, color: "rgba(255,255,255,0.92)", fontFamily: F.sans, fontWeight: 500 }}>{point.text}</span>
+                </div>
               ))}
             </div>
-            <p style={{ fontSize: 15, fontWeight: 500, color: T.text, fontFamily: F.sans, lineHeight: 1.6, marginBottom: 12 }}>
-              "87% of PlaceUp users land interviews within 6 weeks"
-            </p>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 36, height: 36, borderRadius: "50%", background: "linear-gradient(135deg, #F2A341, #ED7D2B)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: F.sans, fontSize: 13, fontWeight: 700, color: "#fff" }}>SL</div>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: F.sans }}>Sarah L.</div>
-                <div style={{ fontSize: 12, color: T.t3, fontFamily: F.sans }}>Software Engineer · Google (H-1B)</div>
-              </div>
-            </div>
-          </motion.div>}
+          </div>
         </div>
-      </div>
-      <div style={{ background: T.surface, display: "flex", alignItems: "center", justifyContent: "center", padding: isMobile ? "32px 18px" : 48 }}>
+      )}
+
+      {/* Right form panel */}
+      <div style={{ background: T.surface, display: "flex", alignItems: "center", justifyContent: "center", padding: isMobile ? "40px 20px" : 48 }}>
         <div style={{ width: "100%", maxWidth: 420 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 40 }}>
-            <img src="/logo_light.png" alt="PlaceUp Career" style={{ height: 48, width: "auto", objectFit: "contain" }} />
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 36 }}>
+            <span style={{ width: 36, height: 36, borderRadius: 10, background: T.grad, display: "inline-flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 12px rgba(37,99,235,0.25)" }}>
+              <Briefcase size={17} color="#fff" />
+            </span>
+            <span style={{ fontFamily: F.sans, fontSize: 18, fontWeight: 800, color: T.text }}>
+              PlaceUp <span style={{ color: T.accent }}>Career</span>
+            </span>
           </div>
           <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
-            <h2 style={{ fontFamily: F.sans, fontSize: 26, fontWeight: 700, color: T.text, marginBottom: 6, textAlign: "center" }}>Welcome Back</h2>
-            <p style={{ fontSize: 13, color: T.t2, fontFamily: F.sans, textAlign: "center", marginBottom: 28 }}>
+            <h2 style={{ fontFamily: F.sans, fontSize: 26, fontWeight: 800, color: T.text, marginBottom: 6, textAlign: "center", letterSpacing: "-0.02em" }}>Welcome back</h2>
+            <p style={{ fontSize: 14, color: T.t2, fontFamily: F.sans, textAlign: "center", marginBottom: 28 }}>
               Sign in to access your job matches, alerts, and analytics.
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 16 }}>
-              <StyledInput label="Email or Phone" type="text" value={identifier} onChange={setIdentifier} onEnter={handleSubmit} />
+              <StyledInput label="Email or phone" type="text" value={identifier} onChange={setIdentifier} onEnter={handleSubmit} autoComplete="username" />
               <StyledInput
                 label="Password"
                 type={showPass ? "text" : "password"}
                 value={password}
                 onChange={setPassword}
                 onEnter={handleSubmit}
+                autoComplete="current-password"
                 rightEl={
-                  <button onClick={() => setShowPass(!showPass)} style={{ background: "none", border: "none", cursor: "pointer", color: T.t3 }}>
+                  <button onClick={() => setShowPass(!showPass)} style={{ background: "none", border: "none", cursor: "pointer", color: T.t3, padding: 0, display: "flex" }}>
                     {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
                   </button>
                 }
               />
             </div>
-            {error && <div style={{ color: "#f87171", fontSize: 13, marginBottom: 12, fontFamily: F.sans }}>{error}</div>}
+            {error && (
+              <div style={{
+                color: "#DC2626", fontSize: 13, marginBottom: 14, fontFamily: F.sans,
+                padding: "10px 12px", borderRadius: 8, background: "rgba(220,38,38,0.06)",
+                border: "1px solid rgba(220,38,38,0.2)",
+              }}>{error}</div>
+            )}
             <motion.button
               whileTap={{ scale: 0.97 }}
               onClick={handleSubmit}
               disabled={loading}
               style={{
-                width: "100%",
-                padding: "14px",
-                borderRadius: 12,
-                border: "none",
-                cursor: "pointer",
-                background: T.grad,
-                color: "#fff",
-                fontSize: 15,
-                fontWeight: 600,
-                fontFamily: F.sans,
-                boxShadow: "0 0 24px rgba(237,125,43,0.35)",
+                width: "100%", padding: "14px", borderRadius: 12, border: "none",
+                cursor: loading ? "wait" : "pointer", background: T.grad, color: "#fff",
+                fontSize: 15.5, fontWeight: 700, fontFamily: F.sans,
+                boxShadow: "0 8px 20px rgba(37,99,235,0.25)",
                 opacity: loading ? 0.75 : 1,
               }}
             >
-              {loading ? "Signing in..." : "Sign In →"}
+              {loading ? "Signing in..." : "Sign in"}
             </motion.button>
             {demo && (
               <motion.button
@@ -228,38 +241,26 @@ export default function SignIn() {
                 onClick={handleUseDemo}
                 disabled={loading}
                 style={{
-                  width: "100%",
-                  padding: "12px",
-                  marginTop: 10,
-                  borderRadius: 12,
-                  border: `1px solid ${T.border}`,
-                  cursor: loading ? "wait" : "pointer",
-                  background: "rgba(242,238,179,0.04)",
-                  color: T.text,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  fontFamily: F.sans,
+                  width: "100%", padding: "12px", marginTop: 10, borderRadius: 12,
+                  border: `1px solid ${T.border}`, cursor: loading ? "wait" : "pointer",
+                  background: "#fff", color: T.text, fontSize: 13.5, fontWeight: 600, fontFamily: F.sans,
                 }}
                 title={`${demo.email} / ${demo.password}`}
               >
                 Use demo account
-                <span style={{ display: "block", fontSize: 11, fontWeight: 400, color: T.t3, marginTop: 2 }}>
-                  {demo.email} · password: {demo.password}
+                <span style={{ display: "block", fontSize: 11.5, fontWeight: 400, color: T.t3, marginTop: 2 }}>
+                  {demo.email} / password: {demo.password}
                 </span>
               </motion.button>
             )}
-            {/* Social SSO buttons intentionally removed per product
-                request. If/when Google or LinkedIn OAuth is re-enabled,
-                the backend endpoints in app/api/auth.py (/oidc/google
-                etc.) are still live — just re-add the buttons here. */}
-            <p style={{ marginTop: 18, textAlign: "center", fontSize: 12, color: T.t3, fontFamily: F.sans }}>
-              <Link to="/forgot-password" style={{ color: T.t2, textDecoration: "none" }}>
+            <p style={{ marginTop: 18, textAlign: "center", fontSize: 13, color: T.t3, fontFamily: F.sans }}>
+              <Link to="/forgot-password" style={{ color: T.t2, textDecoration: "none", fontWeight: 500 }}>
                 Forgot password?
               </Link>
             </p>
-            <p style={{ marginTop: 8, textAlign: "center", fontSize: 13, color: T.t2, fontFamily: F.sans }}>
+            <p style={{ marginTop: 8, textAlign: "center", fontSize: 13.5, color: T.t2, fontFamily: F.sans }}>
               Don't have an account?{" "}
-              <Link to="/signup" style={{ color: T.red, fontWeight: 600, textDecoration: "none" }}>
+              <Link to="/signup" style={{ color: T.accent, fontWeight: 700, textDecoration: "none" }}>
                 Sign up
               </Link>
             </p>

@@ -6,14 +6,14 @@ import { LoadingLogo } from "../LoadingLogo";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 const T = {
-  text: "#F5EAC8",
-  t2: "rgba(245,234,200,0.66)",
-  t3: "rgba(245,234,200,0.45)",
-  border: "rgba(245,234,200,0.10)",
-  card: "rgba(64,18,18,0.45)",
-  panel: "linear-gradient(135deg, rgba(1,17,38,0.90), rgba(64,18,18,0.55))",
-  grad: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)",
-  orange: "#ED7D2B",
+  text: "#F1F5F9",
+  t2: "rgba(226,232,240,0.72)",
+  t3: "rgba(148,163,184,0.75)",
+  border: "rgba(148,163,184,0.10)",
+  card: "rgba(15,30,55,0.45)",
+  panel: "linear-gradient(135deg, rgba(1,17,38,0.90), rgba(15,30,55,0.55))",
+  grad: "linear-gradient(135deg, #2563EB, #0EA5E9)",
+  orange: "#3B82F6",
   green: "#86EFAC",
 };
 
@@ -42,7 +42,7 @@ function dateLabel(value?: string) {
 function scoreColor(score?: number) {
   if (!score) return T.t3;
   if (score >= 95) return T.green;
-  if (score >= 80) return "#F2A341";
+  if (score >= 80) return "#60A5FA";
   return "#F87171";
 }
 
@@ -113,7 +113,7 @@ export function TailorResumePage() {
           </div>
           <button
             onClick={loadQueue}
-            style={{ height: 36, padding: "0 12px", borderRadius: 9, border: `1px solid ${T.border}`, background: "rgba(245,234,200,0.05)", color: T.text, display: "flex", alignItems: "center", gap: 7, cursor: "pointer", fontSize: 12, fontWeight: 800, fontFamily: F.sans }}
+            style={{ height: 36, padding: "0 12px", borderRadius: 9, border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.05)", color: T.text, display: "flex", alignItems: "center", gap: 7, cursor: "pointer", fontSize: 12, fontWeight: 800, fontFamily: F.sans }}
           >
             <RefreshCw size={13} /> Refresh
           </button>
@@ -125,7 +125,7 @@ export function TailorResumePage() {
             { label: "In queue", value: String(items.length) },
             { label: "Generated", value: String(generatedCount) },
           ].map((stat) => (
-            <div key={stat.label} style={{ padding: 14, borderRadius: 13, background: "rgba(245,234,200,0.04)", border: `1px solid ${T.border}` }}>
+            <div key={stat.label} style={{ padding: 14, borderRadius: 13, background: "rgba(148,163,184,0.04)", border: `1px solid ${T.border}` }}>
               <div style={{ fontSize: 11, color: T.t3, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>{stat.label}</div>
               <div style={{ fontFamily: F.mono, fontSize: 26, fontWeight: 850, color: T.text, lineHeight: 1.1, marginTop: 5 }}>{stat.value}</div>
             </div>
@@ -164,11 +164,11 @@ export function TailorResumePage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.035 }}
               whileHover={{ y: -3 }}
-              style={{ padding: 16, borderRadius: 16, border: `1px solid ${T.border}`, background: "linear-gradient(135deg, rgba(1,17,38,0.84), rgba(64,18,18,0.52))", boxShadow: "0 12px 28px rgba(1,17,38,0.24)", color: T.text }}
+              style={{ padding: 16, borderRadius: 16, border: `1px solid ${T.border}`, background: "linear-gradient(135deg, rgba(1,17,38,0.84), rgba(15,30,55,0.52))", boxShadow: "0 12px 28px rgba(1,17,38,0.24)", color: T.text }}
             >
               <div style={{ display: "flex", gap: 14, justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap" }}>
                 <div style={{ display: "flex", gap: 12, minWidth: 0, flex: 1 }}>
-                  <div style={{ width: 42, height: 42, borderRadius: 12, background: "rgba(237,125,43,0.13)", border: "1px solid rgba(237,125,43,0.26)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <div style={{ width: 42, height: 42, borderRadius: 12, background: "rgba(59,130,246,0.13)", border: "1px solid rgba(59,130,246,0.26)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                     <FileText size={18} color={T.orange} />
                   </div>
                   <div style={{ minWidth: 0 }}>
@@ -177,12 +177,20 @@ export function TailorResumePage() {
                       {item.company || "Unknown company"} - {item.location || "Remote"} - {dateLabel(item.created_at)}
                     </div>
                     <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 9 }}>
-                      <span style={{ fontSize: 11, fontWeight: 800, padding: "4px 8px", borderRadius: 999, background: "rgba(237,125,43,0.12)", color: T.orange }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, padding: "4px 8px", borderRadius: 999, background: "rgba(59,130,246,0.12)", color: T.orange }}>
                         Current match {item.match_score || 0}%
                       </span>
                       <span style={{ fontSize: 11, fontWeight: 800, padding: "4px 8px", borderRadius: 999, background: "rgba(34,197,94,0.10)", color: scoreColor(item.ats_score) }}>
                         Tailored ATS {item.ats_score ? `${item.ats_score}%` : "Ready"}
                       </span>
+                      {item.score_guarded && (
+                        <span
+                          title={item.raw_ats_score ? `Generated score was ${item.raw_ats_score}%; protected against lowering the current match.` : "Protected against lowering the current match."}
+                          style={{ fontSize: 11, fontWeight: 800, padding: "4px 8px", borderRadius: 999, background: "rgba(134,239,172,0.08)", color: T.green }}
+                        >
+                          Protected
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -197,7 +205,7 @@ export function TailorResumePage() {
                   <button
                     disabled={busyId === `${item.id}:pdf`}
                     onClick={() => generate(item, "pdf")}
-                    style={{ height: 34, padding: "0 12px", borderRadius: 9, border: `1px solid ${T.border}`, background: "rgba(245,234,200,0.05)", color: T.text, display: "flex", alignItems: "center", gap: 7, cursor: busyId ? "wait" : "pointer", fontSize: 12, fontWeight: 850, fontFamily: F.sans }}
+                    style={{ height: 34, padding: "0 12px", borderRadius: 9, border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.05)", color: T.text, display: "flex", alignItems: "center", gap: 7, cursor: busyId ? "wait" : "pointer", fontSize: 12, fontWeight: 850, fontFamily: F.sans }}
                   >
                     <Download size={13} /> PDF
                   </button>

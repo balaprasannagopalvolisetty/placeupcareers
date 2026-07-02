@@ -1,12 +1,14 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import {
   clearStoredToken,
-  getSession,
   logout as apiLogout,
   refreshAccessToken,
   signin,
   signup,
+  verifyOtp,
+  type AuthResponse,
   type SignupPayload,
+  type SignupResult,
 } from "../lib/api";
 
 interface AuthUser {
@@ -22,7 +24,11 @@ interface AuthContextValue {
   loading: boolean;
   isAuthenticated: boolean;
   signIn: (identifier: string, password: string) => Promise<void>;
-  signUp: (payload: SignupPayload) => Promise<void>;
+  // Returns the raw result so the multi-step signup wizard can branch on
+  // whether email verification (OTP) is still required.
+  signUp: (payload: SignupPayload) => Promise<SignupResult>;
+  // Completes signup after the user enters the emailed code.
+  verifySignupOtp: (email: string, code: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -37,9 +43,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     async function loadProfile() {
       try {
-        await refreshAccessToken();
-        const session = await getSession();
-        if (active && session.authenticated && session.user) {
+        const session = await refreshAccessToken();
+        if (active && session.user) {
           setUser(session.user);
         } else if (active) {
           clearStoredToken();
@@ -72,11 +77,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const signUp = async (payload: SignupPayload) => {
+  const applyAuth = (data: AuthResponse) => {
+    setUser({ id: data.user_id, first_name: data.first_name, last_name: data.last_name, email: data.email, plan: data.plan });
+  };
+
+  const signUp = async (payload: SignupPayload): Promise<SignupResult> => {
     setLoading(true);
     try {
       const data = await signup(payload);
-      setUser({ id: data.user_id, first_name: data.first_name, last_name: data.last_name, email: data.email, plan: data.plan });
+      // When no email verification is required the backend returns a session.
+      const needsOtp = "otp_required" in data && data.otp_required === true;
+      if (!needsOtp) {
+        applyAuth(data as AuthResponse);
+      }
+      return data;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const verifySignupOtp = async (email: string, code: string) => {
+    setLoading(true);
+    try {
+      const data = await verifyOtp(email, code, "signup");
+      applyAuth(data);
     } finally {
       setLoading(false);
     }
@@ -93,6 +117,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isAuthenticated: Boolean(user),
     signIn,
     signUp,
+    verifySignupOtp,
     signOut,
   };
 

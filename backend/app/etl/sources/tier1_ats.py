@@ -48,11 +48,22 @@ logger = logging.getLogger("placeup.etl.tier1_ats")
 
 # ─── Taxonomy title matcher ───────────────────────────────────────────
 
-# Only the six ATS providers the user asked for. Everything else in
-# H1B_SPONSOR_BOARDS (Workday, BambooHR, Personio, …) still works via
-# the legacy `h1b_sponsor` source — we don't duplicate them here.
+# Supported direct ATS providers from `app.services.careers_ats`. This source
+# pulls company/ATS boards before public job boards so first-party postings and
+# apply links win whenever we have a known sponsor board.
 TIER1_ATS_PROVIDERS: frozenset[str] = frozenset({
-    "greenhouse", "lever", "ashby", "smartrecruiters", "workable", "recruitee",
+    "greenhouse",
+    "lever",
+    "ashby",
+    "smartrecruiters",
+    "workday",
+    "workable",
+    "recruitee",
+    "personio",
+    "teamtailor",
+    "jazzhr",
+    "rippling",
+    "bamboohr",
 })
 
 

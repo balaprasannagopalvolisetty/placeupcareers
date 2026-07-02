@@ -1,72 +1,45 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { Link, useNavigate } from "react-router";
-import { ChevronDown, Eye, EyeOff, Search, X, Upload, Check } from "lucide-react";
+import { Briefcase, ChevronDown, Eye, EyeOff, Search, Upload, Check, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import * as api from "../lib/api";
+import {
+  COUNTRIES,
+  COUNTRY_BY_CODE,
+  DEFAULT_PHONE_COUNTRY,
+  visaOptionsForCountry,
+} from "../lib/countries";
+
+const AGREEMENT_VERSION = "2026-06-21";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
+// Clean, light SaaS palette (matches Home / SignIn).
 const T = {
-  bg: "#011126", surface: "#C75A12",
-  border: "rgba(242,238,179,0.1)", text: "#F2EEB3",
-  t2: "rgba(242,238,179,0.65)", t3: "rgba(242,238,179,0.45)",
-  grad: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)",
-  red: "#ED7D2B", input: "rgba(242,238,179,0.05)",
+  bg: "#F8FAFC", surface: "#FFFFFF",
+  border: "#E2E8F0", text: "#0F172A",
+  t2: "#475569", t3: "#94A3B8",
+  grad: "linear-gradient(135deg, #2563EB, #0EA5E9)",
+  red: "#2563EB", input: "#F8FAFC",
+  panel: "#FFFFFF",
 };
+
+const STEP_LABELS = ["Account", "Terms", "Profile", "Top 5 Positions", "Verify", "Resume"];
+const TOTAL_STEPS = STEP_LABELS.length;
+const MIN_TARGET_ROLES = 5;
+const HIDDEN_ROLE_PATTERN = /\b(volunteer|intern|open source contributor|community tech educator|growth hacker)\b/i;
+const isVisibleRole = (role: string) => Boolean(role.trim()) && !HIDDEN_ROLE_PATTERN.test(role);
 
 function useViewportFlags() {
   const getWidth = () => (typeof window === "undefined" ? 1280 : window.innerWidth);
   const [width, setWidth] = useState(getWidth);
-
   useEffect(() => {
     const onResize = () => setWidth(getWidth());
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
-
   return { isMobile: width < 640 };
 }
-
-interface TaxonomyRole { name: string }
-interface TaxonomyCategory { name: string; roles: TaxonomyRole[] }
-
-const LOCATION_SUGGESTIONS = [
-  "Remote",
-  "New York, NY",
-  "San Francisco, CA",
-  "San Jose, CA",
-  "Seattle, WA",
-  "Austin, TX",
-  "Dallas, TX",
-  "Chicago, IL",
-  "Boston, MA",
-  "Los Angeles, CA",
-  "Irvine, CA",
-  "Atlanta, GA",
-  "Denver, CO",
-  "Raleigh, NC",
-  "Charlotte, NC",
-  "Washington, DC",
-  "Jersey City, NJ",
-  "Phoenix, AZ",
-  "Miami, FL",
-  "United States",
-];
-
-const FALLBACK_TARGET_ROLES = [
-  "Software Engineer",
-  "Frontend Engineer",
-  "Backend Engineer",
-  "Full Stack Engineer",
-  "Data Engineer",
-  "Machine Learning Engineer",
-  "Data Scientist",
-  "DevOps / Cloud Engineer",
-  "Cybersecurity Analyst",
-  "Product Manager",
-  "Business Analyst",
-  "UX Designer",
-];
 
 function passwordChecks(value: string) {
   return {
@@ -79,13 +52,17 @@ function passwordChecks(value: string) {
 }
 
 function passwordError(value: string) {
-  const checks = passwordChecks(value);
-  if (!checks.length) return "Password must be at least 8 characters.";
-  if (!checks.upper) return "Password must include at least one capital letter.";
-  if (!checks.lower) return "Password must include at least one lowercase letter.";
-  if (!checks.number) return "Password must include at least one number.";
-  if (!checks.symbol) return "Password must include at least one symbol.";
+  const c = passwordChecks(value);
+  if (!c.length) return "Password must be at least 8 characters.";
+  if (!c.upper) return "Password must include at least one capital letter.";
+  if (!c.lower) return "Password must include at least one lowercase letter.";
+  if (!c.number) return "Password must include at least one number.";
+  if (!c.symbol) return "Password must include at least one symbol.";
   return null;
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
 function isValidLinkedInUrl(value: string) {
@@ -100,16 +77,10 @@ function isValidLinkedInUrl(value: string) {
 }
 
 function validateResumeFile(file: File | null): string | null {
-  if (!file) return "Please upload one resume to create your account.";
+  if (!file) return "Please upload one resume to finish creating your account.";
   const ext = file.name.toLowerCase().split(".").pop() || "";
   const allowedExt = new Set(["pdf", "docx"]);
-  const allowedTypes = new Set([
-    "application/pdf",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "",
-  ]);
-  if (!allowedExt.has(ext)) return "Please upload a PDF or Word DOCX resume only.";
-  if (!allowedTypes.has(file.type)) return "This file type is not accepted. Upload a PDF or Word DOCX resume.";
+  if (!allowedExt.has(ext)) return "Please upload a PDF or DOCX resume only.";
   if (file.size <= 0) return "The selected resume file is empty.";
   if (file.size > 10 * 1024 * 1024) return "Resume file is too large. Maximum size is 10MB.";
   return null;
@@ -138,45 +109,8 @@ function Field({ label, type = "text", value, onChange, placeholder, required, r
   );
 }
 
-function Select({ label, value, onChange, options, required }:
-  { label: string; value: string; onChange: (v: string) => void; options: readonly string[]; required?: boolean }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-      <label style={{ fontSize: 12, fontWeight: 500, color: T.t2, fontFamily: F.sans }}>
-        {label} {required ? <span style={{ color: T.red }}>*</span> : null}
-      </label>
-      <select value={value} onChange={(e) => onChange(e.target.value)}
-        style={{ height: 42, padding: "0 12px", borderRadius: 10, border: `1px solid ${T.border}`,
-          background: T.input, color: T.text, fontSize: 13, fontFamily: F.sans, outline: "none" }}>
-        <option value="">— select —</option>
-        {options.map((o) => <option key={o} value={o}>{o}</option>)}
-      </select>
-    </div>
-  );
-}
-
-function PasswordRules({ value }: { value: string }) {
-  const checks = passwordChecks(value);
-  const rules = [
-    { label: "8+ characters", ok: checks.length },
-    { label: "Capital letter", ok: checks.upper },
-    { label: "Lowercase letter", ok: checks.lower },
-    { label: "Number", ok: checks.number },
-    { label: "Symbol", ok: checks.symbol },
-  ];
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 8 }}>
-      {rules.map((rule) => (
-        <div key={rule.label} style={{ display: "flex", alignItems: "center", gap: 5, color: rule.ok ? "#22c55e" : T.t3, fontSize: 11, fontFamily: F.sans }}>
-          <Check size={11} /> {rule.label}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function AppSelect({ label, value, onChange, options, required, placeholder = "Select" }:
-  { label: string; value: string; onChange: (v: string) => void; options: readonly string[]; required?: boolean; placeholder?: string }) {
+function Dropdown({ label, value, onChange, options, required, placeholder = "Select", renderOption }:
+  { label: string; value: string; onChange: (v: string) => void; options: readonly string[]; required?: boolean; placeholder?: string; renderOption?: (o: string) => React.ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 5, position: "relative" }}>
@@ -187,18 +121,18 @@ function AppSelect({ label, value, onChange, options, required, placeholder = "S
         style={{ height: 42, padding: "0 12px", borderRadius: 10, border: `1px solid ${open ? T.red : T.border}`,
           background: T.input, color: value ? T.text : T.t3, fontSize: 13, fontFamily: F.sans, outline: "none",
           display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
-        <span>{value || placeholder}</span>
+        <span>{value ? (renderOption ? renderOption(value) : value) : placeholder}</span>
         <ChevronDown size={14} color={T.t3} />
       </button>
       {open && (
-        <div style={{ position: "absolute", top: 68, left: 0, right: 0, zIndex: 30, maxHeight: 220, overflowY: "auto",
-          borderRadius: 10, border: `1px solid ${T.border}`, background: "#081426", boxShadow: "0 16px 40px rgba(1,17,38,0.5)", padding: 6 }}>
+        <div style={{ position: "absolute", top: 68, left: 0, right: 0, zIndex: 30, maxHeight: 240, overflowY: "auto",
+          borderRadius: 10, border: `1px solid ${T.border}`, background: T.panel, boxShadow: "0 12px 32px rgba(15,23,42,0.12)", padding: 6 }}>
           {options.map((o) => (
             <button key={o} type="button" onClick={() => { onChange(o); setOpen(false); }}
               style={{ width: "100%", textAlign: "left", padding: "9px 10px", borderRadius: 8, border: "none",
-                background: value === o ? "rgba(237,125,43,0.18)" : "transparent", color: T.text,
+                background: value === o ? "rgba(37,99,235,0.10)" : "transparent", color: T.text,
                 fontSize: 13, fontFamily: F.sans, cursor: "pointer" }}>
-              {o}
+              {renderOption ? renderOption(o) : o}
             </button>
           ))}
         </div>
@@ -207,124 +141,285 @@ function AppSelect({ label, value, onChange, options, required, placeholder = "S
   );
 }
 
-function LocationSuggestField({ label, value, onChange, placeholder }:
-  { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
-  const matches = value.trim().length >= 4
-    ? LOCATION_SUGGESTIONS.filter((item) => {
-        const q = value.trim().toLowerCase();
-        return item.toLowerCase() !== q && item.toLowerCase().includes(q);
-      }).slice(0, 6)
-    : [];
+function CountryDropdown({ label, value, onChange, required }:
+  { label: string; value: string; onChange: (code: string) => void; required?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const selected = value ? COUNTRY_BY_CODE[value] : undefined;
+  const list = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return COUNTRIES;
+    return COUNTRIES.filter((c) => c.name.toLowerCase().includes(needle) || c.code.toLowerCase() === needle);
+  }, [q]);
   return (
-    <div style={{ position: "relative" }}>
-      <Field label={label} value={value} onChange={onChange} placeholder={placeholder} />
-      {matches.length > 0 && (
-        <div style={{ position: "absolute", top: 66, left: 0, right: 0, zIndex: 25, borderRadius: 10,
-          border: `1px solid ${T.border}`, background: "#081426", boxShadow: "0 16px 40px rgba(1,17,38,0.5)", padding: 6 }}>
-          {matches.map((item) => (
-            <button key={item} type="button" onClick={() => onChange(item)}
-              style={{ width: "100%", textAlign: "left", padding: "8px 10px", borderRadius: 8, border: "none",
-                background: "transparent", color: T.text, fontSize: 13, fontFamily: F.sans, cursor: "pointer" }}>
-              {item}
+    <div style={{ display: "flex", flexDirection: "column", gap: 5, position: "relative" }}>
+      <label style={{ fontSize: 12, fontWeight: 500, color: T.t2, fontFamily: F.sans }}>
+        {label} {required ? <span style={{ color: T.red }}>*</span> : null}
+      </label>
+      <button type="button" onClick={() => setOpen((v) => !v)}
+        style={{ height: 42, padding: "0 12px", borderRadius: 10, border: `1px solid ${open ? T.red : T.border}`,
+          background: T.input, color: selected ? T.text : T.t3, fontSize: 13, fontFamily: F.sans, outline: "none",
+          display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
+        <span>{selected ? `${selected.flag}  ${selected.name}` : "Select your country"}</span>
+        <ChevronDown size={14} color={T.t3} />
+      </button>
+      {open && (
+        <div style={{ position: "absolute", top: 68, left: 0, right: 0, zIndex: 40, borderRadius: 10,
+          border: `1px solid ${T.border}`, background: T.panel, boxShadow: "0 12px 32px rgba(15,23,42,0.12)", padding: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, height: 36, padding: "0 10px", borderRadius: 8, background: "#F1F5F9", border: `1px solid ${T.border}`, marginBottom: 6 }}>
+            <Search size={14} color={T.t3} />
+            <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search country"
+              style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: T.text, fontSize: 13, fontFamily: F.sans }} />
+          </div>
+          <div style={{ maxHeight: 220, overflowY: "auto" }}>
+            {list.map((c) => (
+              <button key={c.code} type="button" onClick={() => { onChange(c.code); setOpen(false); setQ(""); }}
+                style={{ width: "100%", textAlign: "left", padding: "8px 10px", borderRadius: 8, border: "none",
+                  background: value === c.code ? "rgba(37,99,235,0.10)" : "transparent", color: T.text,
+                  fontSize: 13, fontFamily: F.sans, cursor: "pointer", display: "flex", gap: 8 }}>
+                <span>{c.flag}</span><span>{c.name}</span>
+                <span style={{ marginLeft: "auto", color: T.t3 }}>{c.dial}</span>
+              </button>
+            ))}
+            {list.length === 0 && <div style={{ padding: 10, color: T.t3, fontSize: 12 }}>No matches</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PhoneInput({ countryCode, onCountry, number, onNumber }:
+  { countryCode: string; onCountry: (code: string) => void; number: string; onNumber: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const country = COUNTRY_BY_CODE[countryCode] || COUNTRIES[0];
+  const list = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return COUNTRIES;
+    return COUNTRIES.filter((c) => c.name.toLowerCase().includes(needle) || c.dial.includes(needle) || c.code.toLowerCase() === needle);
+  }, [q]);
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => { if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+      <label style={{ fontSize: 12, fontWeight: 500, color: T.t2, fontFamily: F.sans }}>
+        Phone Number <span style={{ color: T.red }}>*</span>
+      </label>
+      <div ref={wrapRef} style={{ position: "relative", display: "flex", gap: 8 }}>
+        <button type="button" onClick={() => setOpen((v) => !v)}
+          style={{ height: 42, padding: "0 10px", borderRadius: 10, border: `1px solid ${open ? T.red : T.border}`,
+            background: T.input, color: T.text, fontSize: 13, fontFamily: F.sans, cursor: "pointer",
+            display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+          <span style={{ fontSize: 16 }}>{country.flag}</span>
+          <span>{country.dial}</span>
+          <ChevronDown size={13} color={T.t3} />
+        </button>
+        <input type="tel" inputMode="tel" value={number} placeholder="555 012 3456"
+          onChange={(e) => onNumber(e.target.value.replace(/[^\d\s()-]/g, ""))}
+          style={{ flex: 1, height: 42, padding: "0 12px", borderRadius: 10, border: `1px solid ${T.border}`,
+            background: T.input, color: T.text, fontSize: 13, fontFamily: F.sans, outline: "none", boxSizing: "border-box" }} />
+        {open && (
+          <div style={{ position: "absolute", top: 48, left: 0, width: 300, zIndex: 40, borderRadius: 10,
+            border: `1px solid ${T.border}`, background: T.panel, boxShadow: "0 12px 32px rgba(15,23,42,0.12)", padding: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, height: 36, padding: "0 10px", borderRadius: 8, background: "#F1F5F9", border: `1px solid ${T.border}`, marginBottom: 6 }}>
+              <Search size={14} color={T.t3} />
+              <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search country or code"
+                style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: T.text, fontSize: 13, fontFamily: F.sans }} />
+            </div>
+            <div style={{ maxHeight: 220, overflowY: "auto" }}>
+              {list.map((c) => (
+                <button key={c.code} type="button" onClick={() => { onCountry(c.code); setOpen(false); setQ(""); }}
+                  style={{ width: "100%", textAlign: "left", padding: "8px 10px", borderRadius: 8, border: "none",
+                    background: countryCode === c.code ? "rgba(37,99,235,0.10)" : "transparent", color: T.text,
+                    fontSize: 13, fontFamily: F.sans, cursor: "pointer", display: "flex", gap: 8 }}>
+                  <span>{c.flag}</span><span style={{ flex: 1 }}>{c.name}</span>
+                  <span style={{ color: T.t3 }}>{c.dial}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PasswordRules({ value }: { value: string }) {
+  const c = passwordChecks(value);
+  const rules = [
+    { label: "8+ characters", ok: c.length },
+    { label: "Capital letter", ok: c.upper },
+    { label: "Lowercase letter", ok: c.lower },
+    { label: "Number", ok: c.number },
+    { label: "Symbol", ok: c.symbol },
+  ];
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 8 }}>
+      {rules.map((r) => (
+        <div key={r.label} style={{ display: "flex", alignItems: "center", gap: 5, color: r.ok ? "#16A34A" : T.t3, fontSize: 11, fontFamily: F.sans }}>
+          <Check size={11} /> {r.label}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RolePicker({
+  roles,
+  selected,
+  search,
+  onSearch,
+  onToggle,
+}: {
+  roles: string[];
+  selected: string[];
+  search: string;
+  onSearch: (value: string) => void;
+  onToggle: (role: string) => void;
+}) {
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return roles
+      .filter((role) => !q || role.toLowerCase().includes(q))
+      .slice(0, 90);
+  }, [roles, search]);
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 8 }}>
+        <div>
+          <div style={{ fontSize: 13, color: T.text, fontFamily: F.sans, fontWeight: 700 }}>Choose your top {MIN_TARGET_ROLES} target positions</div>
+          <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, marginTop: 3 }}>Select at least {MIN_TARGET_ROLES} positions. These power your job matches and daily alerts.</div>
+        </div>
+        <div style={{ fontSize: 12, color: selected.length >= MIN_TARGET_ROLES ? "#16A34A" : T.red, fontFamily: F.mono, fontWeight: 800 }}>
+          {selected.length}/25
+        </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, height: 40, padding: "0 12px", borderRadius: 10, background: T.input, border: `1px solid ${T.border}`, marginBottom: 10 }}>
+        <Search size={14} color={T.t3} />
+        <input value={search} onChange={(e) => onSearch(e.target.value)} placeholder="Search role, e.g. Security Analyst"
+          style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: T.text, fontSize: 13, fontFamily: F.sans }} />
+      </div>
+      <div style={{ maxHeight: 260, overflowY: "auto", display: "grid", gridTemplateColumns: "1fr", gap: 6, border: `1px solid ${T.border}`, borderRadius: 12, padding: 8, background: "#F8FAFC" }}>
+        {visible.map((role) => {
+          const active = selected.includes(role);
+          const disabled = !active && selected.length >= 25;
+          return (
+            <button key={role} type="button" disabled={disabled} onClick={() => onToggle(role)}
+              style={{ minHeight: 38, padding: "8px 10px", borderRadius: 9, border: `1px solid ${active ? "rgba(22,163,74,0.35)" : "transparent"}`,
+                background: active ? "rgba(34,197,94,0.10)" : "transparent", color: disabled ? T.t3 : T.text,
+                fontSize: 13, fontFamily: F.sans, cursor: disabled ? "not-allowed" : "pointer", textAlign: "left",
+                display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <span>{role}</span>
+              {active && <Check size={13} color="#16A34A" />}
             </button>
+          );
+        })}
+      </div>
+      {selected.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+          {selected.map((role) => (
+            <span key={role} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, padding: "5px 8px", borderRadius: 999, background: "rgba(37,99,235,0.08)", color: T.red, border: "1px solid rgba(37,99,235,0.22)", fontFamily: F.sans }}>
+              {role}
+              <button type="button" onClick={() => onToggle(role)} style={{ background: "none", border: "none", color: T.red, cursor: "pointer", padding: 0, display: "flex" }}><X size={11} /></button>
+            </span>
           ))}
         </div>
       )}
     </div>
   );
 }
+
+const PRIMARY_BTN: React.CSSProperties = {
+  flex: 2, padding: "12px", borderRadius: 12, border: "none", background: T.grad, color: "#fff",
+  fontSize: 13.5, fontFamily: F.sans, cursor: "pointer", fontWeight: 700, boxShadow: "0 8px 20px rgba(37,99,235,0.25)",
+};
+const GHOST_BTN: React.CSSProperties = {
+  flex: 1, padding: "12px", borderRadius: 12, border: `1px solid ${T.border}`, background: "transparent",
+  color: T.t2, fontSize: 13, fontFamily: F.sans, cursor: "pointer", fontWeight: 600,
+};
 
 export default function SignUp() {
   const navigate = useNavigate();
-  const { signUp } = useAuth();
+  const { signUp, verifySignupOtp } = useAuth();
   const { isMobile } = useViewportFlags();
-
-  // Step 1 — credentials
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [showPass, setShowPass] = useState(false);
-
-  // Step 2 — career
-  const [linkedinUrl, setLinkedinUrl] = useState("");
-  const [currentRole, setCurrentRole] = useState("");
-  const [currentCompany, setCurrentCompany] = useState("");
-  const [experienceLevel, setExperienceLevel] = useState("");
-  const [visaStatus, setVisaStatus] = useState("");
-  const [location, setLocation] = useState("");
-
-  // Step 3 — preferences
-  const [taxonomy, setTaxonomy] = useState<TaxonomyCategory[]>([]);
-  const [targetRoles, setTargetRoles] = useState<string[]>([]);
-  const [roleSearch, setRoleSearch] = useState("");
-  const [targetLocations, setTargetLocations] = useState<string[]>([]);
-  const [locationInput, setLocationInput] = useState("");
-
-  // Step 4 — resume
-  const [resumeFile, setResumeFile] = useState<File | null>(null);
 
   const [step, setStep] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Load taxonomy once for the role picker.
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phoneCountry, setPhoneCountry] = useState(DEFAULT_PHONE_COUNTRY);
+  const [phoneNumber, setPhoneNumber] = useState("");
+
+  const [agreed, setAgreed] = useState(false);
+  const [disagreed, setDisagreed] = useState(false);
+
+  const [linkedinUrl, setLinkedinUrl] = useState("");
+  const [currentCompany, setCurrentCompany] = useState("");
+  const [experienceLevel, setExperienceLevel] = useState("");
+  const [country, setCountry] = useState("US");
+  const [visaStatus, setVisaStatus] = useState("");
+  const [visaOther, setVisaOther] = useState("");
+  const [allRoles, setAllRoles] = useState<string[]>([]);
+  const [roleSearch, setRoleSearch] = useState("");
+  const [targetRoles, setTargetRoles] = useState<string[]>([]);
+
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [showPass, setShowPass] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
+
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+
+  const visaOptions = useMemo(() => visaOptionsForCountry(country), [country]);
   useEffect(() => {
+    if (visaStatus && !visaOptions.includes(visaStatus)) {
+      setVisaStatus("");
+      setVisaOther("");
+    }
+  }, [country]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    let active = true;
     api.getJobTaxonomy()
-      .then((data) => Array.isArray(data?.categories) && setTaxonomy(data.categories))
+      .then((taxonomy) => {
+        if (!active) return;
+        const roles = Array.from(new Set((taxonomy.categories || []).flatMap((cat) => cat.roles.map((role: any) => String(role.name || "")).filter(isVisibleRole))));
+        setAllRoles(roles.sort((a, b) => a.localeCompare(b)));
+      })
       .catch(() => {});
+    return () => { active = false; };
   }, []);
 
-  const allRoles = Array.from(new Set([
-    ...taxonomy.flatMap((c) => c.roles.map((r) => r.name).filter(Boolean)),
-    ...FALLBACK_TARGET_ROLES,
-  ]));
-  const filteredRoles = allRoles
-    .filter((role) => role.toLowerCase().includes(roleSearch.trim().toLowerCase()))
-    .slice(0, 12);
-  const visibleRoles = roleSearch.trim() ? filteredRoles : allRoles.slice(0, 12);
-  const filteredLocationPrefs = locationInput.trim().length >= 4
-    ? LOCATION_SUGGESTIONS.filter((item) => {
-        const q = locationInput.trim().toLowerCase();
-        return item.toLowerCase() !== q && item.toLowerCase().includes(q);
-      }).slice(0, 6)
-    : [];
-
-  const toggleRole = (r: string) => {
-    setTargetRoles((prev) => {
-      if (prev.includes(r)) return prev.filter((x) => x !== r);
-      if (prev.length >= 25) return prev;  // hard cap
-      return [...prev, r];
-    });
-  };
-
-  const addLocation = () => {
-    const v = locationInput.trim();
-    if (!v) return;
-    if (targetLocations.includes(v)) return;
-    setTargetLocations((prev) => [...prev, v]);
-    setLocationInput("");
+  const fullPhone = () => {
+    const dial = (COUNTRY_BY_CODE[phoneCountry] || COUNTRIES[0]).dial;
+    return `${dial} ${phoneNumber.trim()}`.trim();
   };
 
   const validateStep = (): string | null => {
     if (step === 1) {
-      if (!firstName || !lastName || !email || !phone || !password || !confirm) return "Please complete all fields.";
-      if (password !== confirm) return "Passwords do not match.";
-      const passwordProblem = passwordError(password);
-      if (passwordProblem) return passwordProblem;
+      if (!firstName.trim() || !lastName.trim()) return "Please enter your first and last name.";
+      if (!isValidEmail(email)) return "Please enter a valid email address.";
+      if (phoneNumber.replace(/\D/g, "").length < 6) return "Please enter a valid phone number.";
     }
     if (step === 2) {
-      if (!isValidLinkedInUrl(linkedinUrl)) return "Enter a valid LinkedIn profile URL like https://linkedin.com/in/your-name.";
-      if (!visaStatus) return "Please select your visa status.";
+      if (!agreed) return "You must accept the Terms of Service and Privacy Policy to continue.";
     }
     if (step === 3) {
-      if (targetRoles.length === 0) return "Pick at least one target role.";
+      if (!isValidLinkedInUrl(linkedinUrl)) return "Enter a valid LinkedIn profile URL like https://linkedin.com/in/your-name.";
+      if (!country) return "Please select your country.";
+      if (!visaStatus) return "Please select your visa / work-authorization status.";
+      if (visaStatus === "Other" && !visaOther.trim()) return "Please describe your visa / work-authorization status.";
     }
     if (step === 4) {
-      const resumeProblem = validateResumeFile(resumeFile);
-      if (resumeProblem) return resumeProblem;
+      if (targetRoles.length < MIN_TARGET_ROLES) return `Please select at least ${MIN_TARGET_ROLES} target roles so your Jobs feed stays relevant.`;
     }
     return null;
   };
@@ -333,40 +428,40 @@ export default function SignUp() {
     const err = validateStep();
     if (err) { setError(err); return; }
     setError(null);
-    setStep((s) => s + 1);
+    setStep((s) => Math.min(TOTAL_STEPS, s + 1));
   };
   const back = () => { setError(null); setStep((s) => Math.max(1, s - 1)); };
 
-  const handleSubmit = async () => {
-    const err = validateStep();
-    if (err) { setError(err); return; }
+  const createAccountAndSendCode = async () => {
+    const passProblem = passwordError(password);
+    if (passProblem) { setError(passProblem); return; }
+    if (password !== confirm) { setError("Passwords do not match."); return; }
     setError(null);
     setLoading(true);
     try {
-      await signUp({
-        first_name: firstName, last_name: lastName, email, password,
-        phone: phone || undefined,
-        visa_status: visaStatus || undefined,
+      const payload: api.SignupPayload = {
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        email: email.trim(),
+        password,
+        phone: fullPhone(),
+        country,
+        visa_status: visaStatus,
+        visa_status_other: visaStatus === "Other" ? visaOther.trim() : undefined,
         experience_level: experienceLevel || undefined,
-        current_role: currentRole || undefined,
-        current_company: currentCompany || undefined,
-        location: location || undefined,
+        current_company: currentCompany.trim() || undefined,
         linkedin_url: linkedinUrl.trim() || undefined,
-        target_roles: targetRoles,
-        target_locations: targetLocations,
-      });
-      // After auth, upload the resume as the user's active resume before they
-      // enter the dashboard so they are not asked to upload it again.
-      if (resumeFile) {
-        try {
-          await api.uploadResume(resumeFile);
-          window.dispatchEvent(new Event("placeup:resume-changed"));
-        } catch (resumeError) {
-          setError((resumeError as Error).message || "Account created, but resume upload failed. Please retry the secure resume upload before continuing.");
-          return;
-        }
+        target_roles: targetRoles.slice(0, 25),
+        agreement_accepted: true,
+        agreement_version: AGREEMENT_VERSION,
+        payment_plan: "free_access",
+      };
+      const result = await signUp(payload);
+      if ("otp_required" in result && result.otp_required) {
+        setOtpSent(true);
+      } else {
+        setStep(6);
       }
-      navigate("/dashboard");
     } catch (err) {
       setError((err as Error).message || "Unable to create your account.");
     } finally {
@@ -374,155 +469,190 @@ export default function SignUp() {
     }
   };
 
+  const verifyCode = async () => {
+    if (otpCode.trim().length < 4) { setError("Enter the 6-digit code we emailed you."); return; }
+    setError(null);
+    setLoading(true);
+    try {
+      await verifySignupOtp(email.trim(), otpCode.trim());
+      setStep(6);
+    } catch (err) {
+      setError((err as Error).message || "Invalid or expired code.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleTargetRole = (role: string) => {
+    setTargetRoles((prev) => {
+      if (prev.includes(role)) return prev.filter((item) => item !== role);
+      if (prev.length >= 25) return prev;
+      return [...prev, role];
+    });
+  };
+
+  const resendCode = async () => {
+    setError(null);
+    try {
+      await api.requestOtp(email.trim(), "signup");
+    } catch (err) {
+      setError((err as Error).message || "Could not resend the code.");
+    }
+  };
+
+  const finishWithResume = async () => {
+    const fileProblem = validateResumeFile(resumeFile);
+    if (fileProblem) { setError(fileProblem); return; }
+    setError(null);
+    setLoading(true);
+    try {
+      await api.uploadResume(resumeFile as File);
+      window.dispatchEvent(new Event("placeup:resume-changed"));
+      navigate("/dashboard");
+    } catch (err) {
+      setError((err as Error).message || "Resume upload failed. Please retry.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <div style={{ minHeight: "100vh", display: "flex", justifyContent: "center", alignItems: "center", padding: isMobile ? 14 : 24, background: T.bg }}>
-      <div style={{ width: "100%", maxWidth: 640, borderRadius: isMobile ? 18 : 24, background: "rgba(1,17,38,0.92)", border: `1px solid ${T.border}`, backdropFilter: "blur(28px)", padding: isMobile ? 18 : 32, boxShadow: "0 24px 64px rgba(1,17,38,0.4)" }}>
-        <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", gap: isMobile ? 12 : 0, marginBottom: 24 }}>
+    <div style={{ minHeight: "100vh", display: "flex", justifyContent: "center", alignItems: "center", padding: isMobile ? 14 : 24, background: `radial-gradient(900px 400px at 50% -5%, rgba(37,99,235,0.06), transparent 70%), ${T.bg}` }}>
+      <div style={{ width: "100%", maxWidth: 640, borderRadius: isMobile ? 18 : 24, background: "#FFFFFF", border: `1px solid ${T.border}`, padding: isMobile ? 18 : 32, boxShadow: "0 4px 12px rgba(15,23,42,0.06), 0 24px 56px rgba(15,23,42,0.10)" }}>
+        <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", gap: isMobile ? 12 : 0, marginBottom: 20 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <img src="/logo_white.png" alt="PlaceUp Career" style={{ width: 34, height: 34, objectFit: "contain" }} />
+            <span style={{ width: 34, height: 34, borderRadius: 9, background: T.grad, display: "inline-flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 12px rgba(37,99,235,0.25)", flexShrink: 0 }}>
+              <Briefcase size={16} color="#fff" />
+            </span>
             <div>
               <div style={{ fontFamily: F.sans, fontSize: 17, fontWeight: 700, color: T.text }}>Create your account</div>
-              <div style={{ fontSize: 12, color: T.t2, fontFamily: F.sans }}>Step {step} of 4</div>
+              <div style={{ fontSize: 12, color: T.t2, fontFamily: F.sans }}>Step {step} of {TOTAL_STEPS} · {STEP_LABELS[step - 1]}</div>
             </div>
           </div>
           <Link to="/signin" style={{ color: T.red, fontSize: 12, fontWeight: 600, fontFamily: F.sans, textDecoration: "none" }}>Already have an account?</Link>
         </div>
 
-        {/* Progress dots */}
-        <div style={{ display: "flex", gap: 6, marginBottom: 24 }}>
-          {[1, 2, 3, 4].map((s) => (
-            <div key={s} style={{ flex: 1, height: 3, borderRadius: 2, background: s <= step ? T.grad : "rgba(242,238,179,0.08)" }} />
+        <div style={{ display: "flex", gap: 6, marginBottom: 22 }}>
+          {STEP_LABELS.map((_, i) => (
+            <div key={i} style={{ flex: 1, height: 3, borderRadius: 2, background: i + 1 <= step ? T.grad : "#E2E8F0" }} />
           ))}
         </div>
 
-        {/* Step 1 — credentials */}
         {step === 1 && (
           <motion.div initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14 }}>
             <Field label="First Name" value={firstName} onChange={setFirstName} required />
             <Field label="Last Name" value={lastName} onChange={setLastName} required />
             <div style={{ gridColumn: "1 / -1" }}>
-              <Field label="Gmail / Email" type="email" value={email} onChange={setEmail} placeholder="you@example.com" required />
+              <Field label="Email" type="email" value={email} onChange={setEmail} placeholder="you@example.com" required />
             </div>
             <div style={{ gridColumn: "1 / -1" }}>
-              <Field label="Phone Number" type="tel" value={phone} onChange={setPhone} placeholder="+1 555 012 3456" required />
-            </div>
-            <Field label="Password" type={showPass ? "text" : "password"} value={password} onChange={setPassword} required
-              rightEl={<button onClick={() => setShowPass(!showPass)} style={{ background: "none", border: "none", cursor: "pointer", color: T.t3, padding: 0 }}>{showPass ? <EyeOff size={14} /> : <Eye size={14} />}</button>} />
-            <Field label="Confirm Password" type="password" value={confirm} onChange={setConfirm} required />
-            <div style={{ gridColumn: "1 / -1" }}>
-              <PasswordRules value={password} />
+              <PhoneInput countryCode={phoneCountry} onCountry={setPhoneCountry} number={phoneNumber} onNumber={setPhoneNumber} />
             </div>
           </motion.div>
         )}
 
-        {/* Step 2 — career */}
         {step === 2 && (
+          <motion.div initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }}>
+            <div style={{ fontSize: 13, color: T.text, fontFamily: F.sans, fontWeight: 600, marginBottom: 10 }}>Before you continue</div>
+            <div style={{ maxHeight: 220, overflowY: "auto", border: `1px solid ${T.border}`, borderRadius: 12, padding: 16, background: T.input, fontSize: 13, color: T.t2, lineHeight: 1.6, fontFamily: F.sans }}>
+              <p style={{ marginTop: 0 }}>
+                PlaceUp aggregates public job postings and provides resume analysis and visa sponsorship signals. We are a software tool, not an employer, staffing agency, or immigration adviser, and we do not guarantee interviews, offers, sponsorship, or employment. All match, ATS, and sponsorship indicators are informational estimates.
+              </p>
+              <p>
+                By continuing you agree to our{" "}
+                <Link to="/terms" target="_blank" style={{ color: T.red }}>Terms of Service</Link>,{" "}
+                <Link to="/privacy" target="_blank" style={{ color: T.red }}>Privacy Policy</Link>,{" "}
+                <Link to="/cookies" target="_blank" style={{ color: T.red }}>Cookies notice</Link>, and{" "}
+          <Link to="/disclaimer" target="_blank" style={{ color: T.red }}>Disclaimer</Link>. Complete application access is currently free while we finish the launch preview.
+              </p>
+              <p style={{ marginBottom: 0 }}>You must be 18+ and provide accurate information. We record your acceptance (date, version, and IP) for compliance.</p>
+            </div>
+
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 10, marginTop: 16, cursor: "pointer" }}>
+              <input type="checkbox" checked={agreed} onChange={(e) => { setAgreed(e.target.checked); if (e.target.checked) setDisagreed(false); }}
+                style={{ width: 18, height: 18, marginTop: 1, accentColor: T.red, cursor: "pointer" }} />
+              <span style={{ fontSize: 13, color: T.text, fontFamily: F.sans }}>
+                I have read and <strong>agree</strong> to the Terms of Service, Privacy Policy, Disclaimer, and Refund Policy.
+              </span>
+            </label>
+            <button type="button" onClick={() => { setDisagreed(true); setAgreed(false); }}
+              style={{ marginTop: 10, background: "none", border: "none", color: T.t3, fontSize: 12, fontFamily: F.sans, cursor: "pointer", textDecoration: "underline" }}>
+              I do not agree
+            </button>
+            {disagreed && (
+              <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", color: "#DC2626", fontSize: 12, fontFamily: F.sans }}>
+                You can't create an account without accepting the Terms and Privacy Policy. You're welcome to review them and come back.
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {step === 3 && (
           <motion.div initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14 }}>
             <div style={{ gridColumn: "1 / -1" }}>
               <Field label="LinkedIn Profile URL" value={linkedinUrl} onChange={setLinkedinUrl} placeholder="https://linkedin.com/in/..." />
             </div>
-            <Field label="Current Role" value={currentRole} onChange={setCurrentRole} placeholder="Software Engineer" />
             <Field label="Current Company" value={currentCompany} onChange={setCurrentCompany} placeholder="Acme Corp" />
-            <AppSelect label="Years of Experience" value={experienceLevel} onChange={setExperienceLevel} options={api.YEARS_OPTIONS} />
-            <AppSelect label="Visa Status" value={visaStatus} onChange={setVisaStatus} options={api.VISA_STATUS_OPTIONS} required />
-            <div style={{ gridColumn: "1 / -1" }}>
-              <LocationSuggestField label="Current Location" value={location} onChange={setLocation} placeholder="Start typing, e.g. San F" />
-            </div>
+            <Dropdown label="Years of Experience" value={experienceLevel} onChange={setExperienceLevel} options={api.YEARS_OPTIONS} />
+            <CountryDropdown label="Country" value={country} onChange={setCountry} required />
+            <Dropdown label="Visa / Work Authorization" value={visaStatus} onChange={(v) => { setVisaStatus(v); if (v !== "Other") setVisaOther(""); }} options={visaOptions} required placeholder="Select status" />
+            {visaStatus === "Other" && (
+              <div style={{ gridColumn: "1 / -1" }}>
+                <Field label="Describe your status" value={visaOther} onChange={setVisaOther} placeholder="e.g. Dependent visa with work rights" required />
+              </div>
+            )}
           </motion.div>
         )}
 
-        {/* Step 3 — preferences */}
-        {step === 3 && (
-          <motion.div initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }}>
-            <div style={{ marginBottom: 18 }}>
-              <div style={{ fontSize: 12, fontWeight: 500, color: T.t2, fontFamily: F.sans, marginBottom: 6 }}>
-                Job Preferences <span style={{ color: T.red }}>*</span>
-                <span style={{ marginLeft: 6, fontSize: 11, color: T.t3 }}>pick up to 25 ({targetRoles.length}/25)</span>
-              </div>
-              <div style={{ position: "relative", border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, background: T.input }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, height: 38, padding: "0 10px", borderRadius: 8, background: "rgba(1,17,38,0.35)", border: `1px solid ${T.border}` }}>
-                  <Search size={14} color={T.t3} />
-                  <input value={roleSearch} onChange={(e) => setRoleSearch(e.target.value)} placeholder="Search and select target roles"
-                    style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: T.text, fontSize: 13, fontFamily: F.sans }} />
-                  <ChevronDown size={14} color={T.t3} />
-                </div>
-                <div style={{ maxHeight: 180, overflowY: "auto", marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
-                  {visibleRoles.map((role) => {
-                    const sel = targetRoles.includes(role);
-                    const disabled = !sel && targetRoles.length >= 25;
-                    return (
-                      <button key={role} type="button" onClick={() => toggleRole(role)} disabled={disabled}
-                        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderRadius: 8, border: "none",
-                          background: sel ? "rgba(237,125,43,0.18)" : "transparent", color: disabled ? T.t3 : T.text,
-                          fontSize: 13, fontFamily: F.sans, cursor: disabled ? "not-allowed" : "pointer", textAlign: "left" }}>
-                        <span>{role}</span>
-                        {sel && <Check size={13} color="#22c55e" />}
-                      </button>
-                    );
-                  })}
-                  {visibleRoles.length === 0 && (
-                    <button type="button" onClick={() => roleSearch.trim() && toggleRole(roleSearch.trim())}
-                      style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderRadius: 8, border: "none",
-                        background: "transparent", color: T.t2, fontSize: 13, fontFamily: F.sans, cursor: roleSearch.trim() ? "pointer" : "default", textAlign: "left" }}>
-                      <span>{roleSearch.trim() ? `Use "${roleSearch.trim()}"` : "Start typing to search roles"}</span>
-                    </button>
-                  )}
-                </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
-                  {targetRoles.map((role) => (
-                    <span key={role} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "rgba(237,125,43,0.1)", color: T.red, border: "1px solid rgba(237,125,43,0.25)", fontFamily: F.sans }}>
-                      {role}
-                      <button type="button" onClick={() => toggleRole(role)} style={{ background: "none", border: "none", cursor: "pointer", color: T.red, padding: 0 }}><X size={10} /></button>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 500, color: T.t2, fontFamily: F.sans, marginBottom: 6 }}>Location Preferences</div>
-              <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 8 }}>
-                <input value={locationInput} onChange={(e) => setLocationInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addLocation(); } }}
-                  placeholder="Type 4+ letters, e.g. San F"
-                  style={{ flex: 1, height: 38, padding: "0 12px", borderRadius: 10, border: `1px solid ${T.border}`, background: T.input, color: T.text, fontSize: 13, fontFamily: F.sans, outline: "none" }} />
-                <button type="button" onClick={addLocation} style={{ height: 38, padding: "0 16px", borderRadius: 10, border: "none", background: T.grad, color: "#fff", fontSize: 12, fontWeight: 600, fontFamily: F.sans, cursor: "pointer" }}>Add</button>
-              </div>
-              {filteredLocationPrefs.length > 0 && (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
-                  {filteredLocationPrefs.map((item) => (
-                    <button key={item} type="button" onClick={() => { setLocationInput(item); if (!targetLocations.includes(item)) setTargetLocations((prev) => [...prev, item]); }}
-                      style={{ fontSize: 11, padding: "4px 9px", borderRadius: 4, fontFamily: F.sans, cursor: "pointer",
-                        background: "rgba(242,238,179,0.05)", color: T.t2, border: `1px solid ${T.border}` }}>
-                      {item}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
-                {targetLocations.map((l) => (
-                  <span key={l} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, padding: "3px 8px", borderRadius: 4, background: "rgba(237,125,43,0.1)", color: T.red, border: "1px solid rgba(237,125,43,0.25)", fontFamily: F.sans }}>
-                    {l}
-                    <button type="button" onClick={() => setTargetLocations((prev) => prev.filter((x) => x !== l))} style={{ background: "none", border: "none", cursor: "pointer", color: T.red, padding: 0 }}><X size={10} /></button>
-                  </span>
-                ))}
-              </div>
-            </div>
-          </motion.div>
-        )}
-
-        {/* Step 4 — resume */}
         {step === 4 && (
           <motion.div initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }}>
+            <RolePicker roles={allRoles} selected={targetRoles} search={roleSearch} onSearch={setRoleSearch} onToggle={toggleTargetRole} />
+          </motion.div>
+        )}
+
+        {step === 5 && (
+          <motion.div initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }}>
+            {!otpSent ? (
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14 }}>
+                <div style={{ gridColumn: "1 / -1", fontSize: 12, color: T.t3, fontFamily: F.sans }}>
+                  Set a password, then we'll email a 6-digit code to <strong style={{ color: T.text }}>{email}</strong> to verify it's you.
+                </div>
+                <Field label="Password" type={showPass ? "text" : "password"} value={password} onChange={setPassword} required
+                  rightEl={<button onClick={() => setShowPass(!showPass)} style={{ background: "none", border: "none", cursor: "pointer", color: T.t3, padding: 0 }}>{showPass ? <EyeOff size={14} /> : <Eye size={14} />}</button>} />
+                <Field label="Confirm Password" type="password" value={confirm} onChange={setConfirm} required />
+                <div style={{ gridColumn: "1 / -1" }}><PasswordRules value={password} /></div>
+              </div>
+            ) : (
+              <div>
+                <div style={{ fontSize: 13, color: T.text, fontFamily: F.sans, fontWeight: 600, marginBottom: 6 }}>Verify your email</div>
+                <div style={{ fontSize: 12, color: T.t3, fontFamily: F.sans, marginBottom: 14 }}>
+                  Enter the 6-digit code we emailed to {email}.
+                </div>
+                <input value={otpCode} onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="••••••" inputMode="numeric"
+                  style={{ width: "100%", height: 52, padding: "0 16px", borderRadius: 12, border: `1px solid ${T.border}`,
+                    background: T.input, color: T.text, fontSize: 22, letterSpacing: 8, textAlign: "center",
+                    fontFamily: F.mono, outline: "none", boxSizing: "border-box" }} />
+                <button type="button" onClick={resendCode}
+                  style={{ marginTop: 12, background: "none", border: "none", color: T.red, fontSize: 12, fontFamily: F.sans, cursor: "pointer" }}>
+                  Resend code
+                </button>
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {step === 6 && (
+          <motion.div initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }}>
             <div style={{ fontSize: 12, fontWeight: 500, color: T.t2, fontFamily: F.sans, marginBottom: 8 }}>
-              Upload Resume (required, 1 file)
+              Upload your resume (required, 1 file)
             </div>
-            <label style={{ display: "block", padding: 28, borderRadius: 12, border: `2px dashed ${resumeFile ? T.red : "rgba(237,125,43,0.3)"}`, background: T.input, textAlign: "center", cursor: "pointer", transition: "all 0.2s" }}>
+            <label style={{ display: "block", padding: 28, borderRadius: 12, border: `2px dashed ${resumeFile ? T.red : "rgba(37,99,235,0.35)"}`, background: T.input, textAlign: "center", cursor: "pointer" }}>
               <Upload size={24} color={T.red} style={{ margin: "0 auto 10px" }} />
               {resumeFile ? (
                 <div>
                   <div style={{ fontSize: 13, color: T.text, fontFamily: F.sans, fontWeight: 600, marginBottom: 4 }}>
-                    <Check size={12} style={{ verticalAlign: "middle", marginRight: 6 }} color="#22c55e" />
+                    <Check size={12} style={{ verticalAlign: "middle", marginRight: 6 }} color="#16A34A" />
                     {resumeFile.name}
                   </div>
                   <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans }}>{Math.round(resumeFile.size / 1024)} KB</div>
@@ -530,7 +660,7 @@ export default function SignUp() {
               ) : (
                 <div>
                   <div style={{ fontSize: 13, color: T.text, fontFamily: F.sans, marginBottom: 4 }}>Click or drop a resume</div>
-                  <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans }}>PDF or Word DOCX, max 10MB</div>
+                  <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans }}>PDF or DOCX, max 10MB</div>
                 </div>
               )}
               <input type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style={{ display: "none" }}
@@ -542,33 +672,40 @@ export default function SignUp() {
                 }} />
             </label>
             <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, marginTop: 12, lineHeight: 1.55 }}>
-              Your resume is security-checked for active PDF/DOCX content, parsed into private JSON, and saved as your active resume. You can replace it later from the Resumes tab.
+              Your resume is security-checked, parsed into private JSON, and saved as your active resume. You can replace it later from the Resumes tab.
             </div>
           </motion.div>
         )}
 
         {error && (
-          <div style={{ marginTop: 16, padding: "10px 12px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171", fontSize: 12, fontFamily: F.sans }}>
+          <div style={{ marginTop: 16, padding: "10px 12px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", color: "#DC2626", fontSize: 12, fontFamily: F.sans }}>
             {error}
           </div>
         )}
 
         <div style={{ display: "flex", gap: 10, marginTop: 24 }}>
-          {step > 1 && (
-            <button type="button" onClick={back} disabled={loading}
-              style={{ flex: 1, padding: "12px", borderRadius: 12, border: `1px solid ${T.border}`, background: "transparent", color: T.t2, fontSize: 13, fontFamily: F.sans, cursor: "pointer", fontWeight: 600 }}>
-              Back
+          {step > 1 && step !== 6 && !(step === 5 && otpSent) && (
+            <button type="button" onClick={back} disabled={loading} style={GHOST_BTN}>Back</button>
+          )}
+
+          {step <= 4 && (
+            <button type="button" onClick={next} disabled={loading} style={PRIMARY_BTN}>Continue</button>
+          )}
+
+          {step === 5 && !otpSent && (
+            <button type="button" onClick={createAccountAndSendCode} disabled={loading} style={PRIMARY_BTN}>
+              {loading ? "Creating account…" : "Create account & send code"}
             </button>
           )}
-          {step < 4 ? (
-            <button type="button" onClick={next} disabled={loading}
-              style={{ flex: 2, padding: "12px", borderRadius: 12, border: "none", background: T.grad, color: "#fff", fontSize: 13, fontFamily: F.sans, cursor: "pointer", fontWeight: 600, boxShadow: "0 0 18px rgba(237,125,43,0.3)" }}>
-              Next →
+          {step === 5 && otpSent && (
+            <button type="button" onClick={verifyCode} disabled={loading} style={PRIMARY_BTN}>
+              {loading ? "Verifying…" : "Verify & continue"}
             </button>
-          ) : (
-            <button type="button" onClick={handleSubmit} disabled={loading}
-              style={{ flex: 2, padding: "12px", borderRadius: 12, border: "none", background: T.grad, color: "#fff", fontSize: 13, fontFamily: F.sans, cursor: loading ? "wait" : "pointer", fontWeight: 600, boxShadow: "0 0 18px rgba(237,125,43,0.3)" }}>
-              {loading ? "Creating account…" : "Create Account 🎉"}
+          )}
+
+          {step === 6 && (
+            <button type="button" onClick={finishWithResume} disabled={loading} style={PRIMARY_BTN}>
+              {loading ? "Finishing…" : "Finish and go to dashboard"}
             </button>
           )}
         </div>

@@ -1122,16 +1122,47 @@ async def _hydrate_thin_job_descriptions(jobs: list[JobPost]) -> None:
     if max_jobs <= 0:
         return
 
+    def _candidate_urls(job: JobPost) -> list[str]:
+        seen: set[str] = set()
+        urls: list[str] = []
+
+        def add(value: object) -> None:
+            url = str(value or "").strip()
+            if not url or url in seen or not is_html_fetch_allowed(url):
+                return
+            seen.add(url)
+            urls.append(url)
+
+        add(getattr(job, "job_url_direct", ""))
+        add(getattr(job, "job_url", ""))
+
+        extras = getattr(job, "extra_metadata", None) or {}
+        if isinstance(extras, dict):
+            for key in (
+                "apply_url",
+                "application_url",
+                "direct_apply_url",
+                "external_apply_url",
+                "canonical_url",
+                "source_url",
+                "url",
+            ):
+                add(extras.get(key))
+
+        return urls
+
     candidates: list[JobPost] = []
+    candidate_urls: dict[str, list[str]] = {}
     for job in jobs:
         if len(candidates) >= max_jobs:
             break
         description = clean_description_text(getattr(job, "description", "") or "")
         if not is_thin_description(description, min_chars=1200, min_words=120):
             continue
-        url = (getattr(job, "job_url_direct", "") or getattr(job, "job_url", "") or "").strip()
-        if url and is_html_fetch_allowed(url):
+        urls = _candidate_urls(job)
+        if urls:
             candidates.append(job)
+            candidate_urls[job.id] = urls
 
     if not candidates:
         return
@@ -1139,21 +1170,27 @@ async def _hydrate_thin_job_descriptions(jobs: list[JobPost]) -> None:
     semaphore = asyncio.Semaphore(concurrency)
 
     async def _hydrate_one(job: JobPost) -> bool:
-        url = (getattr(job, "job_url_direct", "") or getattr(job, "job_url", "") or "").strip()
         current = clean_description_text(getattr(job, "description", "") or "")
-        async with semaphore:
-            details = await fetch_full_job_description(url, timeout=timeout, expand_links=True)
-        if not details:
+        details = None
+        attempted_urls = candidate_urls.get(job.id, [])
+        for url in attempted_urls:
+            async with semaphore:
+                details = await fetch_full_job_description(url, timeout=timeout, expand_links=True)
+            if details:
+                replacement = clean_description_text(details.description)
+                if len(replacement) > len(current) + 300:
+                    break
+            details = None
+        if details is None:
             return False
         replacement = clean_description_text(details.description)
-        if len(replacement) <= len(current) + 300:
-            return False
         job.description = replacement
         job.job_url = details.source_url or job.job_url
         extras = dict(job.extra_metadata or {})
         extras["description_hydrated"] = True
         extras["description_hydrated_from"] = details.source_url
         extras["description_extractor"] = details.extractor
+        extras["description_hydration_attempted_urls"] = len(attempted_urls)
         job.extra_metadata = extras
         return True
 

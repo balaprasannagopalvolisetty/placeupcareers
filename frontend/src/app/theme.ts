@@ -17,25 +17,25 @@
 // ─── Palette: cream + orange on deep warm surfaces ───────────────────────────
 export const T = {
   // Surfaces
-  bg: "#0E1116",                       // deep neutral base (kept dark for contrast)
-  bgWarm: "#16110C",                   // warm alt surface for sections
-  glass: "rgba(38,24,12,0.55)",        // warm glass panel
-  border: "rgba(245,234,200,0.10)",    // cream-tinted hairline
+  bg: "#07111F",                       // deep professional navy
+  bgWarm: "#0B1728",                   // alternate navy surface
+  glass: "rgba(11,23,40,0.72)",        // clean glass panel
+  border: "rgba(226,232,240,0.13)",    // slate hairline
 
   // Text (cream family)
-  text: "#F5EAC8",                     // primary cream
-  t2: "rgba(245,234,200,0.66)",        // secondary
-  t3: "rgba(245,234,200,0.45)",        // tertiary / muted
+  text: "#F8FAFC",                     // primary
+  t2: "rgba(226,232,240,0.72)",        // secondary
+  t3: "rgba(148,163,184,0.72)",        // tertiary / muted
 
   // Accent (orange family) — `red` kept as an alias so legacy `T.red` → orange
-  accent: "#ED7D2B",                   // primary orange
-  accentSoft: "#F2A341",               // light orange
-  accentDeep: "#C75A12",               // deep orange
-  red: "#ED7D2B",                      // ALIAS for backward-compat (was brick red)
-  grad: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)",
+  accent: "#2F80ED",                   // primary blue
+  accentSoft: "#38BDF8",               // sky
+  accentDeep: "#1D4ED8",               // deep blue
+  red: "#2F80ED",                      // legacy alias
+  grad: "linear-gradient(135deg, #2563EB, #0EA5E9, #14B8A6)",
 
   // Status
-  green: "#3FB477",
+  green: "#22C55E",
   warn: "#E8A93C",
 } as const;
 

@@ -29,12 +29,22 @@ class SignupRequest(BaseModel):
     current_role: Optional[str] = None
     current_company: Optional[str] = None
     location: Optional[str] = None                # current location
+    country: Optional[str] = None                 # country (drives visa options)
+    visa_status_other: Optional[str] = None       # free text when visa_status == "Other"
     linkedin_url: Optional[str] = None
     # Preferences
     target_roles: list[str] = Field(default_factory=list, max_length=25)
     target_locations: list[str] = Field(default_factory=list)
     # Legacy alias kept for older clients.
     targets: list[str] = Field(default_factory=list)
+    # Legal agreement captured at signup (Terms + Privacy acceptance).
+    agreement_accepted: bool = False
+    agreement_version: Optional[str] = None
+    # Payment marker from the pre-account checkout step. payment_reference is
+    # whatever the hosted-checkout / Stripe session hands back (may be blank
+    # until webhooks are connected).
+    payment_plan: Optional[str] = None
+    payment_reference: Optional[str] = None
 
 
 class AuthResponse(BaseModel):
@@ -48,12 +58,6 @@ class AuthResponse(BaseModel):
     plan: str = "pro"
 
 
-class TokenRefreshResponse(BaseModel):
-    access_token: str
-    expires_in: int = 900
-    token_type: str = "bearer"
-
-
 class UserProfile(BaseModel):
     id: str
     first_name: str
@@ -61,7 +65,9 @@ class UserProfile(BaseModel):
     email: EmailStr
     phone: Optional[str] = None
     location: Optional[str] = None
+    country: Optional[str] = None
     visa_status: Optional[str] = None
+    visa_status_other: Optional[str] = None
     experience_years: Optional[str] = None
     current_role: Optional[str] = None
     current_company: Optional[str] = None
@@ -71,6 +77,13 @@ class UserProfile(BaseModel):
     github_url: Optional[str] = None
     portfolio_url: Optional[str] = None
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class TokenRefreshResponse(BaseModel):
+    access_token: str
+    expires_in: int = 900
+    token_type: str = "bearer"
+    user: Optional[UserProfile] = None
 
 
 class SessionResponse(BaseModel):

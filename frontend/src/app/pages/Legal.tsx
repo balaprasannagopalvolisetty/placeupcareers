@@ -1,27 +1,19 @@
 /**
- * Privacy / Terms / Cookies pages.
+ * Legal pages: Privacy, Terms, Cookies, Disclaimer, Return Policy.
  *
- * These exist mainly because:
- *   1. Google OAuth requires a public privacy policy URL before the
- *      OAuth consent screen can leave testing mode.
- *   2. Firebase Hosting's domain verification and most app stores
- *      reject deploys without these links.
- *   3. GDPR / CCPA compliance — even if you're US-only today, EU
- *      visitors will reach the site and we owe them a clear policy.
- *
- * The content here is *baseline*. Before sending real users through
- * signup, route this copy past your lawyer and replace the placeholder
- * dates and contact email at the bottom of each page.
+ * Public pages required for compliance, OAuth consent, and app-store /
+ * hosting checks. Copy is launch-grade and PlaceUp-specific. Have counsel do a
+ * final review for your jurisdiction; the structure and routes are stable.
  */
 
 import { Link } from "react-router";
 
 const F = "'Plus Jakarta Sans', sans-serif";
 const T = {
-  text: "#F2EEB3",
-  t2: "rgba(242,238,179,0.75)",
-  t3: "rgba(242,238,179,0.55)",
-  border: "rgba(242,238,179,0.12)",
+  text: "#F1F5F9",
+  t2: "rgba(148,163,184,0.75)",
+  t3: "rgba(148,163,184,0.55)",
+  border: "rgba(148,163,184,0.12)",
 };
 
 const SHELL: React.CSSProperties = {
@@ -65,6 +57,8 @@ function LegalShell({
           <Link to="/privacy" style={{ color: T.t3 }}>Privacy</Link>
           <Link to="/terms" style={{ color: T.t3 }}>Terms</Link>
           <Link to="/cookies" style={{ color: T.t3 }}>Cookies</Link>
+          <Link to="/disclaimer" style={{ color: T.t3 }}>Disclaimer</Link>
+          <Link to="/return-policy" style={{ color: T.t3 }}>Return Policy</Link>
         </div>
       </footer>
     </main>
@@ -73,54 +67,122 @@ function LegalShell({
 
 export function PrivacyPage() {
   return (
-    <LegalShell title="Privacy Policy" updated="May 21, 2026">
+    <LegalShell title="Privacy Policy" updated="June 21, 2026">
       <p style={P}>
-        PlaceUp Careers ("we", "us") helps job seekers find visa-friendly roles
-        by scoring scraped job postings against an uploaded resume. This page
-        describes what we collect, why, and how to remove your data.
+        Place Up Career LLC ("PlaceUp", "we", "us") helps international and
+        visa-sponsorship-seeking candidates find roles across multiple countries.
+        This page describes what we collect, why, and how to control your data.
+        Where a finalized policy is published, it governs.
       </p>
 
       <h2 style={H2}>1. What we collect</h2>
       <p style={P}>
-        Account data (email, name, optional LinkedIn URL, password hash) and
-        resume content you upload (file metadata, parsed text used for
-        scoring). We also collect application status notes you record against
-        jobs you have applied to.
+        Account data (name, email, phone, password hash, optional LinkedIn URL),
+        résumé content you upload (parsed text used for analysis), your job
+        preferences and work-authorization/visa status, access status, and
+        usage/device data. Payments are currently disabled during the free
+        preview, and we do not store card numbers.
       </p>
 
       <h2 style={H2}>2. How we use it</h2>
       <p style={P}>
-        To compute resume-to-job match scores, to surface visa-relevant
-        postings, to maintain your application tracker, and to send the
-        notifications you opt into. We do not sell your data and we do not
-        share resume contents with employers or third-party brokers.
+        To create and manage your account, analyze your résumé against postings
+        (match scores, ATS analysis, visa signals), maintain your application
+        tracker, and send notifications you opt into. We do not sell your data.
       </p>
 
-      <h2 style={H2}>3. Where it lives</h2>
+      <h2 style={H2}>3. AI and third-party processing</h2>
       <p style={P}>
-        Account and resume data is stored in Google Cloud Firestore (regional
-        US). Aggregated, non-PII job analytics live in Google Cloud SQL
-        (PostgreSQL). Backups are retained for 30 days then deleted.
+        Some features process your résumé content using third-party AI providers
+        to generate informational estimates. You can opt out, in which case we
+        use our own non-AI methods. We use service providers including Google
+        Cloud, Cloudflare, OpenRouter, and our email provider.
       </p>
 
       <h2 style={H2}>4. Your controls</h2>
       <p style={P}>
-        From the dashboard you can delete individual resumes, change your
-        password, and request a full account deletion. Deletion removes
-        active records immediately; backups roll off within 30 days.
+        You can update your information, delete résumés, change your password,
+        and request account and data deletion by emailing{" "}
+        <a href="mailto:privacy@placeupcareer.com" style={{ color: T.text }}>privacy@placeupcareer.com</a>.
+        We respond within the timeframe required by applicable law.
       </p>
 
       <h2 style={H2}>5. Cookies and analytics</h2>
       <p style={P}>
         See our <Link to="/cookies" style={{ color: T.text }}>Cookies notice</Link>{" "}
-        for the full list. We do not use third-party advertising trackers.
+        for details. Non-essential analytics load only after consent. We do not
+        use third-party advertising trackers.
       </p>
 
-      <h2 style={H2}>6. Contact</h2>
+      <h2 style={H2}>6. Legal bases for processing</h2>
       <p style={P}>
-        Email <a href="mailto:privacy@placeupcareer.com" style={{ color: T.text }}>privacy@placeupcareer.com</a>{" "}
-        for any data-subject request (access, correction, deletion). We will
-        respond within 30 days.
+        Where the GDPR applies, we process your data to perform our contract with
+        you (providing the service), on the basis of your consent (optional
+        analytics and AI processing, which you can withdraw at any time), and for
+        our legitimate interests in operating, securing, and improving PlaceUp.
+      </p>
+
+      <h2 style={H2}>7. Data retention</h2>
+      <p style={P}>
+        We keep account and résumé data for as long as your account is active.
+        After you request deletion, we remove your personal data within 30 days,
+        except where we must retain limited records to meet legal, tax,
+        accounting, fraud-prevention, or dispute-resolution obligations. Signed
+        acceptance records (date, version, IP) are retained to evidence the
+        agreement for as long as legally required.
+      </p>
+
+      <h2 style={H2}>8. International data transfers</h2>
+      <p style={P}>
+        We use cloud infrastructure that may process data in the United States and
+        other countries. Where we transfer personal data out of the EEA or UK, we
+        rely on appropriate safeguards such as the European Commission's Standard
+        Contractual Clauses (and the UK Addendum) with our processors.
+      </p>
+
+      <h2 style={H2}>9. Security</h2>
+      <p style={P}>
+        We protect your data with encryption in transit (HTTPS/TLS), hashed
+        passwords, access controls, and least-privilege practices. No method of
+        transmission or storage is perfectly secure, but we take reasonable
+        technical and organizational measures and will notify you and any
+        regulator as required by law in the event of a breach affecting your
+        personal data.
+      </p>
+
+      <h2 style={H2}>10. Your regional rights</h2>
+      <p style={P}>
+        Depending on where you live, you may have the right to access, correct,
+        delete, port, or restrict processing of your data, to object to
+        processing, and to withdraw consent (EEA/UK GDPR). California residents
+        may request access to and deletion of personal information and may opt out
+        of "sale" or "sharing" — we do not sell or share personal information as
+        those terms are defined under the CCPA/CPRA. To exercise any right, email{" "}
+        <a href="mailto:privacy@placeupcareer.com" style={{ color: T.text }}>privacy@placeupcareer.com</a>.
+        You also have the right to lodge a complaint with your local supervisory
+        authority.
+      </p>
+
+      <h2 style={H2}>11. Children</h2>
+      <p style={P}>
+        PlaceUp is intended for users aged 18 and over. We do not knowingly
+        collect personal data from anyone under 18. If you believe a minor has
+        provided us data, contact us and we will delete it.
+      </p>
+
+      <h2 style={H2}>12. Changes to this policy</h2>
+      <p style={P}>
+        We may update this Privacy Policy from time to time. The "last updated"
+        date above reflects the most recent revision, and we will notify you of
+        material changes through the service or by email.
+      </p>
+
+      <h2 style={H2}>13. Contact</h2>
+      <p style={P}>
+        Place Up Career LLC is the data controller. Email{" "}
+        <a href="mailto:privacy@placeupcareer.com" style={{ color: T.text }}>privacy@placeupcareer.com</a>{" "}
+        for any data-subject request (access, correction, deletion) or privacy
+        question.
       </p>
     </LegalShell>
   );
@@ -128,57 +190,120 @@ export function PrivacyPage() {
 
 export function TermsPage() {
   return (
-    <LegalShell title="Terms of Service" updated="May 21, 2026">
+    <LegalShell title="Terms of Service" updated="June 21, 2026">
       <p style={P}>
-        By creating a PlaceUp Careers account you agree to these terms. They
-        cover what the service does, what you can and cannot do on it, and
-        the limits of our liability.
+        By creating a PlaceUp account you agree to these Terms, operated by Place
+        Up Career LLC. They cover the service, acceptable use, subscriptions,
+        disclaimers, and dispute resolution.
       </p>
 
       <h2 style={H2}>1. The service</h2>
       <p style={P}>
-        PlaceUp scrapes public job postings and computes a match score
-        against the resume you provide. We do not represent that any
-        specific job is open, available to you, or that any visa
-        classification is guaranteed.
+        PlaceUp aggregates public job postings and provides résumé analysis and
+        visa-sponsorship signals. We provide software and tools only; we are not
+        an employer or staffing agency and are not party to any employment.
       </p>
 
-      <h2 style={H2}>2. Your account</h2>
+      <h2 style={H2}>2. No guarantee of outcomes</h2>
       <p style={P}>
-        You are responsible for keeping your password safe and for everything
-        that happens under your account. Notify us immediately at{" "}
-        <a href="mailto:security@placeupcareer.com" style={{ color: T.text }}>
-          security@placeupcareer.com
-        </a>{" "}
-        if you believe your account has been compromised.
+        We do not guarantee interviews, callbacks, offers, visa sponsorship, or
+        employment. All match, sponsorship, and approval indicators are
+        informational estimates, not guarantees or legal/immigration advice.
+        See our <Link to="/disclaimer" style={{ color: T.text }}>Disclaimer</Link>.
       </p>
 
-      <h2 style={H2}>3. Acceptable use</h2>
+      <h2 style={H2}>3. Your account & acceptable use</h2>
       <p style={P}>
-        Do not abuse the service — no automated scraping of our pages, no
-        attempts to access other users' data, no uploading of content you
-        do not have rights to. We may suspend accounts that violate this.
+        You must be 18+ and provide accurate information. Do not scrape or resell
+        our data, misrepresent your identity or work-authorization status, share
+        accounts, or attempt to access other users' data. We may suspend
+        accounts that violate these Terms.
       </p>
 
-      <h2 style={H2}>4. No warranties</h2>
+      <h2 style={H2}>4. Free preview access</h2>
       <p style={P}>
-        The service is provided "as is". Job postings come from third-party
-        sources that may be inaccurate, stale, or removed. We are not
-        responsible for hiring outcomes.
+        Payments and subscriptions are temporarily disabled. During this free
+        preview, complete application access is available without a card or
+        checkout step. If paid plans are re-enabled later, we will update these
+        terms before charging is required.
       </p>
 
-      <h2 style={H2}>5. Limitation of liability</h2>
+      <h2 style={H2}>5. Disclaimers & limitation of liability</h2>
       <p style={P}>
-        To the maximum extent permitted by law, PlaceUp is not liable for
-        indirect, incidental, special, consequential, or punitive damages
-        arising from your use of the service.
+        The Services are provided "as is" without warranties. To the maximum
+        extent permitted by law, our total liability is limited to the amount you
+        paid us in the six (6) months before the claim, or USD $100 where no
+        payment was made, and we are not liable for indirect or consequential damages.
       </p>
 
-      <h2 style={H2}>6. Changes</h2>
+      <h2 style={H2}>6. Governing law & disputes</h2>
       <p style={P}>
-        We may update these terms; the "last updated" date at the top
-        reflects the most recent revision. Continued use after a change
-        means you accept the new terms.
+        These Terms are governed by the laws of the State of Wyoming. Disputes
+        are resolved by informal negotiation, then binding arbitration in
+        Sheridan County, Wyoming, on an individual basis (no class actions).
+      </p>
+
+      <h2 style={H2}>7. Your content & license</h2>
+      <p style={P}>
+        You retain ownership of the résumés and information you upload. You grant
+        us a limited, non-exclusive license to store and process that content
+        solely to operate the Services for you (parsing, matching, ATS and visa
+        analysis). You are responsible for ensuring you have the right to upload
+        anything you submit and that it is accurate.
+      </p>
+
+      <h2 style={H2}>8. Intellectual property</h2>
+      <p style={P}>
+        The PlaceUp platform, software, branding, and original content are owned
+        by Place Up Career LLC and protected by intellectual-property laws. We
+        grant you a personal, non-transferable, revocable license to use the
+        Services; you may not copy, reverse-engineer, resell, or create derivative
+        works without our written permission.
+      </p>
+
+      <h2 style={H2}>9. Third-party services & listings</h2>
+      <p style={P}>
+        Job listings are aggregated from public sources and employer career sites.
+        We do not control third-party content or services and are not responsible
+        for them. Your use of an employer's site is governed by that site's own terms.
+      </p>
+
+      <h2 style={H2}>10. Suspension & termination</h2>
+      <p style={P}>
+        You may stop using the Services and delete your account at any time. We may
+        suspend or terminate access if you violate these Terms, misuse the
+        Services, or where required by law. Sections that by their nature should
+        survive termination (disclaimers, liability limits, dispute terms) will
+        survive.
+      </p>
+
+      <h2 style={H2}>11. Indemnification</h2>
+      <p style={P}>
+        You agree to indemnify and hold harmless Place Up Career LLC from claims,
+        losses, and expenses arising out of your misuse of the Services, your
+        violation of these Terms, or your infringement of any third party's
+        rights, to the extent permitted by law.
+      </p>
+
+      <h2 style={H2}>12. Severability & entire agreement</h2>
+      <p style={P}>
+        If any provision of these Terms is found unenforceable, the remaining
+        provisions stay in effect. These Terms, together with the Privacy Policy,
+        Disclaimer, Cookies notice, and Refund &amp; Cancellation Policy, form the
+        entire agreement between you and us regarding the Services.
+      </p>
+
+      <h2 style={H2}>13. Changes</h2>
+      <p style={P}>
+        We may update these Terms and will notify users of material changes. The
+        "last updated" date reflects the most recent revision; continued use after
+        an update means you accept the revised Terms.
+      </p>
+
+      <h2 style={H2}>14. Contact</h2>
+      <p style={P}>
+        Questions about these Terms? Email{" "}
+        <a href="mailto:legal@placeupcareer.com" style={{ color: T.text }}>legal@placeupcareer.com</a>.
       </p>
     </LegalShell>
   );
@@ -186,33 +311,142 @@ export function TermsPage() {
 
 export function CookiesPage() {
   return (
-    <LegalShell title="Cookies & Local Storage" updated="May 21, 2026">
+    <LegalShell title="Cookies & Local Storage" updated="June 21, 2026">
       <p style={P}>
-        PlaceUp uses a small number of browser-local storage entries to keep
-        you signed in and remember your preferences. We do not load
-        third-party ad cookies.
+        PlaceUp uses cookies and browser storage to keep you signed in, remember
+        preferences, and (with your consent) measure usage. We do not load
+        third-party advertising cookies.
       </p>
 
-      <h2 style={H2}>What we store on your device</h2>
+      <h2 style={H2}>Essential storage</h2>
       <p style={P}>
-        <strong>Auth token</strong> — JWT issued at sign-in. Sent to the
-        PlaceUp API in the <code>Authorization</code> header so we know
-        who is making each request. Cleared on sign-out.
+        <strong>Auth token</strong> — keeps you signed in. <strong>Saved jobs</strong>{" "}
+        — remembers bookmarked job IDs. <strong>Cookie consent</strong> — records
+        your analytics choice. These are required for the service to work.
       </p>
+
+      <h2 style={H2}>Analytics (consent-based)</h2>
       <p style={P}>
-        <strong>Saved jobs</strong> — list of job IDs you bookmarked, kept
-        client-side so the UI can show a "saved" badge without a roundtrip.
-      </p>
-      <p style={P}>
-        <strong>Resume version</strong> — a cache buster that nudges other
-        tabs to refresh when you upload a new resume.
+        With your consent, we use Google Analytics (with IP anonymization, no
+        advertising features) to understand usage and improve the product. You
+        can decline in the cookie banner, and analytics will not load.
       </p>
 
       <h2 style={H2}>How to clear it</h2>
       <p style={P}>
-        Sign out, or clear site data from your browser's Application /
-        Storage panel. There are no server-side cookies you need to
-        revoke separately.
+        Sign out, change your choice in the cookie banner, or clear site data
+        from your browser's Application / Storage panel.
+      </p>
+
+      <h2 style={H2}>Managing consent & "Do Not Track"</h2>
+      <p style={P}>
+        You can withdraw or change your analytics consent at any time from the
+        cookie banner; non-essential storage will not load until you opt in. We
+        honor browser "Global Privacy Control" signals where required by law. For
+        more on the personal data we process, see our{" "}
+        <Link to="/privacy" style={{ color: T.text }}>Privacy Policy</Link>.
+      </p>
+
+      <h2 style={H2}>Changes & contact</h2>
+      <p style={P}>
+        We may update this notice as our cookie use changes. Questions? Email{" "}
+        <a href="mailto:privacy@placeupcareer.com" style={{ color: T.text }}>privacy@placeupcareer.com</a>.
+      </p>
+    </LegalShell>
+  );
+}
+
+export function DisclaimerPage() {
+  return (
+    <LegalShell title="Disclaimer" updated="June 21, 2026">
+      <p style={P}>
+        Place Up Career LLC ("PlaceUp", "we", "us") provides job-search tools,
+        listings, and AI-assisted services for general informational purposes
+        only.
+      </p>
+
+      <h2 style={H2}>1. No guarantee of results</h2>
+      <p style={P}>
+        We do not guarantee any interview, callback, assessment, recruiter
+        response, job offer, visa sponsorship, work authorization, or employment.
+        Results depend on factors outside our control, including your
+        qualifications, employer decisions, market conditions, and location.
+      </p>
+
+      <h2 style={H2}>2. Visa & sponsorship information</h2>
+      <p style={P}>
+        Visa, work-authorization, and sponsorship indicators, "sponsor-friendly"
+        tags, approval rates, match scores, ATS scores, and salary figures are
+        automated, informational estimates from third-party data and heuristics.
+        They may be incomplete, outdated, or inaccurate, and are not a promise
+        that any employer will sponsor a visa or hire you. Verify sponsorship and
+        all job details directly with the employer before relying on them.
+      </p>
+
+      <h2 style={H2}>3. Not legal or immigration advice</h2>
+      <p style={P}>
+        The Services do not provide legal, immigration, financial, or tax advice,
+        and nothing in the Services should be treated as such. For advice about
+        your situation, consult a qualified licensed professional.
+      </p>
+
+      <h2 style={H2}>4. Third-party listings</h2>
+      <p style={P}>
+        Many listings are aggregated from third-party sources and employer career
+        sites. We do not control, verify, or guarantee their accuracy,
+        availability, or current status, and a listing may be outdated, filled,
+        or removed. We are not responsible for your dealings with any employer or
+        third-party website.
+      </p>
+
+      <h2 style={H2}>5. Contact</h2>
+      <p style={P}>
+        Questions? Email{" "}
+        <a href="mailto:legal@placeupcareer.com" style={{ color: T.text }}>legal@placeupcareer.com</a>.
+      </p>
+    </LegalShell>
+  );
+}
+
+export function ReturnPolicyPage() {
+  return (
+    <LegalShell title="Refund & Cancellation Policy" updated="June 21, 2026">
+      <p style={P}>
+        Payments are temporarily disabled during the free preview, so there are
+        no subscription charges to refund or cancel right now.
+      </p>
+
+      <h2 style={H2}>1. 24-hour refund window</h2>
+      <p style={P}>
+        Because checkout is disabled, PlaceUp is not collecting payments during
+        the preview period. If you believe you were charged in error, email{" "}
+        <a href="mailto:refund@placeupcareer.com" style={{ color: T.text }}>refund@placeupcareer.com</a>.
+      </p>
+
+      <h2 style={H2}>2. Cancellation & future charges</h2>
+      <p style={P}>
+        There are currently no renewal charges. If subscriptions are re-enabled
+        later, cancellation controls and updated terms will be provided before
+        paid access is required.
+      </p>
+
+      <h2 style={H2}>3. Processing fees</h2>
+      <p style={P}>
+        No payment-processing fees apply while checkout is disabled.
+      </p>
+
+      <h2 style={H2}>4. EU/UK consumers</h2>
+      <p style={P}>
+        Because no paid purchase is required during the free preview, withdrawal
+        rights tied to paid subscriptions are not triggered by current access.
+        If paid plans return later, the applicable consumer notices will be
+        presented before checkout.
+      </p>
+
+      <h2 style={H2}>5. Contact</h2>
+      <p style={P}>
+        For refund or cancellation help, email{" "}
+        <a href="mailto:refund@placeupcareer.com" style={{ color: T.text }}>refund@placeupcareer.com</a>.
       </p>
     </LegalShell>
   );

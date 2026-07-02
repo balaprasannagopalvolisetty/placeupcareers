@@ -12,14 +12,14 @@ import { Link, useNavigate, useSearchParams } from "react-router";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif" };
 const T = {
-  bg: "#011126",
-  text: "#F2EEB3",
-  t2: "rgba(242,238,179,0.7)",
-  t3: "rgba(242,238,179,0.45)",
-  border: "rgba(242,238,179,0.12)",
-  grad: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)",
-  red: "#ED7D2B",
-  input: "rgba(242,238,179,0.05)",
+  bg: "#0B1220",
+  text: "#F1F5F9",
+  t2: "rgba(148,163,184,0.7)",
+  t3: "rgba(148,163,184,0.75)",
+  border: "rgba(148,163,184,0.12)",
+  grad: "linear-gradient(135deg, #2563EB, #0EA5E9)",
+  red: "#3B82F6",
+  input: "rgba(148,163,184,0.05)",
 };
 
 const API_BASE = ((import.meta.env.VITE_API_BASE as string | undefined) || "").replace(/\/+$/, "");
@@ -43,7 +43,7 @@ function Shell({ title, subtitle, children }: { title: string; subtitle: string;
         style={{
           width: "100%",
           maxWidth: 420,
-          background: "rgba(64,18,18,0.55)",
+          background: "rgba(15,30,55,0.55)",
           border: `1px solid ${T.border}`,
           borderRadius: 18,
           padding: "32px 28px",

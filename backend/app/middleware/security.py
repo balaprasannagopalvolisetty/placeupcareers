@@ -68,6 +68,8 @@ PUBLIC_READ_PREFIXES = (
 PUBLIC_WRITE_PATHS = {
     "/api/auth/signin",
     "/api/auth/signup",
+    "/api/auth/otp/request",
+    "/api/auth/otp/verify",
     "/api/auth/refresh",
     "/api/auth/logout",
     "/api/auth/forgot-password",
@@ -75,6 +77,7 @@ PUBLIC_WRITE_PATHS = {
     "/api/forgot-password",
     "/api/reset-password",
     "/api/billing/webhook",
+    "/api/contact",
 }
 
 RATE_LIMIT_EXEMPT_GET_PREFIXES = (

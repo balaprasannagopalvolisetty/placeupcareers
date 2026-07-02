@@ -17,24 +17,25 @@ import { AnalyticsPage } from "../components/dashboard/AnalyticsPage";
 import { SettingsPage } from "../components/dashboard/SettingsPage";
 import { UserProfilePage } from "../components/dashboard/UserProfilePage";
 import { JobDetailPage } from "../components/dashboard/JobDetailPage";
+import { RoleRequestPanel } from "../components/dashboard/RoleRequestPanel";
 
 // ─── Design tokens ───
 const T = {
-  bg:     "#011126",
-  surface: "#0d1c35",
+  bg:     "#0B1220",
+  surface: "#111E33",
   glass:  "rgba(13,28,53,0.7)",
-  cardGlass: "rgba(64,18,18,0.45)",
-  border: "rgba(242,238,179,0.08)",
-  borderHover: "rgba(237,125,43,0.4)",
-  text:   "#F2EEB3",
-  t2:     "rgba(242,238,179,0.65)",
-  t3:     "rgba(242,238,179,0.4)",
-  grad:   "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)",
-  red:    "#ED7D2B",
-  burnt:  "#F2A341",
-  dark:   "#C75A12",
+  cardGlass: "rgba(15,30,55,0.45)",
+  border: "rgba(148,163,184,0.08)",
+  borderHover: "rgba(59,130,246,0.4)",
+  text:   "#F1F5F9",
+  t2:     "rgba(226,232,240,0.72)",
+  t3:     "rgba(148,163,184,0.4)",
+  grad:   "linear-gradient(135deg, #2563EB, #0EA5E9)",
+  red:    "#3B82F6",
+  burnt:  "#60A5FA",
+  dark:   "#1D4ED8",
   shadow: "0 4px 20px rgba(1,17,38,0.3)",
-  shadowH: "0 20px 50px rgba(1,17,38,0.4), 0 0 0 1px rgba(237,125,43,0.3)",
+  shadowH: "0 20px 50px rgba(1,17,38,0.4), 0 0 0 1px rgba(59,130,246,0.3)",
 };
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 
@@ -110,7 +111,7 @@ function SpringCounter({ target, suffix = "", prefix = "" }: { target: number; s
 function ATSRing({ score }: { score: number }) {
   const safeScore = Math.max(0, Math.min(100, Number.isFinite(score) ? score : 0));
   const r = 52, circ = 2 * Math.PI * r, offset = circ * (1 - safeScore / 100);
-  const ringColor = safeScore >= 80 ? "#22c55e" : safeScore >= 60 ? "#f59e0b" : safeScore > 0 ? "#F2EEB3" : "rgba(242,238,179,0.45)";
+  const ringColor = safeScore >= 80 ? "#22c55e" : safeScore >= 60 ? "#f59e0b" : safeScore > 0 ? "#F1F5F9" : "rgba(148,163,184,0.75)";
   return (
     <div style={{ position: "relative", width: 120, height: 120, flexShrink: 0 }}>
       <svg viewBox="0 0 120 120" style={{ width: "100%", height: "100%", transform: "rotate(-90deg)" }}>
@@ -120,13 +121,13 @@ function ATSRing({ score }: { score: number }) {
           </linearGradient>
           <filter id="atsGlow"><feGaussianBlur stdDeviation="3" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
         </defs>
-        <circle cx="60" cy="60" r={r} fill="none" stroke="rgba(242,238,179,0.16)" strokeWidth="9" />
+        <circle cx="60" cy="60" r={r} fill="none" stroke="rgba(148,163,184,0.16)" strokeWidth="9" />
         <motion.circle cx="60" cy="60" r={r} fill="none" stroke={ringColor} strokeWidth="9" strokeLinecap="round"
           strokeDasharray={circ} initial={{ strokeDashoffset: circ }} animate={{ strokeDashoffset: offset }}
           transition={{ duration: 1.5, ease: "easeOut" }} filter="url(#atsGlow)" />
       </svg>
       <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ fontFamily: F.mono, fontSize: 28, fontWeight: 800, color: "#F2EEB3", lineHeight: 1, textShadow: "0 0 16px rgba(242,238,179,0.22)" }}>{safeScore || "--"}</span>
+        <span style={{ fontFamily: F.mono, fontSize: 28, fontWeight: 800, color: "#F1F5F9", lineHeight: 1, textShadow: "0 0 16px rgba(148,163,184,0.22)" }}>{safeScore || "--"}</span>
         <span style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: T.t2, fontFamily: F.sans, marginTop: 3 }}>ATS Score</span>
       </div>
     </div>
@@ -152,9 +153,9 @@ function GlowCard({ children, style = {}, hoverY = -6, onClick }: {
       }}
     >
       <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500"
-        style={{ background: "radial-gradient(ellipse at 50% -25%, rgba(237,125,43,0.16) 0%, transparent 65%)", zIndex: 0 }} />
+        style={{ background: "radial-gradient(ellipse at 50% -25%, rgba(59,130,246,0.16) 0%, transparent 65%)", zIndex: 0 }} />
       <div className="absolute top-0 left-0 right-0 h-px pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500"
-        style={{ background: "linear-gradient(to right, transparent, rgba(237,125,43,0.45), transparent)" }} />
+        style={{ background: "linear-gradient(to right, transparent, rgba(59,130,246,0.45), transparent)" }} />
       <div style={{ position: "relative", zIndex: 1 }}>{children}</div>
     </motion.div>
   );
@@ -318,7 +319,7 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
         {/* Applications */}
         <GlowCard style={{ padding: 20 }} onClick={() => navigate("/dashboard/analytics")}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(140,58,39,0.1)", border: "1px solid rgba(140,58,39,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(37,99,235,0.1)", border: "1px solid rgba(37,99,235,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <CheckCircle2 size={16} color={T.burnt} />
             </div>
             {totalApplications > 0 && (
@@ -343,11 +344,11 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
         {/* Resumes */}
         <GlowCard style={{ padding: 20 }}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(64,18,18,0.2)", border: "1px solid rgba(64,18,18,0.4)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(15,30,55,0.2)", border: "1px solid rgba(15,30,55,0.4)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <FileCheck size={16} color={T.text} />
             </div>
             {hasResume && (
-              <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 9999, background: "rgba(237,125,43,0.12)", color: T.red, border: "1px solid rgba(237,125,43,0.25)", fontFamily: F.sans }}>Active</span>
+              <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 9999, background: "rgba(59,130,246,0.12)", color: T.red, border: "1px solid rgba(59,130,246,0.25)", fontFamily: F.sans }}>Active</span>
             )}
           </div>
           <div style={{ fontFamily: F.sans, fontSize: isMobile ? 30 : 38, fontWeight: 800, color: T.text, lineHeight: 1, marginBottom: 4 }}><SpringCounter target={totalResumes} /></div>
@@ -355,6 +356,9 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
           <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{activeResumeName || "Uploaded files"}</div>
         </GlowCard>
       </div>
+
+      {/* Request a role → admin approval queue */}
+      <RoleRequestPanel />
 
       {/* Featured Jobs */}
       <div>
@@ -369,7 +373,7 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
             <motion.div key={job.id} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 + i * 0.08 }}>
               <GlowCard style={{ padding: 20 }} onClick={() => handleJobClick(job.id)}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: "50%", background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: F.sans, boxShadow: "0 0 12px rgba(237,125,43,0.3)" }}>
+                  <div style={{ width: 40, height: 40, borderRadius: "50%", background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: F.sans, boxShadow: "0 0 12px rgba(59,130,246,0.3)" }}>
                     {job.company[0]}
                   </div>
                   <span style={{ fontSize: 14, fontWeight: 800, color: job.match === null ? T.t3 : T.red, fontFamily: F.mono }}>
@@ -380,14 +384,14 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
                 <div style={{ fontSize: 12, color: T.t2, fontFamily: F.sans, marginBottom: 10 }}>{job.company}</div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
                   {job.visa.map((v) => (
-                    <span key={v} style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 4, background: "rgba(140,58,39,0.15)", color: T.burnt, border: "1px solid rgba(140,58,39,0.3)", fontFamily: F.sans }}>{v}</span>
+                    <span key={v} style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 4, background: "rgba(37,99,235,0.15)", color: T.burnt, border: "1px solid rgba(37,99,235,0.3)", fontFamily: F.sans }}>{v}</span>
                   ))}
                 </div>
                 <div style={{ display: "flex", gap: 8, fontSize: 11, color: T.t3, fontFamily: F.sans }}>
                   <span style={{ display: "flex", alignItems: "center", gap: 3 }}><MapPin size={10} />{job.location}</span>
                   {job.salary && <span style={{ display: "flex", alignItems: "center", gap: 3 }}><DollarSign size={10} />{job.salary}</span>}
                 </div>
-                <div style={{ height: 3, borderRadius: 2, background: "rgba(242,238,179,0.05)", marginTop: 12, overflow: "hidden" }}>
+                <div style={{ height: 3, borderRadius: 2, background: "rgba(148,163,184,0.05)", marginTop: 12, overflow: "hidden" }}>
                   <motion.div initial={{ width: 0 }} animate={{ width: `${job.match ?? 0}%` }} transition={{ duration: 1, ease: "easeOut", delay: 0.3 + i * 0.08 }}
                     style={{ height: "100%", borderRadius: 2, background: T.grad }} />
                 </div>
@@ -432,8 +436,9 @@ export default function Dashboard() {
   const displayName = user ? `${user.first_name} ${user.last_name}` : "Loading...";
   const displayPlan = user?.plan || "";
   const displayAvatar = user ? `${user.first_name?.[0] ?? "P"}${user.last_name?.[0] ?? "U"}` : "PU";
-  const isAdmin = String(user?.plan || "").toLowerCase() === "admin" || ["admin@placeupcareer.com", "jobs@placeupcareer.com"].includes(String(user?.email || "").toLowerCase());
-  const navItems = isAdmin ? [...NAV_ITEMS, { icon: Shield, label: "Admin", to: "/dashboard/admin" }] : NAV_ITEMS;
+  // Admin console is intentionally NOT linked in the sidebar. It lives at an
+  // unguessable top-level path and is protected by the backend allowlist.
+  const navItems = NAV_ITEMS;
 
   const routeLabel = location.pathname.startsWith("/dashboard/jobs/") ? "Job Detail" :
     location.pathname.startsWith("/dashboard/profile") ? "Profile" :
@@ -452,8 +457,8 @@ export default function Dashboard() {
     <div style={{ display: "flex", minHeight: "100vh", background: T.bg, position: "relative", fontFamily: F.sans, overflowX: "hidden" }}>
       {/* Ambient orbs */}
       <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 0, overflow: "hidden" }}>
-        <div style={{ position: "absolute", top: "-8%", left: "-4%", width: 500, height: 500, borderRadius: "50%", filter: "blur(120px)", background: "rgba(140,58,39,0.12)" }} />
-        <div style={{ position: "absolute", bottom: "5%", right: "-6%", width: 420, height: 420, borderRadius: "50%", filter: "blur(120px)", background: "rgba(237,125,43,0.09)" }} />
+        <div style={{ position: "absolute", top: "-8%", left: "-4%", width: 500, height: 500, borderRadius: "50%", filter: "blur(120px)", background: "rgba(37,99,235,0.12)" }} />
+        <div style={{ position: "absolute", bottom: "5%", right: "-6%", width: 420, height: 420, borderRadius: "50%", filter: "blur(120px)", background: "rgba(59,130,246,0.09)" }} />
       </div>
 
       {/* ── Desktop Sidebar: 76px gutter in layout; expands over content on hover ── */}
@@ -488,7 +493,7 @@ export default function Dashboard() {
                 borderRadius: 10,
                 textDecoration: "none",
                 cursor: "pointer",
-                background: isActive ? "rgba(237,125,43,0.09)" : "transparent",
+                background: isActive ? "rgba(59,130,246,0.09)" : "transparent",
                 color: isActive ? T.red : T.t2,
                 fontSize: 13,
                 fontFamily: F.sans,
@@ -496,7 +501,7 @@ export default function Dashboard() {
                 textAlign: "left",
                 position: "relative",
                 transition: "all 0.2s",
-                boxShadow: isActive ? "0 0 0 1px rgba(237,125,43,0.2)" : "none",
+                boxShadow: isActive ? "0 0 0 1px rgba(59,130,246,0.2)" : "none",
               })}
             >
               {({ isActive }) => (
@@ -514,11 +519,11 @@ export default function Dashboard() {
         {!compactSidebar && <div style={{ padding: "10px 14px", borderTop: `1px solid ${T.border}`, borderBottom: `1px solid ${T.border}` }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: T.t3, fontFamily: F.sans }}>Saved Jobs</span>
-            <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 9999, background: "rgba(237,125,43,0.12)", color: T.red, border: "1px solid rgba(237,125,43,0.25)", fontFamily: F.sans }}>5/5</span>
+            <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 9999, background: "rgba(59,130,246,0.12)", color: T.red, border: "1px solid rgba(59,130,246,0.25)", fontFamily: F.sans }}>5/5</span>
           </div>
           <div style={{ display: "flex", gap: 5 }}>
             {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: i <= 5 ? T.grad : "rgba(242,238,179,0.08)" }} />
+              <div key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: i <= 5 ? T.grad : "rgba(148,163,184,0.08)" }} />
             ))}
           </div>
         </div>}
@@ -528,8 +533,8 @@ export default function Dashboard() {
           <motion.button whileTap={{ scale: 0.97 }} onClick={() => navigate("/dashboard/profile")}
             title={displayName}
             style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: compactSidebar ? "center" : "flex-start", gap: compactSidebar ? 0 : 10, padding: compactSidebar ? "10px 0" : "10px 12px", borderRadius: 10, border: "none", cursor: "pointer", background: "transparent", textAlign: "left", transition: "background 0.2s" }}
-            className="hover:bg-[rgba(242,238,179,0.03)]">
-            <div style={{ width: 34, height: 34, borderRadius: "50%", background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 12, fontWeight: 700, fontFamily: F.sans, boxShadow: "0 2px 8px rgba(237,125,43,0.35)", flexShrink: 0 }}>
+            className="hover:bg-[rgba(148,163,184,0.03)]">
+            <div style={{ width: 34, height: 34, borderRadius: "50%", background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 12, fontWeight: 700, fontFamily: F.sans, boxShadow: "0 2px 8px rgba(59,130,246,0.35)", flexShrink: 0 }}>
               {displayAvatar}
             </div>
             {!compactSidebar && <div style={{ flex: 1, minWidth: 0 }}>
@@ -552,11 +557,11 @@ export default function Dashboard() {
               style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 256, background: "rgba(1,17,38,0.98)", backdropFilter: "blur(24px)", borderRight: `1px solid ${T.border}`, padding: "24px 10px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", padding: "0 12px", marginBottom: 20 }}>
                 <img src="/logo_light.png" alt="PlaceUp Career" style={{ height: 36, width: "auto", objectFit: "contain" }} />
-                <button onClick={() => setSidebarOpen(false)} style={{ background: "rgba(242,238,179,0.05)", border: "none", cursor: "pointer", color: T.text, padding: 6, borderRadius: 6 }}><X size={16} /></button>
+                <button onClick={() => setSidebarOpen(false)} style={{ background: "rgba(148,163,184,0.05)", border: "none", cursor: "pointer", color: T.text, padding: 6, borderRadius: 6 }}><X size={16} /></button>
               </div>
               {navItems.map((item) => (
                 <button key={item.label} onClick={() => { navigate(item.to!); setSidebarOpen(false); }}
-                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, height: 40, padding: "0 12px", borderRadius: 10, border: "none", cursor: "pointer", marginBottom: 2, background: isNavItemActive(item.to!) ? "rgba(237,125,43,0.09)" : "transparent", color: isNavItemActive(item.to!) ? T.red : T.t2, fontSize: 13, fontFamily: F.sans, textAlign: "left" }}>
+                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, height: 40, padding: "0 12px", borderRadius: 10, border: "none", cursor: "pointer", marginBottom: 2, background: isNavItemActive(item.to!) ? "rgba(59,130,246,0.09)" : "transparent", color: isNavItemActive(item.to!) ? T.red : T.t2, fontSize: 13, fontFamily: F.sans, textAlign: "left" }}>
                   <item.icon size={16} />{item.label}
                 </button>
               ))}
@@ -574,7 +579,7 @@ export default function Dashboard() {
               className={compactSidebar ? "" : "lg:hidden"}
               aria-label="Open navigation"
               onClick={() => setSidebarOpen(true)}
-              style={{ background: "rgba(242,238,179,0.05)", border: "none", cursor: "pointer", color: T.text, padding: 8, borderRadius: 8 }}
+              style={{ background: "rgba(148,163,184,0.05)", border: "none", cursor: "pointer", color: T.text, padding: 8, borderRadius: 8 }}
             >
               <Menu size={18} />
             </button>
@@ -587,7 +592,7 @@ export default function Dashboard() {
             {/* Notifications */}
             <div style={{ position: "relative" }}>
               <motion.button whileTap={{ scale: 0.92 }} onClick={() => { setNotifOpen(!notifOpen); setUserMenuOpen(false); }}
-                style={{ width: 38, height: 38, borderRadius: 10, border: `1px solid ${notifOpen ? "rgba(237,125,43,0.35)" : T.border}`, background: notifOpen ? "rgba(237,125,43,0.08)" : "rgba(242,238,179,0.04)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: T.t2, position: "relative" }}>
+                style={{ width: 38, height: 38, borderRadius: 10, border: `1px solid ${notifOpen ? "rgba(59,130,246,0.35)" : T.border}`, background: notifOpen ? "rgba(59,130,246,0.08)" : "rgba(148,163,184,0.04)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: T.t2, position: "relative" }}>
                 <Bell size={16} />
                 {unread > 0 && <div style={{ position: "absolute", top: 7, right: 7, width: 7, height: 7, borderRadius: "50%", background: T.red, boxShadow: `0 0 6px ${T.red}` }} />}
               </motion.button>
@@ -597,10 +602,10 @@ export default function Dashboard() {
                     style={{ position: "absolute", right: isMobile ? -52 : 0, top: "calc(100% + 8px)", width: isMobile ? "calc(100vw - 24px)" : 320, maxWidth: 320, borderRadius: 16, background: "rgba(8,14,32,0.97)", backdropFilter: "blur(24px)", border: `1px solid ${T.border}`, boxShadow: "0 20px 40px rgba(1,17,38,0.5)", overflow: "hidden" }}>
                     <div style={{ padding: "14px 20px", borderBottom: `1px solid ${T.border}`, display: "flex", justifyContent: "space-between" }}>
                       <span style={{ fontFamily: F.sans, fontSize: 14, fontWeight: 700, color: T.text }}>Notifications</span>
-                      <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 9999, background: "rgba(237,125,43,0.15)", color: T.red, fontFamily: F.sans }}>{unread} new</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 9999, background: "rgba(59,130,246,0.15)", color: T.red, fontFamily: F.sans }}>{unread} new</span>
                     </div>
                     {notifications.map((n) => (
-                      <div key={n.id} style={{ padding: "12px 20px", borderBottom: `1px solid ${T.border}`, background: n.unread ? "rgba(237,125,43,0.04)" : "transparent", display: "flex", gap: 10, alignItems: "flex-start" }}>
+                      <div key={n.id} style={{ padding: "12px 20px", borderBottom: `1px solid ${T.border}`, background: n.unread ? "rgba(59,130,246,0.04)" : "transparent", display: "flex", gap: 10, alignItems: "flex-start" }}>
                         {n.unread && <div style={{ width: 6, height: 6, borderRadius: "50%", background: T.red, flexShrink: 0, marginTop: 5, boxShadow: `0 0 4px ${T.red}` }} />}
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 12, color: T.t2, fontFamily: F.sans, lineHeight: 1.5 }}>{n.text}</div>
@@ -609,7 +614,7 @@ export default function Dashboard() {
                       </div>
                     ))}
                     <div style={{ padding: "12px 20px" }}>
-                      <button onClick={() => { navigate("/dashboard/alerts"); setNotifOpen(false); }} style={{ width: "100%", padding: "9px", borderRadius: 10, cursor: "pointer", background: "rgba(237,125,43,0.08)", border: "1px solid rgba(237,125,43,0.2)", color: T.red, fontSize: 12, fontWeight: 600, fontFamily: F.sans }}>
+                      <button onClick={() => { navigate("/dashboard/alerts"); setNotifOpen(false); }} style={{ width: "100%", padding: "9px", borderRadius: 10, cursor: "pointer", background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.2)", color: T.red, fontSize: 12, fontWeight: 600, fontFamily: F.sans }}>
                         View All Alerts
                       </button>
                     </div>
@@ -621,7 +626,7 @@ export default function Dashboard() {
             {/* User menu */}
             <div style={{ position: "relative" }}>
               <motion.button whileTap={{ scale: 0.95 }} onClick={() => { setUserMenuOpen(!userMenuOpen); setNotifOpen(false); }}
-                style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 8px 5px 5px", borderRadius: 10, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.03)", cursor: "pointer" }}>
+                style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 8px 5px 5px", borderRadius: 10, border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.03)", cursor: "pointer" }}>
                 <div style={{ width: 28, height: 28, borderRadius: "50%", background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, fontFamily: F.sans }}>{displayAvatar}</div>
                 <ChevronDown size={13} color={T.t3} />
               </motion.button>
@@ -632,7 +637,7 @@ export default function Dashboard() {
                     {[{ icon: User, label: "My Profile", action: () => { navigate("/dashboard/profile"); setUserMenuOpen(false); } }, { icon: Settings, label: "Settings", action: () => { navigate("/dashboard/settings"); setUserMenuOpen(false); } }].map((item) => (
                       <button key={item.label} onClick={item.action}
                         style={{ width: "100%", display: "flex", alignItems: "center", gap: 9, padding: "9px 12px", borderRadius: 8, border: "none", cursor: "pointer", background: "transparent", color: T.t2, fontSize: 13, fontFamily: F.sans, textAlign: "left", transition: "background 0.15s" }}
-                        className="hover:bg-[rgba(242,238,179,0.05)]">
+                        className="hover:bg-[rgba(148,163,184,0.05)]">
                         <item.icon size={14} /> {item.label}
                       </button>
                     ))}

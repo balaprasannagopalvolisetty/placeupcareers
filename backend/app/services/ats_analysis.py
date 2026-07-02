@@ -138,6 +138,22 @@ _NOISE_TERMS = {
     "analysis", "results", "result", "best practices", "day", "year", "years",
 }
 
+_KNOCKOUT_PATTERNS = (
+    ("Work authorization", r"\b(?:must be|be)\s+(?:legally\s+)?authorized to work|without\s+(?:current\s+or\s+future\s+)?sponsorship|will not sponsor|cannot sponsor|no visa sponsorship"),
+    ("Security clearance", r"\b(?:active\s+)?(?:secret|top secret|ts/sci|ts sci|security clearance)\b"),
+    ("Location", r"\b(?:must be located|onsite|on-site|hybrid|relocat(?:e|ion)|commut(?:e|ing))\b"),
+    ("Travel", r"\b(?:travel\s+(?:up to|required)|\d{1,2}%\s+travel)\b"),
+    ("Degree", r"\b(?:bachelor'?s|master'?s|phd|degree required|bs/ms|b\.s\.|m\.s\.)\b"),
+    ("Certification", r"\b(?:certification required|required certification|cissp|security\+|pmp|ccna|cisa|cism|aws certified|azure certified)\b"),
+    ("Years of experience", r"\b\d{1,2}\+?\s*(?:years?|yrs?)\s+(?:of\s+)?(?:professional\s+)?experience\b"),
+)
+
+_RESPONSIBILITY_VERBS = (
+    "design", "build", "develop", "implement", "manage", "lead", "own", "support",
+    "monitor", "analyze", "secure", "automate", "troubleshoot", "collaborate",
+    "deploy", "maintain", "optimize", "document", "investigate", "review",
+)
+
 # All-caps tokens that are NOT skills (geography, benefits, legal, degree codes).
 _ACRONYM_STOP = {
     "us", "usa", "u.s", "eeo", "ada", "pto", "fsa", "hsa", "dcfsa", "401k", "id",
@@ -464,6 +480,136 @@ def _bullet_quality(resume_text: str) -> float:
     return round(min(25.0, (strong / max(1, len(bullets))) * 25.0), 1)
 
 
+def _jd_lines(job_description: str) -> list[str]:
+    lines: list[str] = []
+    for raw in (job_description or "").splitlines():
+        line = re.sub(r"^[\s\-*•·]+", "", raw).strip()
+        line = re.sub(r"\s+", " ", line)
+        if 12 <= len(line) <= 260:
+            lines.append(line)
+    if not lines:
+        for part in re.split(r"(?<=[.!?])\s+", clean_text(job_description))[:80]:
+            if 12 <= len(part) <= 260:
+                lines.append(part.strip())
+    return lines
+
+
+def _jd_profile(job_description: str, jd_terms: set[str], importance: dict[str, str]) -> dict:
+    lines = _jd_lines(job_description)
+    required_zone: list[str] = []
+    preferred_zone: list[str] = []
+    responsibilities: list[str] = []
+    for line in lines:
+        low = line.lower()
+        if re.search(r"\b(required|must have|minimum|basic qualifications|what you'll need|what you will need)\b", low):
+            required_zone.append(line)
+        if re.search(r"\b(preferred|nice to have|bonus|desired|plus)\b", low):
+            preferred_zone.append(line)
+        if any(re.search(rf"\b{verb}\w*\b", low) for verb in _RESPONSIBILITY_VERBS):
+            responsibilities.append(line)
+
+    required_skills = [t for t in sorted(jd_terms) if importance.get(t) == "High"][:18]
+    preferred_skills = [t for t in sorted(jd_terms) if importance.get(t) == "Medium"][:18]
+    hidden_skills = [t for t in sorted(jd_terms) if importance.get(t) == "Low"][:12]
+    return {
+        "required_skills": required_skills,
+        "preferred_skills": preferred_skills,
+        "hidden_skills": hidden_skills,
+        "primary_responsibilities": responsibilities[:8],
+        "required_signals": required_zone[:6],
+        "preferred_signals": preferred_zone[:6],
+    }
+
+
+def _knockout_risks(resume_text: str, jd_text: str) -> list[dict]:
+    resume_low = clean_text(resume_text).lower()
+    risks: list[dict] = []
+    for label, pattern in _KNOCKOUT_PATTERNS:
+        hits = re.findall(pattern, jd_text or "", flags=re.I)
+        if not hits:
+            continue
+        evidence = str(hits[0] if isinstance(hits[0], str) else hits[0][0]).strip()
+        has_evidence = False
+        if label == "Years of experience":
+            has_evidence = bool(re.search(pattern, resume_text or "", flags=re.I))
+        elif label == "Work authorization":
+            has_evidence = bool(re.search(r"\b(authori[sz]ed|h-?1b|opt|stem opt|green card|citizen|permanent resident|work permit|visa)\b", resume_low))
+        elif label == "Security clearance":
+            has_evidence = bool(re.search(r"\b(secret|top secret|ts/sci|clearance)\b", resume_low))
+        elif label == "Degree":
+            has_evidence = bool(re.search(r"\b(bachelor|master|phd|degree|b\.s\.|m\.s\.|mba|computer science|engineering)\b", resume_low))
+        elif label == "Certification":
+            has_evidence = bool(re.search(r"\b(certified|certification|cissp|security\+|pmp|ccna|cisa|cism|aws certified|azure certified)\b", resume_low))
+        elif label == "Location":
+            has_evidence = bool(re.search(r"\b(remote|hybrid|onsite|relocat|commut|[A-Z][a-z]+,\s?[A-Z]{2})\b", resume_text or ""))
+        elif label == "Travel":
+            has_evidence = bool(re.search(r"\btravel\b", resume_low))
+        risks.append({
+            "label": label,
+            "impact": "High" if label in {"Work authorization", "Security clearance", "Years of experience"} else "Medium",
+            "jd_signal": evidence,
+            "resume_evidence": has_evidence,
+            "guidance": (
+                "Make this evidence explicit only if it is true."
+                if not has_evidence else "Resume appears to include matching evidence."
+            ),
+        })
+    return risks[:8]
+
+
+def _strongest_bullets(resume_text: str, limit: int = 5) -> list[str]:
+    scored: list[tuple[int, str]] = []
+    for bullet in _accomplishment_bullets(resume_text):
+        score = 0
+        low = bullet.lower()
+        if (low.split() or [""])[0].strip(":,.") in _STRONG_VERBS:
+            score += 3
+        if _QUANT_RE.search(bullet):
+            score += 3
+        if len(_extract_terms(bullet)) >= 2:
+            score += 2
+        if 12 <= len(bullet.split()) <= 34:
+            score += 1
+        scored.append((score, bullet))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [b for _, b in scored[:limit]]
+
+
+def _resume_improvements(missing_with_impact: list[dict], red_flags: list[dict], knockout_risks: list[dict]) -> list[str]:
+    improvements: list[str] = []
+    for item in missing_with_impact:
+        kw = item.get("keyword")
+        if not kw:
+            continue
+        impact = item.get("impact", "Medium")
+        improvements.append(f"Surface truthful evidence for '{kw}' in Summary, Technical Skills, or the most relevant experience bullet ({impact} impact).")
+        if len(improvements) >= 5:
+            break
+    if red_flags:
+        improvements.append("Rewrite weak bullets with action verb + method/tool + measurable result; never invent metrics.")
+    if any(not r.get("resume_evidence") for r in knockout_risks):
+        improvements.append("Review knockout requirements and add explicit evidence only where it is true.")
+    improvements.append("Keep the tailored resume ATS-safe: no tables, columns, graphics, icons, headers, footers, or skill bars.")
+    return improvements[:8]
+
+
+def _recruiter_scores(overall: float, match_score: float, bullet_quality: float, impact: float, knockout_risks: list[dict]) -> dict:
+    unresolved_high = sum(1 for r in knockout_risks if r.get("impact") == "High" and not r.get("resume_evidence"))
+    penalty = unresolved_high * 12
+    technical_fit = max(0, min(100, round(match_score)))
+    experience_fit = max(0, min(100, round(bullet_quality * 2.6 + impact * 1.8 + 25 - penalty)))
+    ats_match = max(0, min(100, round(overall)))
+    recruiter_interest = max(0, min(100, round((technical_fit * 0.35) + (experience_fit * 0.35) + (ats_match * 0.30) - penalty / 2)))
+    interview_probability = max(0, min(100, round(recruiter_interest * 0.75 + (0 if unresolved_high else 10))))
+    return {
+        "technical_fit": technical_fit,
+        "experience_fit": experience_fit,
+        "ats_match": ats_match,
+        "recruiter_interest": recruiter_interest,
+        "interview_probability": interview_probability,
+    }
+
+
 def analyze(resume_text: str, job_description: str, *, job_title: str = "", company: str = "") -> dict:
     resume_text = resume_text or ""
     jd = "\n".join(p for p in [job_title, job_description] if p)
@@ -504,6 +650,11 @@ def analyze(resume_text: str, job_description: str, *, job_title: str = "", comp
 
     missing_ranked = sorted(missing, key=lambda t: {"High": 0, "Medium": 1, "Low": 2}.get(importance.get(t, "Low"), 3))[:20]
     missing_with_impact = [{"keyword": t, "impact": importance.get(t, "Low"), "category": _category_of(t)} for t in missing_ranked]
+    red_flags = detect_red_flags(resume_text)
+    knockout_risks = _knockout_risks(resume_text, jd)
+    recruiter_scores = _recruiter_scores(overall, match_score, bullet_quality, impact, knockout_risks)
+    jd_profile = _jd_profile(jd, jd_terms, importance)
+    strongest_bullets = _strongest_bullets(resume_text)
 
     return {
         "score": round(overall, 0),
@@ -517,6 +668,17 @@ def analyze(resume_text: str, job_description: str, *, job_title: str = "", comp
         "missing_count": len(missing),
         "coverage_pct": round(coverage, 0),
         "semantic_similarity": round(cosine, 0),
-        "red_flags": detect_red_flags(resume_text),
+        "red_flags": red_flags,
+        "weak_bullets": red_flags,
+        "strongest_bullets": strongest_bullets,
+        "knockout_risks": knockout_risks,
+        "recruiter_scores": recruiter_scores,
+        "jd_profile": jd_profile,
+        "resume_improvements": _resume_improvements(missing_with_impact, red_flags, knockout_risks),
+        "ats_safe_rules": [
+            "No tables, columns, text boxes, graphics, icons, logos, headers, footers, page borders, charts, or skill bars.",
+            "Use standard headings: Professional Summary, Technical Skills, Professional Experience, Projects, Education, Certifications.",
+            "Every bullet should start with a strong action verb and include a truthful tool, keyword, and business outcome when possible.",
+        ],
         "sections_found": section_hits,
     }

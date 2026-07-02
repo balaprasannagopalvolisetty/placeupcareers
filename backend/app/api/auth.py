@@ -151,6 +151,12 @@ def _issue_session(user: dict, request: Request, response: Response) -> AuthResp
     )
 
 
+def _signup_payment_status(payload: SignupRequest) -> str:
+    if settings.free_access_enabled:
+        return "free_access"
+    return "paid" if (payload.payment_reference or payload.payment_plan) else "unpaid"
+
+
 def _issue_redirect_session(user: dict, request: Request, redirect_to: str) -> RedirectResponse:
     response = RedirectResponse(redirect_to, status_code=status.HTTP_302_FOUND)
     _issue_session(user, request, response)
@@ -260,6 +266,30 @@ async def signup(payload: SignupRequest, request: Request, response: Response):
     if user_store.get_user_by_email(str(payload.email)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
 
+    # Redesigned signup gates account creation behind explicit Terms/Privacy
+    # acceptance. The frontend wizard only reaches this step after the user
+    # clicks "I Agree", so a missing flag means a tampered/legacy client.
+    if not payload.agreement_accepted:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You must accept the Terms of Service and Privacy Policy to create an account.",
+        )
+
+    # Server-side backstop for the payment gate (off until Stripe webhooks are
+    # live; the wizard enforces it on the client meanwhile).
+    if not settings.free_access_enabled and settings.signup_require_payment and not (payload.payment_reference or payload.payment_plan):
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="Payment is required before creating an account.",
+        )
+
+    target_roles = list(payload.target_roles or payload.targets or [])[:25]
+    if len([role for role in target_roles if str(role).strip()]) < 5:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please select at least 5 target roles before creating your account.",
+        )
+
     user = user_store.create_user(
         email=str(payload.email),
         password_hash=hash_password(payload.password),
@@ -275,14 +305,18 @@ async def signup(payload: SignupRequest, request: Request, response: Response):
             "current_role": payload.current_role,
             "current_company": payload.current_company,
             "location": payload.location,
+            "country": payload.country,
+            "visa_status_other": payload.visa_status_other,
             "linkedin_url": payload.linkedin_url,
+            "payment_plan": payload.payment_plan or ("free_access" if settings.free_access_enabled else None),
+            "payment_reference": payload.payment_reference,
+            "payment_status": _signup_payment_status(payload),
         }.items() if v
     }
     if profile_updates:
         user_store.update_user_profile(user["id"], profile_updates)
         user = user_store.get_user_by_id(user["id"]) or user
 
-    target_roles = list(payload.target_roles or payload.targets or [])[:25]
     pref_updates: dict = {}
     if target_roles:
         pref_updates["target_roles"] = target_roles
@@ -295,9 +329,32 @@ async def signup(payload: SignupRequest, request: Request, response: Response):
     if pref_updates:
         user_store.update_preferences(user["id"], pref_updates)
 
-    # MFA: when enabled, require the user to confirm an emailed code before we
-    # issue a session (proves the email is real + theirs).
-    if settings.otp_mfa_enabled:
+    # Immutable proof that this account accepted the current legal docs.
+    try:
+        user_store.record_agreement(
+            user_id=user["id"],
+            email=user["email"],
+            version=payload.agreement_version or "v1",
+            documents=["terms", "privacy"],
+            ip_address=_client_ip(request),
+            user_agent=request.headers.get("user-agent", ""),
+            accepted=True,
+        )
+    except Exception:
+        logger.warning("record_agreement failed for %s", user["id"])
+
+    user_store.record_event(
+        kind="signup",
+        label="New account created",
+        user_id=user["id"],
+        email=user["email"],
+        meta={"plan": payload.payment_plan or ("free_access" if settings.free_access_enabled else ""), "country": payload.country or ""},
+    )
+
+    # Verify the email before activation: email a code and require
+    # /auth/otp/verify (purpose="signup"). Driven by signup_email_verification
+    # (default on) OR the login-MFA flag.
+    if settings.signup_email_verification or settings.otp_mfa_enabled:
         from app.services.otp import request_otp, OtpError
         try:
             request_otp(user["email"], "signup")
@@ -400,7 +457,11 @@ async def refresh_token(
         plan=user.get("plan") or "Pro",
         session_id=session["id"],
     )
-    return TokenRefreshResponse(access_token=access_token, expires_in=ACCESS_EXPIRES_SECONDS)
+    return TokenRefreshResponse(
+        access_token=access_token,
+        expires_in=ACCESS_EXPIRES_SECONDS,
+        user=_user_profile(user),
+    )
 
 
 @router.post("/logout")

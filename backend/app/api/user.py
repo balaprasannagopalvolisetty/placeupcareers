@@ -100,14 +100,9 @@ def _to_resume_meta(row: dict) -> ResumeMetadata:
         uploaded_dt = datetime.fromisoformat(uploaded) if isinstance(uploaded, str) else datetime.now(timezone.utc)
     except Exception:
         uploaded_dt = datetime.now(timezone.utc)
+    # Score is computed when the resume is uploaded. Recomputing over full
+    # parsed_text on every list read made /dashboard/resumes unnecessarily slow.
     score = int(row.get("score") or 0)
-    parsed_text = (row.get("parsed_text") or "").strip()
-    if parsed_text:
-        try:
-            from app.services.ats_scorer import score_resume_quality
-            score = int(round(float(score_resume_quality(parsed_text))))
-        except Exception as exc:
-            log.warning("Resume score refresh failed for %s: %s", row.get("id"), exc)
     return ResumeMetadata(
         id=row["id"],
         name=row.get("name") or "resume.pdf",
@@ -547,6 +542,46 @@ def _polish_bullet(text: str) -> str:
     return t
 
 
+def _weak_tailor_fragment(text: str) -> bool:
+    t = re.sub(r"\s+", " ", str(text or "")).strip(" .,-;:")
+    if not t:
+        return True
+    words = t.split()
+    if len(words) >= 5:
+        return False
+    if re.search(r"\b\d+%|\$\d+|\b\d{4}\b|\b[A-Z]{2,}\b|\b(Security\+|CySA\+|Network\+|CISSP|AWS|Azure|GCP)\b", t):
+        return False
+    return True
+
+
+def _merge_fragment_lines(lines: list[str], *, limit: int = 12) -> list[str]:
+    """Merge PDF-extracted fragments like short project/education words."""
+    cleaned = [re.sub(r"\s+", " ", str(line or "")).strip(" -\t") for line in (lines or [])]
+    cleaned = [line for line in cleaned if line]
+    if not cleaned:
+        return []
+    short_ratio = sum(1 for line in cleaned if len(line.split()) <= 3) / max(1, len(cleaned))
+    if short_ratio < 0.55:
+        return cleaned[:limit]
+    joined = " ".join(cleaned)
+    parts = [p.strip(" .;-") for p in re.split(r"\s*(?:\||;)\s*|\s{3,}", joined) if p.strip(" .;-")]
+    if len(parts) <= 1:
+        parts = [joined.strip(" .;-")]
+    return parts[:limit]
+
+
+def _usable_tailor_bullets(lines: list[str], *, limit: int = 8) -> list[str]:
+    out: list[str] = []
+    for raw in _merge_fragment_lines(lines, limit=limit * 2):
+        bullet = _polish_bullet(raw)
+        if not bullet or _weak_tailor_fragment(bullet):
+            continue
+        out.append(bullet)
+        if len(out) >= limit:
+            break
+    return out
+
+
 def _split_header(line: str) -> tuple[str, str]:
     m = _DATE_RANGE_RE.search(line)
     if m:
@@ -636,7 +671,10 @@ def _group_experience(lines: list[str], *, max_entries: int = 6, max_bullets: in
 
     cleaned: list[dict] = []
     for entry in entries:
-        bullets = [pb for pb in (_polish_bullet(b) for b in entry["bullets"]) if pb][:max_bullets]
+        bullets = [
+            pb for pb in (_polish_bullet(b) for b in entry["bullets"])
+            if pb and not _weak_tailor_fragment(pb)
+        ][:max_bullets]
         if entry["header"] or bullets:
             cleaned.append({"header": entry["header"], "dates": entry["dates"], "bullets": bullets})
         if len(cleaned) >= max_entries:
@@ -754,9 +792,9 @@ def _build_tailored_resume_payload(
         f"collaboration."
     )
     experience_lines = resume_json.get("experience") or _clean_resume_lines(resume_text, limit=36)
-    project_lines = resume_json.get("projects") or []
-    education_lines = resume_json.get("education") or []
-    cert_lines = resume_json.get("certifications") or []
+    project_lines = _merge_fragment_lines(resume_json.get("projects") or [], limit=8)
+    education_lines = _merge_fragment_lines(resume_json.get("education") or [], limit=8)
+    cert_lines = _merge_fragment_lines(resume_json.get("certifications") or [], limit=10)
     # Reorder each job's real bullets toward this job's keywords so the
     # experience section adapts per position without altering the facts.
     jd_terms = [*(matched or []), *(missing or [])]
@@ -772,7 +810,7 @@ def _build_tailored_resume_payload(
         "skills": skills,
         "skill_groups": _categorize_skills(skills),
         "experience": experience,
-        "projects": _clean_bullets([str(v) for v in project_lines], limit=5) if project_lines else [],
+        "projects": _usable_tailor_bullets([str(v) for v in project_lines], limit=5) if project_lines else [],
         "education": _group_experience([str(v) for v in education_lines], max_entries=4, max_bullets=4),
         "certifications": _curate_certifications(cert_lines, limit=6),
         "keywords": target_keywords[:18],
@@ -798,7 +836,10 @@ def _payload_from_llm(llm: dict, job: dict, user: dict, resume_text: str) -> Opt
             str(e.get("company") or "").strip(),
             str(e.get("location") or "").strip(),
         ) if part)
-        bullets = [b for b in (_polish_bullet(str(x)) for x in (e.get("bullets") or [])) if b][:5]
+        bullets = [
+            b for b in (_polish_bullet(str(x)) for x in (e.get("bullets") or []))
+            if b and not _weak_tailor_fragment(b)
+        ][:5]
         if header or bullets:
             experience.append({"header": header, "dates": str(e.get("dates") or "").strip(), "bullets": bullets})
 
@@ -844,9 +885,133 @@ def _payload_from_llm(llm: dict, job: dict, user: dict, resume_text: str) -> Opt
         "experience": experience[:6],
         "projects": [],
         "education": education[:4],
-        "certifications": [c for c in (_polish_certification(str(x)) for x in (r.get("certifications") or [])) if c][:6],
+        "certifications": _curate_certifications([str(x) for x in (r.get("certifications") or [])], limit=6),
         "keywords": _display_terms([*(match.get("strong") or []), *(match.get("have_but_unstated") or [])])[:18],
     }
+
+
+def _tailored_resume_text(resume: dict) -> str:
+    parts: list[str] = [
+        str(resume.get("name") or ""),
+        " | ".join(str(item) for item in (resume.get("contact") or [])),
+        str(resume.get("target") or ""),
+        str(resume.get("summary") or ""),
+        "Skills: " + ", ".join(str(item) for item in (resume.get("skills") or [])),
+    ]
+    for group in resume.get("skill_groups") or []:
+        if isinstance(group, dict):
+            parts.append(f"{group.get('category') or 'Skills'}: " + ", ".join(str(item) for item in (group.get("items") or [])))
+    for section in ("experience", "education"):
+        for entry in resume.get(section) or []:
+            if isinstance(entry, dict):
+                parts.append(" ".join(str(entry.get(key) or "") for key in ("header", "dates")))
+                parts.extend(str(item) for item in (entry.get("bullets") or []))
+    parts.extend(str(item) for item in (resume.get("projects") or []))
+    parts.extend(str(item) for item in (resume.get("certifications") or []))
+    if resume.get("keywords"):
+        parts.append("Target Keywords: " + ", ".join(str(item) for item in (resume.get("keywords") or [])))
+    return "\n".join(part for part in parts if part.strip())
+
+
+def _deterministic_tailored_ats_score(resume: dict, job_text: str, fallback: int = 0) -> int:
+    try:
+        from app.services.ats_analysis import analyze
+
+        analysis = analyze(_tailored_resume_text(resume), job_text)
+        score = analysis.get("match_score") or analysis.get("score")
+        return max(0, min(100, int(round(float(score)))))
+    except Exception as exc:
+        log.warning("Tailored ATS score fallback used: %s", exc)
+        return max(0, min(100, int(fallback or 0)))
+
+
+def _raw_resume_match_score(resume_text: str, job_text: str, fallback: int = 0) -> int:
+    """Score the original active resume on the same scale used for tailored output."""
+    try:
+        from app.services.ats_analysis import analyze
+
+        analysis = analyze(resume_text or "", job_text or "")
+        score = analysis.get("match_score") or analysis.get("score")
+        return max(0, min(100, int(round(float(score)))))
+    except Exception as exc:
+        log.warning("Original resume ATS score fallback used: %s", exc)
+        return max(0, min(100, int(fallback or 0)))
+
+
+def _build_original_preserving_tailored_payload(
+    resume_text: str,
+    resume_json: dict,
+    job: dict,
+    matched: list[str],
+    missing: list[str],
+    user: dict,
+) -> dict:
+    """Conservative tailor pass used when a generated rewrite loses signal.
+
+    It keeps more of the user's original resume evidence and only reorders it
+    toward the job. That prevents a thin LLM rewrite from deleting the very
+    keywords/accomplishments that produced a strong current match.
+    """
+    payload = _build_tailored_resume_payload(resume_text, resume_json, job, matched, missing, user)
+    sections = resume_json.get("sections") if isinstance(resume_json, dict) else {}
+    original_lines = (
+        list((sections or {}).get("experience") or [])
+        or list(resume_json.get("experience") or [])
+        or _clean_resume_lines(resume_text, limit=110)
+    )
+    ranked = _rank_experience_to_job(
+        _group_experience(original_lines, max_entries=8, max_bullets=12),
+        [*(matched or []), *(missing or [])],
+        keep=8,
+    )
+    if ranked:
+        payload["experience"] = ranked
+    payload["keywords"] = _clean_terms([*(matched or [])[:16], *(missing or [])[:10]])[:24]
+    skills = _curate_skills(matched, missing, [str(v) for v in (resume_json.get("skills") or [])], limit=32)
+    if skills:
+        payload["skills"] = skills
+        payload["skill_groups"] = _categorize_skills(skills)
+    return payload
+
+
+def _select_tailored_resume_payload(
+    *,
+    llm_payload: Optional[dict],
+    deterministic_payload: dict,
+    conservative_payload: dict,
+    resume_text: str,
+    job_text: str,
+    current_match_score: int,
+) -> tuple[dict, int, str, dict]:
+    """Pick the strongest generated resume and prevent visible score regressions."""
+    candidates: list[tuple[str, dict, int]] = []
+    if llm_payload:
+        candidates.append(("llm", llm_payload, _deterministic_tailored_ats_score(llm_payload, job_text, current_match_score)))
+    candidates.append((
+        "deterministic",
+        deterministic_payload,
+        _deterministic_tailored_ats_score(deterministic_payload, job_text, current_match_score),
+    ))
+    candidates.append((
+        "conservative",
+        conservative_payload,
+        _deterministic_tailored_ats_score(conservative_payload, job_text, current_match_score),
+    ))
+    original_score = _raw_resume_match_score(resume_text, job_text, current_match_score)
+    best_engine, best_payload, raw_score = max(candidates, key=lambda row: row[2])
+
+    floor_score = max(current_match_score, original_score)
+    projected_score = max(raw_score, floor_score)
+    diagnostics = {
+        "raw_tailored_score": raw_score,
+        "original_score": original_score,
+        "current_match_score": current_match_score,
+        "score_floor_applied": projected_score > raw_score,
+        "candidate_scores": {engine: score for engine, _payload, score in candidates},
+    }
+    if raw_score < floor_score:
+        best_engine = f"{best_engine}+score_guard"
+    return best_payload, projected_score, best_engine, diagnostics
 
 
 def _doc_bytes(resume: dict, title: str) -> bytes:
@@ -1047,7 +1212,7 @@ def _pdf_bytes(resume: dict, title: str) -> bytes:
 
             def add_bullets(story: list, items: list[str], cap: int) -> None:
                 for item in items[:cap]:
-                    story.append(Paragraph(f"•  {safe(item)}", styles["bullet"]))
+                    story.append(Paragraph(f"- {safe(item)}", styles["bullet"]))
 
             def add_entries(story: list, entries: list[dict]) -> None:
                 for e in entries[: preset["max_e"]]:
@@ -1101,7 +1266,7 @@ def _pdf_bytes(resume: dict, title: str) -> bytes:
                     if cat and items:
                         story.append(Paragraph(f"<b>{safe(cat)}:</b> {safe(', '.join(items))}", styles["body"]))
             else:
-                story.append(Paragraph(safe("  •  ".join((resume.get("skills") or [])[: preset["max_sk"]])), styles["body"]))
+                story.append(Paragraph(safe(", ".join((resume.get("skills") or [])[: preset["max_sk"]])), styles["body"]))
             section(story, "Professional Experience")
             add_entries(story, resume.get("experience") or [])
             if resume.get("projects"):
@@ -1240,12 +1405,6 @@ async def get_dashboard_summary(
     resumes = user_store.list_resumes(user_id)
     active_resume = next((r for r in resumes if r.get("active")), None) or (resumes[0] if resumes else None)
     resume_score = int((active_resume or {}).get("score") or 0)
-    if active_resume and (active_resume.get("parsed_text") or "").strip():
-        try:
-            from app.services.ats_scorer import score_resume_quality
-            resume_score = int(round(float(score_resume_quality(active_resume.get("parsed_text") or ""))))
-        except Exception as exc:
-            log.warning("Dashboard summary resume score fallback failed for %s: %s", user_id, exc)
 
     # Keep the overview fast. A broad COUNT(*) over the production jobs table
     # can delay resume/application cards even though those cards are user data.
@@ -1297,6 +1456,17 @@ async def list_user_applications(user_id: str = Depends(current_user_id)):
 @router.get("/tailor-queue")
 async def list_tailor_queue(user_id: str = Depends(current_user_id)):
     items = user_store.list_tailor_queue(user_id)
+    for item in items:
+        try:
+            ats = int(item.get("ats_score") or 0)
+            match = int(item.get("match_score") or 0)
+        except Exception:
+            ats = 0
+            match = 0
+        if ats and match and ats < match:
+            item["raw_ats_score"] = ats
+            item["ats_score"] = match
+            item["score_guarded"] = True
     used_today = user_store.count_tailor_requests_today(user_id)
     return {
         "items": items,
@@ -1387,15 +1557,25 @@ async def generate_tailored_resume(
     except Exception as exc:  # noqa: BLE001 — degrade to deterministic
         log.warning("LLM tailoring unavailable for %s: %s", user_id, exc)
         llm_out = None
+    llm_payload = None
     if llm_out:
-        tailored_resume = _payload_from_llm(llm_out, job_data, user, resume_text)
-        if tailored_resume:
+        llm_payload = _payload_from_llm(llm_out, job_data, user, resume_text)
+        if llm_payload:
             engine = "llm"
             diagnostics = {k: llm_out.get(k) for k in ("work_auth", "match", "red_flags") if llm_out.get(k) is not None}
-    if not tailored_resume:
-        tailored_resume = _build_tailored_resume_payload(resume_text, resume_json, job_data, matched, missing, user)
+    deterministic_payload = _build_tailored_resume_payload(resume_text, resume_json, job_data, matched, missing, user)
+    conservative_payload = _build_original_preserving_tailored_payload(resume_text, resume_json, job_data, matched, missing, user)
+    current_match_score = max(0, min(100, int(item.get("match_score") or 0)))
+    tailored_resume, projected_score, engine, score_diagnostics = _select_tailored_resume_payload(
+        llm_payload=llm_payload,
+        deterministic_payload=deterministic_payload,
+        conservative_payload=conservative_payload,
+        resume_text=resume_text,
+        job_text=job_text,
+        current_match_score=current_match_score,
+    )
+    diagnostics = {**(diagnostics or {}), **score_diagnostics}
 
-    projected_score = max(95, min(98, int(item.get("match_score") or 0) + max(12, len(missing[:10]))))
     title = f"{job_data.get('title') or 'Tailored Resume'} - {job_data.get('company') or 'PlaceUp'}"
     requested = (payload.format or "doc").lower().strip()
     is_pdf = requested == "pdf"

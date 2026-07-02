@@ -122,6 +122,7 @@ class PostgresClient:
                     MasterJob.source_name,
                     MasterJob.source_job_id,
                     MasterJob.posted_at,
+                    MasterJob.first_seen_at,
                     MasterJob.last_seen_at,
                     MasterJob.status,
                     MasterJob.canonical_key,
@@ -163,6 +164,7 @@ class PostgresClient:
                 Job.source_name,
                 Job.source_job_id,
                 Job.posted_at,
+                Job.first_seen_at,
                 Job.last_seen_at,
                 Job.status,
                 Job.content_hash,
@@ -217,6 +219,7 @@ class PostgresClient:
                 MasterJob.source_name,
                 MasterJob.source_job_id,
                 MasterJob.posted_at,
+                MasterJob.first_seen_at,
                 MasterJob.last_seen_at,
                 MasterJob.status,
                 MasterJob.canonical_key,
@@ -460,6 +463,207 @@ class PostgresClient:
             d = (today - timedelta(days=offset)).isoformat()
             series.append({"date": d, "count": by_day.get(d, 0)})
         return series
+
+    async def top_roles_by_country(self, country: str, *, limit: int = 8) -> list[dict]:
+        """Read-only: top role categories the scraper has collected for a country.
+
+        Powers the admin "roles per country" panel. Best-effort and purely a
+        read — it never writes and is independent of the ingestion pipeline.
+        """
+        limit = max(1, min(int(limit), 50))
+        if self._master_jobs_available():
+            table = "master_jobs"
+            role_expr = "COALESCE(NULLIF(extra_metadata->>'category', ''), 'Other')"
+        else:
+            table = "jobs"
+            role_expr = "COALESCE(NULLIF(category, ''), 'Other')"
+        sql = f"""
+            SELECT {role_expr} AS role, COUNT(*) AS count
+              FROM {table}
+             WHERE status = 'active' AND upper(country) = upper(:country)
+             GROUP BY 1
+             ORDER BY 2 DESC
+             LIMIT :limit
+        """
+        with self.session() as db:
+            rows = db.execute(text(sql), {"country": country, "limit": limit}).mappings().all()
+        return [{"role": row["role"], "count": int(row["count"])} for row in rows]
+
+    async def admin_coverage_snapshot(self, *, top_limit: int = 8, sample_limit: int = 3000) -> dict:
+        """Fast snapshot for the private admin coverage charts.
+
+        This intentionally uses the status/last_seen index and summarizes a
+        bounded newest-active sample. Full-table grouped counts can exceed the
+        request budget while the scraper is busy; admin needs a quick coverage
+        picture more than an exact analytical warehouse query.
+        """
+        top_limit = max(1, min(int(top_limit), 25))
+        sample_limit = max(500, min(int(sample_limit), 5000))
+        use_master = self._master_jobs_available()
+        table = "master_jobs" if use_master else "jobs"
+        estimate_sql = """
+            SELECT GREATEST(0, reltuples)::bigint AS estimate
+              FROM pg_class
+             WHERE relname = :table
+             LIMIT 1
+        """
+        with self.session() as db:
+            estimate = int(db.execute(text(estimate_sql), {"table": table}).scalar() or 0)
+            rows = []
+            try:
+                db.execute(text("SET LOCAL statement_timeout = '2500ms'"))
+                if use_master:
+                    sample_sql = f"""
+                        SELECT country, extra_metadata
+                          FROM {table}
+                         WHERE status = 'active'
+                         LIMIT :sample_limit
+                    """
+                else:
+                    sample_sql = f"""
+                        SELECT country, jsonb_build_object('category', category) AS extra_metadata
+                          FROM {table}
+                         WHERE status = 'active'
+                         LIMIT :sample_limit
+                    """
+                rows = db.execute(text(sample_sql), {"sample_limit": sample_limit}).mappings().all()
+            except Exception:
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+                rows = []
+
+        country_counts: dict[str, int] = {}
+        country_roles: dict[str, dict[str, int]] = {}
+        global_roles: dict[str, int] = {}
+        for row in rows:
+            country = str(row.get("country") or "UNSPECIFIED").upper()
+            meta = row.get("extra_metadata") or {}
+            if not isinstance(meta, dict):
+                meta = {}
+            role = (
+                str(meta.get("taxonomy_role") or meta.get("role") or meta.get("category") or "Other")
+                .strip()
+                or "Other"
+            )
+            country_counts[country] = country_counts.get(country, 0) + 1
+            country_roles.setdefault(country, {})[role] = country_roles.setdefault(country, {}).get(role, 0) + 1
+            global_roles[role] = global_roles.get(role, 0) + 1
+
+        per_country = []
+        for country, positions in sorted(country_counts.items(), key=lambda item: item[1], reverse=True):
+            rule = COUNTRY_RULES.get(country)
+            role_counts = country_roles.get(country, {})
+            per_country.append({
+                "country": country,
+                "country_name": rule.name if rule else ("Unspecified" if country == "UNSPECIFIED" else country),
+                "positions": positions,
+                "top_roles": [
+                    {"role": role, "count": count}
+                    for role, count in sorted(role_counts.items(), key=lambda item: (-item[1], item[0]))[:top_limit]
+                ],
+            })
+
+        return {
+            "total_positions": max(estimate, len(rows)),
+            "sample_size": len(rows),
+            "estimated": True,
+            "per_country": per_country or [
+                {
+                    "country": "ALL",
+                    "country_name": "All active positions",
+                    "positions": max(estimate, len(rows)),
+                    "top_roles": [],
+                }
+            ],
+            "top_roles": ([
+                {"role": role, "count": count}
+                for role, count in sorted(global_roles.items(), key=lambda item: (-item[1], item[0]))[:top_limit]
+            ] or [{"role": "Collected active positions", "count": max(estimate, len(rows))}]),
+        }
+
+    async def admin_coverage_snapshot_exact(self, *, top_limit: int = 8) -> dict:
+        """Exact grouped snapshot retained for offline diagnostics."""
+        top_limit = max(1, min(int(top_limit), 25))
+        use_master = self._master_jobs_available()
+        table = "master_jobs" if use_master else "jobs"
+        role_expr = (
+            "COALESCE(NULLIF(extra_metadata->>'taxonomy_role', ''), "
+            "NULLIF(extra_metadata->>'role', ''), "
+            "NULLIF(extra_metadata->>'category', ''), 'Other')"
+            if use_master
+            else "COALESCE(NULLIF(category, ''), 'Other')"
+        )
+        country_expr = "upper(COALESCE(NULLIF(country, ''), 'UNSPECIFIED'))"
+        country_sql = f"""
+            SELECT {country_expr} AS country, COUNT(*) AS positions
+              FROM {table}
+             WHERE status = 'active'
+             GROUP BY 1
+             ORDER BY 2 DESC
+        """
+        roles_sql = f"""
+            WITH role_counts AS (
+                SELECT {country_expr} AS country,
+                       {role_expr} AS role,
+                       COUNT(*) AS count
+                  FROM {table}
+                 WHERE status = 'active'
+                 GROUP BY 1, 2
+            ),
+            ranked AS (
+                SELECT country, role, count,
+                       ROW_NUMBER() OVER (PARTITION BY country ORDER BY count DESC, role ASC) AS rn
+                  FROM role_counts
+            )
+            SELECT country, role, count
+              FROM ranked
+             WHERE rn <= :top_limit
+             ORDER BY country, count DESC, role ASC
+        """
+        global_roles_sql = f"""
+            SELECT {role_expr} AS role, COUNT(*) AS count
+              FROM {table}
+             WHERE status = 'active'
+             GROUP BY 1
+             ORDER BY 2 DESC, 1 ASC
+             LIMIT :top_limit
+        """
+        total_sql = f"SELECT COUNT(*) AS total FROM {table} WHERE status = 'active'"
+        with self.session() as db:
+            total = int(db.execute(text(total_sql)).scalar() or 0)
+            country_rows = db.execute(text(country_sql)).mappings().all()
+            role_rows = db.execute(text(roles_sql), {"top_limit": top_limit}).mappings().all()
+            global_role_rows = db.execute(text(global_roles_sql), {"top_limit": top_limit}).mappings().all()
+
+        roles_by_country: dict[str, list[dict]] = {}
+        for row in role_rows:
+            country = str(row["country"] or "UNSPECIFIED").upper()
+            roles_by_country.setdefault(country, []).append({
+                "role": row["role"] or "Other",
+                "count": int(row["count"] or 0),
+            })
+
+        per_country = []
+        for row in country_rows:
+            country = str(row["country"] or "UNSPECIFIED").upper()
+            rule = COUNTRY_RULES.get(country)
+            per_country.append({
+                "country": country,
+                "country_name": rule.name if rule else ("Unspecified" if country == "UNSPECIFIED" else country),
+                "positions": int(row["positions"] or 0),
+                "top_roles": roles_by_country.get(country, []),
+            })
+
+        return {
+            "total_positions": total,
+            "per_country": per_country,
+            "top_roles": [
+                {"role": row["role"] or "Other", "count": int(row["count"] or 0)}
+                for row in global_role_rows
+            ],
+        }
 
     async def deactivate_old_jobs(self, days_old: int = 15) -> int:
         cutoff = datetime.utcnow() - timedelta(days=days_old)
@@ -865,6 +1069,7 @@ class PostgresClient:
             "source": job.source_name,
             "source_job_id": job.source_job_id or "",
             "posted_at": posted_at,
+            "first_seen_at": job.first_seen_at,
             "scraped_at": job.last_seen_at,
             "status": job.status,
             "content_hash": job.canonical_key,
@@ -902,6 +1107,7 @@ class PostgresClient:
             "source": row.get("source_name"),
             "source_job_id": row.get("source_job_id") or "",
             "posted_at": posted_at,
+            "first_seen_at": row.get("first_seen_at"),
             "scraped_at": row.get("last_seen_at"),
             "status": row.get("status"),
             "content_hash": row.get("canonical_key"),
@@ -937,6 +1143,7 @@ class PostgresClient:
             "source": job.source_name,
             "source_job_id": job.source_job_id or "",
             "posted_at": posted_at,
+            "first_seen_at": job.first_seen_at,
             "scraped_at": job.last_seen_at,
             "status": job.status,
             "content_hash": job.content_hash,
@@ -974,6 +1181,7 @@ class PostgresClient:
             "source": row.get("source_name"),
             "source_job_id": row.get("source_job_id") or "",
             "posted_at": posted_at,
+            "first_seen_at": row.get("first_seen_at"),
             "scraped_at": row.get("last_seen_at"),
             "status": row.get("status"),
             "content_hash": row.get("content_hash"),

@@ -78,6 +78,8 @@ class PlanCard(BaseModel):
 def _price_id(env_var: str) -> Optional[str]:
     """Read a Stripe price id from env. Returns None when unset so the
     /plans endpoint can render the catalog even before Stripe is set up."""
+    if settings.free_access_enabled:
+        return None
     val = os.getenv(env_var, "").strip()
     return val or None
 
@@ -86,8 +88,9 @@ PLANS: list[PlanCard] = [
     PlanCard(
         slug="basic",
         name="Basic",
-        price_cents=999,
-        description="Daily job alerts + 50 ATS scores per month.",
+        price_cents=0 if settings.free_access_enabled else 999,
+        interval="preview" if settings.free_access_enabled else "month",
+        description="Complete access during the free preview." if settings.free_access_enabled else "Daily job alerts + 50 ATS scores per month.",
         stripe_price_id=_price_id("STRIPE_PRICE_BASIC"),
         features=[
             PlanFeature(label="Daily job alerts"),
@@ -100,9 +103,10 @@ PLANS: list[PlanCard] = [
     PlanCard(
         slug="pro",
         name="Pro",
-        price_cents=1599,
+        price_cents=0 if settings.free_access_enabled else 1599,
+        interval="preview" if settings.free_access_enabled else "month",
         recommended=True,
-        description="Unlimited ATS scoring + recruiter email lookup.",
+        description="Complete access during the free preview." if settings.free_access_enabled else "Unlimited ATS scoring + recruiter email lookup.",
         stripe_price_id=_price_id("STRIPE_PRICE_PRO"),
         features=[
             PlanFeature(label="Everything in Basic"),
@@ -115,8 +119,9 @@ PLANS: list[PlanCard] = [
     PlanCard(
         slug="elite",
         name="Elite",
-        price_cents=4500,
-        description="Everything in Pro + bulk LinkedIn CSV processing + early access.",
+        price_cents=0 if settings.free_access_enabled else 4500,
+        interval="preview" if settings.free_access_enabled else "month",
+        description="Complete access during the free preview." if settings.free_access_enabled else "Everything in Pro + bulk LinkedIn CSV processing + early access.",
         stripe_price_id=_price_id("STRIPE_PRICE_ELITE"),
         features=[
             PlanFeature(label="Everything in Pro"),
@@ -138,6 +143,13 @@ async def list_plans():
 @router.get("/me")
 async def my_billing(user_id: str = Depends(current_user_id)):
     user = user_store.get_user_by_id(user_id) or {}
+    if settings.free_access_enabled:
+        return {
+            "plan": user.get("plan") or "pro",
+            "subscription_status": "free_access",
+            "free_access_enabled": True,
+            "message": "Payments are temporarily disabled. Complete application access is free right now.",
+        }
     return {
         "plan": user.get("plan") or "free",
         "stripe_customer_id": user.get("stripe_customer_id"),
@@ -159,6 +171,11 @@ class CheckoutRequest(BaseModel):
 def _stripe_or_503():
     """Import the Stripe SDK lazily; raise a 503 with a clear message
     when it isn't installed or the API key isn't configured."""
+    if settings.free_access_enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="Payments are temporarily disabled. Complete application access is free right now.",
+        )
     api_key = os.getenv("STRIPE_API_KEY", "").strip() or getattr(settings, "stripe_api_key", "")
     if not api_key:
         raise HTTPException(status_code=503, detail="Billing not configured: STRIPE_API_KEY missing.")
@@ -257,6 +274,8 @@ async def stripe_webhook(request: Request):
       - customer.subscription.deleted    → downgrade to free
       - invoice.payment_failed           → flag past_due (optionally email)
     """
+    if settings.free_access_enabled:
+        return {"received": True, "ignored": True, "reason": "free_access_enabled"}
     stripe = _stripe_or_503()
     secret = os.getenv("STRIPE_WEBHOOK_SECRET", "").strip() or getattr(settings, "stripe_webhook_secret", "")
     if not secret:
@@ -336,6 +355,8 @@ def user_plan_atleast(user_id: str, required: str) -> bool:
 
     where `require_pro = lambda uid=Depends(current_user_id): _gate(uid, "pro")`.
     """
+    if settings.free_access_enabled:
+        return True
     user = user_store.get_user_by_id(user_id) or {}
     plan = (user.get("plan") or "free").lower()
     return PLAN_RANK.get(plan, 0) >= PLAN_RANK.get(required.lower(), 0)

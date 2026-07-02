@@ -87,6 +87,25 @@ async def match_resume_to_job(
             visa_badges=visa_badges,
         )
 
+        # Override the headline number with the SAME engine used by the jobs
+        # list and job-detail pages so a user never sees two different scores
+        # for one job. match_engine still supplies keyword/insight details.
+        try:
+            from app.api.jobs import score_breakdown
+
+            unified = score_breakdown(resume_text, f"{jt}\n{jd_text}")
+            if unified.get("score") is not None:
+                score = int(unified["score"])
+                match_result.overall_match_score = score
+                match_result.recommendation = (
+                    "Strong Match" if score >= 80
+                    else "Good Match" if score >= 65
+                    else "Fair Match" if score >= 45
+                    else "Needs Work"
+                )
+        except Exception:
+            logger.warning("Unified match score failed; keeping engine score.")
+
         elapsed = (time.time() - start_time) * 1000
 
         return MatchResponse(
@@ -144,7 +163,17 @@ async def analyze_resume_against_job(
         from app.services.ats_analysis import analyze as ats_analyze
         from app.services.ats_llm import maybe_refine
         base = ats_analyze(resume_text, jd_text, job_title=jt, company=company)
-        return await maybe_refine(resume_text, jd_text, jt, company, base)
+        refined = await maybe_refine(resume_text, jd_text, jt, company, base)
+        # Keep the headline match number consistent with the jobs-list engine.
+        try:
+            from app.api.jobs import score_breakdown
+
+            unified = score_breakdown(resume_text, f"{jt}\n{jd_text}")
+            if unified.get("score") is not None:
+                refined["match_score"] = int(unified["score"])
+        except Exception:
+            logger.warning("Unified match score failed in /analyze; keeping panel score.")
+        return refined
     except HTTPException:
         raise
     except Exception as e:
@@ -180,6 +209,19 @@ async def active_resume_analysis(
 
     result = ats_analyze(resume_text, jd_text, job_title=job.get("title", ""), company=job.get("company", ""))
     result = await maybe_refine(resume_text, jd_text, job.get("title", ""), job.get("company", ""), result)
+    # Unify the headline match number with the SAME engine that scores the
+    # jobs list and the job-detail header (_ats_score_v2 via score_breakdown).
+    # Before this, the list could say 72 while this panel said 45 for the
+    # same job, which users read as "the score is random".
+    try:
+        from app.api.jobs import score_breakdown
+
+        unified = score_breakdown(resume_text, f"{job.get('title', '')}\n{jd_text}")
+        if unified.get("score") is None:
+            return {"has_resume": True, "insufficient_jd": True, **result}
+        result["match_score"] = int(unified["score"])
+    except Exception:
+        logger.warning("Unified match score failed for job %s; keeping panel score.", job_id)
     return {"has_resume": True, **result}
 
 

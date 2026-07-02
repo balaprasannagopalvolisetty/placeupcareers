@@ -4,6 +4,7 @@ import Layout from "./components/Layout";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { LoadingLogo } from "./components/LoadingLogo";
+import Home from "./pages/Home";
 
 // ───────────────────────────────────────────────────────────────────
 // Lazy routes. Pre-split, the single bundle was 998 KB; routes that
@@ -11,7 +12,6 @@ import { LoadingLogo } from "./components/LoadingLogo";
 // block the first paint of the dashboard. React.lazy + a Suspense
 // fallback lets the router fetch each chunk on demand.
 // ───────────────────────────────────────────────────────────────────
-const Home = lazy(() => import("./pages/Home"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const OverviewPage = lazy(() =>
   import("./pages/Dashboard").then((m) => ({ default: m.OverviewPage }))
@@ -44,9 +44,7 @@ const AnalyticsPage = lazy(() =>
 const SettingsPage = lazy(() =>
   import("./components/dashboard/SettingsPage").then((m) => ({ default: m.SettingsPage }))
 );
-const AdminPage = lazy(() =>
-  import("./components/dashboard/AdminPage").then((m) => ({ default: m.AdminPage }))
-);
+const AdminConsole = lazy(() => import("./pages/AdminConsole"));
 const UserProfilePage = lazy(() =>
   import("./components/dashboard/UserProfilePage").then((m) => ({ default: m.UserProfilePage }))
 );
@@ -58,6 +56,12 @@ const TermsPage = lazy(() =>
 );
 const CookiesPage = lazy(() =>
   import("./pages/Legal").then((m) => ({ default: m.CookiesPage }))
+);
+const DisclaimerPage = lazy(() =>
+  import("./pages/Legal").then((m) => ({ default: m.DisclaimerPage }))
+);
+const ReturnPolicyPage = lazy(() =>
+  import("./pages/Legal").then((m) => ({ default: m.ReturnPolicyPage }))
 );
 const ForgotPasswordPage = lazy(() =>
   import("./pages/PasswordReset").then((m) => ({ default: m.ForgotPasswordPage }))
@@ -120,10 +124,12 @@ export const router = createBrowserRouter([
           { path: "applications", Component: authedGuarded(ApplicationsPage) },
           { path: "analytics", Component: authedGuarded(AnalyticsPage) },
           { path: "settings", Component: authedGuarded(SettingsPage) },
-          { path: "admin", Component: authedGuarded(AdminPage) },
           { path: "profile", Component: authedGuarded(UserProfilePage) },
         ],
       },
+      // Private admin console — unguessable path, not linked anywhere in the
+      // UI. Real protection is the backend ADMIN_EMAILS allowlist.
+      { path: "ops-console-9c2f1a8b7e", Component: authedGuarded(AdminConsole) },
       { path: "signin", Component: guarded(SignIn) },
       { path: "signup", Component: guarded(SignUp) },
       { path: "forgot-password", Component: guarded(ForgotPasswordPage) },
@@ -132,6 +138,8 @@ export const router = createBrowserRouter([
       { path: "privacy", Component: guarded(PrivacyPage) },
       { path: "terms", Component: guarded(TermsPage) },
       { path: "cookies", Component: guarded(CookiesPage) },
+      { path: "disclaimer", Component: guarded(DisclaimerPage) },
+      { path: "return-policy", Component: guarded(ReturnPolicyPage) },
       // Catch-all 404 — anything that doesn't match a real route lands
       // here instead of rendering an empty Layout shell.
       { path: "*", Component: guarded(NotFound) },

@@ -31,6 +31,10 @@ from app.utils.terminal_table import render_table
 
 logger = logging.getLogger(__name__)
 
+DIRECT_ATS_CONNECTOR_SOURCES = (
+    "greenhouse~lever~ashby~smartrecruiters~remoteok~remotive~jobicy"
+)
+
 # Public/API passes must cover every taxonomy role, not just USAJobs. Keep the
 # public-source set env-tunable because provider availability changes.
 FREE_OPEN_PUBLIC_SOURCES = os.getenv(
@@ -177,7 +181,7 @@ async def _run_batched() -> int:
         api_connector_count = await run_api_connectors_to_postgres(
             queries=terms,
             countries=countries,
-            sources=os.getenv("API_CONNECTOR_SOURCES", "adzuna~greenhouse~remoteok~remotive~jobicy"),
+            sources=os.getenv("API_CONNECTOR_SOURCES", DIRECT_ATS_CONNECTOR_SOURCES),
         )
         logger.info("6h official API/ATS connectors loaded %s jobs", api_connector_count)
     except Exception as exc:

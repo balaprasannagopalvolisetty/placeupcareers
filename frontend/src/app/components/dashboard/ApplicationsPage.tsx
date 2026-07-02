@@ -6,13 +6,13 @@ import * as api from "../../lib/api";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 const T = {
-  text: "#F2EEB3",
-  t2: "rgba(242,238,179,0.65)",
-  t3: "rgba(242,238,179,0.45)",
-  border: "rgba(242,238,179,0.08)",
-  glass: "rgba(64,18,18,0.55)",
-  grad: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)",
-  red: "#ED7D2B",
+  text: "#F1F5F9",
+  t2: "rgba(226,232,240,0.72)",
+  t3: "rgba(148,163,184,0.75)",
+  border: "rgba(148,163,184,0.08)",
+  glass: "rgba(15,30,55,0.55)",
+  grad: "linear-gradient(135deg, #2563EB, #0EA5E9)",
+  red: "#3B82F6",
 };
 
 type Row = api.UserApplicationRow;
@@ -30,12 +30,12 @@ function statusBadge(row: Row): { label: string; color: string; bg: string; bord
     return { label: "Heard back", color: "#22c55e", bg: "rgba(34,197,94,0.12)", border: "rgba(34,197,94,0.3)" };
   }
   if (row.status === "applied") {
-    return { label: "Applied", color: T.red, bg: "rgba(237,125,43,0.12)", border: "rgba(237,125,43,0.3)" };
+    return { label: "Applied", color: T.red, bg: "rgba(59,130,246,0.12)", border: "rgba(59,130,246,0.3)" };
   }
   if (row.status === "not_applied") {
-    return { label: row.not_applied_reason || "Skipped", color: T.t3, bg: "rgba(242,238,179,0.04)", border: T.border };
+    return { label: row.not_applied_reason || "Skipped", color: T.t3, bg: "rgba(148,163,184,0.04)", border: T.border };
   }
-  return { label: row.status || "Tracked", color: T.t2, bg: "rgba(242,238,179,0.04)", border: T.border };
+  return { label: row.status || "Tracked", color: T.t2, bg: "rgba(148,163,184,0.04)", border: T.border };
 }
 
 function formatDate(value?: string): string {
@@ -157,7 +157,7 @@ export function ApplicationsPage() {
           style={{
             display: "inline-flex", alignItems: "center", gap: 6,
             padding: "8px 12px", borderRadius: 10,
-            border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)",
+            border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.04)",
             color: T.t2, fontSize: 12, fontFamily: F.sans, cursor: "pointer",
           }}
         >
@@ -182,7 +182,7 @@ export function ApplicationsPage() {
           >
             <div style={{
               width: 32, height: 32, borderRadius: 9,
-              background: "rgba(237,125,43,0.10)", border: "1px solid rgba(237,125,43,0.22)",
+              background: "rgba(59,130,246,0.10)", border: "1px solid rgba(59,130,246,0.22)",
               display: "flex", alignItems: "center", justifyContent: "center",
             }}>
               <Icon size={14} color={color} />
@@ -238,7 +238,7 @@ export function ApplicationsPage() {
         <div style={{
           display: "flex", alignItems: "center", gap: 8, flex: "1 1 220px",
           height: 36, padding: "0 12px", borderRadius: 8,
-          border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)",
+          border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.04)",
         }}>
           <Search size={13} color={T.t3} />
           <input value={search} onChange={(e) => setSearch(e.target.value)}
@@ -262,7 +262,7 @@ export function ApplicationsPage() {
 
       {error && (
         <div style={{ padding: "14px 16px", borderRadius: 12,
-          background: "rgba(237,125,43,0.08)", border: "1px solid rgba(237,125,43,0.25)",
+          background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.25)",
           color: T.text, fontFamily: F.sans, fontSize: 13 }}>
           {error}
         </div>
@@ -290,7 +290,7 @@ export function ApplicationsPage() {
             <motion.div key={`${row.job_id}-${row.created_at || i}`}
               initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(0.02 * i, 0.3) }}
               style={{
-                background: "linear-gradient(135deg, rgba(64,18,18,0.62), rgba(25,18,32,0.72))",
+                background: "linear-gradient(135deg, rgba(15,30,55,0.62), rgba(25,18,32,0.72))",
                 backdropFilter: "blur(20px)", border: `1px solid ${T.border}`,
                 borderRadius: 14, padding: 14,
                 display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 12, alignItems: "center",

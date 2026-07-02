@@ -35,6 +35,10 @@ export default function Particles({
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    if (particleCount <= 0) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
 
     const resize = () => {
       canvas.width = canvas.offsetWidth * pixelRatio;

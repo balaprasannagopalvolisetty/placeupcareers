@@ -1,13 +1,13 @@
 /* ============================================================
-   App-wide polish — professional / minimal / futuristic.
+   App-wide polish — professional / minimal / clean SaaS.
    Pure CSS, applied globally without touching any component.
-   Accent: #ED7D2B (burnt orange)  ·  Text: #F2EEB3 (cream)
+   Accent: #2563EB (blue) · Marketing pages light, app dark navy
    ============================================================ */
 
 :root {
-  --pu-accent: #ED7D2B;
-  --pu-accent-soft: rgba(237, 125, 43, 0.35);
-  --pu-cream: #F2EEB3;
+  --pu-accent: #2563EB;
+  --pu-accent-soft: rgba(37, 99, 235, 0.30);
+  --pu-cream: #F1F5F9;
 }
 
 html { scroll-behavior: smooth; }
@@ -51,25 +51,30 @@ button:not(:disabled):active,
 /* Slim, themed scrollbars (futuristic, unobtrusive) */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(237, 125, 43, 0.45) transparent;
+  scrollbar-color: rgba(100, 116, 139, 0.45) transparent;
 }
 *::-webkit-scrollbar { width: 10px; height: 10px; }
 *::-webkit-scrollbar-track { background: transparent; }
 *::-webkit-scrollbar-thumb {
-  background: rgba(237, 125, 43, 0.35);
+  background: rgba(100, 116, 139, 0.35);
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: rgba(237, 125, 43, 0.6);
+  background: rgba(100, 116, 139, 0.6);
   background-clip: padding-box;
 }
 
-/* Native dropdown option list readable on the dark theme */
+/* Native dropdown option list readable on the dark app theme */
 select option {
-  background: #0b1326;
+  background: #0E1930;
   color: var(--pu-cream);
+}
+/* Home page (light) native select: keep options light there */
+.pu-light select option, select.pu-light-select option {
+  background: #ffffff;
+  color: #0F172A;
 }
 
 /* Honor users who prefer less motion */
@@ -87,14 +92,14 @@ select option {
 /* Inputs & selects: subtle accent on hover/focus for a responsive feel
    (works alongside component inline borders without overriding color). */
 input:hover, select:hover, textarea:hover {
-  border-color: rgba(237, 125, 43, 0.28);
+  border-color: rgba(37, 99, 235, 0.30);
 }
 input:focus, select:focus, textarea:focus {
-  box-shadow: 0 0 0 3px rgba(237, 125, 43, 0.16);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
 }
 
 /* Placeholders stay legible but quiet */
-::placeholder { color: rgba(245, 234, 200, 0.4); opacity: 1; }
+::placeholder { color: rgba(100, 116, 139, 0.65); opacity: 1; }
 
 /* Disabled controls read as disabled everywhere */
 button:disabled, [aria-disabled="true"] {

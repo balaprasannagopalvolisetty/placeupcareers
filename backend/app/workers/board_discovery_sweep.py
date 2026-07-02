@@ -37,6 +37,7 @@ logger = logging.getLogger("placeup.workers.board_discovery_sweep")
 
 RESWEEP_DAYS = 30
 UPSERT_BATCH = 2000
+MASTER_REBUILD_EVERY_LOADED = 500
 MIN_ALPHA_CHARS = 3
 
 _LEGAL_ENTITY_NOISE_RE = re.compile(
@@ -119,12 +120,42 @@ async def run(limit: int, concurrency: int, dry_run: bool = False) -> dict[str, 
     logger.info("Board sweep: %s sponsor companies in this batch", len(companies))
 
     semaphore = asyncio.Semaphore(concurrency)
+    write_lock = asyncio.Lock()
     client = PostgresClient()
-    payloads: list[dict] = []
     seen_ids: set[str] = set()
-    state_rows: list[dict] = []
     boards_found = 0
     skipped_noisy_names = 0
+    loaded = 0
+    rebuilt = 0
+    last_rebuild_loaded = 0
+
+    async def persist_company_result(state_row: dict[str, Any], payloads: list[dict]) -> None:
+        """Checkpoint one company immediately so timeout/interruption does not lose work."""
+        nonlocal loaded, rebuilt, last_rebuild_loaded
+        if dry_run:
+            return
+        async with write_lock:
+            company_loaded = 0
+            if payloads:
+                for i in range(0, len(payloads), UPSERT_BATCH):
+                    company_loaded += await client.upsert_jobs_batch(payloads[i:i + UPSERT_BATCH])
+                loaded += company_loaded
+            with client.session() as db:
+                db.execute(text(MARK_SQL), state_row)
+            if loaded and loaded - last_rebuild_loaded >= MASTER_REBUILD_EVERY_LOADED:
+                try:
+                    from app.etl.master_jobs import rebuild_master_jobs
+                    rebuilt = rebuild_master_jobs(client)
+                    last_rebuild_loaded = loaded
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Master rebuild during board sweep failed: %s", exc)
+            if company_loaded:
+                logger.info(
+                    "Board sweep checkpointed %s postings for %r (loaded_total=%s)",
+                    company_loaded,
+                    state_row.get("employer_name"),
+                    loaded,
+                )
 
     async def probe(company_row: dict[str, Any]) -> None:
         nonlocal boards_found, skipped_noisy_names
@@ -132,12 +163,13 @@ async def run(limit: int, concurrency: int, dry_run: bool = False) -> dict[str, 
             name = str(company_row.get("employer_name") or "").strip()
             if not _is_credible_company_name(name):
                 skipped_noisy_names += 1
-                state_rows.append({
+                state_row = {
                     "company_key": company_row.get("company_key"),
                     "employer_name": name[:380],
                     "country": company_row.get("country"),
                     "postings_found": 0,
-                })
+                }
+                await persist_company_result(state_row, [])
                 logger.debug("Board sweep skipped noisy sponsor name: %r", name)
                 return
             postings = []
@@ -172,44 +204,35 @@ async def run(limit: int, concurrency: int, dry_run: bool = False) -> dict[str, 
             except Exception as exc:  # noqa: BLE001
                 logger.debug("ATS board probe failed for %r: %s", name, exc)
             count = 0
+            company_payloads: list[dict] = []
             for posting in postings:
                 pid = str(getattr(posting, "id", "") or "")
                 if not pid or pid in seen_ids:
                     continue
                 seen_ids.add(pid)
                 try:
-                    payloads.append(posting.model_dump(mode="python"))
+                    company_payloads.append(posting.model_dump(mode="python"))
                     count += 1
                 except Exception:  # noqa: BLE001
                     continue
             if count:
                 boards_found += 1
-            state_rows.append({
+            state_row = {
                 "company_key": company_row.get("company_key"),
                 "employer_name": name[:380],
                 "country": company_row.get("country"),
                 "postings_found": count,
-            })
+            }
+            await persist_company_result(state_row, company_payloads)
 
     await asyncio.gather(*(probe(row) for row in companies))
 
-    loaded = 0
-    if payloads and not dry_run:
-        for i in range(0, len(payloads), UPSERT_BATCH):
-            loaded += await client.upsert_jobs_batch(payloads[i:i + UPSERT_BATCH])
-
-    rebuilt = 0
     if loaded and not dry_run:
         try:
             from app.etl.master_jobs import rebuild_master_jobs
             rebuilt = rebuild_master_jobs(client)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Master rebuild after board sweep failed: %s", exc)
-
-    if state_rows and not dry_run:
-        with client.session() as db:
-            for row in state_rows:
-                db.execute(text(MARK_SQL), row)
 
     summary = {
         "companies_checked": len(companies),

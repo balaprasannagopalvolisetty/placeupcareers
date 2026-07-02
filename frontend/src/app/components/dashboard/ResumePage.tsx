@@ -5,18 +5,18 @@ import * as api from "../../lib/api";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 const T = {
-  text: "#F2EEB3", t2: "rgba(242,238,179,0.65)", t3: "rgba(242,238,179,0.45)",
-  border: "rgba(242,238,179,0.08)", glass: "rgba(64,18,18,0.55)",
-  grad: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)", red: "#ED7D2B",
+  text: "#F1F5F9", t2: "rgba(226,232,240,0.72)", t3: "rgba(148,163,184,0.75)",
+  border: "rgba(148,163,184,0.08)", glass: "rgba(15,30,55,0.55)",
+  grad: "linear-gradient(135deg, #2563EB, #0EA5E9)", red: "#3B82F6",
 };
 
 function ScoreRing({ score }: { score: number }) {
   const r = 28, circ = 2 * Math.PI * r;
-  const color = score >= 80 ? T.red : score >= 60 ? "#F2A341" : "#C75A12";
+  const color = score >= 80 ? T.red : score >= 60 ? "#60A5FA" : "#1D4ED8";
   return (
     <div style={{ position: "relative", width: 72, height: 72 }}>
       <svg viewBox="0 0 72 72" style={{ width: "100%", height: "100%", transform: "rotate(-90deg)" }}>
-        <circle cx="36" cy="36" r={r} fill="none" stroke="rgba(242,238,179,0.07)" strokeWidth="6" />
+        <circle cx="36" cy="36" r={r} fill="none" stroke="rgba(148,163,184,0.07)" strokeWidth="6" />
         <motion.circle cx="36" cy="36" r={r} fill="none" stroke={color} strokeWidth="6" strokeLinecap="round"
           strokeDasharray={circ} initial={{ strokeDashoffset: circ }}
           animate={{ strokeDashoffset: circ * (1 - score / 100) }} transition={{ duration: 1.2, ease: "easeOut" }} />
@@ -52,6 +52,16 @@ function notifyResumeChanged() {
   window.dispatchEvent(new CustomEvent("placeup:resume-changed", { detail: { version } }));
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    const timer = window.setTimeout(() => resolve(fallback), ms);
+    promise.then(
+      (value) => { window.clearTimeout(timer); resolve(value); },
+      () => { window.clearTimeout(timer); resolve(fallback); },
+    );
+  });
+}
+
 export function ResumePage() {
   const [dragging, setDragging] = useState(false);
   const [resumes, setResumes] = useState<api.ResumeMetadata[]>([]);
@@ -63,7 +73,7 @@ export function ResumePage() {
   useEffect(() => {
     let active = true;
     setLoading(true);
-    api.getResumeList()
+    withTimeout(api.getResumeList(), 8000, [])
       .then((list) => { if (active) setResumes(list); })
       .catch((err) => { if (active) setUploadError((err as Error).message); })
       .finally(() => { if (active) setLoading(false); });
@@ -123,12 +133,12 @@ export function ResumePage() {
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
         onDrop={(e) => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer.files); }}
-        style={{ padding: 36, borderRadius: 20, border: `2px dashed ${dragging ? T.red : "rgba(237,125,43,0.3)"}`, background: dragging ? "rgba(237,125,43,0.06)" : T.glass, backdropFilter: "blur(20px)", textAlign: "center", cursor: "pointer", transition: "all 0.2s" }}
+        style={{ padding: 36, borderRadius: 20, border: `2px dashed ${dragging ? T.red : "rgba(59,130,246,0.3)"}`, background: dragging ? "rgba(59,130,246,0.06)" : T.glass, backdropFilter: "blur(20px)", textAlign: "center", cursor: "pointer", transition: "all 0.2s" }}
       >
         <Upload size={32} color={T.red} style={{ margin: "0 auto 12px" }} />
         <div style={{ fontSize: 15, fontWeight: 500, color: T.text, fontFamily: F.sans, marginBottom: 6 }}>Drop your resume here or click to upload</div>
         <div style={{ fontSize: 13, color: T.t3, fontFamily: F.sans, marginBottom: 16 }}>PDF or DOCX · Max 10MB · 5 resume limit</div>
-        <label style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "11px 22px", borderRadius: 10, background: T.grad, color: "#fff", fontSize: 13, fontWeight: 600, fontFamily: F.sans, cursor: "pointer", boxShadow: "0 0 20px rgba(237,125,43,0.3)" }}>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "11px 22px", borderRadius: 10, background: T.grad, color: "#fff", fontSize: 13, fontWeight: 600, fontFamily: F.sans, cursor: "pointer", boxShadow: "0 0 20px rgba(59,130,246,0.3)" }}>
           <Upload size={14} /> {uploading ? "Uploading…" : "Choose File"}
           <input ref={inputRef} type="file" accept=".pdf,.docx" style={{ display: "none" }}
             onChange={(e) => handleFiles(e.target.files)} disabled={uploading} />
@@ -149,7 +159,7 @@ export function ResumePage() {
           resumes.map((r, i) => (
             <motion.div key={r.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.07 }}
               style={{ padding: "18px 24px", borderBottom: i < resumes.length - 1 ? `1px solid ${T.border}` : "none", display: "flex", alignItems: "center", gap: 16 }}>
-              <div style={{ width: 44, height: 44, borderRadius: 10, background: r.active ? "rgba(237,125,43,0.12)" : "rgba(242,238,179,0.04)", border: `1px solid ${r.active ? "rgba(237,125,43,0.3)" : T.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div style={{ width: 44, height: 44, borderRadius: 10, background: r.active ? "rgba(59,130,246,0.12)" : "rgba(148,163,184,0.04)", border: `1px solid ${r.active ? "rgba(59,130,246,0.3)" : T.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <FileText size={18} color={r.active ? T.red : T.t3} />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -159,7 +169,7 @@ export function ResumePage() {
               <ScoreRing score={r.score} />
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 {r.active
-                  ? <span style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 9999, background: "rgba(237,125,43,0.12)", color: T.red, border: "1px solid rgba(237,125,43,0.25)", fontFamily: F.sans }}>Active</span>
+                  ? <span style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 9999, background: "rgba(59,130,246,0.12)", color: T.red, border: "1px solid rgba(59,130,246,0.25)", fontFamily: F.sans }}>Active</span>
                   : <button onClick={() => setActive(r.id)} style={{ padding: "6px 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.t2, fontSize: 12, fontFamily: F.sans, cursor: "pointer" }}>Set Active</button>
                 }
                 <button onClick={() => remove(r.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.t3 }}>
@@ -173,4 +183,3 @@ export function ResumePage() {
     </div>
   );
 }
-

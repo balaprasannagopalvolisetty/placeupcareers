@@ -18,6 +18,17 @@ function figmaAssetResolver() {
 }
 
 export default defineConfig({
+  // Local dev: api.ts calls same-origin /api/* (required by the production
+  // CSP), so the dev server must proxy those calls to the backend. Without
+  // this block every local /api request 404s against the Vite server itself.
+  server: {
+    proxy: {
+      '/api': {
+        target: process.env.VITE_PROXY_TARGET || 'http://localhost:8000',
+        changeOrigin: true,
+      },
+    },
+  },
   plugins: [
     figmaAssetResolver(),
     // The React and Tailwind plugins are both required for Make, even if

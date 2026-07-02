@@ -14,7 +14,11 @@ class Settings(BaseSettings):
     # --- Server ---
     app_env: str = Field(default="production")
     app_port: int = Field(default=8080)
-    frontend_url: str = Field(default="https://placeup-frontend-76tybrmgya-ue.a.run.app")
+    frontend_url: str = Field(default="https://placeupcareer.com")
+    free_access_enabled: bool = Field(
+        default=True,
+        description="Temporarily disable billing gates and grant full application access.",
+    )
 
     # --- Auth (JWT + password hashing) ---
     jwt_secret: str = Field(
@@ -29,12 +33,21 @@ class Settings(BaseSettings):
     # emailed code before activation, and every login requires a fresh code.
     otp_mfa_enabled: bool = Field(default=False)
     otp_code_ttl_minutes: int = Field(default=10)
+    # New multi-step signup: require an emailed code at the email-verify +
+    # password step (step 5). Independent of login MFA. On by default because
+    # the redesigned signup explicitly verifies the email before activation.
+    signup_email_verification: bool = Field(default=True)  # noqa
+    # When True, account creation is blocked unless the signup payload carries a
+    # payment marker (the wizard gates this on the frontend; this is the
+    # server-side backstop). Left False until Stripe webhooks are live so a
+    # missing webhook can't hard-block real signups.
+    signup_require_payment: bool = Field(default=False)
     internal_api_key: str = Field(
         default="",
         description="Optional shared secret for internal/admin-only API operations.",
     )
     admin_emails: str = Field(
-        default="",
+        default="operations@placeupcareer.com",
         description="Comma-separated emails allowed to access admin-only APIs.",
     )
 
@@ -131,6 +144,7 @@ class Settings(BaseSettings):
     smtp_user: str = Field(default="")
     smtp_password: str = Field(default="")
     email_from: str = Field(default="jobs@placeupcareer.com")
+    contact_recipient_email: str = Field(default="operations@placeupcareer.com")
 
     # --- Database / Firebase / GCP ---
     database_backend: str = Field(default="postgres")

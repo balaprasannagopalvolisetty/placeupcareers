@@ -9,12 +9,14 @@ import { LoadingLogo } from "../LoadingLogo";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif" };
 const T = {
-  text: "#F2EEB3", t2: "rgba(242,238,179,0.65)", t3: "rgba(242,238,179,0.45)",
-  border: "rgba(242,238,179,0.08)", glass: "rgba(64,18,18,0.55)",
-  grad: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)", red: "#ED7D2B",
-  input: "rgba(242,238,179,0.05)",
+  text: "#F1F5F9", t2: "rgba(226,232,240,0.72)", t3: "rgba(148,163,184,0.75)",
+  border: "rgba(148,163,184,0.08)", glass: "rgba(15,30,55,0.55)",
+  grad: "linear-gradient(135deg, #2563EB, #0EA5E9)", red: "#3B82F6",
+  input: "rgba(148,163,184,0.05)",
 };
-const SELECT_DARK_STYLE: CSSProperties = { background: "#C75A12", color: "#F2EEB3" };
+const SELECT_DARK_STYLE: CSSProperties = { background: "#1D4ED8", color: "#F1F5F9" };
+const HIDDEN_ROLE_PATTERN = /\b(volunteer|intern|open source contributor|community tech educator|growth hacker)\b/i;
+const isVisibleRole = (role: string) => Boolean(role.trim()) && !HIDDEN_ROLE_PATTERN.test(role);
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -73,7 +75,7 @@ function Toggle({ label, desc, on, onChange }: { label: string; desc: string; on
         <div style={{ fontSize: 13, fontWeight: 500, color: T.text, fontFamily: F.sans }}>{label}</div>
         <div style={{ fontSize: 12, color: T.t3, fontFamily: F.sans, marginTop: 2 }}>{desc}</div>
       </div>
-      <button onClick={() => onChange(!on)} style={{ width: 44, height: 24, borderRadius: 9999, border: "none", background: on ? T.grad : "rgba(242,238,179,0.1)", cursor: "pointer", position: "relative", transition: "background 0.25s", flexShrink: 0 }}>
+      <button onClick={() => onChange(!on)} style={{ width: 44, height: 24, borderRadius: 9999, border: "none", background: on ? T.grad : "rgba(148,163,184,0.1)", cursor: "pointer", position: "relative", transition: "background 0.25s", flexShrink: 0 }}>
         <div style={{ position: "absolute", top: 2, left: on ? 22 : 2, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left 0.25s", boxShadow: "0 1px 4px rgba(0,0,0,0.3)" }} />
       </button>
     </div>
@@ -109,7 +111,7 @@ export function SettingsPage() {
         if (active) {
           setProfile(p);
           setPrefs(pr);
-          const roles = Array.from(new Set((taxonomy.categories || []).flatMap((cat) => cat.roles.map((role: any) => String(role.name || "")).filter(Boolean))));
+          const roles = Array.from(new Set((taxonomy.categories || []).flatMap((cat) => cat.roles.map((role: any) => String(role.name || "")).filter(isVisibleRole))));
           setAllRoles(roles);
         }
       })
@@ -199,7 +201,7 @@ export function SettingsPage() {
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
             {(prefs.target_roles || []).map((role) => (
-              <span key={role} style={{ fontSize: 11, fontWeight: 600, padding: "5px 9px", borderRadius: 6, fontFamily: F.sans, background: "rgba(237,125,43,0.16)", color: T.red, border: "1px solid rgba(237,125,43,0.28)", display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <span key={role} style={{ fontSize: 11, fontWeight: 600, padding: "5px 9px", borderRadius: 6, fontFamily: F.sans, background: "rgba(59,130,246,0.16)", color: T.red, border: "1px solid rgba(59,130,246,0.28)", display: "inline-flex", alignItems: "center", gap: 6 }}>
                 {role}
                 <button type="button" onClick={() => removeJobPreference(role)} style={{ background: "none", border: "none", color: T.red, cursor: "pointer", padding: 0 }}>×</button>
               </span>
@@ -208,7 +210,7 @@ export function SettingsPage() {
         </div>
       </Section>
 
-      <Section title="Billing">
+      <Section title="Application Access">
         <BillingPage />
       </Section>
 
@@ -225,7 +227,7 @@ export function SettingsPage() {
           <div style={{
             display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap",
             padding: "12px 14px", borderRadius: 10,
-            background: (profile as any).email_verified ? "rgba(34,197,94,0.07)" : "rgba(242,238,179,0.04)",
+            background: (profile as any).email_verified ? "rgba(34,197,94,0.07)" : "rgba(148,163,184,0.04)",
             border: `1px solid ${(profile as any).email_verified ? "rgba(34,197,94,0.22)" : T.border}`,
           }}>
             <MailCheck size={16} color={(profile as any).email_verified ? "#22c55e" : T.t3} />
@@ -251,7 +253,7 @@ export function SettingsPage() {
                 }}
                 style={{
                   padding: "8px 12px", borderRadius: 8, border: `1px solid ${T.border}`,
-                  background: "rgba(242,238,179,0.05)", color: T.text,
+                  background: "rgba(148,163,184,0.05)", color: T.text,
                   fontSize: 12, fontFamily: F.sans, cursor: "pointer",
                 }}
               >Resend verification</button>
@@ -308,7 +310,7 @@ export function SettingsPage() {
         <div style={{
           display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap",
           padding: 14, borderRadius: 10,
-          background: "rgba(237,125,43,0.06)", border: "1px solid rgba(237,125,43,0.25)",
+          background: "rgba(59,130,246,0.06)", border: "1px solid rgba(59,130,246,0.25)",
         }}>
           <AlertTriangle size={18} color={T.red} style={{ marginTop: 2 }} />
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -325,7 +327,7 @@ export function SettingsPage() {
             style={{
               display: "inline-flex", alignItems: "center", gap: 6,
               padding: "9px 14px", borderRadius: 9,
-              border: "1px solid rgba(237,125,43,0.4)", background: "rgba(237,125,43,0.12)",
+              border: "1px solid rgba(59,130,246,0.4)", background: "rgba(59,130,246,0.12)",
               color: T.red, fontSize: 12, fontWeight: 600, fontFamily: F.sans, cursor: "pointer",
             }}
           >
@@ -349,7 +351,7 @@ export function SettingsPage() {
             onClick={(e) => e.stopPropagation()}
             style={{
               width: "min(440px, 100%)", padding: "28px 26px", borderRadius: 18,
-              background: "rgba(64,18,18,0.92)", border: "1px solid rgba(242,238,179,0.1)",
+              background: "rgba(15,30,55,0.92)", border: "1px solid rgba(148,163,184,0.1)",
               color: T.text, fontFamily: F.sans,
             }}
           >
@@ -402,7 +404,7 @@ export function SettingsPage() {
                 }}
                 style={{
                   padding: "9px 14px", borderRadius: 9, border: "none",
-                  background: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)",
+                  background: "linear-gradient(135deg, #2563EB, #0EA5E9)",
                   color: "#fff", fontSize: 13, fontWeight: 600, fontFamily: F.sans,
                   cursor: deleting || !deletePassword ? "not-allowed" : "pointer",
                   opacity: deleting || !deletePassword ? 0.6 : 1,
@@ -420,7 +422,7 @@ export function SettingsPage() {
       ) : null}
 
       <motion.button whileTap={{ scale: 0.97 }} onClick={handleSave} disabled={saving}
-        style={{ display: "flex", alignItems: "center", gap: 8, padding: "13px 28px", borderRadius: 12, border: "none", background: saved ? "rgba(34,197,94,0.9)" : T.grad, color: "#fff", fontSize: 14, fontWeight: 600, fontFamily: F.sans, cursor: saving ? "wait" : "pointer", width: "fit-content", boxShadow: "0 0 20px rgba(237,125,43,0.3)", transition: "background 0.3s" }}>
+        style={{ display: "flex", alignItems: "center", gap: 8, padding: "13px 28px", borderRadius: 12, border: "none", background: saved ? "rgba(34,197,94,0.9)" : T.grad, color: "#fff", fontSize: 14, fontWeight: 600, fontFamily: F.sans, cursor: saving ? "wait" : "pointer", width: "fit-content", boxShadow: "0 0 20px rgba(59,130,246,0.3)", transition: "background 0.3s" }}>
         <Save size={15} /> {saving ? "Saving…" : saved ? "Saved!" : "Save Changes"}
       </motion.button>
     </div>

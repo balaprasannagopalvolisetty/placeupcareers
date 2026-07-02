@@ -323,10 +323,15 @@ def score_resume_quality(resume_text: str) -> float:
     if date_ranges == 0:   score -= 12.0
     if metrics == 0:       score -= 6.0
 
-    # Hard caps — cannot escape these without quality markers.
-    has_all_pillars = has_experience and has_education and date_ranges >= 2 and metrics >= 2
-    if not has_all_pillars:
-        score = min(score, 75.0)
+    # Hard caps: avoid the old "everything gets 75" ceiling. A resume with
+    # real experience, education, and dates can rise above 75 even if metrics
+    # are light; truly incomplete resumes remain capped.
+    has_core_structure = has_experience and has_education and date_ranges >= 1
+    has_all_pillars = has_core_structure and metrics >= 2
+    if not has_core_structure:
+        score = min(score, 72.0)
+    elif not has_all_pillars:
+        score = min(score, 86.0 if metrics >= 1 else 82.0)
     if len(skills) < 8:
         score = min(score, 78.0)
 

@@ -1,0 +1,62 @@
+/**
+ * Private admin console. The URL is intentionally not linked anywhere, but the
+ * real protection is the backend ADMIN_EMAILS allowlist. This page also probes
+ * the admin API before rendering the console so non-admin users never see the
+ * operational UI shell.
+ */
+import { useEffect, useState } from "react";
+import { Link } from "react-router";
+import { AdminPage } from "../components/dashboard/AdminPage";
+import * as api from "../lib/api";
+
+const F = "'Plus Jakarta Sans', sans-serif";
+const T = {
+  text: "#F1F5F9",
+  t2: "rgba(226,232,240,0.72)",
+  border: "rgba(148,163,184,0.08)",
+  glass: "rgba(15,30,55,0.55)",
+  red: "#3B82F6",
+};
+
+function PrivateMessage({ message }: { message: string }) {
+  return (
+    <div style={{ minHeight: "100vh", background: "#0B1220", padding: "32px 20px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ width: "100%", maxWidth: 520, borderRadius: 18, border: `1px solid ${T.border}`, background: T.glass, backdropFilter: "blur(20px)", padding: 28, textAlign: "center", fontFamily: F }}>
+        <div style={{ color: T.text, fontSize: 20, fontWeight: 850, marginBottom: 8 }}>Private admin area</div>
+        <div style={{ color: T.t2, fontSize: 13, lineHeight: 1.6, marginBottom: 18 }}>{message}</div>
+        <Link to="/signin" style={{ color: T.red, fontSize: 13, fontWeight: 800 }}>Sign in with the admin account</Link>
+      </div>
+    </div>
+  );
+}
+
+export default function AdminConsole() {
+  const [allowed, setAllowed] = useState<null | boolean>(null);
+  const [message, setMessage] = useState("Verifying admin access...");
+
+  useEffect(() => {
+    let active = true;
+    api.getAdminSummary()
+      .then(() => {
+        if (active) setAllowed(true);
+      })
+      .catch((error) => {
+        if (!active) return;
+        setMessage((error as Error)?.message || "Admin access is required.");
+        setAllowed(false);
+      });
+    return () => { active = false; };
+  }, []);
+
+  if (allowed !== true) {
+    return <PrivateMessage message={allowed === null ? "Verifying admin access..." : message} />;
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#0B1220", padding: "32px 20px" }}>
+      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+        <AdminPage />
+      </div>
+    </div>
+  );
+}

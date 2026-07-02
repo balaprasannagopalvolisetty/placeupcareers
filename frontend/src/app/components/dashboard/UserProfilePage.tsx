@@ -7,9 +7,9 @@ import { useIsMobile } from "../ui/use-mobile";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 const T = {
-  text: "#F2EEB3", t2: "rgba(242,238,179,0.65)", t3: "rgba(242,238,179,0.45)",
-  border: "rgba(242,238,179,0.08)", glass: "rgba(64,18,18,0.55)",
-  grad: "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)", red: "#ED7D2B", burnt: "#F2A341",
+  text: "#F1F5F9", t2: "rgba(226,232,240,0.72)", t3: "rgba(148,163,184,0.75)",
+  border: "rgba(148,163,184,0.08)", glass: "rgba(15,30,55,0.55)",
+  grad: "linear-gradient(135deg, #2563EB, #0EA5E9)", red: "#3B82F6", burnt: "#60A5FA",
 };
 
 const card: CSSProperties = {
@@ -89,7 +89,7 @@ export function UserProfilePage() {
       {/* ── Left column ── */}
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <div style={{ ...card, padding: 28, textAlign: "center" }}>
-          <div style={{ width: 80, height: 80, borderRadius: "50%", background: T.grad, margin: "0 auto 16px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 800, color: "#fff", fontFamily: F.sans, boxShadow: "0 0 24px rgba(237,125,43,0.4)" }}>
+          <div style={{ width: 80, height: 80, borderRadius: "50%", background: T.grad, margin: "0 auto 16px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 800, color: "#fff", fontFamily: F.sans, boxShadow: "0 0 24px rgba(59,130,246,0.4)" }}>
             {initials}
           </div>
           <div style={{ fontFamily: F.sans, fontSize: 18, fontWeight: 700, color: T.text, marginBottom: 4 }}>{fullName}</div>
@@ -113,7 +113,7 @@ export function UserProfilePage() {
             {links.map(({ icon: Icon, href, label }) => (
               <a key={label} href={href || "#"} target={href ? "_blank" : undefined} rel="noreferrer"
                 aria-label={label}
-                style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${T.border}`, background: "rgba(242,238,179,0.04)", display: "flex", alignItems: "center", justifyContent: "center", cursor: href ? "pointer" : "not-allowed", opacity: href ? 1 : 0.4, color: T.t3, textDecoration: "none" }}>
+                style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.04)", display: "flex", alignItems: "center", justifyContent: "center", cursor: href ? "pointer" : "not-allowed", opacity: href ? 1 : 0.4, color: T.t3, textDecoration: "none" }}>
                 <Icon size={15} />
               </a>
             ))}
@@ -128,7 +128,7 @@ export function UserProfilePage() {
           {activeResume && (
             <div style={{ fontSize: 11, color: T.t2, fontFamily: F.sans, marginTop: 8 }}>{activeResume.name}</div>
           )}
-          <div style={{ height: 4, borderRadius: 2, background: "rgba(242,238,179,0.06)", marginTop: 12, overflow: "hidden" }}>
+          <div style={{ height: 4, borderRadius: 2, background: "rgba(148,163,184,0.06)", marginTop: 12, overflow: "hidden" }}>
             <motion.div initial={{ width: 0 }} animate={{ width: `${score}%` }} transition={{ duration: 1.2, ease: "easeOut" }}
               style={{ height: "100%", borderRadius: 2, background: T.grad }} />
           </div>
@@ -143,7 +143,7 @@ export function UserProfilePage() {
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 18 }}>
             {targetRoles.length === 0 && <span style={{ fontSize: 12, color: T.t3, fontFamily: F.sans }}>Set target roles in Settings to tune your job matches.</span>}
             {targetRoles.map((r) => (
-              <span key={r} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 8, background: "rgba(237,125,43,0.1)", color: T.red, border: "1px solid rgba(237,125,43,0.2)", fontFamily: F.sans }}>{r}</span>
+              <span key={r} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 8, background: "rgba(59,130,246,0.1)", color: T.red, border: "1px solid rgba(59,130,246,0.2)", fontFamily: F.sans }}>{r}</span>
             ))}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
@@ -153,7 +153,7 @@ export function UserProfilePage() {
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {pastCompanies.length === 0 && <span style={{ fontSize: 12, color: T.t3, fontFamily: F.sans }}>Companies are detected from your active resume's experience section.</span>}
             {pastCompanies.map((c) => (
-              <span key={c} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 8, background: "rgba(242,238,179,0.05)", color: T.t2, border: `1px solid ${T.border}`, fontFamily: F.sans }}>{c}</span>
+              <span key={c} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 8, background: "rgba(148,163,184,0.05)", color: T.t2, border: `1px solid ${T.border}`, fontFamily: F.sans }}>{c}</span>
             ))}
           </div>
         </div>
@@ -167,7 +167,7 @@ export function UserProfilePage() {
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {links.filter((l) => l.href).map(({ icon: Icon, href, label }) => (
               <a key={label} href={href} target="_blank" rel="noreferrer"
-                style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, padding: "6px 12px", borderRadius: 8, background: "rgba(242,238,179,0.05)", color: T.t2, border: `1px solid ${T.border}`, fontFamily: F.sans, textDecoration: "none" }}>
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, padding: "6px 12px", borderRadius: 8, background: "rgba(148,163,184,0.05)", color: T.t2, border: `1px solid ${T.border}`, fontFamily: F.sans, textDecoration: "none" }}>
                 <Icon size={12} /> {label} <ExternalLink size={10} />
               </a>
             ))}
@@ -188,7 +188,7 @@ export function UserProfilePage() {
               <span style={{ fontFamily: F.sans, fontSize: 14, fontWeight: 600, color: T.text }}>Active Resume</span>
             </div>
             {activeResume && (
-              <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 9999, background: "rgba(237,125,43,0.12)", color: T.red, border: "1px solid rgba(237,125,43,0.25)", fontFamily: F.sans }}>
+              <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 9999, background: "rgba(59,130,246,0.12)", color: T.red, border: "1px solid rgba(59,130,246,0.25)", fontFamily: F.sans }}>
                 {activeResume.name}
               </span>
             )}
@@ -232,7 +232,7 @@ export function UserProfilePage() {
               <span style={{ fontSize: 12, color: T.t3, fontFamily: F.sans }}>Upload a resume with a skills section to populate keywords.</span>
             )}
             {resumeSkills.map((s) => (
-              <span key={s} style={{ fontSize: 12, padding: "5px 12px", borderRadius: 8, background: "rgba(237,125,43,0.1)", color: T.red, border: "1px solid rgba(237,125,43,0.2)", fontFamily: F.sans }}>{s}</span>
+              <span key={s} style={{ fontSize: 12, padding: "5px 12px", borderRadius: 8, background: "rgba(59,130,246,0.1)", color: T.red, border: "1px solid rgba(59,130,246,0.2)", fontFamily: F.sans }}>{s}</span>
             ))}
           </div>
         </div>
@@ -248,13 +248,13 @@ export function UserProfilePage() {
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {resumes.map((r) => (
-                <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderRadius: 10, background: r.active ? "rgba(237,125,43,0.06)" : "rgba(242,238,179,0.03)", border: `1px solid ${r.active ? "rgba(237,125,43,0.3)" : T.border}` }}>
+                <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderRadius: 10, background: r.active ? "rgba(59,130,246,0.06)" : "rgba(148,163,184,0.03)", border: `1px solid ${r.active ? "rgba(59,130,246,0.3)" : T.border}` }}>
                   <div>
                     <div style={{ fontSize: 13, color: T.text, fontFamily: F.sans, fontWeight: 600 }}>{r.name}</div>
                     <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans }}>Score: {r.score}/100 · {Math.round((r.size_bytes || 0) / 1024)} KB {r.active ? "· Active" : ""}</div>
                   </div>
                   {r.active ? (
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 9999, background: "rgba(237,125,43,0.12)", color: T.red, border: "1px solid rgba(237,125,43,0.25)", fontFamily: F.sans }}>Active</span>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 9999, background: "rgba(59,130,246,0.12)", color: T.red, border: "1px solid rgba(59,130,246,0.25)", fontFamily: F.sans }}>Active</span>
                   ) : null}
                 </div>
               ))}

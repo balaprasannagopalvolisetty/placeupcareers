@@ -746,6 +746,8 @@ def delete_user(user_id: str) -> dict:
         ("auth_sessions", "user_id"),
         ("password_resets", "user_id"),
         ("email_verifications", "user_id"),
+        ("agreements", "user_id"),
+        ("role_requests", "user_id"),
     ]
     for collection, filter_field in user_owned:
         wiped = 0
@@ -772,3 +774,164 @@ def delete_user(user_id: str) -> dict:
         counts["users"] = 0
 
     return counts
+
+
+# ─── Legal agreements (Terms + Privacy acceptance at signup) ─────────
+#
+# An immutable record of which legal documents a user accepted, when, and
+# from what IP/user-agent. The admin console surfaces these so support can
+# prove a given account agreed to the current Terms during signup.
+
+def record_agreement(
+    *,
+    user_id: str,
+    email: str,
+    version: str,
+    documents: list[str] | None = None,
+    ip_address: str = "",
+    user_agent: str = "",
+    accepted: bool = True,
+) -> dict:
+    agreement_id = f"agr_{uuid.uuid4().hex[:12]}"
+    record = {
+        "id": agreement_id,
+        "user_id": user_id,
+        "email": (email or "").lower(),
+        "version": version,
+        "documents": documents or ["terms", "privacy"],
+        "accepted": accepted,
+        "ip_address": ip_address,
+        "user_agent": user_agent,
+        "created_at": _now_iso(),
+    }
+    _doc("agreements", agreement_id).set(record)
+    return record
+
+
+def list_agreements(limit: int = 1000) -> list[dict]:
+    rows = _client().collection("agreements").limit(limit).stream()
+    return [snap.to_dict() | {"id": snap.id} for snap in rows]
+
+
+def get_agreement_for_user(user_id: str) -> Optional[dict]:
+    rows = list(
+        _client().collection("agreements").where("user_id", "==", user_id).limit(5).stream()
+    )
+    if not rows:
+        return None
+    items = [snap.to_dict() | {"id": snap.id} for snap in rows]
+    items.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+    return items[0]
+
+
+# ─── Role requests (user asks admin to add a role to coverage) ───────
+
+def create_role_request(
+    *,
+    user_id: str,
+    email: str,
+    role: str,
+    country: str = "",
+    note: str = "",
+) -> dict:
+    request_id = f"rr_{uuid.uuid4().hex[:12]}"
+    now = _now_iso()
+    record = {
+        "id": request_id,
+        "user_id": user_id,
+        "email": (email or "").lower(),
+        "role": role.strip(),
+        "country": country.strip(),
+        "note": note.strip()[:1000],
+        "status": "pending",       # pending | approved | rejected
+        "admin_note": "",
+        "decided_by": "",
+        "decided_at": "",
+        "created_at": now,
+        "updated_at": now,
+    }
+    _doc("role_requests", request_id).set(record)
+    return record
+
+
+def list_role_requests(*, status: Optional[str] = None, user_id: Optional[str] = None, limit: int = 500) -> list[dict]:
+    query = _client().collection("role_requests")
+    if status:
+        query = query.where("status", "==", status)
+    if user_id:
+        query = query.where("user_id", "==", user_id)
+    rows = [snap.to_dict() | {"id": snap.id} for snap in query.limit(limit).stream()]
+    rows.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+    return rows
+
+
+def get_role_request(request_id: str) -> Optional[dict]:
+    snap = _doc("role_requests", request_id).get()
+    if not snap.exists:
+        return None
+    return snap.to_dict() | {"id": snap.id}
+
+
+def update_role_request(request_id: str, fields: dict[str, Any]) -> Optional[dict]:
+    ref = _doc("role_requests", request_id)
+    if not ref.get().exists:
+        return None
+    payload = dict(fields)
+    payload["updated_at"] = _now_iso()
+    ref.set(payload, merge=True)
+    snap = ref.get()
+    return snap.to_dict() | {"id": snap.id}
+
+
+def count_role_requests(status: Optional[str] = None) -> int:
+    query = _client().collection("role_requests")
+    if status:
+        query = query.where("status", "==", status)
+    return len(list(query.stream()))
+
+
+# ─── Admin audit / application event log ─────────────────────────────
+#
+# A lightweight, human-readable event log the admin console renders with
+# friendly labels. Kept small and append-only; not a replacement for the
+# structured observability pipeline, but enough to answer "what happened
+# to this account / who did what" at a glance.
+
+def record_event(
+    *,
+    kind: str,
+    label: str = "",
+    user_id: str = "",
+    email: str = "",
+    actor: str = "",
+    level: str = "info",      # info | warning | error
+    meta: dict | None = None,
+) -> dict:
+    event_id = f"evt_{uuid.uuid4().hex[:12]}"
+    record = {
+        "id": event_id,
+        "kind": kind,
+        "label": label or kind.replace("_", " ").title(),
+        "user_id": user_id,
+        "email": (email or "").lower(),
+        "actor": actor,
+        "level": level,
+        "meta": meta or {},
+        "created_at": _now_iso(),
+    }
+    try:
+        _doc("admin_events", event_id).set(record)
+    except Exception:  # never let audit logging break the request path
+        pass
+    return record
+
+
+def list_events(*, limit: int = 300, user_id: Optional[str] = None, kind: Optional[str] = None) -> list[dict]:
+    query = _client().collection("admin_events")
+    if user_id:
+        query = query.where("user_id", "==", user_id)
+    if kind:
+        query = query.where("kind", "==", kind)
+    rows = [snap.to_dict() | {"id": snap.id} for snap in query.limit(limit).stream()]
+    rows.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+    return rows

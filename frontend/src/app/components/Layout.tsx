@@ -18,7 +18,7 @@ export default function Layout() {
         className={dark ? "dark" : ""}
         style={{
           position: "relative",
-          background: dark ? "#011126" : "#ffffff",
+          background: dark ? "#07111F" : "#ffffff",
           minHeight: "100vh",
           fontFamily: "'Plus Jakarta Sans', sans-serif",
         }}
@@ -33,13 +33,13 @@ export default function Layout() {
           }}
         >
           <Particles
-            particleColors={["#b81414"]}
-            particleCount={200}
-            particleSpread={10}
-            speed={0.1}
-            particleBaseSize={100}
-            moveParticlesOnHover
-            alphaParticles={false}
+            particleColors={["#2F80ED"]}
+            particleCount={location.pathname.startsWith("/dashboard") || location.pathname.startsWith("/ops-console") ? 0 : 48}
+            particleSpread={9}
+            speed={0.06}
+            particleBaseSize={42}
+            moveParticlesOnHover={false}
+            alphaParticles
             disableRotation={false}
             pixelRatio={1}
           />
