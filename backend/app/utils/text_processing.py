@@ -96,6 +96,66 @@ TECH_SKILLS = {
     "ux research", "wireframing", "prototyping", "adobe creative suite",
 }
 
+# Non-tech domain skills. The scorer was tuned on software roles, which made
+# non-tech matches (nursing, accounting, sales, HR, legal, trades) score far
+# lower than equally strong tech matches. Same variable so every consumer
+# (extract_skills_from_text, keyword overlap, importance) picks these up.
+TECH_SKILLS.update({
+    # Healthcare / nursing
+    "registered nurse", "rn", "bsn", "msn", "lpn", "cna", "np", "acls", "bls",
+    "pals", "icu", "er", "med-surg", "telemetry", "patient care",
+    "patient assessment", "medication administration", "iv therapy",
+    "wound care", "triage", "phlebotomy", "ehr", "emr", "epic", "cerner",
+    "meditech", "hipaa", "case management", "care coordination", "charting",
+    "vital signs", "infection control", "patient safety", "discharge planning",
+    "critical care", "acute care", "long-term care", "home health",
+    "physical therapy", "occupational therapy", "radiology", "pharmacy",
+    "medical coding", "medical billing", "icd-10", "cpt", "telehealth",
+    # Accounting / finance operations
+    "cpa", "cfa", "quickbooks", "sap", "oracle financials", "netsuite",
+    "accounts payable", "accounts receivable", "general ledger",
+    "month-end close", "reconciliation", "reconciliations", "journal entries",
+    "financial reporting", "financial statements", "fixed assets", "payroll",
+    "tax preparation", "tax returns", "ifrs", "sox", "internal controls",
+    "variance analysis", "cost accounting", "bookkeeping", "invoicing",
+    "expense reports", "cash flow", "treasury", "underwriting",
+    # Sales / customer success
+    "salesforce", "hubspot", "crm", "lead generation", "cold calling",
+    "prospecting", "pipeline management", "quota", "account management",
+    "business development", "customer success", "upselling",
+    "cross-selling", "negotiation", "closing", "territory management",
+    "sales enablement", "demand generation", "outbound", "inbound",
+    # Marketing / communications
+    "email marketing", "paid media", "ppc", "google ads", "meta ads",
+    "brand management", "copywriting", "public relations", "media relations",
+    "event planning", "campaign management", "marketing automation",
+    "mailchimp", "hootsuite", "canva", "a/b testing", "conversion rate",
+    # HR / recruiting / operations
+    "recruiting", "talent acquisition", "sourcing", "interviewing",
+    "onboarding", "offboarding", "hris", "workday", "adp", "greenhouse",
+    "lever", "benefits administration", "employee relations",
+    "performance management", "compensation", "learning and development",
+    "diversity and inclusion", "labor relations", "fmla", "eeo", "osha",
+    # Legal / compliance
+    "paralegal", "litigation", "contracts", "contract review", "due diligence",
+    "legal research", "westlaw", "lexisnexis", "discovery", "e-discovery",
+    "intellectual property", "corporate governance", "gdpr", "ccpa",
+    # Education / training
+    "curriculum development", "lesson planning", "classroom management",
+    "instructional design", "special education", "iep", "esl", "tutoring",
+    "student assessment", "lms", "canvas lms", "blackboard",
+    # Hospitality / retail / service
+    "customer service", "point of sale", "pos", "inventory management",
+    "merchandising", "food safety", "servsafe", "barista", "housekeeping",
+    "front desk", "reservations", "banquet", "catering", "loss prevention",
+    # Trades / construction / logistics
+    "forklift", "cdl", "welding", "hvac", "electrical", "plumbing",
+    "carpentry", "blueprint reading", "osha 10", "osha 30", "warehouse",
+    "shipping and receiving", "fleet management", "route planning",
+    "dispatch", "freight", "wms", "erp", "preventive maintenance",
+    "equipment maintenance", "quality control", "assembly", "fabrication",
+})
+
 DOMAIN_KEYWORDS = {
     "analytics", "api", "apis", "automation", "backend", "budgeting",
     "clinical", "compliance", "dashboard", "dashboards", "data", "database",

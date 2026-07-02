@@ -16,10 +16,13 @@ router = APIRouter(prefix="/contact", tags=["Contact"])
 
 
 class ContactMessage(BaseModel):
-    name: str = Field(min_length=2, max_length=120)
+    # Length rules are enforced manually below so users get a clear,
+    # human-readable error instead of a generic "Invalid request payload"
+    # 422 (which is what short test messages like "hi" used to trigger).
+    name: str = Field(min_length=1, max_length=120)
     email: EmailStr
     subject: str = Field(default="General Inquiry", max_length=160)
-    message: str = Field(min_length=10, max_length=5000)
+    message: str = Field(min_length=1, max_length=5000)
 
 
 def _client_ip(request: Request) -> str:
@@ -36,6 +39,10 @@ async def submit_contact_message(request: Request, payload: ContactMessage = Bod
     sender_email = str(payload.email).strip().lower()
     subject = payload.subject.strip() or "General Inquiry"
     message = payload.message.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Please enter your name.")
+    if len(message) < 2:
+        raise HTTPException(status_code=400, detail="Please write a short message before sending.")
     ip = _client_ip(request)
     user_agent = request.headers.get("user-agent", "")
 

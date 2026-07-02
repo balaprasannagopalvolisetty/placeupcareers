@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
-import { Menu, X, Briefcase } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { useState, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
 
@@ -17,24 +17,16 @@ const FONT = "'Plus Jakarta Sans', sans-serif";
 const navItems = [
   { label: "How It Works", id: "how-it-works" },
   { label: "Features",     id: "features" },
-  { label: "Pricing",      id: "pricing" },
   { label: "Contact Us",   id: "contact" },
 ];
 
 function Wordmark() {
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 9 }}>
-      <span style={{
-        width: 32, height: 32, borderRadius: 9, background: N.grad,
-        display: "inline-flex", alignItems: "center", justifyContent: "center",
-        boxShadow: "0 4px 12px rgba(37,99,235,0.25)",
-      }}>
-        <Briefcase size={16} color="#fff" />
-      </span>
-      <span style={{ fontFamily: FONT, fontSize: 17, fontWeight: 800, color: N.text, letterSpacing: "-0.01em" }}>
-        PlaceUp <span style={{ color: N.accent }}>Career</span>
-      </span>
-    </span>
+    <img
+      src="/logo_dark.png"
+      alt="PlaceUp Career"
+      style={{ height: 42, width: "auto", objectFit: "contain", display: "block" }}
+    />
   );
 }
 

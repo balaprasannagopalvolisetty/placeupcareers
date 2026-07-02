@@ -417,6 +417,7 @@ export default function Dashboard() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [notifications, setNotifications] = useState<Array<{ id: string | number; text: string; time: string; unread: boolean }>>([]);
+  const [rolesDigest, setRolesDigest] = useState<api.AlertsDigest | null>(null);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -431,6 +432,9 @@ export default function Dashboard() {
     }).catch(() => {
       setNotifications([]);
     });
+    // Target-role digest powers the bell badge: how many roles matching the
+    // user's target positions were added to the database in the last 24h.
+    api.getAlertsDigest().then(setRolesDigest).catch(() => setRolesDigest(null));
   }, [isAuthenticated]);
 
   const displayName = user ? `${user.first_name} ${user.last_name}` : "Loading...";
@@ -447,6 +451,8 @@ export default function Dashboard() {
   const isNavItemActive = (to: string) =>
     to === "/dashboard" ? location.pathname === "/dashboard" : location.pathname.startsWith(to);
   const unread = notifications.filter((n) => n.unread).length;
+  const newTargetRoles = Math.max(0, Number(rolesDigest?.total_new_24h || 0));
+  const bellCount = newTargetRoles + unread;
   // Compact icon rail on EVERY dashboard page so content gets the full width.
   // Moving the mouse over the rail expands it (as an overlay — the page
   // underneath never reflows); moving away collapses it again.
@@ -467,7 +473,7 @@ export default function Dashboard() {
         onMouseEnter={() => setSidebarHovered(true)}
         onMouseLeave={() => setSidebarHovered(false)}
         className="hidden lg:flex flex-col"
-        style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: compactSidebar ? 76 : 256, borderRight: `1px solid ${T.border}`, background: compactSidebar ? "rgba(1,17,38,0.85)" : "rgba(1,17,38,0.97)", backdropFilter: "blur(24px)", zIndex: 40, overflow: "hidden", transition: "width 0.22s ease, background 0.22s ease", boxShadow: compactSidebar ? "none" : "16px 0 48px rgba(1,17,38,0.55)" }}>
+        style={{ position: "fixed", top: 0, left: 0, height: "100vh", width: compactSidebar ? 76 : 256, borderRight: `1px solid ${T.border}`, background: compactSidebar ? "rgba(1,17,38,0.85)" : "rgba(1,17,38,0.97)", backdropFilter: "blur(24px)", zIndex: 40, overflow: "hidden", transition: "width 0.22s ease, background 0.22s ease", boxShadow: compactSidebar ? "none" : "16px 0 48px rgba(1,17,38,0.55)" }}>
         {/* Logo */}
         <div style={{ padding: compactSidebar ? "0 16px" : "0 24px", height: 64, display: "flex", alignItems: "center", justifyContent: compactSidebar ? "center" : "flex-start", borderBottom: `1px solid ${T.border}` }}>
           <Link to="/" title="PlaceUp Career" style={{ display: "flex", alignItems: "center", textDecoration: "none" }}>
@@ -594,7 +600,11 @@ export default function Dashboard() {
               <motion.button whileTap={{ scale: 0.92 }} onClick={() => { setNotifOpen(!notifOpen); setUserMenuOpen(false); }}
                 style={{ width: 38, height: 38, borderRadius: 10, border: `1px solid ${notifOpen ? "rgba(59,130,246,0.35)" : T.border}`, background: notifOpen ? "rgba(59,130,246,0.08)" : "rgba(148,163,184,0.04)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: T.t2, position: "relative" }}>
                 <Bell size={16} />
-                {unread > 0 && <div style={{ position: "absolute", top: 7, right: 7, width: 7, height: 7, borderRadius: "50%", background: T.red, boxShadow: `0 0 6px ${T.red}` }} />}
+                {bellCount > 0 && (
+                  <div style={{ position: "absolute", top: -5, right: -5, minWidth: 17, height: 17, padding: "0 4px", borderRadius: 9999, background: T.red, color: "#fff", fontSize: 10, fontWeight: 800, fontFamily: F.sans, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: `0 0 6px ${T.red}`, lineHeight: 1 }}>
+                    {bellCount > 99 ? "99+" : bellCount}
+                  </div>
+                )}
               </motion.button>
               <AnimatePresence>
                 {notifOpen && (
@@ -602,8 +612,25 @@ export default function Dashboard() {
                     style={{ position: "absolute", right: isMobile ? -52 : 0, top: "calc(100% + 8px)", width: isMobile ? "calc(100vw - 24px)" : 320, maxWidth: 320, borderRadius: 16, background: "rgba(8,14,32,0.97)", backdropFilter: "blur(24px)", border: `1px solid ${T.border}`, boxShadow: "0 20px 40px rgba(1,17,38,0.5)", overflow: "hidden" }}>
                     <div style={{ padding: "14px 20px", borderBottom: `1px solid ${T.border}`, display: "flex", justifyContent: "space-between" }}>
                       <span style={{ fontFamily: F.sans, fontSize: 14, fontWeight: 700, color: T.text }}>Notifications</span>
-                      <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 9999, background: "rgba(59,130,246,0.15)", color: T.red, fontFamily: F.sans }}>{unread} new</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 9999, background: "rgba(59,130,246,0.15)", color: T.red, fontFamily: F.sans }}>{bellCount} new</span>
                     </div>
+                    {newTargetRoles > 0 && (
+                      <div style={{ padding: "12px 20px", borderBottom: `1px solid ${T.border}`, background: "rgba(59,130,246,0.06)" }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: T.text, fontFamily: F.sans, marginBottom: 6 }}>
+                          {newTargetRoles} new {newTargetRoles === 1 ? "job matches" : "jobs match"} your target roles (24h)
+                        </div>
+                        {(rolesDigest?.target_roles || []).filter((r) => r.new_24h > 0).slice(0, 5).map((r) => (
+                          <div key={r.role} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11.5, color: T.t2, fontFamily: F.sans, lineHeight: 1.9 }}>
+                            <span>{r.role}</span>
+                            <span style={{ fontWeight: 700, color: T.red }}>+{r.new_24h}</span>
+                          </div>
+                        ))}
+                        <button onClick={() => { navigate("/dashboard/jobs"); setNotifOpen(false); }}
+                          style={{ marginTop: 8, width: "100%", padding: "7px", borderRadius: 8, cursor: "pointer", background: "rgba(59,130,246,0.12)", border: "1px solid rgba(59,130,246,0.25)", color: T.red, fontSize: 11.5, fontWeight: 700, fontFamily: F.sans }}>
+                          View new positions
+                        </button>
+                      </div>
+                    )}
                     {notifications.map((n) => (
                       <div key={n.id} style={{ padding: "12px 20px", borderBottom: `1px solid ${T.border}`, background: n.unread ? "rgba(59,130,246,0.04)" : "transparent", display: "flex", gap: 10, alignItems: "flex-start" }}>
                         {n.unread && <div style={{ width: 6, height: 6, borderRadius: "50%", background: T.red, flexShrink: 0, marginTop: 5, boxShadow: `0 0 4px ${T.red}` }} />}

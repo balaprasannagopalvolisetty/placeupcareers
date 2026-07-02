@@ -786,7 +786,11 @@ def _projection_sort_key(job: dict, tz_offset_minutes: int = 0) -> tuple:
     effective_ts = effective.timestamp() if effective else 0
     posted = _coerce_datetime(job.get("posted_at"))
     posted_ts = posted.timestamp() if posted else effective_ts
-    preference_bucket = 0 if job.get("preference_match") else 1
+    # Three-tier relevance projection (target roles → related roles → rest).
+    # Falls back to the legacy binary preference bucket for callers that do
+    # not decorate jobs with relevance_tier.
+    tier = job.get("relevance_tier")
+    preference_bucket = int(tier) if tier is not None else (0 if job.get("preference_match") else 1)
     # Final id tiebreaker keeps ordering identical across requests even when
     # bucket/score/timestamps tie — required for stable pagination.
     return (preference_bucket, date_bucket, -score, -effective_ts, -posted_ts, str(job.get("id") or ""))
@@ -800,6 +804,57 @@ def _job_matches_preferences(job: dict, preferred_roles: list[str], preferred_lo
     role_match = bool(preferred_roles and any(term in hay for term in preferred_roles))
     loc_match = bool(preferred_locations and any(term in loc_hay for term in preferred_locations))
     return role_match or loc_match
+
+
+def _categories_for_role_names(role_names: list[str]) -> set[str]:
+    """Taxonomy categories that contain any of the user's target roles."""
+    selected = {str(r).strip().lower() for r in role_names if str(r).strip()}
+    if not selected:
+        return set()
+    cats: set[str] = set()
+    for cat in CATEGORIES:
+        for role in cat.roles:
+            names = {role.name.lower(), *(syn.lower() for syn in role.synonyms)}
+            if selected & names or any(term in name for name in names for term in selected):
+                cats.add(cat.name.lower())
+                break
+    return cats
+
+
+def _relevance_tier(
+    job: dict,
+    selected_roles: set[str],
+    role_terms: list[str],
+    target_categories: set[str],
+    preferred_locations: list[str],
+) -> int:
+    """Three-tier projection for the Jobs feed and Featured positions.
+
+    0 = the user's exact target roles (role match or target-role term in title)
+    1 = relevant to the target roles (same taxonomy category, related term,
+        or preferred location)
+    2 = everything else
+    Within each tier the sort key still orders by date bucket (recent, today,
+    yesterday, ...) and then ATS score high to low.
+    """
+    if not selected_roles and not role_terms:
+        return 2
+    role_value = str(job.get("role") or "").strip().lower()
+    title = str(job.get("title") or "").strip().lower()
+    if role_value and role_value in selected_roles:
+        return 0
+    if title and role_terms and any(term in title for term in role_terms):
+        return 0
+    cat = str(job.get("taxonomy_category") or "").strip().lower()
+    if cat and cat in target_categories:
+        return 1
+    hay = f"{title} {role_value} {cat}"
+    if selected_roles and any(term in hay for term in selected_roles):
+        return 1
+    loc_hay = str(job.get("location") or "").lower()
+    if preferred_locations and any(term in loc_hay for term in preferred_locations):
+        return 1
+    return 2
 
 
 def _job_matches_role_terms(job: dict, role_names: list[str], role_terms: list[str]) -> bool:
@@ -1255,6 +1310,9 @@ async def list_jobs(
     title_terms = _taxonomy_terms(category, role)
     preferred_roles, preferred_locations = _preference_terms(user_id) if personalized else ([], [])
     preferred_role_terms = _terms_for_role_names(preferred_roles) if preferred_roles else []
+    _selected_roles = set(preferred_roles)
+    _tier_role_terms = [t.lower() for t in preferred_role_terms if len(str(t).strip()) >= 3]
+    _target_categories = _categories_for_role_names(preferred_roles)
     if personalized and not title_terms and not search and preferred_roles:
         title_terms = preferred_role_terms
     if title_terms and not taxonomy_filter_active:
@@ -1509,6 +1567,7 @@ async def list_jobs(
             if pref_bonus and isinstance(j.get("match_score"), int):
                 j["match_score"] = min(98, int(j["match_score"]) + pref_bonus)
             j["preference_match"] = _job_matches_preferences(j, preferred_roles, preferred_locations)
+            j["relevance_tier"] = _relevance_tier(j, _selected_roles, _tier_role_terms, _target_categories, preferred_locations)
 
         # Rank broad pools with deterministic baseline signals, then compute
         # exact resume-vs-JD scores only for the visible page below.
@@ -1518,6 +1577,7 @@ async def list_jobs(
                 job_data["match_score"] = _baseline_ats_score(job_data)
                 job_data["score_type"] = "baseline_ats"
                 job_data["preference_match"] = _job_matches_preferences(job_data, preferred_roles, preferred_locations)
+                job_data["relevance_tier"] = _relevance_tier(job_data, _selected_roles, _tier_role_terms, _target_categories, preferred_locations)
             else:
                 _score_visible_job(job_data)
 
@@ -2189,50 +2249,73 @@ async def get_top_matches(
     resume_text = await _active_resume_text(user_id)
     preferred_roles, preferred_locations = _preference_terms(user_id)
     terms = _terms_for_role_names(preferred_roles)
+    _selected_roles = set(preferred_roles)
+    _tier_role_terms = [t.lower() for t in terms if len(str(t).strip()) >= 3]
+    _target_categories = _categories_for_role_names(preferred_roles)
     if terms:
         filters["title_terms"] = terms
     candidate_limit = 500 if (post_filter_since or post_filter_before) else min(max(limit * 8, 80), 180)
-    jobs = await db.get_jobs(filters=filters, limit=candidate_limit, offset=0)
     resume_cache = _prepare_resume_tokens(resume_text) if resume_text else None
-    ranked: list[dict] = []
-    for job in jobs:
-        meta = job.get("extra_metadata") or {}
-        if not isinstance(meta, dict):
-            meta = {}
-        cat, rname = categorize(f"{job.get('title') or ''} {job.get('company') or ''}")
-        item = _apply_job_specific_visa_rules(dict(job))
-        if (post_filter_since or post_filter_before) and not _in_datetime_window(
-            item.get("posted_at"),
-            post_filter_since,
-            post_filter_before,
-        ):
-            continue
-        item["taxonomy_category"] = cat
-        item["role"] = rname
-        if resume_text:
-            title = item.get("title") or ""
-            description = item.get("description") or ""
-            if _can_score_job_text(title, description):
-                item["match_score"] = _score_job_against_resume(
-                    resume_text,
-                    f"{title}\n{description}",
-                    resume_cache=resume_cache,
-                )
-                item["score_type"] = "resume_match"
+
+    def _rank_pool(pool: list, *, apply_window: bool) -> list[dict]:
+        rows: list[dict] = []
+        for job in pool:
+            meta = job.get("extra_metadata") or {}
+            if not isinstance(meta, dict):
+                meta = {}
+            cat, rname = categorize(f"{job.get('title') or ''} {job.get('company') or ''}")
+            item = _apply_job_specific_visa_rules(dict(job))
+            if apply_window and (post_filter_since or post_filter_before) and not _in_datetime_window(
+                item.get("posted_at"),
+                post_filter_since,
+                post_filter_before,
+            ):
+                continue
+            item["taxonomy_category"] = cat
+            item["role"] = rname
+            if resume_text:
+                title = item.get("title") or ""
+                description = item.get("description") or ""
+                if _can_score_job_text(title, description):
+                    item["match_score"] = _score_job_against_resume(
+                        resume_text,
+                        f"{title}\n{description}",
+                        resume_cache=resume_cache,
+                    )
+                    item["score_type"] = "resume_match"
+                else:
+                    item["match_score"] = None
+                    item["score_type"] = "insufficient_jd"
             else:
                 item["match_score"] = None
-                item["score_type"] = "insufficient_jd"
-        else:
-            item["match_score"] = None
-            item["score_type"] = "resume_required"
-        hay = f"{item.get('title') or ''} {rname} {cat}".lower()
-        loc_hay = f"{item.get('location') or ''}".lower()
-        if isinstance(item.get("match_score"), int) and preferred_roles and any(term in hay for term in preferred_roles):
-            item["match_score"] = min(98, int(item["match_score"] or 0) + 6)
-        if isinstance(item.get("match_score"), int) and preferred_locations and any(term in loc_hay for term in preferred_locations):
-            item["match_score"] = min(98, int(item["match_score"] or 0) + 3)
-        item["preference_match"] = _job_matches_preferences(item, preferred_roles, preferred_locations)
-        ranked.append(item)
+                item["score_type"] = "resume_required"
+            hay = f"{item.get('title') or ''} {rname} {cat}".lower()
+            loc_hay = f"{item.get('location') or ''}".lower()
+            if isinstance(item.get("match_score"), int) and preferred_roles and any(term in hay for term in preferred_roles):
+                item["match_score"] = min(98, int(item["match_score"] or 0) + 6)
+            if isinstance(item.get("match_score"), int) and preferred_locations and any(term in loc_hay for term in preferred_locations):
+                item["match_score"] = min(98, int(item["match_score"] or 0) + 3)
+            item["preference_match"] = _job_matches_preferences(item, preferred_roles, preferred_locations)
+            item["relevance_tier"] = _relevance_tier(item, _selected_roles, _tier_role_terms, _target_categories, preferred_locations)
+            rows.append(item)
+        return rows
+
+    jobs = await db.get_jobs(filters=filters, limit=candidate_limit, offset=0)
+    ranked = _rank_pool(jobs, apply_window=True)
+
+    # Never leave "Featured Positions Today" empty while ANY jobs exist.
+    # A stale scrape day, weekend lull, or narrow target roles used to zero
+    # this out (the old fallback still pinned effective_since to today).
+    # Relax progressively: drop the posted-today window, then role terms.
+    if not ranked:
+        relaxed = {k: v for k, v in filters.items() if k not in ("effective_since", "seen_since")}
+        relaxed["seen_since"] = _visible_jobs_cutoff()
+        for attempt in (relaxed, {k: v for k, v in relaxed.items() if k != "title_terms"}):
+            pool = await db.get_jobs(filters=attempt, limit=min(max(limit * 8, 80), 180), offset=0)
+            ranked = _rank_pool(pool, apply_window=False)
+            if ranked:
+                filters = attempt
+                break
     ranked.sort(key=lambda row: _projection_sort_key(row, tz_offset_minutes=tz_offset))
     return {
         "jobs": ranked[:limit],

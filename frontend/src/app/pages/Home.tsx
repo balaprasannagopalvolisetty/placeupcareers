@@ -4,7 +4,7 @@ import { Link } from "react-router";
 import {
   ArrowRight, Target, Mail, Shield, BarChart3,
   Users, Bell, Mic, Check, Send, MapPin, Phone, Globe,
-  FileText, Search, Sparkles, Star,
+  FileText, Search, Sparkles,
 } from "lucide-react";
 import { Navbar } from "../components/Navbar";
 import * as api from "../lib/api";
@@ -89,7 +89,6 @@ export default function Home() {
       <HeroSection />
       <HowItWorksSection />
       <FeaturesSection />
-      <PricingSection />
       <ContactSection />
       <Footer />
     </div>
@@ -334,119 +333,6 @@ function FeaturesSection() {
 }
 
 // ═══════════════════════════
-// 4. PRICING
-// ═══════════════════════════
-const plans = [
-  {
-    name: "Preview", price: "$0", desc: "Complete access while we finish launch hardening",
-    badge: "Free now", featured: false,
-    features: [
-      "Job matching", "Resume ATS score", "Public visa signals",
-      "Resume upload", "Application tracker", "Role requests", "No payment required",
-    ],
-    cta: "Create free account", ctaLink: "/signup",
-  },
-  {
-    name: "Pro Access", price: "$0", desc: "All Pro workflows are open during preview",
-    badge: "Included", featured: true,
-    features: [
-      "Unlimited ATS scoring", "Smart daily alerts", "Global visa tracker",
-      "Multiple resumes", "Application tracker", "Direct apply links", "Career analytics dashboard",
-    ],
-    cta: "Start free", ctaLink: "/signup",
-  },
-  {
-    name: "Elite Tools", price: "$0", desc: "Premium tools stay open until billing is re-enabled",
-    badge: "Preview", featured: false,
-    features: [
-      "Everything in Pro", "Resume tailoring", "Recruiter contacts",
-      "Market analytics", "Visa sponsor insights", "Admin-reviewed role requests", "No checkout step",
-    ],
-    cta: "Join preview", ctaLink: "/signup",
-  },
-];
-
-function PricingSection() {
-  const { isMobile } = useViewportFlags();
-  return (
-    <section id="pricing" style={{ padding: isMobile ? "64px 0" : "96px 0", background: T.bgAlt }}>
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "0 24px" }}>
-        <Reveal><SectionTag text="Pricing" /></Reveal>
-        <Reveal delay={0.08}>
-          <h2 style={{
-            fontFamily: F.sans, fontWeight: 800, fontSize: "clamp(28px, 4vw, 44px)",
-            lineHeight: 1.15, letterSpacing: "-0.02em", textAlign: "center",
-            color: T.text, marginBottom: 12,
-          }}>
-            Free Preview Access
-          </h2>
-        </Reveal>
-        <Reveal delay={0.12}>
-          <p style={{ textAlign: "center", fontSize: 16, color: T.t2, fontFamily: F.sans, marginBottom: 52, lineHeight: 1.7 }}>
-            Complete application access is free right now. No card, checkout, or payment step is required.
-          </p>
-        </Reveal>
-
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(${isMobile ? "240px" : "290px"}, 1fr))`, gap: 20, alignItems: "start" }}>
-          {plans.map((plan, i) => (
-            <Reveal key={plan.name} delay={0.15 + i * 0.08}>
-              <div style={{ position: "relative", paddingTop: 16 }}>
-                <div style={{
-                  position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)",
-                  display: "inline-flex", alignItems: "center", gap: 5,
-                  padding: "5px 14px", borderRadius: 9999,
-                  background: plan.featured ? T.grad : "#fff",
-                  border: plan.featured ? "none" : `1px solid ${T.border}`,
-                  color: plan.featured ? "#fff" : T.accent,
-                  fontSize: 11.5, fontWeight: 700, fontFamily: F.sans, whiteSpace: "nowrap",
-                  boxShadow: T.shadow, zIndex: 2,
-                }}>
-                  <Star size={11} fill="currentColor" /> {plan.badge}
-                </div>
-                <Card hover={false} style={{
-                  padding: "38px 28px 30px",
-                  border: plan.featured ? `2px solid ${T.accent}` : `1px solid ${T.border}`,
-                  boxShadow: plan.featured ? T.shadowH : T.shadow,
-                }}>
-                  <div style={{ fontFamily: F.sans, fontSize: 19, fontWeight: 800, color: T.text, marginBottom: 6 }}>{plan.name}</div>
-                  <p style={{ fontSize: 13.5, color: T.t3, fontFamily: F.sans, marginBottom: 20, lineHeight: 1.55, minHeight: 42 }}>{plan.desc}</p>
-                  <div style={{ display: "flex", alignItems: "flex-end", gap: 6, marginBottom: 22 }}>
-                    <span style={{ fontFamily: F.sans, fontSize: 44, fontWeight: 800, lineHeight: 1, color: T.text }}>{plan.price}</span>
-                  </div>
-                  <Link to={plan.ctaLink} style={{
-                    display: "block", textAlign: "center", padding: "13px",
-                    borderRadius: 12, marginBottom: 24,
-                    background: plan.featured ? T.grad : "#fff",
-                    border: plan.featured ? "none" : `1px solid ${T.border}`,
-                    color: plan.featured ? "#fff" : T.text,
-                    fontSize: 14.5, fontWeight: 700, fontFamily: F.sans,
-                    textDecoration: "none",
-                    boxShadow: plan.featured ? "0 8px 20px rgba(37,99,235,0.28)" : "none",
-                  }}>{plan.cta}</Link>
-                  <ul style={{ display: "flex", flexDirection: "column", gap: 11, listStyle: "none", padding: 0, margin: 0 }}>
-                    {plan.features.map((feat) => (
-                      <li key={feat} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <span style={{
-                          width: 18, height: 18, borderRadius: "50%", background: "rgba(34,197,94,0.12)",
-                          display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-                        }}>
-                          <Check size={11} color="#16A34A" strokeWidth={3} />
-                        </span>
-                        <span style={{ fontSize: 14, color: T.t2, fontFamily: F.sans, lineHeight: 1.4 }}>{feat}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </Card>
-              </div>
-            </Reveal>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ═══════════════════════════
 // 5. CONTACT
 // ═══════════════════════════
 function ContactSection() {
@@ -460,6 +346,14 @@ function ContactSection() {
     setContactError("");
     if (!form.name.trim() || !form.email.trim() || !form.message.trim()) {
       setContactError("Please enter your name, email, and message.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+      setContactError("Please enter a valid email address.");
+      return;
+    }
+    if (form.message.trim().length < 2) {
+      setContactError("Please write a short message before sending.");
       return;
     }
     setSubmitting(true);
@@ -540,8 +434,14 @@ function ContactSection() {
                   }}>
                     <Check size={26} color="#16A34A" strokeWidth={3} />
                   </div>
-                  <div style={{ fontFamily: F.sans, fontSize: 19, fontWeight: 700, color: T.text, marginBottom: 8 }}>Message sent!</div>
-                  <div style={{ fontSize: 14.5, color: T.t2, fontFamily: F.sans }}>We will get back to you within 24 hours.</div>
+                  <div style={{ fontFamily: F.sans, fontSize: 19, fontWeight: 700, color: T.text, marginBottom: 8 }}>Message delivered</div>
+                  <div style={{ fontSize: 14.5, color: T.t2, fontFamily: F.sans }}>
+                    Your message was delivered to <strong>operations@placeupcareer.com</strong>. We will get back to you within 24 hours.
+                  </div>
+                  <button onClick={() => { setSent(false); setForm({ name: "", email: "", subject: "", message: "" }); }}
+                    style={{ marginTop: 18, padding: "10px 18px", borderRadius: 10, border: `1px solid ${T.border}`, background: "#fff", color: T.t2, fontSize: 13.5, fontWeight: 600, fontFamily: F.sans, cursor: "pointer" }}>
+                    Send another message
+                  </button>
                 </div>
               ) : (
                 <div>
@@ -592,9 +492,7 @@ function Footer() {
         maxWidth: 1100, margin: "0 auto", display: "flex", flexWrap: "wrap",
         alignItems: "center", justifyContent: "space-between", gap: 12,
       }}>
-        <span style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 800, color: T.text }}>
-          PlaceUp <span style={{ color: T.accent }}>Career</span>
-        </span>
+        <img src="/logo_dark.png" alt="PlaceUp Career" style={{ height: 34, width: "auto", objectFit: "contain" }} />
         <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
           {[
             { l: "Privacy", to: "/privacy" },

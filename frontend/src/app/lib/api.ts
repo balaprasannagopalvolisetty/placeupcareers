@@ -22,10 +22,16 @@ function getStoredToken(): string | null {
 }
 
 export function setStoredToken(token: string) {
+  const wasAnonymous = !accessToken;
   accessToken = token;
   if (typeof window !== "undefined") {
     localStorage.removeItem(STORAGE_TOKEN_KEY);
   }
+  // Any GET cached while anonymous (e.g. /api/jobs without match scores,
+  // fired during app boot before the refresh-token roundtrip finished)
+  // must not be served to the now-authenticated user. This was why match
+  // scores showed as missing for every position right after login/refresh.
+  if (wasAnonymous) invalidateApiCache();
 }
 
 export function clearStoredToken() {
@@ -33,6 +39,7 @@ export function clearStoredToken() {
   if (typeof window !== "undefined") {
     localStorage.removeItem(STORAGE_TOKEN_KEY);
   }
+  invalidateApiCache();
 }
 
 export function getApiToken() {

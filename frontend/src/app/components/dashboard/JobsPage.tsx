@@ -734,7 +734,11 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
     }
 
     const params: Record<string, string | number | boolean> = { page, page_size: pageSize, max_years: maxYears, sort: sortBy, personalized, tz_offset: new Date().getTimezoneOffset() };
-    if (resumeLink.hasResume) params.include_scores = true;
+    // Always ask for scores: the backend returns score_type
+    // "resume_required" gracefully when no resume exists. Gating this on
+    // resumeLink.hasResume made ALL match scores vanish whenever the
+    // parsed-resume/summary calls failed or raced the auth refresh.
+    params.include_scores = true;
     if (search) params.search = search;
     if (location) params.location = location;
     if (visaOnly) params.visa_only = true;

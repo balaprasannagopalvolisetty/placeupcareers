@@ -888,6 +888,15 @@ class PostgresClient:
             stmt = stmt.where(Job.visa_score >= 30)
         if filters.get("visa_program"):
             stmt = stmt.where(Job.extra_metadata.op("->")("visa_programs").op("?")(filters["visa_program"]))
+        if filters.get("min_salary") is not None:
+            # A row qualifies when its top of range clears the floor; keep
+            # rows with unknown salary so the filter narrows without hiding
+            # postings that simply do not publish pay.
+            floor = float(filters["min_salary"])
+            stmt = stmt.where(or_(Job.salary_max >= floor, Job.salary_min >= floor, Job.salary_max.is_(None)))
+        if filters.get("job_type"):
+            jt = f"%{str(filters['job_type']).strip()}%"
+            stmt = stmt.where(Job.extra_metadata.op("->>")("job_type").ilike(jt))
         return stmt
 
     def _master_jobs_available(self) -> bool:
@@ -958,6 +967,12 @@ class PostgresClient:
             stmt = stmt.where(MasterJob.visa_score >= 30)
         if filters.get("visa_program"):
             stmt = stmt.where(MasterJob.extra_metadata.op("->")("visa_programs").op("?")(filters["visa_program"]))
+        if filters.get("min_salary") is not None:
+            floor = float(filters["min_salary"])
+            stmt = stmt.where(or_(MasterJob.salary_max >= floor, MasterJob.salary_min >= floor, MasterJob.salary_max.is_(None)))
+        if filters.get("job_type"):
+            jt = f"%{str(filters['job_type']).strip()}%"
+            stmt = stmt.where(MasterJob.extra_metadata.op("->>")("job_type").ilike(jt))
         if filters.get("job_type"):
             # employment_type is free-form across sources ("Full-time", "Full
             # Time", "FULLTIME", "Permanent"...). Match on the core token.

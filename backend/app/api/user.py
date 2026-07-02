@@ -1028,9 +1028,12 @@ def _doc_bytes(resume: dict, title: str) -> bytes:
             dates = p(e.get("dates") or "")
             head_html = ""
             if header or dates:
+                # Word does not support flexbox in HTML-based .doc files, which
+                # broke title/date alignment. A borderless two-cell table is the
+                # Word-safe way to right-align dates on the same line.
                 head_html = (
-                    f"<div class='entry'><span class='entry-title'>{header}</span>"
-                    f"<span class='entry-dates'>{dates}</span></div>"
+                    f"<table class='entry'><tr><td class='entry-title'>{header}</td>"
+                    f"<td class='entry-dates'>{dates}</td></tr></table>"
                 )
             blist = bullet_list(e.get("bullets") or []) if e.get("bullets") else ""
             rows.append(head_html + blist)
@@ -1079,9 +1082,10 @@ def _doc_bytes(resume: dict, title: str) -> bytes:
     h2 {{ font-size: 10.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: #1a1a1a; border-bottom: 1.2px solid #1a1a1a; margin: 13px 0 6px; padding-bottom: 2px; }}
     p {{ margin: 0 0 6px; }}
     .skills {{ color: #222; }}
-    .entry {{ display: flex; justify-content: space-between; margin: 6px 0 1px; }}
+    table.entry {{ width: 100%; border-collapse: collapse; margin: 6px 0 1px; }}
+    table.entry td {{ border: none; padding: 0; vertical-align: top; }}
     .entry-title {{ font-weight: 700; }}
-    .entry-dates {{ color: #555; font-size: 9.5pt; white-space: nowrap; padding-left: 12px; }}
+    .entry-dates {{ color: #555; font-size: 9.5pt; white-space: nowrap; padding-left: 12px; text-align: right; width: 26%; }}
     ul {{ margin: 1px 0 4px 18px; padding: 0; }}
     li {{ margin: 0 0 2px; }}
   </style>
@@ -1510,19 +1514,30 @@ async def generate_tailored_resume(
     if not resume_text.strip():
         raise HTTPException(status_code=400, detail="Upload or re-upload an active resume before tailoring.")
     resume_json = (active_resume or {}).get("parsed_json") or {}
-    if not isinstance(resume_json, dict) or not (resume_json.get("sections") or resume_json.get("experience") or resume_json.get("summary")):
+    if not isinstance(resume_json, dict):
+        resume_json = {}
+    # Derive from raw text whenever ANY section the tailored document needs is
+    # missing (older resumes often have experience but no education/projects/
+    # certifications arrays), then merge only the gaps. This is why tailored
+    # files used to arrive with whole sections missing.
+    _tailor_keys = ("experience", "education", "projects", "certifications", "skills", "summary", "sections", "contact")
+    if any(not resume_json.get(k) for k in _tailor_keys):
         try:
             from app.services.resume_parser import resume_text_to_json
-            resume_json = resume_text_to_json(
+            derived = resume_text_to_json(
                 resume_text,
                 metadata={
                     "filename": (active_resume or {}).get("name"),
                     "derived_for_tailor": True,
                 },
             )
+            if isinstance(derived, dict):
+                resume_json = dict(resume_json)
+                for k in _tailor_keys:
+                    if not resume_json.get(k) and derived.get(k):
+                        resume_json[k] = derived[k]
         except Exception as exc:
             log.warning("Tailor resume_json derivation failed for %s: %s", user_id, exc)
-            resume_json = {}
 
     job = None
     try:
@@ -1575,6 +1590,14 @@ async def generate_tailored_resume(
         current_match_score=current_match_score,
     )
     diagnostics = {**(diagnostics or {}), **score_diagnostics}
+
+    # The LLM payload never carries Projects and often returns thin Education /
+    # Certifications, so generated files were missing whole sections. Backfill
+    # anything absent from the deterministic build, which always derives its
+    # sections from the user's actual resume content.
+    for _key in ("projects", "education", "certifications", "skill_groups", "contact"):
+        if not tailored_resume.get(_key) and deterministic_payload.get(_key):
+            tailored_resume[_key] = deterministic_payload[_key]
 
     title = f"{job_data.get('title') or 'Tailored Resume'} - {job_data.get('company') or 'PlaceUp'}"
     requested = (payload.format or "doc").lower().strip()
