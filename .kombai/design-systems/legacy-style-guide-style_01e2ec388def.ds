@@ -1,0 +1,162 @@
+---
+name: "[Legacy SG] wise-inspiration"
+slug: legacy-style-guide-style_01e2ec388def
+modes: [light]
+color:
+  palette:
+    canvas: "#ffffff"
+    ink: "#1a1a1a"
+    ink-2: "#555555"
+    ink-3: "#8a8a8a"
+    line: "#e2e2e2"
+    primary: "#9FE870"
+    on-primary: "#163300"
+    forest: "#163300"
+    on-forest: "#9FE870"
+    surface: "#FFFFFF"
+    surface-neutral: "rgba(22,51,0,0.078)"
+    surface-mint: "#C6ECDB"
+    surface-band: "#9FE870"
+    on-surface: "#0E0F0C"
+    on-surface-secondary: "#454745"
+    on-surface-tertiary: "#6A6C6A"
+    hairline: "rgba(14,15,12,0.12)"
+    accent-blue: "#0097C7"
+    positive: "#008026"
+    negative: "#CF2929"
+    warning: "#9A6500"
+  semantic:
+    background.canvas: "{color.palette.canvas}"
+    surface.default: "{color.palette.canvas}"
+    surface.raised: "{color.palette.canvas}"
+    text.primary: "{color.palette.ink}"
+    text.secondary: "{color.palette.ink-2}"
+    text.tertiary: "{color.palette.ink-3}"
+    text.link: "{color.palette.primary}"
+    border.default: "{color.palette.line}"
+    border.focus: "{color.palette.primary}"
+    primary.bg: "{color.palette.primary}"
+    primary.fg: "{color.palette.on-primary}"
+typography:
+  family: { primary: "\"Wise Sans\", Inter, sans-serif" }
+  textStyle:
+    heading-lg: { fontFamily: "\"Wise Sans\", Inter, sans-serif", fontSize: "24px", fontWeight: 600, lineHeight: 1.2 }
+    body-md: { fontFamily: "\"Wise Sans\", Inter, sans-serif", fontSize: "15px", fontWeight: 400, lineHeight: 1.5 }
+spacing:
+  sm: "16px"
+  md: "24px"
+  lg: "40px"
+  xl: "64px"
+radius:
+  lg: "24px"
+  full: "9999px"
+---
+
+> Migrated from a legacy style guide.
+> The palette above is mapped from the original tokens, which are also preserved below.
+
+## Legacy style-guide tokens
+
+### Colors
+
+- `primary`: `#9FE870`
+- `on-primary`: `#163300`
+- `forest`: `#163300`
+- `on-forest`: `#9FE870`
+- `surface`: `#FFFFFF`
+- `surface-neutral`: `rgba(22,51,0,0.078)`
+- `surface-mint`: `#C6ECDB`
+- `surface-band`: `#9FE870`
+- `on-surface`: `#0E0F0C`
+- `on-surface-secondary`: `#454745`
+- `on-surface-tertiary`: `#6A6C6A`
+- `hairline`: `rgba(14,15,12,0.12)`
+- `accent-blue`: `#0097C7`
+- `positive`: `#008026`
+- `negative`: `#CF2929`
+- `warning`: `#9A6500`
+
+### Typography
+
+- `display`: `{"family":"\"Wise Sans\", Inter, sans-serif","size":"96px","url":""}`
+- `heading`: `{"family":"\"Wise Sans\", Inter, sans-serif","size":"56px","url":""}`
+- `body-lg`: `{"family":"Inter, Helvetica, Arial, sans-serif","size":"18px","url":""}`
+- `body-md`: `{"family":"Inter, Helvetica, Arial, sans-serif","size":"16px","url":""}`
+- `link`: `{"family":"Inter, sans-serif","size":"","url":""}`
+
+### Spacing
+
+- `sm`: `16px`
+- `md`: `24px`
+- `lg`: `40px`
+- `xl`: `64px`
+
+### Radius
+
+- `lg`: `24px`
+- `full`: `9999px`
+
+## Design instructions
+
+## Token Instructions
+
+- `primary` → Bright Green for full-bleed section bands and accent buttons; hover #80E142, active #65CF21; text on green is always forest
+- `forest` → ink for headings/links, primary button fill (with bright-green label), and dark sections
+- `on-surface` → body ink is the cooler #0E0F0C, not forest
+- `surface-mint` → mint/aqua circular icon badges only
+- `accent-blue` / `positive` / `negative` / `warning` → semantic only; don't mix in unrelated accent hues
+- `display` / `heading` → Wise Sans at weight 900, UPPERCASE, tight line-height (<1) so headlines stack into solid blocks
+- `radius.full` → full pills for every button, tag, and icon circle
+- `radius.lg` → 24px for large content/calculator cards
+- Never set light green text on white (fails contrast) — text on white is forest or near-black
+
+# Wise
+_v alpha · "Send and spend money worldwide"_
+
+**Overview.** Wise is loud, confident fintech. The brand voltage is a single **Bright Green `#9FE870`** paired with a deep **Forest Green `#163300`** that serves as ink, dark buttons, and dark sections alike. The hero move is **enormous, heavy, slightly-condensed display type** — *Wise Sans* at weight **900**, set in ALL CAPS ("SEND AND SPEND MONEY WORLDWIDE") — while **Inter** handles all body copy. Full-bleed bright-green bands, **fully-rounded pill** buttons, **mint-aqua accent circles** behind line icons, and big 24px-rounded calculator/content cards complete the look. Underneath sits a formal, role-based token system (content / interactive / background / border) with proper semantic positive/negative/warning hues.
+
+## Colors
+- **Bright Green `#9FE870` `{colors.primary}`** — interactive-accent. Full-bleed section bands and accent buttons; hover `#80E142`, active `#65CF21`. Text on green is always Forest.
+- **Forest Green `#163300` `{colors.forest}`** — ink for headings/links, primary button fill (with bright-green text), and dark sections. Body ink is the cooler `#0E0F0C` (content-primary).
+- **Text greens** — secondary `#454745`, tertiary `#6A6C6A`.
+- **Mint/aqua `#C6ECDB` `{colors.surface-mint}`** (approximate) — circular icon badges.
+- **Semantic** — link blue `#0097C7`, positive `#008026`, negative `#CF2929`, warning `#9A6500`. Backgrounds use a green-tinted neutral `rgba(22,51,0,0.078)`.
+
+## Typography
+**Wise Sans** (heavy display grotesque; substitute *Inter Tight 900* / *Archivo Expanded*) used only at weight 900, UPPERCASE, with tight line-height (`<1`) so headlines stack into solid blocks. **Inter** for all body and links (links are 600 weight, blue).
+
+| Token | Family | Size | Weight | Line-height | Usage |
+|-------|--------|------|--------|-------------|-------|
+| display | Wise Sans | 96px | 900 | 82px | hero h1 (CAPS) |
+| heading | Wise Sans | 56px | 900 | 48px | section h2 (CAPS) |
+| body-lg | Inter | 18px | 400 | 26px | lead/body |
+| body-md | Inter | 16px | 400 | 24px | secondary body |
+
+## Layout
+Alternating white and full-bleed bright-green bands. Feature lists pair mint-aqua icon circles with bold headings. The exchange calculator is a large rounded white card with heavy forest-green numerals. A vast "Wise works nearly everywhere" link grid and an "Excellent Everywhere" testimonial carousel anchor the lower page. Spacing is generous (16/24/40/64).
+
+## Elevation & Depth
+Largely flat with confident color blocking. Cards use big radii and white-on-tint contrast rather than shadows. The brightness of the green bands provides the visual punch.
+
+## Shapes
+Two radii: **full pills** for every button, tag and icon circle; **24px** for large content/calculator cards. Friendly and rounded throughout.
+
+## Components
+- **button-primary** "Sign up in minutes": forest pill with bright-green label.
+- **button-accent**: bright-green pill with forest label.
+- **feature-circle**: mint-aqua circle holding a 2px forest line icon.
+- **calculator-card**: white, 24px radius, amounts in heavy Wise Sans forest green.
+
+## Motion
+Energetic but smooth (~250ms) — testimonial carousels slide and currency values flip; nothing chaotic.
+
+## Iconography
+2px line icons (star, bank, headset, card, heart), forest ink, almost always inside mint-aqua or white circles. Sizes 24/32px.
+
+## Do's and Don'ts
+- **Do** pair Bright Green `#9FE870` with Forest Green `#163300` — green on green is the core combo.
+- **Do** set hero/section headings in Wise Sans 900, UPPERCASE, tight.
+- **Do** use full pills for buttons and 24px radius for big cards.
+- **Do** put line icons inside mint-aqua circles.
+- **Don't** set light green text on white (fails contrast) — text on white is forest or near-black.
+- **Don't** mix in unrelated accent hues; blue/positive/negative are semantic only.

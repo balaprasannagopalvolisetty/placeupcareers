@@ -41,7 +41,9 @@ log = logging.getLogger(__name__)
 # (max_requests, window_seconds) per bucket.
 RATE_LIMITS: Dict[str, Tuple[int, int]] = {
     # Strict bucket: login / signup / password / OAuth. Brute-force surface.
-    "auth": (60, 60),
+    # 20/min per IP is far more than any real user needs (nobody logs in 20x
+    # a minute) while cutting credential-stuffing throughput 3x vs the old 60.
+    "auth": (20, 60),
     # Moderate bucket: writes that mutate user data.
     "write": (60, 60),
     # Generous bucket: reads. Job listings, taxonomy, dashboard summary.

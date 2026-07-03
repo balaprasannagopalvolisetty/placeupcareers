@@ -16,6 +16,8 @@ from typing import Any
 from urllib.parse import urljoin, urlparse
 
 import httpx
+import ipaddress
+import socket
 from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
@@ -43,9 +45,62 @@ class JobDescriptionDetails:
     extractor: str
 
 
+def _resolves_to_private_ip(host: str) -> bool:
+    """True if the host is (or resolves to) a private/loopback/link-local IP.
+
+    SSRF guard: scraped postings carry attacker-controlled job_url values that
+    we fetch server-side. Without this a posting could point at cloud metadata
+    (169.254.169.254), localhost, or an internal service and exfiltrate data.
+    """
+    # If the host is already an IP literal, classify it directly.
+    try:
+        literal = ipaddress.ip_address(host.strip("[]"))
+        return (
+            literal.is_private or literal.is_loopback or literal.is_link_local
+            or literal.is_reserved or literal.is_multicast or literal.is_unspecified
+        )
+    except ValueError:
+        pass
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except (socket.gaierror, UnicodeError, OSError):
+        # DNS failure. In restricted/offline environments legitimate public
+        # hosts also fail to resolve, so do NOT hard-block on resolution
+        # failure alone — the literal/keyword checks above already stop the
+        # dangerous cases (localhost, metadata, private IP literals).
+        return False
+    for info in infos:
+        ip_str = info[4][0]
+        try:
+            ip = ipaddress.ip_address(ip_str.split("%")[0])
+        except ValueError:
+            return True
+        if (
+            ip.is_private or ip.is_loopback or ip.is_link_local
+            or ip.is_reserved or ip.is_multicast or ip.is_unspecified
+        ):
+            return True
+    return False
+
+
 def is_html_fetch_allowed(url: str) -> bool:
-    host = (urlparse(url or "").hostname or "").lower()
-    return bool(host) and not any(host == domain or host.endswith(f".{domain}") for domain in BLOCKED_HTML_DOMAINS)
+    parsed = urlparse(url or "")
+    # Only fetch over standard web schemes; block file://, gopher://, etc.
+    if parsed.scheme not in ("http", "https"):
+        return False
+    host = (parsed.hostname or "").lower()
+    if not host:
+        return False
+    if any(host == domain or host.endswith(f".{domain}") for domain in BLOCKED_HTML_DOMAINS):
+        return False
+    # Block direct localhost/metadata literals fast, then verify DNS resolution
+    # does not land on a private range (defends against DNS rebinding to some
+    # extent and against hostnames that alias internal IPs).
+    if host in ("localhost", "metadata", "metadata.google.internal") or host.endswith((".local", ".internal", ".lan")):
+        return False
+    if _resolves_to_private_ip(host):
+        return False
+    return True
 
 
 def is_thin_description(description: str | None, *, min_chars: int = 1200, min_words: int = 120) -> bool:

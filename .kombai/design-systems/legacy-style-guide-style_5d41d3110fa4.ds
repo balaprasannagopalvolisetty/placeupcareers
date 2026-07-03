@@ -1,0 +1,165 @@
+---
+name: "[Legacy SG] grok-inspiration"
+slug: legacy-style-guide-style_5d41d3110fa4
+modes: [light]
+color:
+  palette:
+    canvas: "#ffffff"
+    ink: "#1a1a1a"
+    ink-2: "#555555"
+    ink-3: "#8a8a8a"
+    line: "#e2e2e2"
+    primary: "#050505"
+    on-primary: "#ffffff"
+    accent-aura: "#ff6a3d"
+    on-surface: "#050505"
+    on-surface-secondary: "#636363"
+    surface: "#fcfcfc"
+    surface-input: "#f4f4f3"
+    surface-chip: "#f1f1f0"
+  semantic:
+    background.canvas: "{color.palette.canvas}"
+    surface.default: "{color.palette.canvas}"
+    surface.raised: "{color.palette.canvas}"
+    text.primary: "{color.palette.ink}"
+    text.secondary: "{color.palette.ink-2}"
+    text.tertiary: "{color.palette.ink-3}"
+    text.link: "{color.palette.primary}"
+    border.default: "{color.palette.line}"
+    border.focus: "{color.palette.primary}"
+    primary.bg: "{color.palette.primary}"
+    primary.fg: "{color.palette.on-primary}"
+typography:
+  family: { primary: "universalSans, Inter, Roboto, \"Open Sans\", Arial, sans-serif" }
+  textStyle:
+    heading-lg: { fontFamily: "universalSans, Inter, Roboto, \"Open Sans\", Arial, sans-serif", fontSize: "24px", fontWeight: 600, lineHeight: 1.2 }
+    body-md: { fontFamily: "universalSans, Inter, Roboto, \"Open Sans\", Arial, sans-serif", fontSize: "15px", fontWeight: 400, lineHeight: 1.5 }
+spacing:
+  base: "8px"
+  scale: "[4px, 8px, 12px, 16px, 24px, 32px, 48px, 64px]"
+radius:
+  control: "8px"
+  prompt: "28px"
+  pill: "9999px"
+---
+
+> Migrated from a legacy style guide.
+> The palette above is mapped from the original tokens, which are also preserved below.
+
+## Legacy style-guide tokens
+
+### Colors
+
+- `primary`: `#050505`
+- `on-primary`: `#ffffff`
+- `accent-aura`: `#ff6a3d`
+- `on-surface`: `#050505`
+- `on-surface-secondary`: `#636363`
+- `surface`: `#fcfcfc`
+- `surface-input`: `#f4f4f3`
+- `surface-chip`: `#f1f1f0`
+- `hairline`: `oklch(0.1157 0 none / 0.06)`
+
+### Typography
+
+- `font-sans`: `{"family":"universalSans, Inter, Roboto, \"Open Sans\", Arial, sans-serif","size":"","url":""}`
+- `display`: `{"family":"{typography.font-sans}","size":"","url":""}`
+- `body`: `{"family":"{typography.font-sans}","size":"16px","url":""}`
+- `prompt`: `{"family":"{typography.font-sans}","size":"16px","url":""}`
+- `label`: `{"family":"{typography.font-sans}","size":"14px","url":""}`
+- `caption`: `{"family":"{typography.font-sans}","size":"13px","url":""}`
+
+### Spacing
+
+- `base`: `8px`
+- `scale`: `[4px, 8px, 12px, 16px, 24px, 32px, 48px, 64px]`
+
+### Radius
+
+- `control`: `8px`
+- `prompt`: `28px`
+- `pill`: `9999px`
+
+## Design instructions
+
+## Token Instructions
+
+- `primary` (#050505) -> near-black ink and the "Sign up" pill plus the circular voice button
+- `accent-aura` (#ff6a3d) -> warm-orange edge glow/vignette only, used atmospherically; never on buttons or text
+- `surface` (#fcfcfc) -> near-white page; `surface-input` -> the large prompt-bar fill; `surface-chip` -> model selector chips
+- `on-surface-secondary` (#636363) -> placeholder text, model-selector label, secondary controls
+- `hairline` (~black @6%) -> very faint borders on the outline pill and dividers
+- `font-sans` (Universal Sans) -> the only family, slight negative tracking; OSS substitute Inter or Geist; no decorative display face
+- `rounded.pill` (9999px) -> buttons, chips, voice button; `rounded.prompt` (28px) -> the prompt bar; `rounded.control` (8px) -> small controls/links
+
+# Grok
+
+**grok-design — version alpha**
+
+Surfaces studied via Playwright (grok.com home): computed styles + screenshots (the page is a JS app and renders the prompt UI after load). High-confidence on type (Universal Sans), the near-white canvas, near-black ink, and the pill buttons; the warm-orange edge aura and input/chip grays are nearest-hex approximations. Note: Grok also ships a dark mode; the captured default is **light**.
+
+## Overview
+
+Grok's canvas is **minimal and near-white** (`{colors.surface}` #FCFCFC) with **near-black ink** (`{colors.on-surface}` #050505), organized around **one centered prompt bar** — a single-task, utterly calm hero. Type is **Universal Sans** (xAI's grotesque, Inter fallback) with **slightly negative tracking** (-0.1px), kept neutral and unfussy. The brand is **essentially monochrome**: a **black pill "Sign up"**, a **white outline pill "Sign in"**, and a **black circular voice button**. The one signature flourish is a **soft warm-orange aura/vignette** glowing at the viewport edges — the only chroma on an otherwise grayscale page. Geometry is **fully rounded** (full pills, a large ~28px soft prompt bar, 8px controls) and the page is **flat and spacious**, with the logo + prompt bar floating in generous whitespace.
+
+## Colors
+
+- **Near-black — `{colors.primary}` #050505.** Ink and the primary "Sign up" pill (white label) + the voice button.
+- **Near-white page — `{colors.surface}` #FCFCFC.** A hair off white; the **prompt bar** sits on a slightly grayer `{colors.surface-input}` (~#f4f4f3), and model chips on `{colors.surface-chip}`.
+- **Muted — `{colors.on-surface-secondary}` ~#636363.** Placeholder text, model-selector label, secondary controls.
+- **Warm-orange aura — `{colors.accent-aura}` ~#ff6a3d.** A soft glow/vignette at the page edges — the single brand color, used atmospherically (not on any component).
+- **Hairlines — `{colors.hairline}` (~black @6%).** Extremely faint borders on the outline pill and dividers; authored in oklch.
+
+## Typography
+
+- **Universal Sans** (`universalSans`, Inter fallback) — the only family. Closest open-source substitute: **Inter** or **Geist**. Run neutral with **-0.1px** tracking; weight 400 body, 500 for labels/headings. There is no decorative display face — the UI is the design.
+
+| Token | Size | Weight | Line-height | Tracking | Usage |
+|---|---|---|---|---|---|
+| body | 16px | 400 | 24px | -0.1px | Body / main |
+| prompt | 16px | 400 | 28px | -0.1px | Prompt input |
+| label | 14px | 500 | — | -0.1px | Buttons / model selector |
+| caption | 13px | 400 | — | normal | Footer disclaimer |
+
+## Layout
+
+Base 8px. The page is a **single centered column**: a top bar (Imagine • settings • Sign in • Sign up), then the **Grok logo** and the **prompt bar** vertically centered in vast whitespace, with a small footer disclaimer. The prompt bar carries a leading "+" attach, a trailing **"Fast" model selector**, a mic, and a black **voice button**. No multi-section marketing scroll — the product *is* the landing page.
+
+## Elevation & Depth
+
+**Flat and clean.** The prompt bar is a soft-filled rounded surface with no hard shadow; faint ~6% hairlines define edges. The only "depth" is the **diffuse warm-orange edge aura** giving the white page a subtle glow. No cards, no gradients on content.
+
+## Shapes
+
+Fully rounded: **full pills** (`{rounded.pill}`) for buttons, chips, and the circular voice button; a large **~28px** radius on the prompt bar; **8px** for small controls/links. The soft, generous radii reinforce the calm, approachable feel.
+
+## Components
+
+- **Primary button `{components.button-primary}`** — black pill, white label ("Sign up").
+- **Secondary button `{components.button-secondary}`** — white pill with a ~6% hairline ("Sign in").
+- **Prompt bar `{components.prompt-bar}`** — the hero input: soft gray fill, ~28px radius, "+" attach, "Fast" model selector, mic, and a black circular **voice button**.
+- **Model chip `{components.chip-model}`** — "Fast ⌄" pill selector.
+
+## Motion
+
+Calm and minimal: subtle focus/hover transitions on the prompt bar and a **gently pulsing warm edge aura**. No parallax, no scroll theatrics — stillness is the point.
+
+## Iconography
+
+Thin **outline monoline** icons, near-black: "+" attach, mic, and the **waveform** voice glyph. The logo is the **slashed-circle Grok mark**. Sizes 16/20/24px.
+
+## Do's and Don'ts
+
+- **Do** keep the page near-white #FCFCFC with near-black ink and lots of whitespace.
+- **Do** center a single prompt bar as the hero; keep the UI the design.
+- **Do** use Universal Sans with slight negative tracking; no decorative display face.
+- **Do** keep buttons monochrome — black pill / white outline pill — and fully rounded.
+- **Do** use the warm-orange glow only as an atmospheric edge aura.
+- **Don't** put the orange on buttons or text.
+- **Don't** add hard shadows or busy sections; restraint is the brand.
+- **Don't** square the corners — everything is pill/soft.
+
+## Known Gaps
+
+- No semantic `:root` tokens are exposed; input/chip grays and the aura hue are nearest-hex approximations.
+- A dark mode exists; only the light default was captured.

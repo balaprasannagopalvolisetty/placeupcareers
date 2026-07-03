@@ -1,0 +1,205 @@
+---
+name: "[Legacy SG] mercury-inspiration"
+slug: legacy-style-guide-style_5855894dd29b
+modes: [light]
+color:
+  palette:
+    canvas: "#ffffff"
+    ink: "#1a1a1a"
+    ink-2: "#555555"
+    ink-3: "#8a8a8a"
+    line: "#e2e2e2"
+    primary: "#5266EB"
+    on-primary: "#FFFFFF"
+    primary-hover: "#6275F2"
+    surface: "#15151E"
+    surface-raised: "#1D1D29"
+    surface-glass: "rgba(255,255,255,0.08)"
+    gradient-peach: "#C9A99A"
+    gradient-lavender: "#B7B6CE"
+    gradient-steel: "#7E8A9E"
+    on-surface: "#FAFAFC"
+    on-surface-secondary: "#C4C6D0"
+    on-surface-tertiary: "#8A8C99"
+    hairline: "#2A2A38"
+    hairline-on-glass: "rgba(255,255,255,0.16)"
+  semantic:
+    background.canvas: "{color.palette.canvas}"
+    surface.default: "{color.palette.canvas}"
+    surface.raised: "{color.palette.canvas}"
+    text.primary: "{color.palette.ink}"
+    text.secondary: "{color.palette.ink-2}"
+    text.tertiary: "{color.palette.ink-3}"
+    text.link: "{color.palette.primary}"
+    border.default: "{color.palette.line}"
+    border.focus: "{color.palette.primary}"
+    primary.bg: "{color.palette.primary}"
+    primary.fg: "{color.palette.on-primary}"
+typography:
+  family: { primary: "\"Mercury Grotesque\", \"Söhne\", Inter, system-ui, sans-serif" }
+  textStyle:
+    heading-lg: { fontFamily: "\"Mercury Grotesque\", \"Söhne\", Inter, system-ui, sans-serif", fontSize: "24px", fontWeight: 600, lineHeight: 1.2 }
+    body-md: { fontFamily: "\"Mercury Grotesque\", \"Söhne\", Inter, system-ui, sans-serif", fontSize: "15px", fontWeight: 400, lineHeight: 1.5 }
+spacing:
+  xxs: "4px"
+  xs: "8px"
+  sm: "12px"
+  md: "16px"
+  lg: "24px"
+  xl: "32px"
+  xxl: "48px"
+  xxxl: "80px"
+radius:
+  sm: "8px"
+  md: "12px"
+  lg: "20px"
+  full: "9999px"
+---
+
+> Migrated from a legacy style guide.
+> The palette above is mapped from the original tokens, which are also preserved below.
+
+## Legacy style-guide tokens
+
+### Colors
+
+- `primary`: `#5266EB`
+- `primary-hover`: `#6275F2`
+- `on-primary`: `#FFFFFF`
+- `surface`: `#15151E`
+- `surface-raised`: `#1D1D29`
+- `surface-glass`: `rgba(255,255,255,0.08)`
+- `gradient-peach`: `#C9A99A`
+- `gradient-lavender`: `#B7B6CE`
+- `gradient-steel`: `#7E8A9E`
+- `on-surface`: `#FAFAFC`
+- `on-surface-secondary`: `#C4C6D0`
+- `on-surface-tertiary`: `#8A8C99`
+- `hairline`: `#2A2A38`
+- `hairline-on-glass`: `rgba(255,255,255,0.16)`
+
+### Typography
+
+- `display`: `{"family":"\"Mercury Grotesque\", \"Söhne\", Inter, system-ui, sans-serif","size":"52px","url":""}`
+- `headline-lg`: `{"family":"\"Mercury Grotesque\", \"Söhne\", Inter, sans-serif","size":"40px","url":""}`
+- `headline-md`: `{"family":"\"Mercury Grotesque\", \"Söhne\", Inter, sans-serif","size":"24px","url":""}`
+- `body-lg`: `{"family":"\"Mercury Grotesque\", \"Söhne\", Inter, sans-serif","size":"22px","url":""}`
+- `body-md`: `{"family":"\"Mercury Grotesque\", \"Söhne\", Inter, sans-serif","size":"16px","url":""}`
+- `label`: `{"family":"\"Mercury Grotesque\", \"Söhne\", Inter, sans-serif","size":"16px","url":""}`
+- `wordmark`: `{"family":"\"Mercury Grotesque\", \"Söhne\", Inter, sans-serif","size":"18px","url":""}`
+
+### Spacing
+
+- `xxs`: `4px`
+- `xs`: `8px`
+- `sm`: `12px`
+- `md`: `16px`
+- `lg`: `24px`
+- `xl`: `32px`
+- `xxl`: `48px`
+- `xxxl`: `80px`
+
+### Radius
+
+- `sm`: `8px`
+- `md`: `12px`
+- `lg`: `20px`
+- `full`: `9999px`
+
+## Design instructions
+
+## Token Instructions
+
+- `surface` (#15151E) -> deep ink-navy canvas; Mercury is dark-only, never ship a light variant
+- `primary` (#5266EB periwinkle) -> primary CTAs only ("Open account" pill, email submit); hover lifts to `primary-hover`; never body text or borders
+- `gradient-peach`/`gradient-lavender`/`gradient-steel` -> the soft, grainy "liquid mercury" hero wash; keep metallic, never saturated
+- `surface-raised` (#1D1D29) -> cards and disclaimer pill; `surface-glass` -> frosted email field over the gradient
+- `hairline` (#2A2A38) -> card borders/dividers; `hairline-on-glass` -> borders on frosted surfaces
+- `on-surface` (#FAFAFC) -> near-white headings; secondary over gradient; tertiary for meta
+- `radius.full` -> CTA pill, nav account button, frosted email field
+- `radius.lg` (20px) -> disclaimer pill and large cards; `radius.sm` (8px) -> inputs
+- `wordmark` -> spaced caps "M E R C U R Y" at +3px tracking
+- type -> restrained 500 for display/headlines, 400 body; never heavy
+- spacing -> 8px base with generous 80px+ section rhythm
+
+# Mercury
+
+> Design spec — version alpha. Surfaces studied via Playwright: homepage (logged-out) — full-page screenshots + representative element probes. Mercury is a brand (mercury.com), not a generic color theme; hexes reconciled from captures and Mercury's known dark-first identity.
+
+## Overview
+
+Mercury is a **premium, dark-first** banking brand. The canvas is a **deep ink-navy** `{colors.surface}` `#15151E`, and the hero is wrapped in Mercury's signature **"liquid mercury" gradient** — a soft, iridescent wash of **peach → lavender → steel blue** (`{colors.gradient-peach}` → `{colors.gradient-lavender}` → `{colors.gradient-steel}`) with a faint film grain. Against it sits a quiet, refined **grotesque** at a calm 500 weight ("Radically different banking"), and the wordmark **M E R C U R Y** in spaced-out caps beside an ornamental circular interlace logomark.
+
+The single interactive voltage is an **electric periwinkle/indigo** `{colors.primary}` `#5266EB`, reserved for the "Open account" pill in the nav and the hero, and the submit inside the **frosted-glass email field**. Everything else is near-white type on dark navy, with subtle hairlines and dark cards. The personality is restraint and refinement: lots of negative space, chromatic-but-soft gradients, crisp pill controls, and no clutter. This is a **dark-only** system — the gradient and ink-navy are the whole point.
+
+## Colors
+
+**Voltage.** Periwinkle `{colors.primary}` `#5266EB` is the one interactive accent — the "Open account" pill (nav + hero) and the email submit. Hover lifts to `{colors.primary-hover}` `#6275F2`. Discipline: indigo is for primary CTAs only, never body text or borders.
+
+**Surfaces.** Canvas deep navy `{colors.surface}` `#15151E`; cards and the disclaimer pill `{colors.surface-raised}` `#1D1D29`; the hero email field is **frosted glass** `{colors.surface-glass}` `rgba(255,255,255,0.08)` floating over the gradient.
+
+**Signature gradient.** The hero wash blends `{colors.gradient-peach}` `#C9A99A`, `{colors.gradient-lavender}` `#B7B6CE`, `{colors.gradient-steel}` `#7E8A9E` — soft, metallic, never saturated. This "mercury" gradient is the brand's most recognizable visual and should feel liquid and grainy, not punchy.
+
+**Text.** Headings near-white `{colors.on-surface}` `#FAFAFC`; subheads over the gradient `{colors.on-surface-secondary}` `#C4C6D0`; meta `{colors.on-surface-tertiary}` `#8A8C99`.
+
+**Hairlines.** Card borders/dividers `{colors.hairline}` `#2A2A38`; on glass, `{colors.hairline-on-glass}` `rgba(255,255,255,0.16)`.
+
+## Typography
+
+Family: a refined **grotesque** (Mercury's custom face; substitute `Söhne` or `Inter`). Weight strategy is restrained — **500** for display and headlines (not heavy), **400** for body, **500** for labels. Tracking is slightly negative on display, and the **wordmark** is the one exception: caps with generous **+3px** letter-spacing ("M E R C U R Y").
+
+| Token       | Size | Weight | Tracking | Usage                              |
+| ----------- | ---- | ------ | -------- | ---------------------------------- |
+| display     | 52px | 500    | -0.5px   | Hero ("Radically different banking")|
+| headline-lg | 40px | 500    | -0.4px   | Section headers                    |
+| headline-md | 24px | 500    | -0.2px   | Card titles                        |
+| body-lg     | 22px | 400    | normal   | Hero subhead                       |
+| body-md     | 16px | 400    | normal   | Default body                       |
+| label       | 16px | 500    | normal   | Buttons, nav                       |
+| wordmark    | 18px | 500    | +3px     | Spaced caps "M E R C U R Y"        |
+
+## Layout
+
+Base unit **8px**, with very generous `xxxl` 80px+ section rhythm — Mercury breathes. The hero centers a headline, a subhead, and a single frosted email-capture row over the full-bleed gradient. A thin top nav (Products / Solutions / Resources / About / Pricing) sits flush with the wordmark and a periwinkle "Open account" pill. A floating dark **disclaimer pill** (FDIC/banking-partner copy) anchors the bottom of the hero. Content is centered and uncrowded.
+
+## Elevation & Depth
+
+Subtle and glassy. The hero's depth comes from the **gradient + grain + frosted email field**, not shadows. Cards and the disclaimer pill sit a hair above the canvas (`#1D1D29`) with hairline borders. No heavy drop shadows; the metallic gradient is the depth cue.
+
+## Shapes
+
+Radius vocabulary: `{rounded.sm}` 8px (inputs), `{rounded.md}` 12px (cards), `{rounded.lg}` 20px (disclaimer pill, large cards), `{rounded.full}` (CTA pill, nav account button, frosted email field). Soft and rounded, premium — controls are pills, content cards are gently rounded.
+
+## Components
+
+- **button-primary** — periwinkle `#5266EB` pill, white 500 label ("Open account").
+- **email-capture** — a **frosted-glass** pill field over the gradient, muted placeholder, with a periwinkle submit pill inside.
+- **nav-account-button** — the periwinkle pill in the top nav.
+- **disclaimer-pill** — dark `#1D1D29`, 20px radius, hairline border, regulatory copy.
+- **hero-gradient** — the peach→lavender→steel "liquid mercury" wash with subtle grain.
+- **wordmark** — spaced caps "M E R C U R Y" + ornamental circular interlace logomark, in near-white.
+
+## Motion
+
+Calm and premium: `{motion.duration-fast}` 150ms hovers, `{motion.duration-standard}` 300ms for larger transitions, standard ease. The gradient may drift/shimmer slowly. No bouncy or attention-grabbing motion — the brand reads as composed and trustworthy.
+
+## Iconography
+
+Thin **outline** glyphs (Lucide as substitute for Mercury's refined custom mark), ~1.5px stroke, 16/20/24px, inheriting near-white `{colors.on-surface}`. Never tinted except the primary CTA. The ornamental circular logomark is bespoke.
+
+## Do's and Don'ts
+
+- **Do** keep the canvas **deep ink-navy** and lean on the **peach→lavender→steel "liquid mercury" gradient** for hero atmosphere.
+- **Do** reserve **periwinkle `#5266EB`** for primary CTAs only.
+- **Do** set the wordmark as spaced caps "M E R C U R Y" beside the circular logomark.
+- **Do** keep type refined at 500/400 — never heavy or shouty.
+- **Do** use frosted-glass surfaces over the gradient (email field).
+- **Don't** render a light/white variant — Mercury is dark-only; the gradient + ink-navy are the identity.
+- **Don't** saturate the hero gradient; keep it soft and metallic with grain.
+- **Don't** add a second accent color or heavy shadows.
+
+## Known Gaps
+
+- The deep navy canvas, the peach→lavender→steel hero gradient with grain, the periwinkle "Open account" pill, the spaced-caps wordmark, and the frosted email field were observed directly from captures. Exact hexes (`#5266EB`, `#15151E`, gradient stops) are eyeballed from rendered screenshots and should be treated as close approximations against Mercury's brand tokens.
+- `Söhne`/`Inter` stand in for Mercury's custom grotesque.
+- Authenticated banking surfaces (dashboard, cards, transactions) were not probed; tokens describe the marketing home. The engineer noted Mercury "could be read as a generic color theme" — this spec captures it as the **brand** (mercury.com); if a generic theme is wanted instead, treat only the gradient + periwinkle + ink-navy as the palette.
