@@ -10,6 +10,14 @@ pydantic-settings>=2.6.0
 python-jobspy>=1.1.70
 scrapegraphai>=2.1.1
 scrapling>=0.4.8
+# NOTE (CVE-2025-46656 / markdownify): python-jobspy hard-pins markdownify
+# <0.14.0, so the patched 0.14.1 CANNOT be installed without dropping our main
+# scraper. Reachable only inside python-jobspy's HTML->text conversion during a
+# scrape cycle. Accepted, contained risk: scraping runs in the isolated
+# background Cloud Run JOB (placeup-ats-worker), not the user-facing API, and
+# under a job timeout — so a malicious posting can at worst stall one scrape
+# cycle (auto-killed + retried), never the site. Remove this note and bump
+# markdownify to >=0.14.1 as soon as python-jobspy relaxes its pin.
 httpx>=0.28.0
 beautifulsoup4>=4.12.0
 lxml>=5.0.0          # Faster HTML/XML parsing for ATS feeds (Personio XML, etc.)
