@@ -1395,15 +1395,19 @@ async def list_jobs(
         # requested page directly so the dashboard does not wait on thousands
         # of rows just to render the first 100 cards.
         if taxonomy_filter_active:
-            fetch_limit = min(max(total, page_size), 12000)
+            # Pool cap cut from 12k to 4k: pulling 12,000 rows and running the
+            # Python quality/visa/categorize pipeline on ALL of them per
+            # request was the main reason the Jobs page took seconds to load.
+            # 4k rows = 200 pages of results, far beyond real browsing depth.
+            fetch_limit = min(max(total, page_size), 4000)
             fetch_offset = 0
             filters["coverage_scan"] = True
         elif title_terms_active and not free_text_search_active:
-            # Personalized / role views paginate the FULL matching inventory,
-            # not just the newest 360 rows. Descriptions are truncated in the
-            # pool query so this stays fast; the visible page is re-scored
-            # against full text afterwards.
-            fetch_limit = min(max(offset + page_size * 8, 1500), 12000)
+            # Personalized / role views paginate a deep (but bounded) matching
+            # inventory. Descriptions are truncated in the pool query so this
+            # stays fast; the visible page is re-scored against full text
+            # afterwards.
+            fetch_limit = min(max(offset + page_size * 8, 800), 4000)
             fetch_offset = 0
         elif post_filter_since or post_filter_before:
             fetch_limit = min(max(offset + page_size * 8, 500), 2500)

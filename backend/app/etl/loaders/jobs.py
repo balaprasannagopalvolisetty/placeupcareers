@@ -158,6 +158,34 @@ def _update_existing_job(db: Session, existing: Job, values: dict) -> None:
     if source_key and _source_key_owned_by_other(db, existing.id, source_key):
         protected_fields.update({"source_name", "source_job_id"})
 
+    # Never let a re-scrape clobber a richer stored description with a thin
+    # snippet. Boards frequently return truncated summaries on refresh while
+    # the stored row already holds the FULL JD hydrated from the company
+    # page — blind overwrite here was why complete position info kept
+    # disappearing after every scrape/update cycle.
+    incoming_desc = str(values.get("description") or "").strip()
+    existing_desc = str(existing.description or "").strip()
+    existing_meta = existing.extra_metadata if isinstance(existing.extra_metadata, dict) else {}
+    keep_existing_description = bool(existing_desc) and (
+        len(incoming_desc) < 200
+        or (existing_meta.get("description_hydrated") and len(incoming_desc) <= len(existing_desc))
+        or len(incoming_desc) < int(len(existing_desc) * 0.6)
+    )
+    if keep_existing_description:
+        protected_fields.add("description")
+        merged_meta = dict(values.get("extra_metadata") or {})
+        for k in (
+            "description_hydrated",
+            "description_hydrated_from",
+            "description_extractor",
+            "description_html",
+            "jd_analysis",
+        ):
+            if k in existing_meta:
+                merged_meta[k] = existing_meta[k]
+        values = dict(values)
+        values["extra_metadata"] = merged_meta
+
     for key, value in values.items():
         if key in protected_fields:
             continue

@@ -70,6 +70,7 @@ export function TailorResumePage() {
 
   const items = queue?.items || [];
   const generatedCount = useMemo(() => items.filter((item) => item.status === "generated").length, [items]);
+  const featureLocked = queue ? queue.feature_enabled === false : false;
 
   const generate = async (item: api.TailorQueueItem, format: "doc" | "pdf") => {
     setBusyId(`${item.id}:${format}`);
@@ -132,6 +133,13 @@ export function TailorResumePage() {
           ))}
         </div>
       </motion.div>
+
+      {featureLocked && (
+        <div style={{ padding: "14px 16px", borderRadius: 12, border: "1px solid rgba(251,191,36,0.30)", background: "rgba(251,191,36,0.08)", color: "#FDE68A", fontSize: 13.5, lineHeight: 1.6 }}>
+          <strong>Resume Tailor is temporarily unavailable.</strong> We are upgrading the tailoring engine to produce
+          higher quality documents. Your queue is saved and downloads will reopen here soon.
+        </div>
+      )}
 
       {error && (
         <div style={{ padding: "12px 14px", borderRadius: 12, border: "1px solid rgba(248,113,113,0.28)", background: "rgba(248,113,113,0.08)", color: "#FECACA", fontSize: 13 }}>
@@ -196,16 +204,16 @@ export function TailorResumePage() {
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
                   <button
-                    disabled={busyId === `${item.id}:doc`}
+                    disabled={featureLocked || busyId === `${item.id}:doc`}
                     onClick={() => generate(item, "doc")}
-                    style={{ height: 34, padding: "0 12px", borderRadius: 9, border: "none", background: T.grad, color: "#fff", display: "flex", alignItems: "center", gap: 7, cursor: busyId ? "wait" : "pointer", fontSize: 12, fontWeight: 850, fontFamily: F.sans }}
+                    style={{ height: 34, padding: "0 12px", borderRadius: 9, border: "none", background: T.grad, color: "#fff", display: "flex", alignItems: "center", gap: 7, cursor: featureLocked ? "not-allowed" : busyId ? "wait" : "pointer", opacity: featureLocked ? 0.5 : 1, fontSize: 12, fontWeight: 850, fontFamily: F.sans }}
                   >
                     <Download size={13} /> DOC
                   </button>
                   <button
-                    disabled={busyId === `${item.id}:pdf`}
+                    disabled={featureLocked || busyId === `${item.id}:pdf`}
                     onClick={() => generate(item, "pdf")}
-                    style={{ height: 34, padding: "0 12px", borderRadius: 9, border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.05)", color: T.text, display: "flex", alignItems: "center", gap: 7, cursor: busyId ? "wait" : "pointer", fontSize: 12, fontWeight: 850, fontFamily: F.sans }}
+                    style={{ height: 34, padding: "0 12px", borderRadius: 9, border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.05)", color: T.text, display: "flex", alignItems: "center", gap: 7, cursor: featureLocked ? "not-allowed" : busyId ? "wait" : "pointer", opacity: featureLocked ? 0.5 : 1, fontSize: 12, fontWeight: 850, fontFamily: F.sans }}
                   >
                     <Download size={13} /> PDF
                   </button>

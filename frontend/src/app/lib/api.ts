@@ -696,6 +696,7 @@ export interface TailorQueueResponse {
   used_today: number;
   daily_limit: number;
   remaining_today: number;
+  feature_enabled?: boolean;
 }
 
 export interface TailoredResumeDownload {

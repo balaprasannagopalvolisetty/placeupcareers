@@ -145,6 +145,9 @@ class Settings(BaseSettings):
     smtp_password: str = Field(default="")
     email_from: str = Field(default="jobs@placeupcareer.com")
     contact_recipient_email: str = Field(default="operations@placeupcareer.com")
+    # Resume Tailor kill switch. Locked (False) while output quality is being
+    # tuned; set TAILOR_FEATURE_ENABLED=true in the service env to re-open.
+    tailor_feature_enabled: bool = Field(default=False)
 
     # --- Database / Firebase / GCP ---
     database_backend: str = Field(default="postgres")

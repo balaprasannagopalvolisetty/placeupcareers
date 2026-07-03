@@ -780,17 +780,28 @@ def _build_tailored_resume_payload(
     # Position-specific summary: lead with the candidate's genuine strengths
     # that this job actually asks for (matched terms, de-noised), and name the
     # role and company, so the summary changes meaningfully per position.
-    core = _clean_terms(matched)[:6] or _clean_terms(missing)[:4] or [str(title)]
+    # Only claim strengths the resume actually demonstrates (matched terms).
+    # The old fallback pulled from MISSING keywords, which put skills on the
+    # document the candidate never had — a fabrication and an interview risk.
+    core = _clean_terms(matched)[:6]
     if len(core) >= 3:
         strengths = f"{', '.join(core[:-1])}, and {core[-1]}"
-    else:
+    elif core:
         strengths = " and ".join(core)
-    summary = (
-        f"{title} with proven experience in {strengths}, aligned to the "
-        f"{title} role at {company}. Combines hands-on technical delivery with "
-        f"clear ownership, measurable results, and effective cross-functional "
-        f"collaboration."
-    )
+    else:
+        strengths = ""
+    if strengths:
+        summary = (
+            f"{title} with hands-on experience in {strengths}, targeting the "
+            f"{title} position at {company}. Known for clear ownership, "
+            f"measurable results, and steady collaboration across teams."
+        )
+    else:
+        summary = (
+            f"Candidate targeting the {title} position at {company}, bringing "
+            f"a track record of ownership, measurable results, and steady "
+            f"collaboration across teams."
+        )
     experience_lines = resume_json.get("experience") or _clean_resume_lines(resume_text, limit=36)
     project_lines = _merge_fragment_lines(resume_json.get("projects") or [], limit=8)
     education_lines = _merge_fragment_lines(resume_json.get("education") or [], limit=8)
@@ -883,7 +894,10 @@ def _payload_from_llm(llm: dict, job: dict, user: dict, resume_text: str) -> Opt
         "skills": flat_skills,
         "skill_groups": skill_groups[:6],
         "experience": experience[:6],
-        "projects": [],
+        "projects": [
+            str(x).strip() for x in (r.get("projects") or [])
+            if str(x or "").strip() and not _weak_tailor_fragment(str(x))
+        ][:5],
         "education": education[:4],
         "certifications": _curate_certifications([str(x) for x in (r.get("certifications") or [])], limit=6),
         "keywords": _display_terms([*(match.get("strong") or []), *(match.get("have_but_unstated") or [])])[:18],
@@ -1477,11 +1491,17 @@ async def list_tailor_queue(user_id: str = Depends(current_user_id)):
         "used_today": used_today,
         "daily_limit": TAILOR_DAILY_LIMIT,
         "remaining_today": max(0, TAILOR_DAILY_LIMIT - used_today),
+        "feature_enabled": bool(settings.tailor_feature_enabled),
     }
 
 
 @router.post("/tailor-queue")
 async def add_tailor_queue_item(payload: TailorQueueRequest = Body(...), user_id: str = Depends(current_user_id)):
+    if not settings.tailor_feature_enabled:
+        raise HTTPException(
+            status_code=503,
+            detail="Resume Tailor is temporarily unavailable while we improve output quality. Check back soon.",
+        )
     try:
         item = user_store.upsert_tailor_queue_item(
             user_id,
@@ -1506,6 +1526,11 @@ async def generate_tailored_resume(
     db=Depends(get_db),
     user_id: str = Depends(current_user_id),
 ):
+    if not settings.tailor_feature_enabled:
+        raise HTTPException(
+            status_code=503,
+            detail="Resume Tailor is temporarily unavailable while we improve output quality. Check back soon.",
+        )
     item = user_store.get_tailor_queue_item(user_id, queue_id)
     if not item:
         raise HTTPException(status_code=404, detail="Tailor queue item not found")
@@ -1683,16 +1708,75 @@ async def upload_user_resume(
     # Resume text is stored in Firestore via create_resume(parsed_text=...).
     # No local file storage needed — Cloud Run containers are ephemeral.
 
-    row = user_store.create_resume(
-        user_id,
-        name=filename,
-        score=score,
-        size_bytes=len(content),
-        active=True,
-        storage_path=None,
-        parsed_text=parsed_text,
-        parsed_json=parsed_json,
+    def _firestore_safe(value, depth: int = 0):
+        """Coerce parsed JSON to Firestore-storable primitives.
+
+        Firestore rejects nested arrays and non-primitive types; a single bad
+        node made the whole resume save fail with a 500, which users saw as
+        "my resume never saved". Round-trip defensively instead of failing.
+        """
+        if depth > 12:
+            return str(value)
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+        if isinstance(value, dict):
+            return {str(k): _firestore_safe(v, depth + 1) for k, v in value.items()}
+        if isinstance(value, (list, tuple, set)):
+            out = []
+            for item in value:
+                coerced = _firestore_safe(item, depth + 1)
+                # Firestore cannot store arrays inside arrays.
+                out.append(", ".join(map(str, coerced)) if isinstance(coerced, list) else coerced)
+            return out
+        return str(value)
+
+    import json as _json
+
+    safe_json = _firestore_safe(parsed_json) if isinstance(parsed_json, dict) else {}
+    # Firestore documents cap at ~1 MiB. parsed_text is capped in the store,
+    # but parsed_json was unbounded: large resumes doubled or tripled the
+    # payload and the write failed, so the resume silently never appeared in
+    # the user's account. Trim progressively until the document fits.
+    def _json_bytes(value) -> int:
+        try:
+            return len(_json.dumps(value, ensure_ascii=False).encode("utf-8"))
+        except Exception:
+            return 1 << 22
+    if _json_bytes(safe_json) > 350_000:
+        trimmed = dict(safe_json)
+        for key in ("sections", "experience", "projects", "education", "certifications", "keywords", "skills"):
+            if _json_bytes(trimmed) <= 350_000:
+                break
+            if isinstance(trimmed.get(key), list):
+                trimmed[key] = trimmed[key][:40]
+            elif isinstance(trimmed.get(key), dict):
+                trimmed[key] = {k: (v[:40] if isinstance(v, list) else v) for k, v in list(trimmed[key].items())[:12]}
+        safe_json = trimmed if _json_bytes(trimmed) <= 350_000 else {"summary": trimmed.get("summary"), "skills": (trimmed.get("skills") or [])[:40]}
+
+    attempts = (
+        {"parsed_text": parsed_text, "parsed_json": safe_json},
+        {"parsed_text": parsed_text[:150_000], "parsed_json": {}},
     )
+    row = None
+    last_exc: Exception | None = None
+    for attempt in attempts:
+        try:
+            row = user_store.create_resume(
+                user_id,
+                name=filename,
+                score=score,
+                size_bytes=len(content),
+                active=True,
+                storage_path=None,
+                **attempt,
+            )
+            break
+        except Exception as exc:  # noqa: BLE001 — retry smaller before failing
+            last_exc = exc
+            log.warning("Resume save attempt failed for %s (%s); retrying smaller.", user_id, exc)
+    if row is None:
+        log.error("Resume save failed for %s after retries: %s", user_id, last_exc)
+        raise HTTPException(status_code=500, detail="Could not save your resume. Please try again or contact support.")
     return _to_resume_meta(row)
 
 

@@ -717,11 +717,10 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   }, [resumeVersion]);
 
   // Reload jobs whenever filters or the active resume change.
+  // NOTE: jobs no longer wait for the resume-status roundtrip. Scores are
+  // always requested, so gating on resumeLink.checked only delayed the first
+  // page load by a full extra network round trip.
   useEffect(() => {
-    if (!resumeLink.checked) {
-      setLoading(true);
-      return;
-    }
     let active = true;
     const requestId = jobsRequestId.current + 1;
     jobsRequestId.current = requestId;

@@ -1116,8 +1116,11 @@ async def _hydrate_thin_job_descriptions(jobs: list[JobPost]) -> None:
     if not jobs:
         return
 
-    max_jobs = _env_int("SCRAPER_JD_HYDRATE_MAX_JOBS", 350)
-    concurrency = max(1, _env_int("SCRAPER_JD_HYDRATE_CONCURRENCY", 6))
+    # Cap raised 350 -> 900 and concurrency 6 -> 10 so large scrape cycles
+    # hydrate far more thin postings before persistence instead of leaving
+    # most of the cycle with partial descriptions. Still env-overridable.
+    max_jobs = _env_int("SCRAPER_JD_HYDRATE_MAX_JOBS", 900)
+    concurrency = max(1, _env_int("SCRAPER_JD_HYDRATE_CONCURRENCY", 10))
     timeout = max(8.0, _env_float("SCRAPER_JD_HYDRATE_TIMEOUT_SECONDS", 22.0))
     if max_jobs <= 0:
         return
