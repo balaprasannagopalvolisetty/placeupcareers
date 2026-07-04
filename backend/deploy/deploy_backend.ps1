@@ -186,6 +186,24 @@ gcloud.cmd run jobs deploy placeup-taxonomy-role-backfill `
   --max-retries 1 `
   --task-timeout 21600
 
+# One-shot / re-runnable: relabels stored jobs + master_jobs with the global
+# visa metadata (visa_country, visa_programs, english_friendly,
+# sponsor_verified via the visa_sponsors/h1b_sponsors registries). Default is
+# only rows missing labels; pass --all in an execution override to redo all.
+gcloud.cmd run jobs deploy placeup-visa-label-backfill `
+  --image $Image `
+  --region $Region `
+  --service-account "placeup-etl-sa@$ProjectId.iam.gserviceaccount.com" `
+  --command python `
+  --args="-m,app.etl.visa_label_backfill" `
+  --set-cloudsql-instances "$ProjectId`:$Region`:$DbInstance" `
+  --set-env-vars "APP_ENV=production,DATABASE_BACKEND=postgres,DB_POOL_SIZE=2,DB_MAX_OVERFLOW=2,DB_STATEMENT_TIMEOUT_MS=0" `
+  --set-secrets "DATABASE_URL=DATABASE_URL:latest" `
+  --memory 4Gi `
+  --cpu 2 `
+  --max-retries 1 `
+  --task-timeout 21600
+
 gcloud.cmd run jobs deploy placeup-h1b-import `
   --image $Image `
   --region $Region `
