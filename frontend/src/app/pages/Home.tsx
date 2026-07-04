@@ -7,6 +7,7 @@ import {
   FileText, Search, Sparkles,
 } from "lucide-react";
 import { Navbar } from "../components/Navbar";
+import { BrandLogo } from "../components/BrandLogo";
 import * as api from "../lib/api";
 
 // ─── Design tokens: clean, light, professional SaaS ───
@@ -492,7 +493,9 @@ function Footer() {
         maxWidth: 1100, margin: "0 auto", display: "flex", flexWrap: "wrap",
         alignItems: "center", justifyContent: "space-between", gap: 12,
       }}>
-        <img src="/logo_dark.png" alt="PlaceUp Career" style={{ height: 34, width: "auto", objectFit: "contain" }} />
+        <span style={{ display: "inline-flex", alignItems: "center", padding: "4px 9px", borderRadius: 12, background: "linear-gradient(135deg, #011126, #1E3A8A)", boxShadow: "0 8px 18px rgba(15,23,42,0.12)" }}>
+          <BrandLogo height={30} />
+        </span>
         <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
           {[
             { l: "Privacy", to: "/privacy" },

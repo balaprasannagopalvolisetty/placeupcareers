@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { Link, useNavigate } from "react-router";
-import { Briefcase, ChevronDown, Eye, EyeOff, Search, Upload, Check, X } from "lucide-react";
+import { ChevronDown, Eye, EyeOff, Search, Upload, Check, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import * as api from "../lib/api";
+import { BrandLogo } from "../components/BrandLogo";
 import {
   COUNTRIES,
   COUNTRY_BY_CODE,
@@ -521,8 +522,8 @@ export default function SignUp() {
       <div style={{ width: "100%", maxWidth: 640, borderRadius: isMobile ? 18 : 24, background: "#FFFFFF", border: `1px solid ${T.border}`, padding: isMobile ? 18 : 32, boxShadow: "0 4px 12px rgba(15,23,42,0.06), 0 24px 56px rgba(15,23,42,0.10)" }}>
         <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", gap: isMobile ? 12 : 0, marginBottom: 20 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ width: 34, height: 34, borderRadius: 9, background: T.grad, display: "inline-flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 12px rgba(37,99,235,0.25)", flexShrink: 0 }}>
-              <Briefcase size={16} color="#fff" />
+            <span style={{ display: "inline-flex", alignItems: "center", padding: "4px 9px", borderRadius: 11, background: T.grad, boxShadow: "0 4px 12px rgba(37,99,235,0.25)", flexShrink: 0 }}>
+              <BrandLogo height={32} />
             </span>
             <div>
               <div style={{ fontFamily: F.sans, fontSize: 17, fontWeight: 700, color: T.text }}>Create your account</div>

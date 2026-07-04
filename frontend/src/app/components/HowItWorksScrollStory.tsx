@@ -6,6 +6,7 @@ import {
   MotionValue,
 } from "motion/react";
 import { Check, MapPin, Mail, ChevronRight } from "lucide-react";
+import { BrandLogo } from "./BrandLogo";
 
 // ─── Tokens ───
 const T = {
@@ -273,7 +274,7 @@ function LoginScreen({ p0 }: { p0: MotionValue<number> }) {
       }}>
         {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: 18 }}>
-          <img src="/logo_light.png" alt="PlaceUp Career" style={{ height: 30, width: "auto", objectFit: "contain", marginBottom: 6 }} />
+          <BrandLogo height={30} style={{ margin: "0 auto 6px" }} />
           <p style={{ fontFamily: F.sans, fontSize: 11, color: T.t3, margin: 0 }}>Welcome back 👋</p>
         </div>
 

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { Menu, X } from "lucide-react";
 import { useState, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
+import { BrandLogo } from "./BrandLogo";
 
 // Clean, light SaaS navbar. Self-contained tokens (matches Home page).
 const N = {
@@ -22,11 +23,9 @@ const navItems = [
 
 function Wordmark() {
   return (
-    <img
-      src="/logo_dark.png"
-      alt="PlaceUp Career"
-      style={{ height: 42, width: "auto", objectFit: "contain", display: "block" }}
-    />
+    <span style={{ display: "inline-flex", alignItems: "center", padding: "4px 9px", borderRadius: 12, background: "linear-gradient(135deg, #011126, #1E3A8A)", boxShadow: "0 8px 18px rgba(15,23,42,0.16)" }}>
+      <BrandLogo height={36} />
+    </span>
   );
 }
 

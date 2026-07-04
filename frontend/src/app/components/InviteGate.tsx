@@ -1,8 +1,9 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { motion } from "motion/react";
 import { Link } from "react-router";
-import { Briefcase, KeyRound, Mail, PartyPopper, Ticket } from "lucide-react";
+import { KeyRound, Mail, PartyPopper, Ticket } from "lucide-react";
 import { getInviteStatus, getInviteToken, joinWaitlist, validateInviteCode } from "../lib/api";
+import { BrandLogo } from "./BrandLogo";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif" };
 const T = {
@@ -144,11 +145,8 @@ export default function InviteGate({ children }: { children: ReactNode }) {
     <div style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: "40px 20px" }}>
       <div style={{ width: "100%", maxWidth: 440 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 32 }}>
-          <span style={{ width: 36, height: 36, borderRadius: 10, background: T.grad, display: "inline-flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 12px rgba(37,99,235,0.25)" }}>
-            <Briefcase size={17} color="#fff" />
-          </span>
-          <span style={{ fontFamily: F.sans, fontSize: 18, fontWeight: 800, color: T.text }}>
-            PlaceUp <span style={{ color: T.accent }}>Career</span>
+          <span style={{ display: "inline-flex", alignItems: "center", padding: "5px 10px", borderRadius: 12, background: T.grad, boxShadow: "0 4px 12px rgba(37,99,235,0.25)" }}>
+            <BrandLogo height={38} />
           </span>
         </div>
 

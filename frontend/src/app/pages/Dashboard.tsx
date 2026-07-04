@@ -19,6 +19,7 @@ import { UserProfilePage } from "../components/dashboard/UserProfilePage";
 import { JobDetailPage } from "../components/dashboard/JobDetailPage";
 import { RoleRequestPanel } from "../components/dashboard/RoleRequestPanel";
 import { LoadingLogo } from "../components/LoadingLogo";
+import { BrandLogo } from "../components/BrandLogo";
 
 // ─── Design tokens ───
 const T = {
@@ -511,8 +512,8 @@ export default function Dashboard() {
         <div style={{ padding: compactSidebar ? "0 16px" : "0 24px", height: 64, display: "flex", alignItems: "center", justifyContent: compactSidebar ? "center" : "flex-start", borderBottom: `1px solid ${T.border}` }}>
           <Link to="/" title="PlaceUp Career" style={{ display: "flex", alignItems: "center", textDecoration: "none" }}>
             {compactSidebar
-              ? <img src="/logo_white.png" alt="PlaceUp Career" style={{ width: 34, height: 34, objectFit: "contain", flexShrink: 0 }} />
-              : <img src="/logo_light.png" alt="PlaceUp Career" style={{ height: 40, width: "auto", objectFit: "contain", display: "block" }} />}
+              ? <BrandLogo height={30} style={{ maxWidth: 44 }} />
+              : <BrandLogo height={40} />}
           </Link>
         </div>
 
@@ -595,7 +596,7 @@ export default function Dashboard() {
               transition={{ type: "spring", stiffness: 300, damping: 30 }}
               style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 256, background: "rgba(1,17,38,0.98)", backdropFilter: "blur(24px)", borderRight: `1px solid ${T.border}`, padding: "24px 10px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", padding: "0 12px", marginBottom: 20 }}>
-                <img src="/logo_light.png" alt="PlaceUp Career" style={{ height: 36, width: "auto", objectFit: "contain" }} />
+                <BrandLogo height={36} />
                 <button onClick={() => setSidebarOpen(false)} style={{ background: "rgba(148,163,184,0.05)", border: "none", cursor: "pointer", color: T.text, padding: 6, borderRadius: 6 }}><X size={16} /></button>
               </div>
               {navItems.map((item) => (
