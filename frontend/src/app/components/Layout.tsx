@@ -1,5 +1,4 @@
 import { Outlet, useLocation } from "react-router";
-import { AnimatePresence, motion } from "motion/react";
 import { useState, createContext, useContext } from "react";
 import Particles from "./Particles";
 
@@ -46,18 +45,9 @@ export default function Layout() {
         </div>
 
         {/* ── Page content ── */}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={location.pathname}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            style={{ position: "relative", zIndex: 1 }}
-          >
-            <Outlet />
-          </motion.div>
-        </AnimatePresence>
+        <div key={location.pathname} style={{ position: "relative", zIndex: 1 }}>
+          <Outlet />
+        </div>
       </div>
     </ThemeContext.Provider>
   );
