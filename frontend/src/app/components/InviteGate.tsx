@@ -144,9 +144,9 @@ export default function InviteGate({ children }: { children: ReactNode }) {
   return (
     <div style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: "40px 20px" }}>
       <div style={{ width: "100%", maxWidth: 440 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 32 }}>
-          <span style={{ display: "inline-flex", alignItems: "center", padding: "5px 10px", borderRadius: 12, background: T.grad, boxShadow: "0 4px 12px rgba(37,99,235,0.25)" }}>
-            <BrandLogo height={38} />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 32 }}>
+          <span style={{ display: "inline-flex", alignItems: "center", padding: "12px 20px", borderRadius: 18, background: T.grad, boxShadow: "0 14px 34px rgba(37,99,235,0.26)" }}>
+            <BrandLogo height={64} />
           </span>
         </div>
 
