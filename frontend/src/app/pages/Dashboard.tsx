@@ -512,7 +512,7 @@ export default function Dashboard() {
         <div style={{ padding: compactSidebar ? "0 16px" : "0 24px", height: 64, display: "flex", alignItems: "center", justifyContent: compactSidebar ? "center" : "flex-start", borderBottom: `1px solid ${T.border}` }}>
           <Link to="/" title="PlaceUp Career" style={{ display: "flex", alignItems: "center", textDecoration: "none" }}>
             {compactSidebar
-              ? <BrandLogo height={30} style={{ maxWidth: 44 }} />
+              ? <BrandLogo variant="mark" height={34} />
               : <BrandLogo height={40} />}
           </Link>
         </div>

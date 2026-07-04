@@ -53,9 +53,9 @@ export function LoadingLogo({ label = "Loading", fullScreen = false }: { label?:
               style={{ width: 42, height: 42, display: "flex", alignItems: "center", justifyContent: "center" }}
             >
               <ImageWithFallback
-                src="/logo_white.png"
+                src="/logo_mark.png"
                 alt="PlaceUp Career"
-                style={{ width: 42, height: 42, objectFit: "contain" }}
+                style={{ width: 36, height: 42, objectFit: "contain" }}
               />
             </motion.div>
           </div>

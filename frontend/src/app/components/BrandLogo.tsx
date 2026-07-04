@@ -5,46 +5,37 @@ type BrandLogoProps = {
   height?: number;
   alt?: string;
   style?: CSSProperties;
+  /**
+   * full  — cream wordmark + bunny (for dark/navy backgrounds). Default.
+   * dark  — navy wordmark + bunny (for white/light backgrounds).
+   * mark  — bunny + star only, no text (tight spots: compact sidebar, spinners).
+   */
+  variant?: "full" | "dark" | "mark";
 };
 
-const SOURCE_SIZE = 512;
-const ART_BOUNDS = {
-  left: 61,
-  top: 138,
-  width: 390,
-  height: 229,
+// Tightly cropped brand assets in /public — no CSS crop hacks needed.
+const ASSETS: Record<NonNullable<BrandLogoProps["variant"]>, { src: string; ratio: number }> = {
+  full: { src: "/logo_light.png", ratio: 550 / 320 },
+  dark: { src: "/logo_dark.png", ratio: 550 / 320 },
+  mark: { src: "/logo_mark.png", ratio: 265 / 320 },
 };
 
-export function BrandLogo({ height = 36, alt = "PlaceUp Career", style }: BrandLogoProps) {
-  const width = height * (ART_BOUNDS.width / ART_BOUNDS.height);
-  const imageSize = height * (SOURCE_SIZE / ART_BOUNDS.height);
+export function BrandLogo({ height = 36, alt = "PlaceUp Career", style, variant = "full" }: BrandLogoProps) {
+  const asset = ASSETS[variant];
+  const width = height * asset.ratio;
 
   return (
-    <span
+    <ImageWithFallback
+      src={asset.src}
+      alt={alt}
       style={{
-        position: "relative",
-        overflow: "hidden",
         display: "block",
         height,
         width,
+        objectFit: "contain",
         flexShrink: 0,
         ...style,
       }}
-    >
-      <ImageWithFallback
-        src="/logo_white.png"
-        alt={alt}
-        style={{
-          position: "absolute",
-          left: -(ART_BOUNDS.left / SOURCE_SIZE) * imageSize,
-          top: -(ART_BOUNDS.top / SOURCE_SIZE) * imageSize,
-          width: imageSize,
-          height: imageSize,
-          maxWidth: "none",
-          objectFit: "contain",
-          display: "block",
-        }}
-      />
-    </span>
+    />
   );
 }
