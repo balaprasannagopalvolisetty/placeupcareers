@@ -73,6 +73,41 @@ def create_access_token(user_id: str, email: str, *, plan: str = "Pro", session_
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
+def create_invite_token() -> str:
+    """Mint a short-lived signed token proving the bearer entered a valid
+    invite code. The frontend holds it in sessionStorage and attaches it to
+    the signup payload; /api/auth/signup refuses to create accounts without
+    it while the invite gate is on. Because it's HMAC-signed server-side,
+    scraping the frontend bundle reveals nothing."""
+    now = datetime.now(tz=timezone.utc)
+    payload = {
+        "typ": "invite",
+        "jti": secrets.token_urlsafe(16),
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(minutes=settings.invite_token_ttl_minutes)).timestamp()),
+        "iss": "placeup-career-api",
+        "aud": "placeup-career-web",
+    }
+    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def verify_invite_token(token: str) -> bool:
+    """True only for an unexpired, correctly signed invite token."""
+    if not token:
+        return False
+    try:
+        claims = jwt.decode(
+            token,
+            settings.jwt_secret,
+            algorithms=[settings.jwt_algorithm],
+            audience="placeup-career-web",
+            issuer="placeup-career-api",
+        )
+        return claims.get("typ") == "invite"
+    except jwt.InvalidTokenError:
+        return False
+
+
 def decode_access_token(token: str) -> dict:
     """Decode + verify a token. Raises 401 if invalid or expired."""
     try:

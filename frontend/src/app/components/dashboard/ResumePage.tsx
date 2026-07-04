@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { LoadingLogo } from "../LoadingLogo";
 import { motion } from "motion/react";
 import { Upload, FileText, Trash2 } from "lucide-react";
 import * as api from "../../lib/api";
@@ -152,7 +153,7 @@ export function ResumePage() {
           <span style={{ fontSize: 12, color: T.t3, fontFamily: F.sans }}>Active version is matched against jobs</span>
         </div>
         {loading ? (
-          <div style={{ padding: 40, textAlign: "center", color: T.t3, fontFamily: F.sans }}>Loading...</div>
+          <LoadingLogo label="Loading resumes" />
         ) : resumes.length === 0 ? (
           <div style={{ padding: 40, textAlign: "center", color: T.t3, fontFamily: F.sans }}>No resumes yet. Upload your first one above.</div>
         ) : (

@@ -166,6 +166,7 @@ from app.api.payments import router as payments_router
 from app.api.admin import router as admin_router
 from app.api.role_requests import router as role_requests_router
 from app.api.contact import router as contact_router
+from app.api.invite import router as invite_router
 
 app.include_router(health_router, prefix="/api")
 app.include_router(jobs_router, prefix="/api")
@@ -183,6 +184,7 @@ app.include_router(payments_router, prefix="/api")
 app.include_router(admin_router, prefix="/api")
 app.include_router(role_requests_router, prefix="/api")
 app.include_router(contact_router, prefix="/api")
+app.include_router(invite_router, prefix="/api")
 
 
 @app.exception_handler(RequestValidationError)

@@ -1323,9 +1323,12 @@ async def get_profile(user_id: str = Depends(current_user_id)):
 @router.put("/profile", response_model=UserProfile)
 async def update_profile(profile: UserProfile = Body(...), user_id: str = Depends(current_user_id)):
     fields = profile.model_dump(exclude_unset=True, exclude_none=True)
-    fields.pop("id", None)
-    fields.pop("email", None)
-    fields.pop("updated_at", None)
+    # SECURITY: strip every server-owned field. `plan` in particular must
+    # never be client-writable — it drives billing tier AND (formerly) the
+    # admin check, so accepting it from this endpoint was a privilege
+    # escalation: any signed-in user could PUT {"plan": "admin"}.
+    for privileged in ("id", "email", "updated_at", "plan", "payment_status", "payment_plan", "payment_reference"):
+        fields.pop(privileged, None)
     updated = user_store.update_user_profile(user_id, fields)
     if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")

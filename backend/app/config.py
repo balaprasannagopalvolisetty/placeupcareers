@@ -51,6 +51,30 @@ class Settings(BaseSettings):
         description="Comma-separated emails allowed to access admin-only APIs.",
     )
 
+    # --- Invite gate (private beta) ---
+    # While enabled, /signin and /signup sit behind an invite-code screen and
+    # POST /api/auth/signup refuses payloads without a server-issued invite
+    # token. Flip INVITE_GATE_ENABLED=false at public launch — no code change.
+    invite_gate_enabled: bool = Field(
+        default=True,
+        description="Require an invite code before sign-in/sign-up during private beta.",
+    )
+    invite_code: str = Field(
+        default="",
+        description="Current invite code. Override via INVITE_CODE env var to rotate without a deploy.",
+    )
+    invite_token_ttl_minutes: int = Field(
+        default=60,
+        description="Lifetime of the signed invite token minted after a correct code.",
+    )
+    # Shared secret stamped by a Cloudflare Transform Rule on every proxied
+    # request. When set, non-public API routes reject requests lacking it —
+    # i.e. traffic that bypassed Cloudflare and hit Cloud Run directly.
+    cf_origin_secret: str = Field(
+        default="",
+        description="Cloudflare origin secret (X-CF-Origin-Secret header). Empty disables the check.",
+    )
+
     # --- OAuth2 / OIDC (Google) ---
     oidc_google_client_id: str = Field(default="")
     oidc_google_client_secret: str = Field(default="")

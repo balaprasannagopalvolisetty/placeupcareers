@@ -18,6 +18,7 @@ import { SettingsPage } from "../components/dashboard/SettingsPage";
 import { UserProfilePage } from "../components/dashboard/UserProfilePage";
 import { JobDetailPage } from "../components/dashboard/JobDetailPage";
 import { RoleRequestPanel } from "../components/dashboard/RoleRequestPanel";
+import { LoadingLogo } from "../components/LoadingLogo";
 
 // ─── Design tokens ───
 const T = {
@@ -182,6 +183,11 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
   const [totalApplications, setTotalApplications] = useState(0);
   const [applications, setApplications] = useState<api.UserApplicationRow[]>([]);
   const [totalResumes, setTotalResumes] = useState(0);
+  // Distinguishes "still loading" from "genuinely has no resume". Without this
+  // the cards flashed "0 / Upload a resume" on every slow fetch even for users
+  // who DO have a resume, which looked broken.
+  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [featuredLoading, setFeaturedLoading] = useState(true);
 
   const handleJobClick = (id: string | number) => {
     if (onJobClick) {
@@ -200,6 +206,7 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
   // matched subset and made the Overview look like there were only ~43 jobs.
   useEffect(() => {
     let active = true;
+    setFeaturedLoading(true);
     const mapJobs = (jobs: api.JobPost[]): FeaturedJob[] => jobs.map((job) => ({
       id: job.id ?? "",
       title: job.title ?? "Untitled role",
@@ -214,6 +221,7 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
       if (!active) return;
       _overviewSnapshot.featured = jobs;
       setFeaturedJobs(jobs);
+      setFeaturedLoading(false);
     };
     // Prefer today's matches, but never leave "Featured Positions Today" empty:
     // if nothing was posted/scraped today, fall back to the most recent matches
@@ -228,13 +236,13 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
         }
         api.getTopMatches({ limit: 20, tz_offset: new Date().getTimezoneOffset() })
           .then((fallback) => commit(mapJobs(fallback.jobs)))
-          .catch(() => {});
+          .catch(() => { if (active) setFeaturedLoading(false); });
       })
       .catch(() => {
         // Network/timeout: keep any cached snapshot rather than blanking.
         api.getTopMatches({ limit: 20, tz_offset: new Date().getTimezoneOffset() })
           .then((fallback) => commit(mapJobs(fallback.jobs)))
-          .catch(() => {});
+          .catch(() => { if (active) setFeaturedLoading(false); });
       });
     return () => { active = false; };
   }, []);
@@ -242,36 +250,44 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
   // Fetch dashboard summary (resume score, applications, activity)
   useEffect(() => {
     let active = true;
+    setSummaryLoading(true);
     Promise.allSettled([
       api.getDashboardSummary(),
       api.getResumeList(),
       api.getUserApplications(),
+      // Fourth source: the parsed-active-resume endpoint. It reads the same
+      // resume the Jobs page uses, so even if the summary/list calls are slow
+      // or fail, the ATS score and "has resume" state still resolve correctly.
+      api.getParsedActiveResume().catch(() => null),
     ])
-      .then(([summaryResult, resumesResult, applicationsResult]) => {
+      .then(([summaryResult, resumesResult, applicationsResult, parsedResult]) => {
         if (!active) return;
         const summary = summaryResult.status === "fulfilled" ? summaryResult.value : null;
         const resumes = resumesResult.status === "fulfilled" ? resumesResult.value : [];
         const applicationRows = applicationsResult.status === "fulfilled" ? applicationsResult.value : [];
+        const parsed = parsedResult.status === "fulfilled" ? parsedResult.value : null;
         const activeResume = resumes.find((resume) => resume.active) || resumes[0];
 
-        if (!summary && !resumes.length && !applicationRows.length) return;
-
-        const resolvedScore = Number(summary?.resume_score || activeResume?.score || 0);
+        const resolvedScore = Number(
+          summary?.resume_score || activeResume?.score || (parsed as any)?.score || 0,
+        );
         const resolvedResumeCount = Math.max(
           Number(summary?.total_resumes || 0),
           resumes.length,
           activeResume ? 1 : 0,
+          (parsed as any)?.has_resume ? 1 : 0,
         );
-        const resolvedResumeName = summary?.active_resume_name || activeResume?.name || "";
+        const resolvedResumeName =
+          summary?.active_resume_name || activeResume?.name || (parsed as any)?.name || "";
 
         setResumeScore(resolvedScore);
-        setHasResume(Boolean(summary?.has_resume || resolvedResumeName || resolvedResumeCount > 0));
+        setHasResume(Boolean(summary?.has_resume || (parsed as any)?.has_resume || resolvedResumeName || resolvedResumeCount > 0));
         setActiveResumeName(resolvedResumeName);
         setApplications(applicationRows.filter((row) => row.status === "applied" || row.status === "interview"));
         setTotalApplications(Number(summary?.total_applications || applicationRows.length || 0));
         setTotalResumes(resolvedResumeCount);
       })
-      .catch(() => {});
+      .finally(() => { if (active) setSummaryLoading(false); });
     return () => { active = false; };
   }, []);
 
@@ -283,7 +299,11 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
         <h2 style={{ fontFamily: F.sans, fontSize: 22, fontWeight: 700, color: T.text, marginBottom: 4 }}>{greeting}, {displayFirstName}! 👋</h2>
         <p style={{ fontSize: 14, color: T.t2, fontFamily: F.sans }}>
-          Showing today's top {visibleJobs.length} resume-matched positions from the roles you selected.
+          {featuredLoading
+            ? "Loading your top resume-matched positions…"
+            : visibleJobs.length > 0
+              ? `Showing today's top ${visibleJobs.length} resume-matched positions from the roles you selected.`
+              : "No matched positions yet. Add target roles or upload a resume to start matching."}
         </p>
       </motion.div>
 
@@ -301,9 +321,11 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
           <div style={{ fontSize: 12, color: resumeScore > 0 ? T.t2 : T.t3, fontFamily: F.sans, textAlign: "center", marginTop: 8 }}>
             {resumeScore > 0
               ? `ATS Score: ${resumeScore}/100`
-              : hasResume
-                ? "Re-scoring active resume…"
-                : "Upload a resume to show score"}
+              : summaryLoading
+                ? "Loading your resume…"
+                : hasResume
+                  ? "Re-scoring active resume…"
+                  : "Upload a resume to show score"}
           </div>
           {activeResumeName ? (
             <div title={activeResumeName} style={{ fontSize: 11, color: T.t2, fontFamily: F.sans, textAlign: "center", marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -368,6 +390,16 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
             View All <ChevronRight size={13} />
           </button>
         </div>
+        {featuredLoading && visibleJobs.length === 0 ? (
+          <LoadingLogo label="Loading featured positions" />
+        ) : !featuredLoading && visibleJobs.length === 0 ? (
+          <div style={{ padding: 34, borderRadius: 16, border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.03)", textAlign: "center" }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.text, fontFamily: F.sans, marginBottom: 6 }}>No matched positions yet</div>
+            <div style={{ fontSize: 12.5, color: T.t2, fontFamily: F.sans, lineHeight: 1.6 }}>
+              Make sure you have an active resume and at least 5 target roles selected. New matches appear here as they are scraped.
+            </div>
+          </div>
+        ) : (
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : isTablet ? "repeat(2, minmax(0, 1fr))" : "repeat(3, 1fr)", gap: 14 }}>
           {visibleJobs.map((job, i) => (
             <motion.div key={job.id} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 + i * 0.08 }}>
@@ -399,6 +431,7 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
             </motion.div>
           ))}
         </div>
+        )}
       </div>
 
     </div>

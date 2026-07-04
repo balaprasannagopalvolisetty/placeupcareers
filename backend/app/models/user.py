@@ -45,6 +45,9 @@ class SignupRequest(BaseModel):
     # until webhooks are connected).
     payment_plan: Optional[str] = None
     payment_reference: Optional[str] = None
+    # Private beta: server-issued token from POST /api/invite/validate.
+    # Required while INVITE_GATE_ENABLED; ignored afterwards.
+    invite_token: Optional[str] = None
 
 
 class AuthResponse(BaseModel):

@@ -29,6 +29,7 @@ from app.security import (
     hash_password,
     optional_user_id,
     refresh_token_hash,
+    verify_invite_token,
     verify_password,
 )
 
@@ -263,6 +264,17 @@ async def signin(payload: AuthRequest, request: Request, response: Response):
 @router.post("/signup", response_model=AuthResponse)
 async def signup(payload: SignupRequest, request: Request, response: Response):
     _enforce_trusted_origin(request)
+
+    # Private beta: account creation requires a server-issued invite token
+    # (minted by /api/invite/validate after a correct invite code). Checking
+    # here — not just in the UI — means calling the API directly with curl
+    # or a tampered client can't bypass the gate.
+    if settings.invite_gate_enabled and not verify_invite_token(payload.invite_token or ""):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="PlaceUp is currently invite-only. Please enter a valid invite code first.",
+        )
+
     if user_store.get_user_by_email(str(payload.email)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
 
@@ -571,6 +583,11 @@ async def google_oidc_callback(
 
     user = user_store.get_user_by_email(email)
     if not user:
+        # Private beta: Google sign-in must not become an invite-gate
+        # bypass. New accounts via OIDC are blocked while the gate is on;
+        # existing invited users can still use Google to sign in.
+        if settings.invite_gate_enabled:
+            return RedirectResponse(_frontend_redirect("/signin?error=invite_required"))
         user = user_store.create_user(
             email=email,
             password_hash=hash_password(secrets.token_urlsafe(48)),

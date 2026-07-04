@@ -490,6 +490,53 @@ export async function getDemoCredentials() {
   return request<DemoCredentials>("/api/auth/demo");
 }
 
+// ─── Invite gate (private beta) ───
+// The invite CODE never lives in this bundle — the backend validates it and
+// returns a short-lived signed token. We keep that token in sessionStorage
+// (cleared when the tab closes) and attach it to the signup payload, where
+// the backend verifies it again server-side.
+const INVITE_TOKEN_KEY = "placeup_invite_token";
+
+export function getInviteToken(): string | null {
+  try {
+    return sessionStorage.getItem(INVITE_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setInviteToken(token: string) {
+  try {
+    sessionStorage.setItem(INVITE_TOKEN_KEY, token);
+  } catch { /* storage unavailable (private mode) — gate re-asks, still works */ }
+}
+
+export function clearInviteToken() {
+  try {
+    sessionStorage.removeItem(INVITE_TOKEN_KEY);
+  } catch { /* ignore */ }
+}
+
+export async function getInviteStatus() {
+  return request<{ invite_required: boolean }>("/api/invite/status");
+}
+
+export async function validateInviteCode(code: string) {
+  const result = await request<{ valid: boolean; invite_token: string }>("/api/invite/validate", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+  if (result.invite_token) setInviteToken(result.invite_token);
+  return result;
+}
+
+export async function joinWaitlist(email: string, name?: string) {
+  return request<{ ok: boolean; message: string }>("/api/invite/waitlist", {
+    method: "POST",
+    body: JSON.stringify({ email, name: name || undefined }),
+  });
+}
+
 export async function signin(identifier: string, password: string) {
   const payload = await request<AuthResponse>("/api/auth/signin", {
     method: "POST",
@@ -500,9 +547,12 @@ export async function signin(identifier: string, password: string) {
 }
 
 export async function signup(payload: SignupPayload): Promise<SignupResult> {
+  // Attach the invite token minted by /api/invite/validate — the backend
+  // rejects signups without it while the private beta gate is on.
+  const invite_token = getInviteToken();
   const response = await request<SignupResult>("/api/auth/signup", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify(invite_token ? { ...payload, invite_token } : payload),
   });
   // Only store a token when the backend actually issued a session. When email
   // verification is required there is no token yet.

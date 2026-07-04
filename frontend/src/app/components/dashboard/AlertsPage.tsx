@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import { Bell, BellOff, Trash2, MapPin, DollarSign, Check, Sparkles, TrendingUp } from "lucide-react";
 import { Link } from "react-router";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { LoadingLogo } from "../LoadingLogo";
 import * as api from "../../lib/api";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif" };
@@ -135,7 +136,7 @@ export function AlertsPage() {
   };
 
   if (loading) {
-    return <div style={{ color: T.text, fontFamily: F.sans, textAlign: 'center', padding: 40 }}>Loading alerts...</div>;
+    return <LoadingLogo label="Loading alerts" />;
   }
 
   const chartData = (addedSeries?.series || []).map((p) => ({

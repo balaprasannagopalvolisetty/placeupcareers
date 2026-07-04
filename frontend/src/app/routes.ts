@@ -18,6 +18,7 @@ const OverviewPage = lazy(() =>
 );
 const SignIn = lazy(() => import("./pages/SignIn"));
 const SignUp = lazy(() => import("./pages/SignUp"));
+const InviteGate = lazy(() => import("./components/InviteGate"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const ResumePage = lazy(() =>
@@ -89,6 +90,21 @@ const guarded = (Component: ComponentType<unknown>) => () =>
 // this for every route under /dashboard/* so a direct URL hit by an
 // unauthenticated visitor redirects to /signin instead of rendering
 // the dashboard shell and 401-ing API calls inside it.
+// Private beta: wraps a route in the invite-code wall. The visitor must
+// enter a valid invite code (validated server-side — the code is not in
+// this bundle) before SignIn/SignUp render. Server enforces it again on
+// POST /api/auth/signup, so this UI layer is UX, not the security boundary.
+const inviteGuarded = (Component: ComponentType<unknown>) => () =>
+  createElement(
+    ErrorBoundary,
+    null,
+    createElement(
+      Suspense,
+      { fallback: createElement(RouteLoader) },
+      createElement(InviteGate, null, createElement(Component)),
+    ),
+  );
+
 const authedGuarded = (Component: ComponentType<unknown>) => () =>
   createElement(
     ErrorBoundary,
@@ -130,8 +146,8 @@ export const router = createBrowserRouter([
       // Private admin console — unguessable path, not linked anywhere in the
       // UI. Real protection is the backend ADMIN_EMAILS allowlist.
       { path: "ops-console-9c2f1a8b7e", Component: authedGuarded(AdminConsole) },
-      { path: "signin", Component: guarded(SignIn) },
-      { path: "signup", Component: guarded(SignUp) },
+      { path: "signin", Component: inviteGuarded(SignIn) },
+      { path: "signup", Component: inviteGuarded(SignUp) },
       { path: "forgot-password", Component: guarded(ForgotPasswordPage) },
       { path: "reset-password", Component: guarded(ResetPasswordPage) },
       { path: "verify-email", Component: guarded(VerifyEmailPage) },

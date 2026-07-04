@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { LoadingLogo } from "../LoadingLogo";
 import { Link } from "react-router";
 import { motion } from "motion/react";
 import { Briefcase, ExternalLink, Search, RefreshCw, CheckCircle2, XCircle, Clock } from "lucide-react";
@@ -271,9 +272,7 @@ export function ApplicationsPage() {
       {/* Rows */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {loading && rows.length === 0 && (
-          <div style={{ textAlign: "center", padding: 40, color: T.t2, fontFamily: F.sans, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 16 }}>
-            Loading your applications…
-          </div>
+          <LoadingLogo label="Loading your applications" />
         )}
         {!loading && filtered.length === 0 && !error && (
           <div style={{ textAlign: "center", padding: 40, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 16, color: T.t2, fontFamily: F.sans }}>

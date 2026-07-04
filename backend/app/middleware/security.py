@@ -59,6 +59,7 @@ PUBLIC_READ_PATHS = {
     "/api/auth/oidc/providers",
     "/api/auth/session",
     "/api/billing/plans",
+    "/api/invite/status",
     "/docs",
     "/openapi.json",
     "/redoc",
@@ -80,6 +81,8 @@ PUBLIC_WRITE_PATHS = {
     "/api/reset-password",
     "/api/billing/webhook",
     "/api/contact",
+    "/api/invite/validate",
+    "/api/invite/waitlist",
 }
 
 RATE_LIMIT_EXEMPT_GET_PREFIXES = (
@@ -90,7 +93,9 @@ RATE_LIMIT_EXEMPT_GET_PREFIXES = (
 
 
 def _bucket_for(path: str, method: str) -> str:
-    if "/api/auth" in path:
+    # Invite-code guessing is the same brute-force surface as login, so
+    # /api/invite/* shares the strict auth bucket.
+    if "/api/auth" in path or "/api/invite" in path:
         return "auth"
     if method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
         return "write"
@@ -244,6 +249,18 @@ def _has_trusted_origin(request: Request) -> bool:
     return bool(parsed.hostname and parsed.hostname.lower() in _allowed_origin_hosts())
 
 
+def _passed_through_cloudflare(request: Request) -> bool:
+    """When CF_ORIGIN_SECRET is set, require the header a Cloudflare
+    Transform Rule stamps on every proxied request. Traffic that hits the
+    Cloud Run URL directly (bypassing Cloudflare's WAF, bot fight mode and
+    edge rate limits) won't carry it and gets dropped here. Empty setting
+    = check disabled, so this is safe to deploy before the CF rule exists."""
+    if not settings.cf_origin_secret:
+        return True
+    supplied = request.headers.get("x-cf-origin-secret", "")
+    return bool(supplied) and secrets.compare_digest(supplied, settings.cf_origin_secret)
+
+
 class RouteAccessMiddleware(BaseHTTPMiddleware):
     """Coarse route gate so restricted handlers are not reached anonymously."""
 
@@ -252,6 +269,10 @@ class RouteAccessMiddleware(BaseHTTPMiddleware):
         method = request.method.upper()
         if method in {"OPTIONS", "HEAD"}:
             return await call_next(request)
+        # Health stays reachable for Cloud Run probes (they don't transit CF).
+        if path not in {"/", "/api/health"} and not _passed_through_cloudflare(request):
+            log.warning("Blocked direct-to-origin request: path=%s ip=%s", path, _client_ip(request))
+            return JSONResponse({"detail": "Forbidden"}, status_code=403)
         if method == "GET" and _is_public_read(path):
             return await call_next(request)
         if path in PUBLIC_WRITE_PATHS:

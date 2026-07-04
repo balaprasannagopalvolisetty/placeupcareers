@@ -30,8 +30,10 @@ async def require_admin_user(user_id: str = Depends(current_user_id)) -> dict:
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     email = str(user.get("email") or "").lower()
-    plan = str(user.get("plan") or "").lower()
-    if email in _admin_email_set() or plan == "admin":
+    # SECURITY: admin access is granted ONLY by the ADMIN_EMAILS allowlist.
+    # The old `plan == "admin"` shortcut was reachable through the
+    # user-writable profile update, making it a privilege-escalation path.
+    if email in _admin_email_set():
         return user
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
 
