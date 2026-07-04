@@ -537,6 +537,25 @@ export async function joinWaitlist(email: string, name?: string) {
   });
 }
 
+// Confirm a stored invite token is still valid server-side. Returns false
+// (and clears the token) if it's missing, expired, or rejected — so the gate
+// re-asks for the code instead of trusting stale browser state.
+export async function verifyInviteToken(): Promise<boolean> {
+  const invite_token = getInviteToken();
+  if (!invite_token) return false;
+  try {
+    const res = await request<{ valid: boolean }>("/api/invite/verify", {
+      method: "POST",
+      body: JSON.stringify({ invite_token }),
+    });
+    if (!res.valid) clearInviteToken();
+    return res.valid;
+  } catch {
+    clearInviteToken();
+    return false;
+  }
+}
+
 export async function signin(identifier: string, password: string) {
   const payload = await request<AuthResponse>("/api/auth/signin", {
     method: "POST",

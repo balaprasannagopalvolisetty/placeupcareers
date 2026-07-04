@@ -193,6 +193,20 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     return JSONResponse(status_code=422, content={"detail": "Invalid request payload"})
 
 
+from app.zero_trust import AccessDenied, ban_tracker, client_ip, denial_response
+
+
+@app.exception_handler(AccessDenied)
+async def access_denied_handler(request: Request, exc: AccessDenied):
+    """Any handler-level authorization failure (e.g. an object-ownership check
+    via require_owner) returns the SAME uniform block response as the
+    middleware, and counts toward the auto-ban — an IDOR probe is an attack."""
+    ip = client_ip(request.headers)
+    logger.warning("access denied path=%s ip=%s reason=%s", request.url.path, ip, exc.reason)
+    ban_tracker.record_failure(ip)
+    return denial_response(status_code=exc.status_code, retry_after=exc.retry_after)
+
+
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     logger.exception("unhandled error path=%s", request.url.path)

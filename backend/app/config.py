@@ -75,6 +75,28 @@ class Settings(BaseSettings):
         description="Cloudflare origin secret (X-CF-Origin-Secret header). Empty disables the check.",
     )
 
+    # --- Zero-Trust security ---
+    # Public contact address surfaced in every "access blocked" response so a
+    # legitimately-blocked user knows how to reach a human.
+    security_contact_email: str = Field(
+        default="contact@placeupcareer.com",
+        description="Address shown to users when a request is blocked by the zero-trust layer.",
+    )
+    # Auto-ban: after this many auth/authorization failures from one IP within
+    # the window, that IP is temporarily blocked (assume-breach / brute-force
+    # containment). Set threshold to 0 to disable auto-ban.
+    zt_ban_threshold: int = Field(default=8, description="Auth failures per window before an IP is temp-banned.")
+    zt_ban_window_seconds: int = Field(default=300, description="Sliding window (s) over which failures are counted.")
+    zt_ban_duration_seconds: int = Field(default=900, description="How long (s) a temp-ban lasts.")
+    # Service-to-service identity. Signed, short-lived HMAC tokens let internal
+    # workers (scraper, ATS scorer) call the API with a verifiable identity
+    # instead of a long-lived shared key. Empty falls back to internal_api_key.
+    service_token_secret: str = Field(
+        default="",
+        description="HMAC key for signing service-to-service identity tokens. Defaults to jwt_secret if empty.",
+    )
+    service_token_ttl_seconds: int = Field(default=300, description="Lifetime of a minted service identity token.")
+
     # --- OAuth2 / OIDC (Google) ---
     oidc_google_client_id: str = Field(default="")
     oidc_google_client_secret: str = Field(default="")

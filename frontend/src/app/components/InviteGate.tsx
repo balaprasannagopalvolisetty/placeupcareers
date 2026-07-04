@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { motion } from "motion/react";
 import { Link } from "react-router";
 import { KeyRound, Mail, PartyPopper, Ticket } from "lucide-react";
-import { getInviteStatus, getInviteToken, joinWaitlist, validateInviteCode } from "../lib/api";
+import { getInviteStatus, joinWaitlist, validateInviteCode, verifyInviteToken } from "../lib/api";
 import { BrandLogo } from "./BrandLogo";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif" };
@@ -73,10 +73,11 @@ function GateInput({
  * public launch.
  */
 export default function InviteGate({ children }: { children: ReactNode }) {
-  // undefined = still asking the backend whether the gate is on.
-  const [required, setRequired] = useState<boolean | undefined>(
-    getInviteToken() ? false : undefined,
-  );
+  // undefined = still deciding. We NEVER trust a stored token's mere
+  // existence — an expired/forged token must not reveal sign-up. We always
+  // ask the backend whether the gate is on, and if so, verify the token
+  // server-side before letting anyone through.
+  const [required, setRequired] = useState<boolean | undefined>(undefined);
   const [code, setCode] = useState("");
   const [checking, setChecking] = useState(false);
   const [rejected, setRejected] = useState(false);
@@ -90,10 +91,23 @@ export default function InviteGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (required !== undefined) return;
     let active = true;
-    getInviteStatus()
-      .then((s) => { if (active) setRequired(s.invite_required); })
-      // If the status check fails, keep the gate up — fail closed.
-      .catch(() => { if (active) setRequired(true); });
+    (async () => {
+      try {
+        const status = await getInviteStatus();
+        if (!active) return;
+        if (!status.invite_required) {
+          // Public launch: gate is off server-side.
+          setRequired(false);
+          return;
+        }
+        // Gate is on: only pass if a stored token verifies server-side.
+        const ok = await verifyInviteToken();
+        if (active) setRequired(!ok);
+      } catch {
+        // Status check failed — fail closed, keep the gate up.
+        if (active) setRequired(true);
+      }
+    })();
     return () => { active = false; };
   }, [required]);
 

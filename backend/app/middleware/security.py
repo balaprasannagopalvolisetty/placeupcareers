@@ -35,6 +35,22 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, Response
 
 from app.config import settings
+from app.zero_trust import ban_tracker, denial_response
+
+# Public endpoints where a 401/403 response means a failed credential attempt
+# (login, OTP, invite code, password reset). Repeated failures here feed the
+# auto-ban tracker so brute-forcing any of them from one IP trips a temp block.
+SENSITIVE_AUTH_PATHS = {
+    "/api/auth/signin",
+    "/api/auth/otp/verify",
+    "/api/auth/otp/request",
+    "/api/invite/validate",
+    "/api/invite/verify",
+    "/api/auth/forgot-password",
+    "/api/auth/reset-password",
+    "/api/forgot-password",
+    "/api/reset-password",
+}
 
 log = logging.getLogger(__name__)
 
@@ -60,6 +76,10 @@ PUBLIC_READ_PATHS = {
     "/api/auth/session",
     "/api/billing/plans",
     "/api/invite/status",
+    # The category/role taxonomy powers the signup "target positions" picker,
+    # which unauthenticated visitors need. It's a static public list — no user
+    # data — so it's safe to expose without a token.
+    "/api/jobs/taxonomy",
     "/docs",
     "/openapi.json",
     "/redoc",
@@ -83,6 +103,7 @@ PUBLIC_WRITE_PATHS = {
     "/api/contact",
     "/api/invite/validate",
     "/api/invite/waitlist",
+    "/api/invite/verify",
 }
 
 RATE_LIMIT_EXEMPT_GET_PREFIXES = (
@@ -210,6 +231,20 @@ def _has_valid_auth_header(request: Request) -> bool:
     return False
 
 
+def _has_any_credential(request: Request) -> bool:
+    """True if the caller presented *some* credential (bearer, api key, or
+    refresh cookie). Used to separate a routine expired-token 401 — which a
+    real client silently refreshes — from anonymous probing of protected
+    routes. Only the latter feeds the auto-ban, so legitimate users whose
+    access token merely expired are never banned."""
+    if request.headers.get("authorization", "").lower().startswith("bearer "):
+        return True
+    if request.headers.get("x-api-key"):
+        return True
+    # Refresh-cookie name mirrors app.security.REFRESH_COOKIE_NAME.
+    return "placeup_refresh" in request.cookies
+
+
 def _is_public_read(path: str) -> bool:
     if path in PUBLIC_READ_PATHS:
         return True
@@ -262,28 +297,80 @@ def _passed_through_cloudflare(request: Request) -> bool:
 
 
 class RouteAccessMiddleware(BaseHTTPMiddleware):
-    """Coarse route gate so restricted handlers are not reached anonymously."""
+    """Zero-trust route gate. Deny-by-default: a request is refused unless it
+    matches an explicit public allowlist OR carries a verified credential.
+
+    Also the enforcement point for two "assume-breach" controls:
+      - auto-ban: repeated unauthorized attempts from an IP trip a temp block;
+      - uniform denial: every refusal returns the SAME body pointing at the
+        security contact, so the API never leaks *why* a request failed.
+    """
 
     async def dispatch(self, request: Request, call_next) -> Response:
         path = request.url.path.rstrip("/") or "/"
         method = request.method.upper()
+        ip = _client_ip(request)
+
+        # CORS preflight / cheap probes never carry a body to authorize.
         if method in {"OPTIONS", "HEAD"}:
             return await call_next(request)
-        # Health stays reachable for Cloud Run probes (they don't transit CF).
+
+        # 1. Assume-breach: if this IP is banned, refuse immediately.
+        ban_left = ban_tracker.banned_for(ip)
+        if ban_left:
+            return denial_response(status_code=429, retry_after=ban_left)
+
+        # 2. Cloudflare origin lock (health/root stay open for Cloud Run probes).
         if path not in {"/", "/api/health"} and not _passed_through_cloudflare(request):
-            log.warning("Blocked direct-to-origin request: path=%s ip=%s", path, _client_ip(request))
-            return JSONResponse({"detail": "Forbidden"}, status_code=403)
+            log.warning("Blocked direct-to-origin request: path=%s ip=%s", path, ip)
+            ban_tracker.record_failure(ip)
+            return denial_response(status_code=403)
+
+        # 3. Explicit public reads.
         if method == "GET" and _is_public_read(path):
-            return await call_next(request)
+            return await self._forward(request, call_next, path, ip)
+
+        # 4. Explicit public writes (still origin-checked, except Stripe webhook).
         if path in PUBLIC_WRITE_PATHS:
             if path != "/api/billing/webhook" and not _has_trusted_origin(request):
-                return JSONResponse({"detail": "Invalid request origin"}, status_code=403)
-            return await call_next(request)
-        if path.startswith("/api/") and not _has_valid_auth_header(request):
-            return JSONResponse({"detail": "Authentication required"}, status_code=401)
-        if path.startswith("/api/") and method in {"POST", "PUT", "PATCH", "DELETE"} and not _has_trusted_origin(request):
-            return JSONResponse({"detail": "Invalid request origin"}, status_code=403)
-        return await call_next(request)
+                ban_tracker.record_failure(ip)
+                return denial_response(status_code=403)
+            return await self._forward(request, call_next, path, ip)
+
+        # 5. Protected API surface — must be authenticated (deny-by-default).
+        if path.startswith("/api/"):
+            if not _has_valid_auth_header(request):
+                # Only count as an attack when NO credential was presented at
+                # all. A present-but-expired token is a routine client refresh,
+                # never a ban trigger.
+                if not _has_any_credential(request):
+                    ban_tracker.record_failure(ip)
+                return denial_response(status_code=401)
+            if method in {"POST", "PUT", "PATCH", "DELETE"} and not _has_trusted_origin(request):
+                ban_tracker.record_failure(ip)
+                return denial_response(status_code=403)
+            return await self._forward(request, call_next, path, ip)
+
+        # 6. Default deny: any path that isn't an explicitly-allowed public
+        #    route and isn't an authenticated API call is refused outright.
+        log.info("Default-deny unknown path=%s ip=%s", path, ip)
+        ban_tracker.record_failure(ip)
+        return denial_response(status_code=403)
+
+    async def _forward(self, request: Request, call_next, path: str, ip: str) -> Response:
+        """Run the handler, then feed the auto-ban tracker for failed attempts
+        on sensitive credential endpoints (login, OTP, invite, reset)."""
+        response = await call_next(request)
+        if path in SENSITIVE_AUTH_PATHS:
+            if response.status_code in (401, 403):
+                new_ban = ban_tracker.record_failure(ip)
+                if new_ban:
+                    # This attempt tripped the ban — return the uniform block so
+                    # the very next call is already refused with a retry hint.
+                    return denial_response(status_code=429, retry_after=new_ban)
+            elif 200 <= response.status_code < 300:
+                ban_tracker.clear(ip)
+        return response
 
 
 def _user_id_from_header(request: Request) -> str:

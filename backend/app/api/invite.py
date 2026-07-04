@@ -25,7 +25,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 from app.config import settings
 from app.db import waitlist_store
-from app.security import create_invite_token, require_internal_api_key
+from app.security import create_invite_token, require_internal_api_key, verify_invite_token
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/invite", tags=["Invite"])
@@ -49,6 +49,10 @@ class InviteValidateRequest(BaseModel):
 class WaitlistRequest(BaseModel):
     email: EmailStr
     name: str | None = Field(default=None, max_length=120)
+
+
+class InviteVerifyRequest(BaseModel):
+    invite_token: str = Field(min_length=1, max_length=2048)
 
 
 @router.get("/status")
@@ -78,6 +82,17 @@ async def validate_invite_code(request: Request, payload: InviteValidateRequest 
         status_code=status.HTTP_403_FORBIDDEN,
         detail="That invite code isn't valid.",
     )
+
+
+@router.post("/verify")
+async def verify_invite(payload: InviteVerifyRequest = Body(...)):
+    """Confirm a stored invite token is still valid (correctly signed and
+    unexpired). The gate calls this on load so a stale/expired/forged token
+    in the browser can't silently reveal the sign-up page — it must re-enter
+    the code. If the gate is off (public launch), everyone is 'valid'."""
+    if not settings.invite_gate_enabled:
+        return {"valid": True}
+    return {"valid": verify_invite_token(payload.invite_token)}
 
 
 @router.post("/waitlist")

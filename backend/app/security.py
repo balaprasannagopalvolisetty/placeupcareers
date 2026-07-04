@@ -165,7 +165,21 @@ def get_refresh_token_from_request(
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing refresh token")
 
 
-def require_internal_api_key(x_api_key: Optional[str] = Header(default=None, alias="X-API-Key")) -> None:
+def require_internal_api_key(
+    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+    x_service_token: Optional[str] = Header(default=None, alias="X-Service-Token"),
+) -> None:
+    """Authenticate an internal caller by EITHER a short-lived signed service
+    token (zero-trust, preferred) OR the long-lived shared internal API key
+    (legacy fallback). The service token carries a named, self-expiring
+    identity, so a leak is bounded in time and attributable."""
+    # Preferred: signed, short-lived service identity token.
+    if x_service_token:
+        from app.zero_trust import principal_from_service_token
+        if principal_from_service_token(x_service_token) is not None:
+            return
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid service token")
+    # Fallback: shared internal API key.
     if not settings.internal_api_key:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Internal API key is not configured")
     if not x_api_key or not secrets.compare_digest(x_api_key, settings.internal_api_key):

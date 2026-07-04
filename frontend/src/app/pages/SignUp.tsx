@@ -27,7 +27,39 @@ const T = {
 
 const STEP_LABELS = ["Account", "Terms", "Profile", "Top 5 Positions", "Verify", "Resume"];
 const TOTAL_STEPS = STEP_LABELS.length;
-const MIN_TARGET_ROLES = 5;
+// Users pick exactly this many positions — no more, no less.
+const MAX_TARGET_ROLES = 5;
+
+// Fallback position list used only if the /api/jobs/taxonomy fetch fails or
+// returns nothing (e.g. local dev with no API proxy, or a transient outage).
+// Keeps the picker usable so signup never dead-ends. Mirrors the backend
+// taxonomy role names — the live API list supersedes this whenever it loads.
+const FALLBACK_ROLES: string[] = [
+  "Software Engineer", "Frontend Engineer", "Backend Engineer", "Full Stack Engineer",
+  "Data Engineer", "Machine Learning Engineer", "Data Scientist", "DevOps / Cloud Engineer",
+  "Cybersecurity Analyst", "Security Engineer", "QA / Test Engineer", "Systems Engineer",
+  "Network Engineer", "Database Administrator", "Solutions Architect", "CRM / ERP Developer",
+  "IT Support / Analyst", "Product Manager (Tech)", "UI/UX Designer", "Blockchain Developer",
+  "AI Research Scientist", "Business Analyst", "Data Analyst", "Business Intelligence Developer",
+  "Analytics Engineer", "Quantitative Analyst", "Research Analyst", "Operations Research Analyst",
+  "Statistician", "Financial Analyst", "Investment Banking Analyst", "Accountant / CPA",
+  "Risk Analyst", "Financial Consultant", "Actuary", "Compliance Analyst", "Treasury Analyst",
+  "Tax Analyst", "Clinical Research Associate", "Biomedical Engineer", "Pharmaceutical Scientist",
+  "Healthcare Data Analyst", "Bioinformatics Scientist", "Regulatory Affairs Specialist",
+  "Public Health Analyst", "Lab Technician / Research Assistant", "Medical Technologist",
+  "Mechanical Engineer", "Civil Engineer", "Electrical Engineer", "Chemical Engineer",
+  "Industrial Engineer", "Aerospace Engineer", "Environmental Engineer", "Structural Engineer",
+  "Management Consultant", "Operations Manager", "Project Manager", "Supply Chain Analyst",
+  "Human Resources Generalist", "Strategy Analyst", "Scrum Master / Agile Coach",
+  "Technical Program Manager", "Digital Marketing Analyst", "Content Strategist",
+  "Marketing Data Analyst", "Social Media Manager", "Brand Manager",
+  "Marketing Operations Specialist", "Research Assistant / Associate", "Teaching Assistant",
+  "Instructional Designer", "Education Program Coordinator", "Academic Advisor",
+  "ESL / Language Instructor", "Policy Analyst", "Government IT Specialist", "Intelligence Analyst",
+  "Urban / City Planner", "Environmental Policy Analyst", "Product / UX Designer",
+  "Graphic Designer", "Video / Motion Designer", "Architect", "Paralegal", "Contract Analyst",
+  "Immigration Paralegal", "IP / Patent Analyst", "Compliance Officer",
+].sort((a, b) => a.localeCompare(b));
 const HIDDEN_ROLE_PATTERN = /\b(volunteer|intern|open source contributor|community tech educator|growth hacker)\b/i;
 const isVisibleRole = (role: string) => Boolean(role.trim()) && !HIDDEN_ROLE_PATTERN.test(role);
 
@@ -283,44 +315,101 @@ function RolePicker({
   onSearch: (value: string) => void;
   onToggle: (role: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const full = selected.length >= MAX_TARGET_ROLES;
+
+  // Close the drop box when clicking outside it.
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     return roles
       .filter((role) => !q || role.toLowerCase().includes(q))
       .slice(0, 90);
   }, [roles, search]);
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 8 }}>
         <div>
-          <div style={{ fontSize: 13, color: T.text, fontFamily: F.sans, fontWeight: 700 }}>Choose your top {MIN_TARGET_ROLES} target positions</div>
-          <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, marginTop: 3 }}>Select at least {MIN_TARGET_ROLES} positions. These power your job matches and daily alerts.</div>
+          <div style={{ fontSize: 13, color: T.text, fontFamily: F.sans, fontWeight: 700 }}>Choose your {MAX_TARGET_ROLES} target positions</div>
+          <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, marginTop: 3 }}>Pick exactly {MAX_TARGET_ROLES} positions. These power your job matches and daily alerts.</div>
         </div>
-        <div style={{ fontSize: 12, color: selected.length >= MIN_TARGET_ROLES ? "#16A34A" : T.red, fontFamily: F.mono, fontWeight: 800 }}>
-          {selected.length}/25
+        <div style={{ fontSize: 12, color: full ? "#16A34A" : T.red, fontFamily: F.mono, fontWeight: 800 }}>
+          {selected.length}/{MAX_TARGET_ROLES}
         </div>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, height: 40, padding: "0 12px", borderRadius: 10, background: T.input, border: `1px solid ${T.border}`, marginBottom: 10 }}>
-        <Search size={14} color={T.t3} />
-        <input value={search} onChange={(e) => onSearch(e.target.value)} placeholder="Search role, e.g. Security Analyst"
-          style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: T.text, fontSize: 13, fontFamily: F.sans }} />
+
+      {/* Drop box */}
+      <div ref={wrapRef} style={{ position: "relative" }}>
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          style={{
+            width: "100%", minHeight: 48, padding: "8px 12px", borderRadius: 10,
+            background: T.input, border: `1px solid ${open ? T.accent : T.border}`,
+            boxShadow: open ? "0 0 0 3px rgba(37,99,235,0.12)" : "none",
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+            cursor: "pointer", textAlign: "left",
+          }}
+        >
+          <span style={{ fontSize: 13.5, fontFamily: F.sans, color: selected.length ? T.text : T.t3 }}>
+            {selected.length
+              ? `${selected.length} of ${MAX_TARGET_ROLES} position${selected.length > 1 ? "s" : ""} selected`
+              : "Select positions…"}
+          </span>
+          <ChevronDown size={16} color={T.t3} style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s", flexShrink: 0 }} />
+        </button>
+
+        {open && (
+          <div style={{
+            position: "absolute", top: 54, left: 0, right: 0, zIndex: 40,
+            borderRadius: 12, border: `1px solid ${T.border}`, background: T.surface,
+            boxShadow: "0 12px 30px rgba(15,23,42,0.12)", padding: 8,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, height: 40, padding: "0 12px", borderRadius: 10, background: T.input, border: `1px solid ${T.border}`, marginBottom: 8 }}>
+              <Search size={14} color={T.t3} />
+              <input autoFocus value={search} onChange={(e) => onSearch(e.target.value)} placeholder="Search role, e.g. Security Analyst"
+                style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: T.text, fontSize: 13, fontFamily: F.sans }} />
+            </div>
+            <div style={{ maxHeight: 240, overflowY: "auto", display: "grid", gridTemplateColumns: "1fr", gap: 6 }}>
+              {visible.length === 0 && (
+                <div style={{ padding: 12, fontSize: 12.5, color: T.t3, fontFamily: F.sans, textAlign: "center" }}>No roles match “{search}”.</div>
+              )}
+              {visible.map((role) => {
+                const active = selected.includes(role);
+                const disabled = !active && full;
+                return (
+                  <button key={role} type="button" disabled={disabled} onClick={() => onToggle(role)}
+                    title={disabled ? `You can only pick ${MAX_TARGET_ROLES} positions. Remove one to change your selection.` : undefined}
+                    style={{ minHeight: 38, padding: "8px 10px", borderRadius: 9, border: `1px solid ${active ? "rgba(22,163,74,0.35)" : "transparent"}`,
+                      background: active ? "rgba(34,197,94,0.10)" : "transparent", color: disabled ? T.t3 : T.text,
+                      fontSize: 13, fontFamily: F.sans, cursor: disabled ? "not-allowed" : "pointer", textAlign: "left",
+                      display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    <span>{role}</span>
+                    {active && <Check size={13} color="#16A34A" />}
+                  </button>
+                );
+              })}
+            </div>
+            {full && (
+              <div style={{ padding: "8px 10px", marginTop: 6, fontSize: 11.5, color: "#16A34A", fontFamily: F.sans, background: "rgba(34,197,94,0.08)", borderRadius: 8 }}>
+                All {MAX_TARGET_ROLES} positions selected. Remove one to swap.
+              </div>
+            )}
+          </div>
+        )}
       </div>
-      <div style={{ maxHeight: 260, overflowY: "auto", display: "grid", gridTemplateColumns: "1fr", gap: 6, border: `1px solid ${T.border}`, borderRadius: 12, padding: 8, background: "#F8FAFC" }}>
-        {visible.map((role) => {
-          const active = selected.includes(role);
-          const disabled = !active && selected.length >= 25;
-          return (
-            <button key={role} type="button" disabled={disabled} onClick={() => onToggle(role)}
-              style={{ minHeight: 38, padding: "8px 10px", borderRadius: 9, border: `1px solid ${active ? "rgba(22,163,74,0.35)" : "transparent"}`,
-                background: active ? "rgba(34,197,94,0.10)" : "transparent", color: disabled ? T.t3 : T.text,
-                fontSize: 13, fontFamily: F.sans, cursor: disabled ? "not-allowed" : "pointer", textAlign: "left",
-                display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-              <span>{role}</span>
-              {active && <Check size={13} color="#16A34A" />}
-            </button>
-          );
-        })}
-      </div>
+
+      {/* Selected chips */}
       {selected.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
           {selected.map((role) => (
@@ -368,7 +457,7 @@ export default function SignUp() {
   const [country, setCountry] = useState("US");
   const [visaStatus, setVisaStatus] = useState("");
   const [visaOther, setVisaOther] = useState("");
-  const [allRoles, setAllRoles] = useState<string[]>([]);
+  const [allRoles, setAllRoles] = useState<string[]>(FALLBACK_ROLES);
   const [roleSearch, setRoleSearch] = useState("");
   const [targetRoles, setTargetRoles] = useState<string[]>([]);
 
@@ -393,8 +482,11 @@ export default function SignUp() {
       .then((taxonomy) => {
         if (!active) return;
         const roles = Array.from(new Set((taxonomy.categories || []).flatMap((cat) => cat.roles.map((role: any) => String(role.name || "")).filter(isVisibleRole))));
-        setAllRoles(roles.sort((a, b) => a.localeCompare(b)));
+        // Only replace the fallback if the API actually returned roles; an
+        // empty response shouldn't blank out the picker.
+        if (roles.length) setAllRoles(roles.sort((a, b) => a.localeCompare(b)));
       })
+      // Network/API failure: keep FALLBACK_ROLES so the picker stays usable.
       .catch(() => {});
     return () => { active = false; };
   }, []);
@@ -420,7 +512,7 @@ export default function SignUp() {
       if (visaStatus === "Other" && !visaOther.trim()) return "Please describe your visa / work-authorization status.";
     }
     if (step === 4) {
-      if (targetRoles.length < MIN_TARGET_ROLES) return `Please select at least ${MIN_TARGET_ROLES} target roles so your Jobs feed stays relevant.`;
+      if (targetRoles.length !== MAX_TARGET_ROLES) return `Please select exactly ${MAX_TARGET_ROLES} target positions so your Jobs feed stays relevant.`;
     }
     return null;
   };
@@ -452,7 +544,7 @@ export default function SignUp() {
         experience_level: experienceLevel || undefined,
         current_company: currentCompany.trim() || undefined,
         linkedin_url: linkedinUrl.trim() || undefined,
-        target_roles: targetRoles.slice(0, 25),
+        target_roles: targetRoles.slice(0, MAX_TARGET_ROLES),
         agreement_accepted: true,
         agreement_version: AGREEMENT_VERSION,
         payment_plan: "free_access",
@@ -487,7 +579,7 @@ export default function SignUp() {
   const toggleTargetRole = (role: string) => {
     setTargetRoles((prev) => {
       if (prev.includes(role)) return prev.filter((item) => item !== role);
-      if (prev.length >= 25) return prev;
+      if (prev.length >= MAX_TARGET_ROLES) return prev;
       return [...prev, role];
     });
   };
