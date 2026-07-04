@@ -22,11 +22,7 @@ const navItems = [
 ];
 
 function Wordmark() {
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", padding: "4px 9px", borderRadius: 12, background: "linear-gradient(135deg, #011126, #1E3A8A)", boxShadow: "0 8px 18px rgba(15,23,42,0.16)" }}>
-      <BrandLogo height={36} />
-    </span>
-  );
+  return <BrandLogo variant="dark" height={42} />;
 }
 
 export function Navbar() {

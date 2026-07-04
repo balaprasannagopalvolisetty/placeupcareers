@@ -184,9 +184,7 @@ export default function SignIn() {
       <div style={{ background: T.surface, display: "flex", alignItems: "center", justifyContent: "center", padding: isMobile ? "40px 20px" : 48 }}>
         <div style={{ width: "100%", maxWidth: 420 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 36 }}>
-            <span style={{ display: "inline-flex", alignItems: "center", padding: "10px 18px", borderRadius: 17, background: T.grad, boxShadow: "0 12px 30px rgba(37,99,235,0.25)" }}>
-              <BrandLogo height={58} />
-            </span>
+            <BrandLogo variant="dark" height={58} />
           </div>
           <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
             <h2 style={{ fontFamily: F.sans, fontSize: 26, fontWeight: 800, color: T.text, marginBottom: 6, textAlign: "center", letterSpacing: "-0.02em" }}>Welcome back</h2>

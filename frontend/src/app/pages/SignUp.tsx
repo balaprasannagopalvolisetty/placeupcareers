@@ -522,9 +522,7 @@ export default function SignUp() {
       <div style={{ width: "100%", maxWidth: 640, borderRadius: isMobile ? 18 : 24, background: "#FFFFFF", border: `1px solid ${T.border}`, padding: isMobile ? 18 : 32, boxShadow: "0 4px 12px rgba(15,23,42,0.06), 0 24px 56px rgba(15,23,42,0.10)" }}>
         <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", gap: isMobile ? 12 : 0, marginBottom: 20 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ display: "inline-flex", alignItems: "center", padding: "7px 13px", borderRadius: 14, background: T.grad, boxShadow: "0 8px 20px rgba(37,99,235,0.22)", flexShrink: 0 }}>
-              <BrandLogo height={44} />
-            </span>
+            <BrandLogo variant="dark" height={44} />
             <div>
               <div style={{ fontFamily: F.sans, fontSize: 17, fontWeight: 700, color: T.text }}>Create your account</div>
               <div style={{ fontSize: 12, color: T.t2, fontFamily: F.sans }}>Step {step} of {TOTAL_STEPS} · {STEP_LABELS[step - 1]}</div>

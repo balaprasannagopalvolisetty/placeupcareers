@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { ImageWithFallback } from "./figma/ImageWithFallback";
+import { BrandLogo } from "./BrandLogo";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif" };
 const T = {
@@ -27,38 +27,20 @@ export function LoadingLogo({ label = "Loading", fullScreen = false }: { label?:
           animate={{ rotate: 360 }}
           transition={{ duration: 1.6, repeat: Infinity, ease: "linear" }}
           style={{
-            width: 76,
-            height: 76,
-            borderRadius: "50%",
-            padding: 3,
-            background: `conic-gradient(from 0deg, rgba(148,163,184,0.08), #3B82F6, #60A5FA, rgba(148,163,184,0.08))`,
+            width: 48,
+            height: 56,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
           }}
         >
-          <div
-            style={{
-              width: "100%",
-              height: "100%",
-              borderRadius: "50%",
-              background: "rgba(1,17,38,0.94)",
-              border: `1px solid ${T.border}`,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              boxShadow: "0 18px 40px rgba(1,17,38,0.42)",
-            }}
+          <motion.div
+            animate={{ rotate: -360, scale: [1, 1.04, 1] }}
+            transition={{ rotate: { duration: 1.6, repeat: Infinity, ease: "linear" }, scale: { duration: 1.2, repeat: Infinity, ease: "easeInOut" } }}
+            style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
           >
-            <motion.div
-              animate={{ rotate: -360, scale: [1, 1.04, 1] }}
-              transition={{ rotate: { duration: 1.6, repeat: Infinity, ease: "linear" }, scale: { duration: 1.2, repeat: Infinity, ease: "easeInOut" } }}
-              style={{ width: 42, height: 42, display: "flex", alignItems: "center", justifyContent: "center" }}
-            >
-              <ImageWithFallback
-                src="/logo_mark.png"
-                alt="PlaceUp Career"
-                style={{ width: 36, height: 42, objectFit: "contain" }}
-              />
-            </motion.div>
-          </div>
+            <BrandLogo variant="mark" height={48} />
+          </motion.div>
         </motion.div>
         <div style={{ fontFamily: F.sans, color: T.text, fontSize: 13, fontWeight: 700, letterSpacing: "0.02em" }}>{label}</div>
         <div style={{ width: 120, height: 3, borderRadius: 999, background: "rgba(148,163,184,0.08)", overflow: "hidden" }}>

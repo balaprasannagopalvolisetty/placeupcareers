@@ -493,9 +493,7 @@ function Footer() {
         maxWidth: 1100, margin: "0 auto", display: "flex", flexWrap: "wrap",
         alignItems: "center", justifyContent: "space-between", gap: 12,
       }}>
-        <span style={{ display: "inline-flex", alignItems: "center", padding: "4px 9px", borderRadius: 12, background: "linear-gradient(135deg, #011126, #1E3A8A)", boxShadow: "0 8px 18px rgba(15,23,42,0.12)" }}>
-          <BrandLogo height={30} />
-        </span>
+        <BrandLogo variant="dark" height={34} />
         <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
           {[
             { l: "Privacy", to: "/privacy" },
