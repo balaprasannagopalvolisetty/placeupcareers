@@ -38,10 +38,7 @@ export function Navbar() {
   }, [isHome]);
 
   return (
-    <motion.nav
-      initial={{ y: -70 }}
-      animate={{ y: 0 }}
-      transition={{ duration: 0.5, ease: [0.76, 0, 0.24, 1] }}
+    <nav
       style={{
         position: "fixed", top: 0, left: 0, right: 0, zIndex: 100,
         backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
@@ -138,6 +135,6 @@ export function Navbar() {
           </motion.div>
         )}
       </AnimatePresence>
-    </motion.nav>
+    </nav>
   );
 }
