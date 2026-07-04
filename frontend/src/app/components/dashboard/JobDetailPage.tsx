@@ -165,83 +165,123 @@ function renderInline(text: string): ReactNode {
   return parts.length === 1 && typeof parts[0] === "string" ? parts[0] : <>{parts}</>;
 }
 
+// Common job-description section titles. A line that IS one of these (case-
+// insensitive, optional trailing colon) becomes a major section header even
+// when the scraped source flattened everything into same-size text.
+const KNOWN_HEADINGS = /^(a family of companies( and experiences)?|about( the (role|company|team|position))?|company (overview|description)|who we are|job summary|summary|overview|position (summary|overview)|role (summary|overview)|job description|core responsibilities|key responsibilities|responsibilities|what you'?ll do|what you will do|duties|essential (duties|functions)|day[- ]to[- ]day|requirements|basic qualifications|minimum qualifications|preferred qualifications|qualifications|required (skills|qualifications|experience)|skills( (&|and) (experience|qualifications))?|experience|education|nice to have|what we'?re looking for|benefits|perks( (&|and) benefits)?|what we offer|compensation( (&|and) benefits)?|salary( range)?|pay( range)?|why (join|work) (us|here|with us)|our (culture|values|story)|equal (employment )?opportunity( (employer|statement))?|eeo( statement)?|diversity( (&|and) inclusion)?|location|work (location|environment)|schedule|about us|the (role|opportunity)|associates at corporate are offered many fantastic benefits)\s*:?\s*$/i;
+
+type JDBlock =
+  | { t: "h1"; s: string }
+  | { t: "h2"; s: string }
+  | { t: "bullet"; s: string }
+  | { t: "p"; s: string };
+
+/** A short, title-like line with no sentence punctuation (e.g. "Medical",
+ * "Paid Parental Leave", "Systems Strategy & Administration"). */
+function isShortLabel(s: string): boolean {
+  const t = s.trim();
+  if (!t || t.length > 52) return false;
+  if (/[.!?,;]$/.test(t)) return false;      // reads like a sentence / clause
+  if (t.split(/\s+/).length > 7) return false;
+  return /^[A-Z0-9("']/.test(t);             // starts like a title
+}
+
 function renderJobDescription(raw: string): ReactNode {
   if (!raw?.trim()) return <span style={{ color: T.t3, fontFamily: F.sans, fontSize: 13 }}>Open the original posting for full details.</span>;
 
-  // Decode HTML entities and convert block tags to newlines before stripping
+  // 1) Normalise the source to line-structured text. Real HTML tags are turned
+  //    into explicit markers (### headings, • bullets) so genuine structure is
+  //    preserved; the heuristics below recover structure the scraper flattened.
   const ta = document.createElement("textarea");
   ta.innerHTML = raw;
   let text = ta.value;
+  text = text.replace(/<h[1-4]\b[^>]*>/gi, "\n## ").replace(/<\/h[1-4]>/gi, "\n");
+  text = text.replace(/<li\b[^>]*>/gi, "\n• ").replace(/<\/li>/gi, "\n");
   text = text.replace(/<br\s*\/?>/gi, "\n");
-  text = text.replace(/<\/?(p|div|li|ul|ol|h[1-6]|section)\b[^>]*>/gi, "\n");
+  text = text.replace(/<\/?(p|div|ul|ol|section|tr)\b[^>]*>/gi, "\n");
   text = text.replace(/<[^>]+>/g, "");
-  // Markdown artifacts from scraped sources (**bold**, ### headers, escapes)
-  // render as literal symbols — strip them so every JD reads consistently.
   text = text.replace(/\*\*+|__+|~~+/g, "");
-  text = text.replace(/^#+\s*/gm, "");
-  // Unescape ALL backslash-escaped punctuation from scraped markdown
-  // ("\&" -> "&", "\(" -> "(", "\-" -> "-"). The old class missed "&", so
-  // JDs rendered ugly literals like "Education \& Experience".
-  text = text.replace(/\\([^\w\s])/g, "$1");
-  // Setext headings: a short label underlined with --- or === ("Location\n----")
-  // becomes a real heading instead of a line of dashes.
-  text = text.replace(/^[ \t]*([^\n]{1,60})\n[ \t]*[-=]{3,}[ \t]*$/gm, "## $1");
-  // Drop any remaining horizontal-rule / underline separator lines.
-  text = text.replace(/^[ \t]*[-=_*]{3,}[ \t]*$/gm, "");
+  text = text.replace(/^#+\s*/gm, "## ");    // normalise any md heading depth
+  text = text.replace(/\\([^\w\s])/g, "$1"); // unescape "\&" -> "&" etc.
+  text = text.replace(/^[ \t]*([^\n]{1,60})\n[ \t]*[-=]{3,}[ \t]*$/gm, "## $1"); // setext
+  text = text.replace(/^[ \t]*[-=_*]{3,}[ \t]*$/gm, "");                          // rules
 
-  // Normalize: collapse horizontal whitespace only; preserve line breaks
   const lines = text.split("\n").map((l) => l.replace(/[ \t]+/g, " ").trim());
 
-  const blocks: ReactNode[] = [];
-  let listItems: string[] = [];
-  let listKey = 0;
+  // 2) Classify each non-blank line into a tentative block type.
+  const raws: (JDBlock | null)[] = lines.map((line): JDBlock | null => {
+    if (!line) return null;
+    let m = line.match(/^#{1,6}\s+(.*)/);
+    if (m) return { t: "h1", s: m[1].replace(/:$/, "").trim() };
+    m = line.match(/^(?:[*\-•·+▪◦‣●○]|\d+[.)])\s+(.*)/);
+    if (m) return { t: "bullet", s: m[1].trim() };
+    if (KNOWN_HEADINGS.test(line)) return { t: "h1", s: line.replace(/:$/, "").trim() };
+    // "Something:" on its own short line → sub-heading.
+    if (/:$/.test(line) && line.length <= 60 && line.split(/\s+/).length <= 8) {
+      return { t: "h2", s: line.replace(/:$/, "").trim() };
+    }
+    return { t: "p", s: line };
+  });
 
-  const flushList = () => {
-    if (!listItems.length) return;
-    blocks.push(
-      <ul key={`ul-${listKey++}`} style={{ margin: "4px 0 10px", paddingLeft: 20, display: "flex", flexDirection: "column", gap: 3 }}>
-        {listItems.map((item, j) => (
-          <li key={j} style={{ fontSize: 13, color: T.t2, fontFamily: F.sans, lineHeight: 1.65 }}>{renderInline(item)}</li>
+  // 3) Second pass: turn runs of short labels into bullets (e.g. the flat
+  //    "Medical / Dental / Vision" benefits list) and promote a lone short
+  //    label that introduces a paragraph into a sub-heading.
+  const blocksData: JDBlock[] = [];
+  for (let i = 0; i < raws.length; i++) {
+    const b = raws[i];
+    if (!b) continue;
+    if (b.t === "p" && isShortLabel(b.s)) {
+      const prev = [...raws.slice(0, i)].reverse().find((x) => x);
+      const next = raws.slice(i + 1).find((x) => x);
+      const prevIsLabel = !!prev && (prev.t === "bullet" || (prev.t === "p" && isShortLabel(prev.s)));
+      const nextIsLabel = !!next && next.t === "p" && isShortLabel(next.s);
+      const nextIsBody = !!next && next.t === "p" && !isShortLabel(next.s) && next.s.length > 60;
+      if (prevIsLabel || nextIsLabel) { blocksData.push({ t: "bullet", s: b.s }); continue; }
+      if (nextIsBody) { blocksData.push({ t: "h2", s: b.s }); continue; }
+    }
+    blocksData.push(b);
+  }
+
+  // 4) Render, grouping consecutive bullets into a single list.
+  const out: ReactNode[] = [];
+  let bucket: string[] = [];
+  let key = 0;
+  const flush = () => {
+    if (!bucket.length) return;
+    out.push(
+      <ul key={`ul-${key++}`} style={{ margin: "6px 0 14px", paddingLeft: 22, display: "flex", flexDirection: "column", gap: 6 }}>
+        {bucket.map((item, j) => (
+          <li key={j} style={{ fontSize: 13.5, color: T.t2, fontFamily: F.sans, lineHeight: 1.6 }}>{renderInline(item)}</li>
         ))}
       </ul>
     );
-    listItems = [];
+    bucket = [];
   };
-
-  lines.forEach((line, i) => {
-    if (!line) { flushList(); return; }
-
-    // ## or # heading
-    const h1m = line.match(/^#{1,2}\s+(.*)/);
-    if (h1m) {
-      flushList();
-      blocks.push(<div key={`h1-${i}`} style={{ fontSize: 14, fontWeight: 700, color: T.text, fontFamily: F.sans, marginTop: 18, marginBottom: 6, paddingBottom: 4, borderBottom: `1px solid ${T.border}` }}>{h1m[1].replace(/\*\*/g, "")}</div>);
-      return;
+  blocksData.forEach((b, i) => {
+    if (b.t === "bullet") { bucket.push(b.s); return; }
+    flush();
+    if (b.t === "h1") {
+      out.push(
+        <div key={`h1-${i}`} style={{ fontSize: 15.5, fontWeight: 800, color: T.text, fontFamily: F.sans, marginTop: i === 0 ? 0 : 24, marginBottom: 10, paddingBottom: 7, borderBottom: `1px solid ${T.border}`, letterSpacing: "-0.01em" }}>
+          {b.s}
+        </div>
+      );
+    } else if (b.t === "h2") {
+      out.push(
+        <div key={`h2-${i}`} style={{ fontSize: 13.5, fontWeight: 700, color: T.text, fontFamily: F.sans, marginTop: 16, marginBottom: 6 }}>
+          {b.s}
+        </div>
+      );
+    } else {
+      out.push(
+        <p key={`p-${i}`} style={{ fontSize: 13.5, color: T.t2, fontFamily: F.sans, lineHeight: 1.75, margin: "0 0 10px" }}>
+          {renderInline(b.s)}
+        </p>
+      );
     }
-    // ### sub-heading
-    const h2m = line.match(/^#{3,6}\s+(.*)/);
-    if (h2m) {
-      flushList();
-      blocks.push(<div key={`h2-${i}`} style={{ fontSize: 13, fontWeight: 600, color: T.t2, fontFamily: F.sans, marginTop: 14, marginBottom: 4 }}>{h2m[1].replace(/\*\*/g, "")}</div>);
-      return;
-    }
-    // Standalone **Section Heading** or **Section Heading:**
-    if (/^\*\*[^*]+\*\*:?\s*$/.test(line)) {
-      flushList();
-      blocks.push(<div key={`bh-${i}`} style={{ fontSize: 14, fontWeight: 700, color: T.text, fontFamily: F.sans, marginTop: 18, marginBottom: 6, paddingBottom: 4, borderBottom: `1px solid ${T.border}` }}>{line.replace(/\*\*/g, "").replace(/:$/, "").trim()}</div>);
-      return;
-    }
-    // Bullet / numbered list item (incl. "+" sub-bullets and unicode glyphs)
-    const bm = line.match(/^(?:[*\-•·+▪◦‣●○]|\d+[.)]) +(.*)/);
-    if (bm) { listItems.push(bm[1]); return; }
-
-    // Regular paragraph
-    flushList();
-    blocks.push(<p key={`p-${i}`} style={{ fontSize: 13, color: T.t2, fontFamily: F.sans, lineHeight: 1.75, margin: "4px 0" }}>{renderInline(line)}</p>);
   });
-
-  flushList();
-  return <>{blocks}</>;
+  flush();
+  return <div style={{ display: "flex", flexDirection: "column" }}>{out}</div>;
 }
 
 export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => void }) {
@@ -785,10 +825,12 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
               ))}
             </div>
           )}
-          <div style={{ border: `1px solid ${T.border}`, borderRadius: 14, background: "rgba(1,17,38,0.22)", padding: isMobile ? 14 : 20 }}>
-            {job?.description_html ? (
-              <div style={{ fontSize: 13, color: T.t2, fontFamily: F.sans, lineHeight: 1.75 }} dangerouslySetInnerHTML={{ __html: job.description_html }} />
-            ) : renderJobDescription(descriptionText)}
+          <div style={{ border: `1px solid ${T.border}`, borderRadius: 14, background: "rgba(1,17,38,0.22)", padding: isMobile ? 16 : 24 }}>
+            {/* Both the sanitized-HTML and plain-text sources are routed through
+                the same structured renderer so every JD reads as clean,
+                titled sections instead of a wall of text — and we avoid
+                dangerouslySetInnerHTML entirely (smaller XSS surface). */}
+            {renderJobDescription(job?.description_html || descriptionText)}
           </div>
         </div>
       </div>
