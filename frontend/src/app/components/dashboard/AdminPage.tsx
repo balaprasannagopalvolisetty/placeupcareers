@@ -1,577 +1,524 @@
-import { useEffect, useState } from "react";
-import { motion } from "motion/react";
-import { Activity, Check, Database, Globe, ListChecks, Loader2, Lock, Mail, RefreshCw, Shield, Upload, Users, WalletCards, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Activity, AlertTriangle, BarChart3, Briefcase, Globe, Loader2, MessageSquare,
+  RefreshCw, Search, Shield, Star, Users, X, KeyRound, LogOut, ChevronRight,
+} from "lucide-react";
+import {
+  ResponsiveContainer, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
+  XAxis, YAxis, Tooltip, CartesianGrid,
+} from "recharts";
 import * as api from "../../lib/api";
 
+// ─── Dark admin theme ────────────────────────────────────────────────────────
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 const T = {
+  bg: "#0B1220",
+  panel: "rgba(17,28,49,0.7)",
+  panel2: "rgba(15,30,55,0.5)",
+  border: "rgba(148,163,184,0.14)",
   text: "#F1F5F9",
   t2: "rgba(226,232,240,0.72)",
-  t3: "rgba(148,163,184,0.75)",
-  border: "rgba(148,163,184,0.08)",
-  glass: "rgba(15,30,55,0.55)",
-  grad: "linear-gradient(135deg, #2563EB, #0EA5E9)",
-  red: "#3B82F6",
+  t3: "rgba(148,163,184,0.7)",
+  accent: "#3B82F6",
+  green: "#22C55E",
+  amber: "#F59E0B",
+  red: "#EF4444",
+  violet: "#8B5CF6",
+  cyan: "#06B6D4",
 };
+const CHART_COLORS = [T.accent, T.violet, T.cyan, T.green, T.amber, "#EC4899", "#14B8A6", "#F97316"];
 
-function Panel({ children }: { children: React.ReactNode }) {
+function Panel({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
-    <div style={{ borderRadius: 18, border: `1px solid ${T.border}`, background: T.glass, backdropFilter: "blur(20px)", overflow: "hidden" }}>
+    <div style={{ background: T.panel, border: `1px solid ${T.border}`, borderRadius: 16, padding: 18, ...style }}>
       {children}
     </div>
   );
 }
 
-function messageFromError(err: unknown, fallback: string) {
-  return err instanceof Error && err.message ? err.message : fallback;
+function StatCard({ icon, label, value, sub, tone = T.accent }: { icon: React.ReactNode; label: string; value: React.ReactNode; sub?: string; tone?: string }) {
+  return (
+    <Panel style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ width: 34, height: 34, borderRadius: 10, background: `${tone}22`, display: "inline-flex", alignItems: "center", justifyContent: "center", color: tone }}>{icon}</span>
+        <span style={{ fontSize: 12, color: T.t3, fontFamily: F.sans, fontWeight: 600 }}>{label}</span>
+      </div>
+      <div style={{ fontSize: 26, fontWeight: 850, color: T.text, fontFamily: F.sans, letterSpacing: "-0.02em" }}>{value}</div>
+      {sub && <div style={{ fontSize: 11.5, color: T.t3, fontFamily: F.sans }}>{sub}</div>}
+    </Panel>
+  );
 }
 
-function isAuthError(message: string) {
-  return /admin access|admin authorization|unauthorized|forbidden|not authenticated|401|403/i.test(message);
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <div style={{ fontSize: 13, fontWeight: 700, color: T.text, fontFamily: F.sans, marginBottom: 12 }}>{children}</div>;
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string) {
-  let timer: ReturnType<typeof setTimeout>;
-  const timeout = new Promise<T>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} timed out`)), ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+const tooltipStyle = { background: "#0F1B33", border: `1px solid ${T.border}`, borderRadius: 10, color: T.text, fontFamily: F.sans, fontSize: 12 };
+
+function fmtDate(iso?: string) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? "—" : d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+function fmtDateTime(iso?: string) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? "—" : d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+function str(v: unknown): string { return v == null ? "" : String(v); }
+
+type Tab = "overview" | "users" | "activity" | "positions" | "feedback";
+
+// ─── Reusable chart blocks ───────────────────────────────────────────────────
+function TrendArea({ data, color, label }: { data: api.DayCount[]; color: string; label: string }) {
+  return (
+    <Panel>
+      <SectionTitle>{label}</SectionTitle>
+      <div style={{ height: 200 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
+            <defs>
+              <linearGradient id={`g-${label}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={color} stopOpacity={0.45} />
+                <stop offset="100%" stopColor={color} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.1)" vertical={false} />
+            <XAxis dataKey="date" tick={{ fill: T.t3, fontSize: 10 }} tickFormatter={(d) => String(d).slice(5)} minTickGap={24} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: T.t3, fontSize: 10 }} allowDecimals={false} axisLine={false} tickLine={false} width={34} />
+            <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: T.t2 }} />
+            <Area type="monotone" dataKey="count" stroke={color} strokeWidth={2} fill={`url(#g-${label})`} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </Panel>
+  );
 }
 
-export function AdminPage() {
-  const [summary, setSummary] = useState<api.AdminSummary | null>(null);
-  const [users, setUsers] = useState<Array<Record<string, unknown>>>([]);
-  const [usersLoading, setUsersLoading] = useState(true);
-  const [usersError, setUsersError] = useState("");
-  const [paymentsNote, setPaymentsNote] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [result, setResult] = useState<Record<string, unknown> | null>(null);
-  const [error, setError] = useState("");
-  const [roleRequests, setRoleRequests] = useState<api.RoleRequest[]>([]);
-  const [roleRequestsError, setRoleRequestsError] = useState("");
-  const [coverage, setCoverage] = useState<{ total_positions: number; per_country: api.CoverageCountry[]; top_roles?: Array<{ role: string; count: number }> } | null>(null);
-  const [coverageLoading, setCoverageLoading] = useState(false);
-  const [coverageError, setCoverageError] = useState("");
-  const [openCountry, setOpenCountry] = useState<string | null>(null);
-  const [events, setEvents] = useState<Array<Record<string, unknown>>>([]);
-  const [eventsLoading, setEventsLoading] = useState(false);
-  const [eventsError, setEventsError] = useState("");
-  const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailMsg, setDetailMsg] = useState("");
-
-  const loadRoleRequests = () => {
-    setRoleRequestsError("");
-    api.getAdminRoleRequests()
-      .then((r) => setRoleRequests(r.requests || []))
-      .catch((err) => setRoleRequestsError(messageFromError(err, "Could not load role requests.")));
-  };
-
-  const loadCoverage = () => {
-    setCoverageLoading(true);
-    setCoverageError("");
-    withTimeout(api.getAdminCoverage(), 12000, "Coverage request")
-      .then(setCoverage)
-      .catch((err) => setCoverageError(messageFromError(err, "Coverage is taking too long to load.")))
-      .finally(() => setCoverageLoading(false));
-  };
-
-  useEffect(() => {
-    api.getAdminSummary()
-      .then(setSummary)
-      .catch((err) => setError(messageFromError(err, "Admin access required.")));
-    api.getAdminUsers(500)
-      .then((res) => {
-        setUsers(res.users || []);
-        setUsersError("");
-      })
-      .catch((err) => {
-        const message = messageFromError(err, "Could not load user accounts.");
-        setUsersError(message);
-        if (isAuthError(message)) setError(message);
-      })
-      .finally(() => setUsersLoading(false));
-    api.getAdminPayments()
-      .then((res) => setPaymentsNote(res.note || ""))
-      .catch(() => {});
-    loadRoleRequests();
-    setEventsLoading(true);
-    withTimeout(api.getAdminEvents({ limit: 40 }), 7000, "Activity request")
-      .then((r) => {
-        setEvents(r.events || []);
-        setEventsError("");
-      })
-      .catch((err) => setEventsError(messageFromError(err, "Activity log is taking too long to load.")))
-      .finally(() => setEventsLoading(false));
-  }, []);
-
-  const decide = async (id: string, decision: "approved" | "rejected") => {
-    try {
-      await api.decideRoleRequest(id, decision);
-      loadRoleRequests();
-    } catch (err) {
-      setError((err as Error)?.message || "Could not update request");
-    }
-  };
-
-  const pendingRequests = roleRequests.filter((r) => r.status === "pending");
-  const maxPositions = Math.max(1, ...(coverage?.per_country || []).map((c) => c.positions));
-  const topRoles = coverage?.top_roles || [];
-  const maxRolePositions = Math.max(1, ...topRoles.map((r) => r.count));
-
-  const openUser = async (id: string) => {
-    setDetail(null);
-    setDetailMsg("");
-    setDetailLoading(true);
-    try {
-      const d = await api.getAdminUserDetail(id);
-      setDetail(d);
-    } catch (err) {
-      setDetailMsg((err as Error)?.message || "Could not load user");
-      setDetail({ error: true } as Record<string, unknown>);
-    } finally {
-      setDetailLoading(false);
-    }
-  };
-
-  const detailUserId = () => {
-    const u = (detail?.user as Record<string, unknown>) || {};
-    return String(u.id || "");
-  };
-
-  const triggerReset = async () => {
-    const id = detailUserId();
-    if (!id) return;
-    setDetailMsg("");
-    try {
-      const r = await api.adminTriggerPasswordReset(id);
-      setDetailMsg(`Password-reset email sent to ${r.email}.`);
-    } catch (err) {
-      setDetailMsg((err as Error)?.message || "Could not send reset");
-    }
-  };
-
-  const revoke = async () => {
-    const id = detailUserId();
-    if (!id) return;
-    setDetailMsg("");
-    try {
-      const r = await api.adminRevokeSessions(id);
-      setDetailMsg(`Revoked ${r.revoked} session(s) — user is signed out everywhere.`);
-    } catch (err) {
-      setDetailMsg((err as Error)?.message || "Could not revoke sessions");
-    }
-  };
-
-  const uploadCsv = async (dryRun: boolean) => {
-    if (!file) {
-      setError("Choose a LinkedIn profile CSV first.");
-      return;
-    }
-    setUploading(true);
-    setError("");
-    setResult(null);
-    try {
-      const response = await api.uploadAdminFinalScoutCsv(file, { limit: 500, concurrency: 4, dry_run: dryRun });
-      setResult(response);
-    } catch (err) {
-      setError((err as Error)?.message || "CSV enrichment failed");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  if (error && !summary) {
-    return (
-      <Panel>
-        <div style={{ padding: 28, textAlign: "center", color: T.t2, fontFamily: F.sans }}>
-          <Lock size={26} color={T.red} />
-          <div style={{ color: T.text, fontSize: 18, fontWeight: 800, marginTop: 10 }}>Private admin area</div>
-          <div style={{ fontSize: 13, marginTop: 6 }}>{error}</div>
+function BarBlock({ data, label }: { data: api.LabelCount[]; label: string }) {
+  return (
+    <Panel>
+      <SectionTitle>{label}</SectionTitle>
+      {data.length === 0 ? (
+        <div style={{ color: T.t3, fontSize: 12, fontFamily: F.sans, padding: "24px 0", textAlign: "center" }}>No data yet.</div>
+      ) : (
+        <div style={{ height: Math.max(160, data.length * 34) }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={data} layout="vertical" margin={{ top: 0, right: 12, left: 8, bottom: 0 }}>
+              <XAxis type="number" hide allowDecimals={false} />
+              <YAxis type="category" dataKey="label" tick={{ fill: T.t2, fontSize: 11 }} width={130} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(148,163,184,0.08)" }} />
+              <Bar dataKey="count" radius={[0, 6, 6, 0]} barSize={16}>
+                {data.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
         </div>
-      </Panel>
-    );
-  }
+      )}
+    </Panel>
+  );
+}
+
+// ─── Main ────────────────────────────────────────────────────────────────────
+export function AdminPage() {
+  const [tab, setTab] = useState<Tab>("overview");
+  const [metrics, setMetrics] = useState<api.AdminMetrics | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+
+  const reload = () => {
+    setLoading(true);
+    api.getAdminMetrics(30)
+      .then((m) => { setMetrics(m); setErr(""); })
+      .catch((e) => setErr((e as Error).message || "Could not load metrics."))
+      .finally(() => setLoading(false));
+  };
+  useEffect(reload, []);
+
+  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
+    { id: "overview", label: "Overview", icon: <BarChart3 size={15} /> },
+    { id: "users", label: "Users", icon: <Users size={15} /> },
+    { id: "activity", label: "Activity", icon: <Activity size={15} /> },
+    { id: "positions", label: "Positions", icon: <Briefcase size={15} /> },
+    { id: "feedback", label: "Feedback", icon: <MessageSquare size={15} /> },
+  ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18, fontFamily: F.sans }}>
-      <div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, color: T.red, fontSize: 12, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-          <Shield size={15} /> Private Admin
+    <div style={{ fontFamily: F.sans, color: T.text }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ width: 40, height: 40, borderRadius: 12, background: `${T.accent}22`, display: "inline-flex", alignItems: "center", justifyContent: "center", color: T.accent }}><Shield size={20} /></span>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 850, letterSpacing: "-0.02em" }}>Admin Portal</div>
+            <div style={{ fontSize: 12, color: T.t3 }}>Live view of users, activity, positions & feedback</div>
+          </div>
         </div>
-        <h2 style={{ color: T.text, fontSize: 24, fontWeight: 800, marginTop: 6, marginBottom: 4 }}>Users, access, and email extraction</h2>
-        <p style={{ color: T.t2, fontSize: 13, lineHeight: 1.6, maxWidth: 760 }}>
-          This route is hidden from normal navigation and protected by backend admin authorization.
-        </p>
+        <button onClick={reload} style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 38, padding: "0 14px", borderRadius: 10, border: `1px solid ${T.border}`, background: T.panel, color: T.t2, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: F.sans }}>
+          {loading ? <Loader2 size={14} className="spin" /> : <RefreshCw size={14} />} Refresh
+        </button>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
-        {[
-          { icon: Users, label: "User accounts", value: summary?.users ?? 0 },
-          { icon: WalletCards, label: "Free access", value: "Enabled" },
-          { icon: Mail, label: "FinalScout keys", value: summary?.finalscout.multi_key_configured ? "Configured" : "Missing" },
-          { icon: ListChecks, label: "Pending role requests", value: pendingRequests.length },
-          { icon: Globe, label: "Positions tracked", value: coverageLoading ? "Loading" : coverage?.total_positions ?? "Load" },
-        ].map((item) => (
-          <motion.div key={item.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} style={{ borderRadius: 16, border: `1px solid ${T.border}`, background: T.glass, padding: 16 }}>
-            <item.icon size={17} color={T.red} />
-            <div style={{ color: T.text, fontSize: 24, fontWeight: 900, marginTop: 10 }}>{item.value}</div>
-            <div style={{ color: T.t3, fontSize: 12 }}>{item.label}</div>
-          </motion.div>
+      {err && (
+        <Panel style={{ borderColor: "rgba(239,68,68,0.35)", background: "rgba(239,68,68,0.08)", marginBottom: 16, display: "flex", gap: 10, alignItems: "center" }}>
+          <AlertTriangle size={16} color={T.red} /> <span style={{ fontSize: 13, color: "#FCA5A5" }}>{err}</span>
+        </Panel>
+      )}
+
+      {/* KPI row */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 18 }}>
+        <StatCard icon={<Users size={17} />} label="Total users" value={metrics?.totals.users ?? "—"} sub={`${metrics?.totals.signups_7d ?? 0} in last 7 days`} tone={T.accent} />
+        <StatCard icon={<Briefcase size={17} />} label="Events logged" value={metrics?.totals.events ?? "—"} tone={T.violet} />
+        <StatCard icon={<Star size={17} />} label="Avg rating" value={metrics?.totals.avg_rating ? `${metrics.totals.avg_rating}★` : "—"} sub={`${metrics?.totals.feedback ?? 0} responses`} tone={T.amber} />
+        <StatCard icon={<AlertTriangle size={17} />} label="Errors logged" value={metrics?.totals.errors ?? "—"} tone={T.red} />
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 18, flexWrap: "wrap" }}>
+        {tabs.map((t) => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
+            display: "inline-flex", alignItems: "center", gap: 7, height: 38, padding: "0 15px", borderRadius: 10,
+            border: `1px solid ${tab === t.id ? T.accent : T.border}`, background: tab === t.id ? `${T.accent}22` : "transparent",
+            color: tab === t.id ? T.text : T.t3, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: F.sans,
+          }}>{t.icon} {t.label}</button>
         ))}
       </div>
 
-      {/* Role request approvals */}
-      <Panel>
-        <div style={{ padding: 18, borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 10 }}>
-          <ListChecks size={17} color={T.red} />
-          <div>
-            <div style={{ color: T.text, fontSize: 15, fontWeight: 800 }}>Role requests</div>
-            <div style={{ color: T.t3, fontSize: 12 }}>Approve to flag for coverage, or reject with a note.</div>
-          </div>
-        </div>
-        <div style={{ padding: 18 }}>
-          {roleRequests.length === 0 ? (
-            <div style={{ color: roleRequestsError ? T.red : T.t3, fontSize: 13 }}>{roleRequestsError || "No role requests yet."}</div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {roleRequests.slice(0, 50).map((r) => (
-                <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 12px", borderRadius: 12, border: `1px solid ${T.border}`, background: "rgba(1,17,38,0.4)" }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ color: T.text, fontSize: 13, fontWeight: 700 }}>{r.role}{r.country ? ` · ${r.country}` : ""}</div>
-                    <div style={{ color: T.t3, fontSize: 11 }}>{r.email}{r.note ? ` — ${r.note}` : ""}</div>
-                  </div>
-                  {r.status === "pending" ? (
-                    <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-                      <button onClick={() => decide(r.id, "approved")} style={{ display: "flex", alignItems: "center", gap: 5, height: 32, padding: "0 12px", borderRadius: 8, border: "none", background: "rgba(34,197,94,0.15)", color: "#22c55e", fontSize: 12, fontWeight: 700, cursor: "pointer" }}><Check size={13} /> Approve</button>
-                      <button onClick={() => decide(r.id, "rejected")} style={{ display: "flex", alignItems: "center", gap: 5, height: 32, padding: "0 12px", borderRadius: 8, border: "none", background: "rgba(239,68,68,0.15)", color: "#f87171", fontSize: 12, fontWeight: 700, cursor: "pointer" }}><X size={13} /> Reject</button>
-                    </div>
-                  ) : (
-                    <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 9999, background: r.status === "approved" ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)", color: r.status === "approved" ? "#22c55e" : "#f87171" }}>{r.status}</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </Panel>
+      {tab === "overview" && <OverviewTab metrics={metrics} />}
+      {tab === "users" && <UsersTab />}
+      {tab === "activity" && <ActivityTab />}
+      {tab === "positions" && <PositionsTab />}
+      {tab === "feedback" && <FeedbackTab />}
 
-      {/* Scraper coverage per country */}
-      <Panel>
-        <div style={{ padding: 18, borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Globe size={17} color={T.red} />
-            <div>
-              <div style={{ color: T.text, fontSize: 15, fontWeight: 800 }}>Scraper coverage - positions per country</div>
-              <div style={{ color: T.t3, fontSize: 12 }}>
-                {coverage ? `${coverage.total_positions.toLocaleString()} active positions in the database.` : "Load this only when needed; it is heavier than the user list."}
-              </div>
-            </div>
-          </div>
-          <button
-            onClick={loadCoverage}
-            disabled={coverageLoading}
-            style={{ height: 34, padding: "0 12px", borderRadius: 9, border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.05)", color: T.text, cursor: coverageLoading ? "wait" : "pointer", fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}
-          >
-            <RefreshCw size={13} className={coverageLoading ? "animate-spin" : ""} />
-            {coverage ? "Refresh" : "Load coverage"}
-          </button>
-        </div>
-        <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 8 }}>
-          {coverageLoading && <div style={{ color: T.t2, fontSize: 13 }}>Loading coverage snapshot...</div>}
-          {coverageError && <div style={{ color: T.red, fontSize: 12 }}>{coverageError}. User accounts are still available below.</div>}
-          {!coverageLoading && !coverageError && !coverage && <div style={{ color: T.t3, fontSize: 13 }}>Click Load coverage to fetch position counts without blocking the admin user table.</div>}
-          {coverage && coverage.per_country.length === 0 && <div style={{ color: T.t3, fontSize: 13 }}>No position coverage returned yet.</div>}
-          {topRoles.length > 0 && (
-            <div style={{ padding: 12, borderRadius: 14, border: `1px solid ${T.border}`, background: "rgba(1,17,38,0.35)", marginBottom: 8 }}>
-              <div style={{ color: T.text, fontSize: 13, fontWeight: 800, marginBottom: 8 }}>Top roles collected globally</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                {topRoles.map((r) => (
-                  <div key={r.role} style={{ display: "grid", gridTemplateColumns: "minmax(120px, 210px) 1fr 70px", alignItems: "center", gap: 10 }}>
-                    <div style={{ color: T.t2, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.role}</div>
-                    <div style={{ height: 12, borderRadius: 9999, background: "rgba(148,163,184,0.06)", overflow: "hidden" }}>
-                      <div style={{ width: `${Math.round((r.count / maxRolePositions) * 100)}%`, height: "100%", background: T.grad }} />
-                    </div>
-                    <div style={{ color: T.text, fontSize: 12, fontWeight: 800, textAlign: "right" }}>{r.count.toLocaleString()}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          {coverage && coverage.per_country.length > 0 && (
-            <>
-              <div style={{ color: T.t3, fontSize: 11, marginBottom: 2 }}>Click a country to see the roles the scraper has collected there.</div>
-              {coverage.per_country.map((c) => {
-                const expanded = openCountry === c.country;
-                const roles = c.top_roles || [];
-                return (
-                  <div key={c.country}>
-                    <div
-                      onClick={() => setOpenCountry(expanded ? null : c.country)}
-                      style={{ display: "flex", alignItems: "center", gap: 10, cursor: roles.length ? "pointer" : "default" }}>
-                      <div style={{ width: 150, color: expanded ? T.text : T.t2, fontSize: 12, flexShrink: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontWeight: expanded ? 700 : 400 }}>
-                        {roles.length ? (expanded ? "v " : "> ") : ""}{c.country_name || c.country}
-                      </div>
-                      <div style={{ flex: 1, height: 14, borderRadius: 7, background: "rgba(148,163,184,0.06)", overflow: "hidden" }}>
-                        <div style={{ width: `${Math.round((c.positions / maxPositions) * 100)}%`, height: "100%", background: T.grad }} />
-                      </div>
-                      <div style={{ width: 70, textAlign: "right", color: T.text, fontSize: 12, fontWeight: 700 }}>{c.positions.toLocaleString()}</div>
-                    </div>
-                    {expanded && roles.length > 0 && (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "8px 0 4px 160px" }}>
-                        {roles.map((r) => (
-                          <span key={r.role} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: T.t2, background: "rgba(1,17,38,0.5)", border: `1px solid ${T.border}`, borderRadius: 9999, padding: "3px 10px" }}>
-                            {r.role}
-                            <span style={{ color: T.red, fontWeight: 700 }}>{r.count.toLocaleString()}</span>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </>
-          )}
-        </div>
-      </Panel>
+      <style>{`.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+}
 
-      {false && coverage && coverage.per_country.length > 0 && (
-        <Panel>
-          <div style={{ padding: 18, borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 10 }}>
-            <Globe size={17} color={T.red} />
-            <div>
-              <div style={{ color: T.text, fontSize: 15, fontWeight: 800 }}>Scraper coverage — positions per country</div>
-              <div style={{ color: T.t3, fontSize: 12 }}>{coverage.total_positions.toLocaleString()} active positions in the database.</div>
-            </div>
-          </div>
-          <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ color: T.t3, fontSize: 11, marginBottom: 2 }}>Click a country to see the roles the scraper has collected there.</div>
-            {coverage.per_country.map((c) => {
-              const expanded = openCountry === c.country;
-              const roles = c.top_roles || [];
-              return (
-                <div key={c.country}>
-                  <div
-                    onClick={() => setOpenCountry(expanded ? null : c.country)}
-                    style={{ display: "flex", alignItems: "center", gap: 10, cursor: roles.length ? "pointer" : "default" }}>
-                    <div style={{ width: 150, color: expanded ? T.text : T.t2, fontSize: 12, flexShrink: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontWeight: expanded ? 700 : 400 }}>
-                      {roles.length ? (expanded ? "▾ " : "▸ ") : ""}{c.country}
-                    </div>
-                    <div style={{ flex: 1, height: 14, borderRadius: 7, background: "rgba(148,163,184,0.06)", overflow: "hidden" }}>
-                      <div style={{ width: `${Math.round((c.positions / maxPositions) * 100)}%`, height: "100%", background: T.grad }} />
-                    </div>
-                    <div style={{ width: 70, textAlign: "right", color: T.text, fontSize: 12, fontWeight: 700 }}>{c.positions.toLocaleString()}</div>
-                  </div>
-                  {expanded && roles.length > 0 && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "8px 0 4px 160px" }}>
-                      {roles.map((r) => (
-                        <span key={r.role} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: T.t2, background: "rgba(1,17,38,0.5)", border: `1px solid ${T.border}`, borderRadius: 9999, padding: "3px 10px" }}>
-                          {r.role}
-                          <span style={{ color: T.red, fontWeight: 700 }}>{r.count.toLocaleString()}</span>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </Panel>
-      )}
+// ─── Overview ────────────────────────────────────────────────────────────────
+function OverviewTab({ metrics }: { metrics: api.AdminMetrics | null }) {
+  if (!metrics) return <Panel><div style={{ color: T.t3, fontSize: 13, padding: 20, textAlign: "center" }}>Loading charts…</div></Panel>;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14 }}>
+        <TrendArea data={metrics.signups_series} color={T.accent} label="New signups (per day)" />
+        <TrendArea data={metrics.activity_series} color={T.violet} label="Activity volume (per day)" />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
+        <BarBlock data={metrics.by_plan} label="Users by plan" />
+        <BarBlock data={metrics.by_visa} label="Users by visa status" />
+        <BarBlock data={metrics.by_country} label="Users by country" />
+        <BarBlock data={metrics.by_experience} label="Users by experience" />
+      </div>
+    </div>
+  );
+}
 
-      <Panel>
-        <div style={{ padding: 18, borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 10 }}>
-          <Upload size={17} color={T.red} />
-          <div>
-            <div style={{ color: T.text, fontSize: 15, fontWeight: 800 }}>LinkedIn CSV to email extraction</div>
-            <div style={{ color: T.t3, fontSize: 12 }}>CSV columns: linkedin_url or first_name, last_name, company.</div>
-          </div>
-        </div>
-        <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
-          <input
-            type="file"
-            accept=".csv,text/csv"
-            onChange={(event) => setFile(event.target.files?.[0] || null)}
-            style={{ color: T.t2, fontSize: 13 }}
-          />
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button onClick={() => uploadCsv(true)} disabled={uploading} style={{ height: 38, padding: "0 14px", borderRadius: 10, border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.05)", color: T.text, cursor: uploading ? "wait" : "pointer", fontSize: 12, fontWeight: 800 }}>
-              Dry run
-            </button>
-            <button onClick={() => uploadCsv(false)} disabled={uploading} style={{ height: 38, padding: "0 14px", borderRadius: 10, border: "none", background: T.grad, color: "#fff", cursor: uploading ? "wait" : "pointer", fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center", gap: 8 }}>
-              {uploading && <Loader2 size={14} className="animate-spin" />}
-              Extract emails
-            </button>
-          </div>
-          {error && <div style={{ color: T.red, fontSize: 12 }}>{error}</div>}
-          {result && (
-            <pre style={{ margin: 0, padding: 12, borderRadius: 12, background: "rgba(1,17,38,0.55)", border: `1px solid ${T.border}`, color: T.t2, fontSize: 11, fontFamily: F.mono, overflowX: "auto" }}>
-              {JSON.stringify(result, null, 2)}
-            </pre>
-          )}
-        </div>
-      </Panel>
+// ─── Users ───────────────────────────────────────────────────────────────────
+function UsersTab() {
+  const [users, setUsers] = useState<Array<Record<string, unknown>>>([]);
+  const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState("");
+  const [selected, setSelected] = useState<string | null>(null);
 
-      <Panel>
-        <div style={{ padding: 18, borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 10 }}>
-          <Database size={17} color={T.red} />
-          <div style={{ color: T.text, fontSize: 15, fontWeight: 800 }}>User accounts</div>
+  useEffect(() => {
+    api.getAdminUsers(500).then((r: any) => setUsers(r.users || r || [])).catch(() => setUsers([])).finally(() => setLoading(false));
+  }, []);
+
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return users;
+    return users.filter((u) => `${str(u.first_name)} ${str(u.last_name)} ${str(u.email)} ${str(u.country)}`.toLowerCase().includes(s));
+  }, [users, q]);
+
+  return (
+    <Panel>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+        <SectionTitle>All users ({filtered.length})</SectionTitle>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, height: 38, padding: "0 12px", borderRadius: 10, background: T.panel2, border: `1px solid ${T.border}`, minWidth: 220 }}>
+          <Search size={14} color={T.t3} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, email, country…" style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: T.text, fontSize: 13, fontFamily: F.sans }} />
         </div>
+      </div>
+      {loading ? (
+        <div style={{ color: T.t3, fontSize: 13, padding: 20, textAlign: "center" }}>Loading users…</div>
+      ) : (
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", color: T.t2, fontSize: 12 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
             <thead>
-              <tr style={{ color: T.t3, borderBottom: `1px solid ${T.border}` }}>
-                {["Name", "Email", "Plan", "Visa", "Created"].map((label) => <th key={label} style={{ textAlign: "left", padding: 12, fontWeight: 700 }}>{label}</th>)}
+              <tr style={{ color: T.t3, textAlign: "left" }}>
+                {["Name", "Email", "Plan", "Visa", "Country", "Joined", ""].map((h) => (
+                  <th key={h} style={{ padding: "8px 10px", fontWeight: 600, borderBottom: `1px solid ${T.border}`, whiteSpace: "nowrap" }}>{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {usersLoading && (
-                <tr>
-                  <td colSpan={5} style={{ padding: 16, color: T.t3 }}>Loading user accounts...</td>
-                </tr>
-              )}
-              {!usersLoading && usersError && (
-                <tr>
-                  <td colSpan={5} style={{ padding: 16, color: T.red }}>{usersError}</td>
-                </tr>
-              )}
-              {!usersLoading && !usersError && users.length === 0 && (
-                <tr>
-                  <td colSpan={5} style={{ padding: 16, color: T.t3 }}>No user accounts returned by the backend.</td>
-                </tr>
-              )}
-              {!usersLoading && !usersError && users.slice(0, 100).map((user) => (
-                <tr key={String(user.id)} onClick={() => openUser(String(user.id))}
-                  style={{ borderBottom: `1px solid ${T.border}`, cursor: "pointer" }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(148,163,184,0.04)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
-                  <td style={{ padding: 12, color: T.text }}>{String(user.first_name || "")} {String(user.last_name || "")}</td>
-                  <td style={{ padding: 12 }}>{String(user.email || "")}</td>
-                  <td style={{ padding: 12 }}>{String(user.plan || "Pro")}</td>
-                  <td style={{ padding: 12 }}>{String(user.visa_status || "-")}</td>
-                  <td style={{ padding: 12 }}>{String(user.created_at || "").slice(0, 10)}</td>
+              {filtered.map((u, i) => (
+                <tr key={str(u.id) || i} onClick={() => setSelected(str(u.id))} style={{ cursor: "pointer", background: i % 2 ? "rgba(148,163,184,0.03)" : "transparent" }}>
+                  <td style={{ padding: "9px 10px", color: T.text, fontWeight: 600, whiteSpace: "nowrap" }}>{str(u.first_name)} {str(u.last_name)}</td>
+                  <td style={{ padding: "9px 10px", color: T.t2 }}>{str(u.email)}</td>
+                  <td style={{ padding: "9px 10px", color: T.t2 }}>{str(u.plan) || "—"}</td>
+                  <td style={{ padding: "9px 10px", color: T.t2 }}>{str(u.visa_status) || "—"}</td>
+                  <td style={{ padding: "9px 10px", color: T.t2 }}>{str(u.country) || "—"}</td>
+                  <td style={{ padding: "9px 10px", color: T.t3, whiteSpace: "nowrap" }}>{fmtDate(str(u.created_at))}</td>
+                  <td style={{ padding: "9px 10px", color: T.t3 }}><ChevronRight size={14} /></td>
                 </tr>
               ))}
+              {filtered.length === 0 && <tr><td colSpan={7} style={{ padding: 20, textAlign: "center", color: T.t3 }}>No users match your search.</td></tr>}
             </tbody>
           </table>
         </div>
-      </Panel>
-
-      {/* Activity / audit log */}
-      {(eventsLoading || eventsError || events.length > 0) && (
-        <Panel>
-          <div style={{ padding: 18, borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 10 }}>
-            <Activity size={17} color={T.red} />
-            <div style={{ color: T.text, fontSize: 15, fontWeight: 800 }}>Recent activity</div>
-          </div>
-          <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 8 }}>
-            {eventsLoading && <div style={{ color: T.t2, fontSize: 13 }}>Loading recent activity...</div>}
-            {eventsError && <div style={{ color: T.red, fontSize: 12 }}>{eventsError}. This does not affect user-account loading.</div>}
-            {!eventsLoading && !eventsError && events.slice(0, 40).map((e) => {
-              const level = String(e.level || "info");
-              const dot = level === "error" ? "#f87171" : level === "warning" ? "#3B82F6" : "#22c55e";
-              return (
-                <div key={String(e.id)} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: 9999, background: dot, flexShrink: 0 }} />
-                  <span style={{ color: T.text, fontSize: 12, fontWeight: 600 }}>{String(e.label || e.kind || "Event")}</span>
-                  <span style={{ color: T.t3, fontSize: 11, flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{String(e.email || "")}</span>
-                  <span style={{ color: T.t3, fontSize: 11, flexShrink: 0 }}>{String(e.created_at || "").slice(0, 16).replace("T", " ")}</span>
-                </div>
-              );
-            })}
-          </div>
-        </Panel>
       )}
+      {selected && <UserDrawer userId={selected} onClose={() => setSelected(null)} />}
+    </Panel>
+  );
+}
 
-      {paymentsNote && <div style={{ color: T.t3, fontSize: 12 }}>{paymentsNote}</div>}
+function UserDrawer({ userId, onClose }: { userId: string; onClose: () => void }) {
+  const [detail, setDetail] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [msg, setMsg] = useState("");
 
-      {/* User drill-down modal */}
-      {(detail || detailLoading) && (
-        <div onClick={() => { setDetail(null); setDetailMsg(""); }}
-          style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(1,17,38,0.78)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 24, overflowY: "auto" }}>
-          <div onClick={(e) => e.stopPropagation()}
-            style={{ width: "100%", maxWidth: 720, marginTop: 30, borderRadius: 18, border: `1px solid ${T.border}`, background: "#0a1626", boxShadow: "0 24px 64px rgba(0,0,0,0.5)" }}>
-            <div style={{ padding: 18, borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ color: T.text, fontSize: 16, fontWeight: 800 }}>User detail</div>
-              <button onClick={() => { setDetail(null); setDetailMsg(""); }} style={{ background: "none", border: "none", color: T.t2, cursor: "pointer", fontSize: 18 }}>✕</button>
+  useEffect(() => {
+    setLoading(true);
+    api.getAdminUserDetail(userId).then(setDetail).catch(() => setMsg("Could not load user.")).finally(() => setLoading(false));
+  }, [userId]);
+
+  const user = detail?.user || {};
+  const events: any[] = detail?.events || [];
+  const resumes: any[] = detail?.resumes || [];
+  const prefs = detail?.preferences || {};
+
+  const doReset = async () => { try { await api.adminTriggerPasswordReset(userId); setMsg("Password-reset email sent."); } catch (e) { setMsg((e as Error).message); } };
+  const doRevoke = async () => { try { const r = await api.adminRevokeSessions(userId); setMsg(`Revoked ${r.revoked} session(s).`); } catch (e) { setMsg((e as Error).message); } };
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(2,6,20,0.6)", zIndex: 70, display: "flex", justifyContent: "flex-end" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 460, maxWidth: "100vw", height: "100%", overflowY: "auto", background: "#0D1729", borderLeft: `1px solid ${T.border}`, padding: 22, boxSizing: "border-box" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: T.text }}>User details</div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: T.t3 }}><X size={18} /></button>
+        </div>
+        {loading ? <div style={{ color: T.t3, fontSize: 13 }}>Loading…</div> : (
+          <>
+            <div style={{ fontSize: 18, fontWeight: 800, color: T.text }}>{str(user.first_name)} {str(user.last_name)}</div>
+            <div style={{ fontSize: 13, color: T.t2, marginBottom: 14 }}>{str(user.email)}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
+              {[["Plan", str(user.plan)], ["Visa", str(user.visa_status)], ["Country", str(user.country)], ["Experience", str(user.experience_years)], ["Phone", str(user.phone)], ["Joined", fmtDate(str(user.created_at))]].map(([k, v]) => (
+                <div key={k} style={{ background: T.panel2, border: `1px solid ${T.border}`, borderRadius: 9, padding: "8px 10px" }}>
+                  <div style={{ fontSize: 10, color: T.t3, textTransform: "uppercase", letterSpacing: "0.06em" }}>{k}</div>
+                  <div style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{v || "—"}</div>
+                </div>
+              ))}
             </div>
-            <div style={{ padding: 18 }}>
-              {detailLoading && <div style={{ color: T.t2, fontSize: 13 }}>Loading…</div>}
-              {detail && !detailLoading && !detail.error && (() => {
-                const u = (detail.user as Record<string, unknown>) || {};
-                const agreement = detail.agreement as Record<string, unknown> | null;
-                const resumes = (detail.resumes as Array<Record<string, unknown>>) || [];
-                const userEvents = (detail.events as Array<Record<string, unknown>>) || [];
-                const reqs = (detail.role_requests as Array<Record<string, unknown>>) || [];
-                const Row = ({ k, v }: { k: string; v: React.ReactNode }) => (
-                  <div style={{ display: "flex", gap: 10, padding: "4px 0" }}>
-                    <div style={{ width: 150, color: T.t3, fontSize: 12, flexShrink: 0 }}>{k}</div>
-                    <div style={{ color: T.text, fontSize: 12, wordBreak: "break-word" }}>{v || "—"}</div>
-                  </div>
-                );
-                return (
-                  <div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
-                      <Row k="Name" v={`${u.first_name || ""} ${u.last_name || ""}`} />
-                      <Row k="Email" v={String(u.email || "")} />
-                      <Row k="Phone" v={String(u.phone || "")} />
-                      <Row k="Plan" v={String(u.plan || "")} />
-                      <Row k="Country" v={String(u.country || "")} />
-                      <Row k="Visa" v={`${u.visa_status || ""}${u.visa_status_other ? ` (${u.visa_status_other})` : ""}`} />
-                      <Row k="Experience" v={String(u.experience_years || "")} />
-                      <Row k="Company" v={String(u.current_company || "")} />
-                      <Row k="LinkedIn" v={String(u.linkedin_url || "")} />
-                      <Row k="Access" v={`${u.payment_status || "free_access"}${u.payment_plan ? ` · ${u.payment_plan}` : ""}`} />
-                      <Row k="Email verified" v={u.email_verified ? "Yes" : "No"} />
-                      <Row k="Created" v={String(u.created_at || "").slice(0, 16).replace("T", " ")} />
-                    </div>
 
-                    <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${T.border}` }}>
-                      <div style={{ color: T.t3, fontSize: 11, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Signed agreement</div>
-                      {agreement ? (
-                        <div style={{ color: T.t2, fontSize: 12 }}>
-                          v{String(agreement.version || "")} · {String(agreement.created_at || "").slice(0, 16).replace("T", " ")} · IP {String(agreement.ip_address || "—")} · docs: {((agreement.documents as string[]) || []).join(", ")}
-                        </div>
-                      ) : <div style={{ color: T.t3, fontSize: 12 }}>No agreement on record.</div>}
-                    </div>
+            {Array.isArray(prefs.target_roles) && prefs.target_roles.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 12, color: T.t3, marginBottom: 6, fontWeight: 600 }}>Target positions</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {prefs.target_roles.map((r: string) => <span key={r} style={{ fontSize: 11, padding: "4px 8px", borderRadius: 999, background: `${T.accent}18`, color: "#93C5FD", border: `1px solid ${T.accent}33` }}>{r}</span>)}
+                </div>
+              </div>
+            )}
 
-                    <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${T.border}` }}>
-                      <div style={{ color: T.t3, fontSize: 11, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Resumes ({resumes.length})</div>
-                      {resumes.length ? resumes.map((r) => (
-                        <div key={String(r.id)} style={{ color: T.t2, fontSize: 12 }}>📄 {String(r.name || r.id)} {r.active ? "· active" : ""} {r.score ? `· ATS ${r.score}` : ""}</div>
-                      )) : <div style={{ color: T.t3, fontSize: 12 }}>No resumes.</div>}
-                    </div>
-
-                    {reqs.length > 0 && (
-                      <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${T.border}` }}>
-                        <div style={{ color: T.t3, fontSize: 11, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Role requests</div>
-                        {reqs.map((r) => <div key={String(r.id)} style={{ color: T.t2, fontSize: 12 }}>{String(r.role)} — {String(r.status)}</div>)}
-                      </div>
-                    )}
-
-                    {userEvents.length > 0 && (
-                      <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${T.border}` }}>
-                        <div style={{ color: T.t3, fontSize: 11, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Activity</div>
-                        {userEvents.slice(0, 12).map((e) => (
-                          <div key={String(e.id)} style={{ color: T.t2, fontSize: 12 }}>{String(e.label || e.kind)} · {String(e.created_at || "").slice(0, 16).replace("T", " ")}</div>
-                        ))}
-                      </div>
-                    )}
-
-                    <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${T.border}`, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <button onClick={triggerReset} style={{ height: 36, padding: "0 14px", borderRadius: 9, border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.05)", color: T.text, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Send password reset</button>
-                      <button onClick={revoke} style={{ height: 36, padding: "0 14px", borderRadius: 9, border: "none", background: "rgba(239,68,68,0.15)", color: "#f87171", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Revoke all sessions</button>
-                    </div>
-                    {detailMsg && <div style={{ marginTop: 10, color: "#22c55e", fontSize: 12 }}>{detailMsg}</div>}
-                  </div>
-                );
-              })()}
-              {detail && detail.error && <div style={{ color: T.red, fontSize: 13 }}>{detailMsg || "Could not load user."}</div>}
+            <div style={{ fontSize: 12, color: T.t3, marginBottom: 6, fontWeight: 600 }}>Resumes ({resumes.length})</div>
+            <div style={{ marginBottom: 16 }}>
+              {resumes.length === 0 ? <div style={{ fontSize: 12, color: T.t3 }}>None uploaded.</div> :
+                resumes.map((r: any, i: number) => <div key={i} style={{ fontSize: 12.5, color: T.t2, padding: "4px 0" }}>• {str(r.name) || str(r.filename) || "Resume"} <span style={{ color: T.t3 }}>({fmtDate(str(r.created_at))})</span></div>)}
             </div>
-          </div>
+
+            <div style={{ fontSize: 12, color: T.t3, marginBottom: 6, fontWeight: 600 }}>Recent activity</div>
+            <div style={{ marginBottom: 18, display: "flex", flexDirection: "column", gap: 4, maxHeight: 220, overflowY: "auto" }}>
+              {events.length === 0 ? <div style={{ fontSize: 12, color: T.t3 }}>No activity.</div> :
+                events.slice(0, 30).map((e: any, i: number) => (
+                  <div key={i} style={{ fontSize: 12, color: T.t2, display: "flex", justifyContent: "space-between", gap: 8, padding: "5px 0", borderBottom: `1px solid ${T.border}` }}>
+                    <span>{str(e.label) || str(e.kind)}</span>
+                    <span style={{ color: T.t3, whiteSpace: "nowrap" }}>{fmtDateTime(str(e.created_at))}</span>
+                  </div>
+                ))}
+            </div>
+
+            {msg && <div style={{ fontSize: 12.5, color: "#93C5FD", marginBottom: 10 }}>{msg}</div>}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={doReset} style={{ flex: 1, height: 40, borderRadius: 10, border: `1px solid ${T.border}`, background: T.panel, color: T.t2, fontSize: 12.5, fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: F.sans }}><KeyRound size={14} /> Reset password</button>
+              <button onClick={doRevoke} style={{ flex: 1, height: 40, borderRadius: 10, border: `1px solid rgba(239,68,68,0.35)`, background: "rgba(239,68,68,0.1)", color: "#FCA5A5", fontSize: 12.5, fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: F.sans }}><LogOut size={14} /> Revoke sessions</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Activity ────────────────────────────────────────────────────────────────
+function ActivityTab() {
+  const [events, setEvents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [kind, setKind] = useState("");
+
+  useEffect(() => {
+    setLoading(true);
+    api.getAdminEvents({ limit: 200, kind: kind || undefined }).then((r: any) => setEvents(r.events || [])).catch(() => setEvents([])).finally(() => setLoading(false));
+  }, [kind]);
+
+  const kinds = useMemo(() => Array.from(new Set(events.map((e) => str(e.kind)).filter(Boolean))), [events]);
+  const levelColor = (l: string) => l === "error" ? T.red : l === "warning" ? T.amber : T.accent;
+
+  return (
+    <Panel>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+        <SectionTitle>Activity & audit log</SectionTitle>
+        <select value={kind} onChange={(e) => setKind(e.target.value)} style={{ marginLeft: "auto", height: 36, padding: "0 10px", borderRadius: 9, background: T.panel2, border: `1px solid ${T.border}`, color: T.text, fontSize: 12.5, fontFamily: F.sans }}>
+          <option value="">All event types</option>
+          {kinds.map((k) => <option key={k} value={k}>{k}</option>)}
+        </select>
+      </div>
+      {loading ? <div style={{ color: T.t3, fontSize: 13, padding: 20, textAlign: "center" }}>Loading activity…</div> : (
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          {events.length === 0 && <div style={{ color: T.t3, fontSize: 13, padding: 20, textAlign: "center" }}>No events yet.</div>}
+          {events.map((e, i) => (
+            <div key={str(e.id) || i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 4px", borderBottom: `1px solid ${T.border}` }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: levelColor(str(e.level)), flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{str(e.label) || str(e.kind)}</div>
+                <div style={{ fontSize: 11.5, color: T.t3 }}>{str(e.email) || str(e.user_id) || "system"} · <span style={{ fontFamily: F.mono }}>{str(e.kind)}</span></div>
+              </div>
+              <div style={{ fontSize: 11.5, color: T.t3, whiteSpace: "nowrap" }}>{fmtDateTime(str(e.created_at))}</div>
+            </div>
+          ))}
         </div>
       )}
+    </Panel>
+  );
+}
+
+// ─── Positions ───────────────────────────────────────────────────────────────
+function PositionsTab() {
+  const [cov, setCov] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.getAdminCoverage().then(setCov).catch(() => setCov(null)).finally(() => setLoading(false));
+  }, []);
+
+  const perCountry: any[] = cov?.per_country || [];
+  const chartData: api.LabelCount[] = perCountry.slice(0, 10).map((c) => ({ label: str(c.country || c.country_name), count: Number(c.positions) || 0 }));
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 12 }}>
+        <StatCard icon={<Briefcase size={17} />} label="Total positions" value={loading ? "…" : (cov?.total_positions ?? 0)} tone={T.accent} />
+        <StatCard icon={<Globe size={17} />} label="Countries covered" value={loading ? "…" : perCountry.length} tone={T.cyan} />
+      </div>
+      <BarBlock data={chartData} label="Positions by country (top 10)" />
+      <Panel>
+        <SectionTitle>Roles by country</SectionTitle>
+        {perCountry.length === 0 ? <div style={{ color: T.t3, fontSize: 12, padding: 16, textAlign: "center" }}>No coverage data.</div> :
+          perCountry.map((c: any) => (
+            <div key={str(c.country)} style={{ borderBottom: `1px solid ${T.border}` }}>
+              <div onClick={() => setOpen(open === str(c.country) ? null : str(c.country))} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 4px", cursor: "pointer" }}>
+                <span style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{str(c.country || c.country_name)}</span>
+                <span style={{ fontSize: 12.5, color: T.t2, fontFamily: F.mono }}>{Number(c.positions) || 0} positions <ChevronRight size={13} style={{ verticalAlign: "middle", transform: open === str(c.country) ? "rotate(90deg)" : "none" }} /></span>
+              </div>
+              {open === str(c.country) && Array.isArray(c.top_roles) && (
+                <div style={{ padding: "0 4px 12px", display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {c.top_roles.length === 0 ? <span style={{ fontSize: 12, color: T.t3 }}>No role breakdown.</span> :
+                    c.top_roles.map((r: any, i: number) => <span key={i} style={{ fontSize: 11.5, padding: "4px 9px", borderRadius: 999, background: T.panel2, border: `1px solid ${T.border}`, color: T.t2 }}>{str(r.role)} · {Number(r.count) || 0}</span>)}
+                </div>
+              )}
+            </div>
+          ))}
+      </Panel>
+    </div>
+  );
+}
+
+// ─── Feedback ────────────────────────────────────────────────────────────────
+function FeedbackTab() {
+  const [data, setData] = useState<{ feedback: api.FeedbackItem[]; stats: api.FeedbackStats } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = () => { setLoading(true); api.getAdminFeedback({ limit: 300 }).then(setData).catch(() => setData(null)).finally(() => setLoading(false)); };
+  useEffect(load, []);
+
+  const stats = data?.stats;
+  const distData: api.LabelCount[] = stats ? [5, 4, 3, 2, 1].map((n) => ({ label: `${n}★`, count: stats.distribution[String(n)] || 0 })) : [];
+  const catData: api.LabelCount[] = stats ? Object.entries(stats.by_category).map(([label, count]) => ({ label, count: count as number })) : [];
+
+  const setStatus = async (id: string, s: "new" | "reviewed" | "resolved") => {
+    try { await api.setAdminFeedbackStatus(id, s); load(); } catch { /* ignore */ }
+  };
+  const statusColor = (s: string) => s === "resolved" ? T.green : s === "reviewed" ? T.amber : T.accent;
+
+  if (loading) return <Panel><div style={{ color: T.t3, fontSize: 13, padding: 20, textAlign: "center" }}>Loading feedback…</div></Panel>;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 12 }}>
+        <StatCard icon={<MessageSquare size={17} />} label="Total responses" value={stats?.total ?? 0} tone={T.accent} />
+        <StatCard icon={<Star size={17} />} label="Average rating" value={stats?.average_rating ? `${stats.average_rating}★` : "—"} tone={T.amber} />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px,1fr))", gap: 14 }}>
+        <Panel>
+          <SectionTitle>Rating distribution</SectionTitle>
+          <div style={{ height: 200 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={distData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.1)" vertical={false} />
+                <XAxis dataKey="label" tick={{ fill: T.t3, fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: T.t3, fontSize: 10 }} allowDecimals={false} axisLine={false} tickLine={false} width={28} />
+                <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(148,163,184,0.08)" }} />
+                <Bar dataKey="count" radius={[6, 6, 0, 0]} barSize={34}>
+                  {distData.map((_, i) => <Cell key={i} fill={[T.green, T.green, T.amber, T.red, T.red][i]} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Panel>
+        <Panel>
+          <SectionTitle>By category</SectionTitle>
+          <div style={{ height: 200, display: "flex", alignItems: "center" }}>
+            {catData.length === 0 ? <div style={{ color: T.t3, fontSize: 12, width: "100%", textAlign: "center" }}>No feedback yet.</div> : (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={catData} dataKey="count" nameKey="label" cx="50%" cy="50%" outerRadius={78} label={(e: any) => e.label}>
+                    {catData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+                  </Pie>
+                  <Tooltip contentStyle={tooltipStyle} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </Panel>
+      </div>
+
+      <Panel>
+        <SectionTitle>Latest feedback</SectionTitle>
+        {(data?.feedback || []).length === 0 ? <div style={{ color: T.t3, fontSize: 13, padding: 16, textAlign: "center" }}>No feedback submitted yet.</div> : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {data!.feedback.map((f) => (
+              <div key={f.id} style={{ background: T.panel2, border: `1px solid ${T.border}`, borderRadius: 12, padding: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                  <span style={{ color: T.amber, fontSize: 13 }}>{"★".repeat(f.rating)}<span style={{ color: T.t3 }}>{"★".repeat(Math.max(0, 5 - f.rating))}</span></span>
+                  <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: `${T.accent}18`, color: "#93C5FD", border: `1px solid ${T.accent}33` }}>{f.category}</span>
+                  <span style={{ fontSize: 11.5, color: T.t3 }}>{f.email || f.user_id}</span>
+                  <span style={{ fontSize: 11.5, color: T.t3, marginLeft: "auto" }}>{fmtDateTime(f.created_at)}</span>
+                </div>
+                {f.message && <div style={{ fontSize: 13, color: T.t2, lineHeight: 1.5, marginBottom: 8 }}>{f.message}</div>}
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <span style={{ fontSize: 11, color: statusColor(str(f.status)), fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{f.status || "new"}</span>
+                  <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+                    {(["reviewed", "resolved"] as const).map((s) => (
+                      <button key={s} onClick={() => setStatus(f.id, s)} style={{ height: 28, padding: "0 10px", borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.t2, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: F.sans }}>Mark {s}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
     </div>
   );
 }

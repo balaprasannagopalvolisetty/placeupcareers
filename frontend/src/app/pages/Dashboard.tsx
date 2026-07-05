@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import * as api from "../lib/api";
+import FeedbackWidget from "../components/FeedbackWidget";
 import { ResumePage } from "../components/dashboard/ResumePage";
 import { JobsPage } from "../components/dashboard/JobsPage";
 import { AlertsPage } from "../components/dashboard/AlertsPage";
@@ -724,6 +725,7 @@ export default function Dashboard() {
           </AnimatePresence>
         </div>
       </main>
+      <FeedbackWidget />
     </div>
   );
 }

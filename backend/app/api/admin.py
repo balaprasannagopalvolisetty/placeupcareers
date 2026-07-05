@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from app.config import settings
 from app.db import user_store
+from app.db import feedback_store
 from app.security import current_user_id
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -322,3 +323,105 @@ async def admin_coverage(_: dict = Depends(require_admin_user)):
             per_country.append({"country": name, "positions": count, "top_roles": top_roles})
     per_country.sort(key=lambda r: r["positions"], reverse=True)
     return {"total_positions": total, "per_country": per_country, "top_roles": []}
+
+
+# ─── Aggregated metrics for the Overview dashboard (charts) ───────────
+
+def _day_key(iso: str) -> str:
+    return (iso or "")[:10]  # YYYY-MM-DD
+
+
+@router.get("/metrics")
+async def admin_metrics(days: int = Query(default=30, ge=7, le=180), _: dict = Depends(require_admin_user)):
+    """Everything the Overview dashboard charts need, computed from the user
+    store and the audit-event log. All best-effort and read-only."""
+    users = user_store.list_users(limit=5000)
+    total_users = len(users)
+
+    plan_counts: dict[str, int] = {}
+    visa_counts: dict[str, int] = {}
+    country_counts: dict[str, int] = {}
+    experience_counts: dict[str, int] = {}
+    for u in users:
+        plan_counts[str(u.get("plan") or "Unknown")] = plan_counts.get(str(u.get("plan") or "Unknown"), 0) + 1
+        visa = str(u.get("visa_status") or "Not set")
+        visa_counts[visa] = visa_counts.get(visa, 0) + 1
+        country = str(u.get("country") or "Unknown")
+        country_counts[country] = country_counts.get(country, 0) + 1
+        exp = str(u.get("experience_years") or "Not set")
+        experience_counts[exp] = experience_counts.get(exp, 0) + 1
+
+    # Signups per day for the last `days` days (fill gaps with 0).
+    from datetime import date, timedelta
+    today = date.today()
+    buckets = {(today - timedelta(days=i)).isoformat(): 0 for i in range(days)}
+    for u in users:
+        dk = _day_key(str(u.get("created_at") or ""))
+        if dk in buckets:
+            buckets[dk] += 1
+    signups_series = [{"date": d, "count": buckets[d]} for d in sorted(buckets.keys())]
+
+    # Recent activity volume per day + per kind, from the event log.
+    events = user_store.list_events(limit=1000)
+    ev_by_day = {(today - timedelta(days=i)).isoformat(): 0 for i in range(days)}
+    ev_by_kind: dict[str, int] = {}
+    errors = 0
+    for e in events:
+        dk = _day_key(str(e.get("created_at") or ""))
+        if dk in ev_by_day:
+            ev_by_day[dk] += 1
+        k = str(e.get("kind") or "other")
+        ev_by_kind[k] = ev_by_kind.get(k, 0) + 1
+        if str(e.get("level") or "") == "error":
+            errors += 1
+    activity_series = [{"date": d, "count": ev_by_day[d]} for d in sorted(ev_by_day.keys())]
+
+    def _top(d: dict[str, int], n: int = 8) -> list[dict]:
+        return [{"label": k, "count": v} for k, v in sorted(d.items(), key=lambda kv: kv[1], reverse=True)[:n]]
+
+    fb = feedback_store.feedback_stats()
+
+    return {
+        "totals": {
+            "users": total_users,
+            "events": len(events),
+            "errors": errors,
+            "feedback": fb["total"],
+            "avg_rating": fb["average_rating"],
+            "signups_7d": sum(b["count"] for b in signups_series[-7:]),
+        },
+        "signups_series": signups_series,
+        "activity_series": activity_series,
+        "by_plan": _top(plan_counts),
+        "by_visa": _top(visa_counts),
+        "by_country": _top(country_counts),
+        "by_experience": _top(experience_counts),
+        "by_event_kind": _top(ev_by_kind, 10),
+        "feedback": fb,
+    }
+
+
+# ─── User feedback (admin view) ──────────────────────────────────────
+
+@router.get("/feedback")
+async def admin_feedback(
+    limit: int = Query(default=300, ge=1, le=1000),
+    category: Optional[str] = Query(default=None),
+    _: dict = Depends(require_admin_user),
+):
+    return {
+        "feedback": feedback_store.list_feedback(limit=limit, category=category),
+        "stats": feedback_store.feedback_stats(),
+    }
+
+
+class FeedbackStatusBody(BaseModel):
+    status: str
+
+
+@router.post("/feedback/{feedback_id}/status")
+async def admin_set_feedback_status(feedback_id: str, body: FeedbackStatusBody, _: dict = Depends(require_admin_user)):
+    updated = feedback_store.set_feedback_status(feedback_id, body.status)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Feedback not found or invalid status")
+    return updated

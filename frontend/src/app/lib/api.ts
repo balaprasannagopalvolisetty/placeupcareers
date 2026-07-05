@@ -1235,3 +1235,58 @@ export interface CoverageCountry {
 export async function getAdminCoverage() {
   return request<{ total_positions: number; per_country: CoverageCountry[]; top_roles?: Array<{ role: string; count: number }> }>("/api/admin/coverage");
 }
+
+// ─── Admin: aggregated metrics for the Overview dashboard ───
+export interface LabelCount { label: string; count: number }
+export interface DayCount { date: string; count: number }
+export interface FeedbackStats {
+  total: number;
+  average_rating: number;
+  distribution: Record<string, number>;
+  by_category: Record<string, number>;
+}
+export interface AdminMetrics {
+  totals: { users: number; events: number; errors: number; feedback: number; avg_rating: number; signups_7d: number };
+  signups_series: DayCount[];
+  activity_series: DayCount[];
+  by_plan: LabelCount[];
+  by_visa: LabelCount[];
+  by_country: LabelCount[];
+  by_experience: LabelCount[];
+  by_event_kind: LabelCount[];
+  feedback: FeedbackStats;
+}
+export async function getAdminMetrics(days = 30) {
+  return request<AdminMetrics>(`/api/admin/metrics?days=${days}`);
+}
+
+// ─── Feedback (user submit + admin read) ───
+export interface FeedbackItem {
+  id: string;
+  user_id: string;
+  email?: string;
+  rating: number;
+  category: string;
+  message?: string;
+  page?: string;
+  status?: string;
+  created_at?: string;
+}
+export async function submitFeedback(payload: { rating: number; category?: string; message?: string; page?: string }) {
+  return request<{ ok: boolean; message: string; id: string }>("/api/feedback", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+export async function getAdminFeedback(params: { limit?: number; category?: string } = {}) {
+  const q = new URLSearchParams();
+  if (params.limit) q.append("limit", String(params.limit));
+  if (params.category) q.append("category", params.category);
+  return request<{ feedback: FeedbackItem[]; stats: FeedbackStats }>(`/api/admin/feedback?${q.toString()}`);
+}
+export async function setAdminFeedbackStatus(id: string, status: "new" | "reviewed" | "resolved") {
+  return request<FeedbackItem>(`/api/admin/feedback/${id}/status`, {
+    method: "POST",
+    body: JSON.stringify({ status }),
+  });
+}
