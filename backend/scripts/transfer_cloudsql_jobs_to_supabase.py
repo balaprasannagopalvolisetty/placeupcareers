@@ -262,6 +262,10 @@ def main() -> int:
     args = parser.parse_args()
 
     with psycopg.connect(source_conninfo()) as src, psycopg.connect(target_conninfo(), connect_timeout=30) as dst:
+        for conn in (src, dst):
+            conn.execute("set statement_timeout = 0")
+            conn.execute("set idle_in_transaction_session_timeout = 0")
+            conn.commit()
         if args.verify_only:
             return 0 if verify_counts(src, dst, TABLES) else 1
         create_tables(src, dst, drop=not args.no_drop)
