@@ -92,6 +92,25 @@ def target_conninfo() -> str:
     return _normalize_url(url)
 
 
+def connect_with_retry(label: str, conninfo: str, *, attempts: int = 8) -> psycopg.Connection:
+    delay = 60
+    for attempt in range(1, attempts + 1):
+        try:
+            conn = psycopg.connect(conninfo, connect_timeout=30)
+            print(f"{label} connection OK", flush=True)
+            return conn
+        except Exception as exc:
+            if attempt == attempts:
+                raise
+            print(
+                f"{label} connection failed on attempt {attempt}/{attempts}: "
+                f"{type(exc).__name__}: {str(exc)[:220]}",
+                flush=True,
+            )
+            print(f"Waiting {delay}s before retry...", flush=True)
+            time.sleep(delay)
+
+
 def qname(table: str) -> sql.Composed:
     return sql.SQL("public.{}").format(sql.Identifier(table))
 
@@ -307,7 +326,9 @@ def main() -> int:
     parser.add_argument("--chunk-size", type=int, default=1000, help="Rows copied per committed COPY chunk.")
     args = parser.parse_args()
 
-    with psycopg.connect(source_conninfo()) as src, psycopg.connect(target_conninfo(), connect_timeout=30) as dst:
+    with connect_with_retry("Cloud SQL", source_conninfo(), attempts=3) as src, connect_with_retry(
+        "Supabase", target_conninfo(), attempts=8
+    ) as dst:
         for conn in (src, dst):
             conn.execute("set statement_timeout = 0")
             conn.execute("set idle_in_transaction_session_timeout = 0")
