@@ -31,6 +31,12 @@ PROJECT_ID = "steel-shine-492401-u6"
 SOURCE_SECRET = "DATABASE_URL"
 TARGET_SECRET = "DATABASE_URL_SUPABASE"
 TABLES = ("companies", "jobs", "silver_posts", "master_jobs")
+PRIMARY_KEYS = {
+    "companies": "id",
+    "jobs": "id",
+    "silver_posts": "job_id",
+    "master_jobs": "id",
+}
 
 
 @dataclass(frozen=True)
@@ -193,31 +199,70 @@ def create_tables(src: psycopg.Connection, dst: psycopg.Connection, *, drop: boo
     dst.commit()
 
 
-def copy_table(src: psycopg.Connection, dst: psycopg.Connection, table: str) -> int:
+def copy_table(src: psycopg.Connection, dst: psycopg.Connection, table: str, *, chunk_size: int) -> int:
     columns = fetch_columns(src, table)
     col_list = sql.SQL(", ").join(sql.Identifier(c.name) for c in columns)
-    copy_out = sql.SQL("copy {} ({}) to stdout with (format csv)").format(qname(table), col_list)
     copy_in = sql.SQL("copy {} ({}) from stdin with (format csv)").format(qname(table), col_list)
+    pk = PRIMARY_KEYS[table]
     with src.cursor() as scur:
         scur.execute(sql.SQL("select count(*) from {}").format(qname(table)))
         expected = int(scur.fetchone()[0])
 
     print(f"Copying public.{table}: {expected:,} rows ...", flush=True)
     start = time.monotonic()
+    copied = 0
     bytes_written = 0
-    with src.cursor().copy(copy_out) as source_copy:
-        with dst.cursor().copy(copy_in) as target_copy:
-            for chunk in source_copy:
-                bytes_written += len(chunk)
-                target_copy.write(chunk)
-    dst.commit()
+    last_pk = None
+    while copied < expected:
+        where = sql.SQL("")
+        if last_pk is not None:
+            where = sql.SQL("where {} > {}").format(sql.Identifier(pk), sql.Literal(last_pk))
+        pk_query = sql.SQL("select {} from {} {} order by {} limit {}").format(
+            sql.Identifier(pk),
+            qname(table),
+            where,
+            sql.Identifier(pk),
+            sql.Literal(chunk_size),
+        )
+        with src.cursor() as scur:
+            scur.execute(pk_query)
+            ids = [row[0] for row in scur.fetchall()]
+        if not ids:
+            break
+        upper_pk = ids[-1]
+        chunk_where = sql.SQL("where {} <= {}").format(sql.Identifier(pk), sql.Literal(upper_pk))
+        if last_pk is not None:
+            chunk_where = sql.SQL("where {} > {} and {} <= {}").format(
+                sql.Identifier(pk),
+                sql.Literal(last_pk),
+                sql.Identifier(pk),
+                sql.Literal(upper_pk),
+            )
+        copy_out = sql.SQL(
+            "copy (select {} from {} {} order by {}) to stdout with (format csv)"
+        ).format(col_list, qname(table), chunk_where, sql.Identifier(pk))
+        chunk_bytes = 0
+        with src.cursor().copy(copy_out) as source_copy:
+            with dst.cursor().copy(copy_in) as target_copy:
+                for chunk in source_copy:
+                    chunk_bytes += len(chunk)
+                    target_copy.write(chunk)
+        dst.commit()
+        copied += len(ids)
+        bytes_written += chunk_bytes
+        last_pk = upper_pk
+        print(
+            f"  public.{table}: {copied:,}/{expected:,} rows "
+            f"({bytes_written / (1024 * 1024):,.1f} MiB CSV)",
+            flush=True,
+        )
     elapsed = max(0.1, time.monotonic() - start)
     print(
-        f"Copied public.{table}: {expected:,} rows, "
+        f"Copied public.{table}: {copied:,} rows, "
         f"{bytes_written / (1024 * 1024):,.1f} MiB CSV in {elapsed / 60:,.1f} min",
         flush=True,
     )
-    return expected
+    return copied
 
 
 def add_constraints_and_indexes(src: psycopg.Connection, dst: psycopg.Connection) -> None:
@@ -259,6 +304,7 @@ def main() -> int:
     parser.add_argument("--no-drop", action="store_true", help="Do not drop/recreate target tables first.")
     parser.add_argument("--schema-only", action="store_true", help="Create target tables only.")
     parser.add_argument("--verify-only", action="store_true", help="Only compare row counts.")
+    parser.add_argument("--chunk-size", type=int, default=1000, help="Rows copied per committed COPY chunk.")
     args = parser.parse_args()
 
     with psycopg.connect(source_conninfo()) as src, psycopg.connect(target_conninfo(), connect_timeout=30) as dst:
@@ -272,7 +318,7 @@ def main() -> int:
         if args.schema_only:
             return 0
         for table in TABLES:
-            copy_table(src, dst, table)
+            copy_table(src, dst, table, chunk_size=args.chunk_size)
         add_constraints_and_indexes(src, dst)
         return 0 if verify_counts(src, dst, TABLES) else 1
 
