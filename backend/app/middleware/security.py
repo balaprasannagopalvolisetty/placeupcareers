@@ -421,6 +421,47 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class ServiceOnlyGateMiddleware(BaseHTTPMiddleware):
+    """Application-server trust gate (SERVER_ROLE=app).
+
+    The application server (32-country job pipelines) must never serve the
+    public. Every request — regardless of path — is refused unless it
+    carries a short-lived service token minted by the WEB server via
+    zero_trust.create_service_token(). Health probes stay open so the
+    hosting platform can check liveness.
+
+    Combined with platform-level ingress restrictions this means:
+      client -> web server (verified user JWT) -> app server (service token)
+    and nothing else reaches the app server, exactly deny-by-default.
+    """
+
+    _OPEN_PATHS = {"/", "/api/health"}
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        path = request.url.path.rstrip("/") or "/"
+        if path in self._OPEN_PATHS or request.method.upper() in {"OPTIONS", "HEAD"}:
+            return await call_next(request)
+
+        authorization = request.headers.get("authorization", "")
+        token = ""
+        if authorization.lower().startswith("bearer "):
+            token = authorization.split(" ", 1)[1].strip()
+
+        from app.zero_trust import principal_from_service_token
+
+        principal = principal_from_service_token(token) if token else None
+        if principal is None or principal.kind != "service":
+            ip = _client_ip(request)
+            log.warning(
+                "app-server gate refused non-service request: path=%s ip=%s", path, ip
+            )
+            ban_tracker.record_failure(ip)
+            return denial_response(status_code=403)
+
+        request.state.service_principal = principal
+        return await call_next(request)
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Apply hardened response headers to every request."""
 

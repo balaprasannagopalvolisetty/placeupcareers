@@ -195,6 +195,21 @@ class Settings(BaseSettings):
     # tuned; set TAILOR_FEATURE_ENABLED=true in the service env to re-open.
     tailor_feature_enabled: bool = Field(default=False)
 
+    # --- Server topology (web/app split) ---
+    server_role: str = Field(
+        default="web",
+        description="'web' = public API for verified users (behind Cloudflare). "
+                    "'app' = internal application server (32-country job pipelines); "
+                    "accepts ONLY requests bearing a service token minted by the "
+                    "web server (zero_trust.create_service_token).",
+    )
+    app_server_url: str = Field(
+        default="",
+        description="Base URL of the internal application server, used by the "
+                    "web server to forward pipeline/admin work (e.g. "
+                    "https://placeup-app-xxxx.a.run.app). Empty = calls disabled.",
+    )
+
     # --- Database / Firebase / GCP ---
     database_backend: str = Field(default="postgres")
     database_url: str = Field(
@@ -213,7 +228,9 @@ class Settings(BaseSettings):
     gcp_project_id: Optional[str] = Field(default=None)
     user_database_backend: str = Field(
         default="firestore",
-        description="User/profile store backend. Use firestore in production.",
+        description="User/profile store backend. Hybrid production keeps "
+                    "USER_DATABASE_BACKEND=firestore; 'postgres' is retained "
+                    "only as an explicit migration/fallback path.",
     )
     user_firestore_project_id: Optional[str] = Field(
         default=None,

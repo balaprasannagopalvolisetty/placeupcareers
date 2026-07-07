@@ -116,7 +116,7 @@ function HeroSection() {
   const stats = [
     { val: jobsLabel, label: "Live roles" },
     { val: liveCategories ? String(liveCategories) : "10", label: "Categories" },
-    { val: "25", label: "Countries" },
+    { val: "30+", label: "Countries" },
     { val: "6hr", label: "Refresh" },
   ];
 
@@ -136,7 +136,7 @@ function HeroSection() {
           }}>
             <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#22C55E", boxShadow: "0 0 0 3px rgba(34,197,94,0.18)" }} />
             <span style={{ fontSize: 12.5, fontWeight: 600, color: T.accent, fontFamily: F.sans }}>
-              Visa-friendly roles in 25 countries, refreshed every 6 hours
+              Visa-friendly roles in 30+ countries, refreshed every 6 hours
             </span>
           </div>
         </Reveal>
@@ -160,7 +160,7 @@ function HeroSection() {
             fontSize: 18, lineHeight: 1.7, color: T.t2, fontFamily: F.sans,
             maxWidth: 620, margin: "0 auto 36px",
           }}>
-            Freshly posted, visa-friendly roles across 25 countries, including H-1B, EU Blue Card,
+            Freshly posted, visa-friendly roles across 30+ countries, including H-1B, EU Blue Card,
             Skilled Worker, and Employment Pass. Every job is scored against your resume in real time,
             so you apply only where you can actually get hired and sponsored.
           </p>
@@ -221,7 +221,7 @@ const steps = [
   },
   {
     icon: Search, step: "02", title: "We find visa-friendly jobs",
-    desc: "Our pipeline collects fresh postings from official company sources across 25 countries and screens each one for sponsorship signals.",
+    desc: "Our pipeline collects fresh postings from official company sources across 30+ countries and screens each one for sponsorship signals.",
   },
   {
     icon: Sparkles, step: "03", title: "Every job is scored for you",

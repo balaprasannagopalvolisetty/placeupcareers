@@ -1032,7 +1032,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               {[
-                { icon: Globe2, label: "Countries", value: targetCountries.length || 25, color: T.blue },
+                { icon: Globe2, label: "Countries", value: targetCountries.length || "30+", color: T.blue },
                 { icon: Route, label: "Visa routes", value: visaPrograms.length || 58, color: T.violet },
                 { icon: Building2, label: savedRoleMode ? "Global roles" : "Open roles", value: globalOpenPositionsCount, color: "#86EFAC" },
                 { icon: Languages, label: "English signals", value: "Active", color: T.fuchsia },

@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.config import settings
-from app.middleware import AuditLogMiddleware, RateLimitMiddleware, RequestSizeLimitMiddleware, RouteAccessMiddleware, SecurityHeadersMiddleware
+from app.middleware import AuditLogMiddleware, RateLimitMiddleware, RequestSizeLimitMiddleware, RouteAccessMiddleware, SecurityHeadersMiddleware, ServiceOnlyGateMiddleware
 from app.middleware.logging import (
     AccessLogMiddleware,
     RequestIdMiddleware,
@@ -133,6 +133,13 @@ app.add_middleware(
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(AuditLogMiddleware)
 app.add_middleware(RouteAccessMiddleware)
+# Application-server trust gate: when this instance runs as the internal
+# application server (SERVER_ROLE=app), refuse every request that does not
+# carry a service token minted by the web server. Registered after
+# RouteAccess so it runs BEFORE it (outermost of the auth layers) — the
+# public-route allowlist never applies on the app server.
+if settings.server_role == "app":
+    app.add_middleware(ServiceOnlyGateMiddleware)
 app.add_middleware(RequestSizeLimitMiddleware)
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(AccessLogMiddleware)

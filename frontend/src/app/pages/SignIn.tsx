@@ -85,7 +85,7 @@ function StyledInput({
 const VALUE_POINTS = [
   { icon: Target, text: "Every job scored against your resume in real time" },
   { icon: ShieldCheck, text: "Visa sponsorship signals on every listing" },
-  { icon: Globe, text: "Fresh roles from 25 countries, refreshed every 6 hours" },
+  { icon: Globe, text: "Fresh roles from 30+ countries, refreshed every 6 hours" },
   { icon: Check, text: "Application tracking and smart daily alerts" },
 ];
 
