@@ -83,6 +83,7 @@ backend/data/
 # ─── Postgres / Docker dev volumes ───────────────────────────
 backend/postgres-data/
 postgres-data/
+supabase/.temp/
 *.sqlite
 *.sqlite3
 *.db-journal
