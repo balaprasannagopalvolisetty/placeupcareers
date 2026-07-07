@@ -10,10 +10,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from app.config import settings
-
-if settings.user_database_backend != "postgres":
-    from app.db.firestore_user_store import _client
+from app.db.firestore_user_store import _client
 
 _COLLECTION = "user_feedback"
 
@@ -93,15 +90,3 @@ def set_feedback_status(feedback_id: str, status: str) -> Optional[dict]:
         return None
     ref.update({"status": status, "updated_at": _now_iso()})
     return ref.get().to_dict()
-
-
-# ─── Supabase/Postgres backend override ──────────────────────────────
-# When USER_DATABASE_BACKEND=postgres the Firestore implementations above
-# are replaced by the Postgres ones (same signatures, same return shapes).
-if settings.user_database_backend == "postgres":
-    from app.db.postgres_user_store import (  # noqa: F811, E402
-        create_feedback,
-        feedback_stats,
-        list_feedback,
-        set_feedback_status,
-    )

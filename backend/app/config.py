@@ -228,9 +228,8 @@ class Settings(BaseSettings):
     gcp_project_id: Optional[str] = Field(default=None)
     user_database_backend: str = Field(
         default="firestore",
-        description="User/profile store backend. Hybrid production keeps "
-                    "USER_DATABASE_BACKEND=firestore; 'postgres' is retained "
-                    "only as an explicit migration/fallback path.",
+        description="User/profile store backend. Production keeps "
+                    "USER_DATABASE_BACKEND=firestore on Google Cloud.",
     )
     user_firestore_project_id: Optional[str] = Field(
         default=None,

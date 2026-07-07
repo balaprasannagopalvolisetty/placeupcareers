@@ -75,8 +75,12 @@ async def fetch_all(
     # Direct ATS / career-site feed via Apify (full JD, real apply links, no
     # aggregator duplicates). Needs APIFY_TOKEN; no-op otherwise.
     if "career_site_feed" in enabled:
+        try:
+            career_site_feed_limit = max(1, int(os.getenv("CAREER_SITE_FEED_LIMIT", "1200")))
+        except ValueError:
+            career_site_feed_limit = 1200
         tasks.append(("career_site_feed", asyncio.create_task(
-            career_site_feed.fetch(queries, limit=400)
+            career_site_feed.fetch(queries, limit=career_site_feed_limit)
         )))
 
     async def _labeled(label: str, task: asyncio.Task[list[NormalizedJob]]) -> tuple[str, list[NormalizedJob], Exception | None]:

@@ -155,13 +155,25 @@ _last_search_at = 0.0
 _DOMAIN_CAREERS_PATHS = (
     "/careers",
     "/careers/",
+    "/careers/search",
+    "/careers/jobs",
     "/jobs",
     "/jobs/",
+    "/jobs/search",
     "/en/careers",
+    "/en/careers/jobs",
+    "/en/jobs",
     "/en_us/careers",
+    "/en-us/careers",
+    "/en-us/jobs",
     "/company/careers",
+    "/company/jobs",
+    "/about/careers",
+    "/join",
     "/join-us",
     "/work-with-us",
+    "/recruiting/jobs",
+    "/job-openings",
 )
 
 

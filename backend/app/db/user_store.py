@@ -3,22 +3,15 @@ PlaceUp Career — User & related data store.
 
 Backend is selected by USER_DATABASE_BACKEND:
 
-  * ``firestore`` - Firebase/Google Cloud Firestore (hybrid production:
+  * ``firestore`` - Firebase/Google Cloud Firestore (production:
     users, sessions, resumes, preferences, alerts).
-  * ``postgres`` - optional Supabase/PostgreSQL migration/fallback path.
-    Uses the same DATABASE_URL as the jobs store when explicitly enabled.
 
-Both implementations expose the identical function set, so every
+This module re-exports the Firestore implementation so every
 ``from app.db import user_store`` call site works unchanged.
 """
 from __future__ import annotations
 
-from app.config import settings
-
-if settings.user_database_backend == "postgres":
-    from app.db import postgres_user_store as _impl
-else:
-    from app.db import firestore_user_store as _impl
+from app.db import firestore_user_store as _impl
 
 consume_email_verification = _impl.consume_email_verification
 consume_password_reset = _impl.consume_password_reset

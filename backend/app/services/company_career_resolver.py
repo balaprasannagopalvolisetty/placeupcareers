@@ -6,8 +6,8 @@ the employer's own careers site so the "Apply on Company Website" button sends
 the candidate to the source — and so we can pull a complete, first-party JD.
 
 Resolution order:
-    1. Probe public ATS board APIs (Greenhouse, Lever, Ashby, SmartRecruiters,
-       Recruitee, Workable) using slug candidates derived from the company name.
+    1. Probe public ATS board APIs using slug candidates derived from the
+       company name.
        If a board exists, fuzzy-match the job title (+ location bonus).
     2. Fall back to the company's corporate domain (curated sponsor map first,
        then conservative guess) and probe standard careers paths.
@@ -35,10 +35,43 @@ from app.services.sponsor_domains import best_domain, is_safe_domain
 logger = logging.getLogger(__name__)
 
 # ATS platforms with cheap public JSON probes (board token = company slug).
-PROBE_ATS = ("greenhouse", "lever", "ashby", "smartrecruiters", "recruitee", "workable")
+PROBE_ATS = (
+    "greenhouse",
+    "lever",
+    "ashby",
+    "smartrecruiters",
+    "recruitee",
+    "workable",
+    "personio",
+    "teamtailor",
+    "jazzhr",
+    "rippling",
+    "bamboohr",
+)
 
 # Common careers paths to probe on the corporate domain, in order.
-CAREERS_PATHS = ("/careers", "/careers/", "/jobs", "/en/careers", "/company/careers", "/join-us")
+CAREERS_PATHS = (
+    "/careers",
+    "/careers/",
+    "/careers/search",
+    "/careers/jobs",
+    "/jobs",
+    "/jobs/",
+    "/jobs/search",
+    "/en/careers",
+    "/en/careers/jobs",
+    "/en/jobs",
+    "/en-us/careers",
+    "/en-us/jobs",
+    "/company/careers",
+    "/company/jobs",
+    "/about/careers",
+    "/join",
+    "/join-us",
+    "/work-with-us",
+    "/recruiting/jobs",
+    "/job-openings",
+)
 
 TITLE_MATCH_THRESHOLD = 0.78
 CACHE_TTL_SECONDS = 6 * 3600

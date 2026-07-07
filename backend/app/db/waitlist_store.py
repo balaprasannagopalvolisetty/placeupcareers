@@ -12,10 +12,7 @@ import hashlib
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from app.config import settings
-
-if settings.user_database_backend != "postgres":
-    from app.db.firestore_user_store import _client
+from app.db.firestore_user_store import _client
 
 _COLLECTION = "waitlist"
 
@@ -74,14 +71,3 @@ def list_waitlist(limit: int = 1000) -> list[dict]:
 
 def count_waitlist() -> int:
     return sum(1 for _ in _client().collection(_COLLECTION).stream())
-
-
-# ─── Supabase/Postgres backend override ──────────────────────────────
-# When USER_DATABASE_BACKEND=postgres the Firestore implementations above
-# are replaced by the Postgres ones (same signatures, same return shapes).
-if settings.user_database_backend == "postgres":
-    from app.db.postgres_user_store import (  # noqa: F811, E402
-        add_waitlist_entry,
-        count_waitlist,
-        list_waitlist,
-    )

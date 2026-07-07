@@ -32,7 +32,7 @@ from app.utils.terminal_table import render_table
 logger = logging.getLogger(__name__)
 
 DIRECT_ATS_CONNECTOR_SOURCES = (
-    "greenhouse~lever~ashby~smartrecruiters~remoteok~remotive~jobicy"
+    "greenhouse~lever~ashby~smartrecruiters~career_site_feed~remoteok~remotive~jobicy"
 )
 
 # Public/API passes must cover every taxonomy role, not just USAJobs. Keep the
@@ -82,9 +82,9 @@ try:
 except ValueError:
     RUN_BUDGET_SECONDS = 0
 try:
-    PUBLIC_MAX_BATCHES_PER_RUN = max(0, int(os.getenv("SCRAPER_PUBLIC_MAX_BATCHES_PER_RUN", "12")))
+    PUBLIC_MAX_BATCHES_PER_RUN = max(0, int(os.getenv("SCRAPER_PUBLIC_MAX_BATCHES_PER_RUN", "0")))
 except ValueError:
-    PUBLIC_MAX_BATCHES_PER_RUN = 12
+    PUBLIC_MAX_BATCHES_PER_RUN = 0
 try:
     PUBLIC_BATCH_OFFSET = max(0, int(os.getenv("SCRAPER_PUBLIC_BATCH_OFFSET", "0")))
 except ValueError:
