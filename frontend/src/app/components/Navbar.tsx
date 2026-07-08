@@ -18,6 +18,7 @@ const FONT = "'Plus Jakarta Sans', sans-serif";
 const navItems = [
   { label: "How It Works", id: "how-it-works" },
   { label: "Features",     id: "features" },
+  { label: "Pricing",      id: "pricing" },
   { label: "Contact Us",   id: "contact" },
 ];
 
