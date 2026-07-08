@@ -43,6 +43,16 @@ const T = {
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 
 // ─── Helpers ───
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    const timer = window.setTimeout(() => resolve(fallback), ms);
+    promise.then(
+      (value) => { window.clearTimeout(timer); resolve(value); },
+      () => { window.clearTimeout(timer); resolve(fallback); },
+    );
+  });
+}
+
 function useViewportFlags() {
   const getWidth = () => (typeof window === "undefined" ? 1280 : window.innerWidth);
   const [width, setWidth] = useState(getWidth);
@@ -254,13 +264,13 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
     let active = true;
     setSummaryLoading(true);
     Promise.allSettled([
-      api.getDashboardSummary(),
-      api.getResumeList(),
-      api.getUserApplications(),
+      withTimeout(api.getDashboardSummary(), 6500, null),
+      withTimeout(api.getResumeList(), 6500, []),
+      withTimeout(api.getUserApplications(), 6500, []),
       // Fourth source: the parsed-active-resume endpoint. It reads the same
       // resume the Jobs page uses, so even if the summary/list calls are slow
       // or fail, the ATS score and "has resume" state still resolve correctly.
-      api.getParsedActiveResume().catch(() => null),
+      withTimeout(api.getParsedActiveResume(), 6500, null),
     ])
       .then(([summaryResult, resumesResult, applicationsResult, parsedResult]) => {
         if (!active) return;

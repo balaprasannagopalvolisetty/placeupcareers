@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { Link, useNavigate } from "react-router";
-import { ChevronDown, Eye, EyeOff, Search, Upload, Check, X } from "lucide-react";
+import { ChevronDown, CreditCard, Eye, EyeOff, Search, ShieldCheck, Upload, Check, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import * as api from "../lib/api";
 import { BrandLogo } from "../components/BrandLogo";
@@ -25,7 +25,7 @@ const T = {
   panel: "#FFFFFF",
 };
 
-const STEP_LABELS = ["Account", "Terms", "Profile", "Top 5 Positions", "Verify", "Resume"];
+const STEP_LABELS = ["Account", "Terms", "Profile", "Top 5 Positions", "Payment", "Verify", "Resume"];
 const TOTAL_STEPS = STEP_LABELS.length;
 // Users pick exactly this many positions — no more, no less.
 const MAX_TARGET_ROLES = 5;
@@ -468,6 +468,10 @@ export default function SignUp() {
   const [otpCode, setOtpCode] = useState("");
 
   const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [plans, setPlans] = useState<api.PaymentPlan[]>([]);
+  const [selectedPlan, setSelectedPlan] = useState("pro");
+  const [paymentReference, setPaymentReference] = useState("");
+  const [paymentMessage, setPaymentMessage] = useState("Complete access is currently free during launch preview.");
 
   const visaOptions = useMemo(() => visaOptionsForCountry(country), [country]);
   useEffect(() => {
@@ -488,6 +492,26 @@ export default function SignUp() {
       })
       // Network/API failure: keep FALLBACK_ROLES so the picker stays usable.
       .catch(() => {});
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    let active = true;
+    api.getPaymentPlans()
+      .then((res) => {
+        if (!active) return;
+        const available = Array.isArray(res.plans) ? res.plans : [];
+        setPlans(available);
+        if (available.some((plan) => plan.id === "pro")) setSelectedPlan("pro");
+        if (res.message) setPaymentMessage(res.message);
+      })
+      .catch(() => {
+        if (!active) return;
+        setPlans([
+          { id: "basic", name: "Basic", price: 0, interval: "preview", features: ["Job matching", "Resume ATS score", "Saved jobs"] },
+          { id: "pro", name: "Pro", price: 0, interval: "preview", features: ["Everything in Basic", "Application tracking", "Priority job alerts"] },
+          { id: "elite", name: "Elite", price: 0, interval: "preview", features: ["Everything in Pro", "Visa sponsor insights", "Concierge support"] },
+        ]);
+      });
     return () => { active = false; };
   }, []);
 
@@ -513,6 +537,9 @@ export default function SignUp() {
     }
     if (step === 4) {
       if (targetRoles.length !== MAX_TARGET_ROLES) return `Please select exactly ${MAX_TARGET_ROLES} target positions so your Jobs feed stays relevant.`;
+    }
+    if (step === 5) {
+      if (!selectedPlan) return "Please choose a plan to continue.";
     }
     return null;
   };
@@ -547,13 +574,14 @@ export default function SignUp() {
         target_roles: targetRoles.slice(0, MAX_TARGET_ROLES),
         agreement_accepted: true,
         agreement_version: AGREEMENT_VERSION,
-        payment_plan: "free_access",
+        payment_plan: selectedPlan || "pro",
+        payment_reference: paymentReference || "free_preview",
       };
       const result = await signUp(payload);
       if ("otp_required" in result && result.otp_required) {
         setOtpSent(true);
       } else {
-        setStep(6);
+        setStep(7);
       }
     } catch (err) {
       setError((err as Error).message || "Unable to create your account.");
@@ -568,7 +596,7 @@ export default function SignUp() {
     setLoading(true);
     try {
       await verifySignupOtp(email.trim(), otpCode.trim());
-      setStep(6);
+      setStep(7);
     } catch (err) {
       setError((err as Error).message || "Invalid or expired code.");
     } finally {
@@ -590,6 +618,37 @@ export default function SignUp() {
       await api.requestOtp(email.trim(), "signup");
     } catch (err) {
       setError((err as Error).message || "Could not resend the code.");
+    }
+  };
+
+  const handlePaymentContinue = async () => {
+    const plan = plans.find((item) => item.id === selectedPlan);
+    if (!plan) {
+      setError("Please choose a plan to continue.");
+      return;
+    }
+    setError(null);
+    if (Number(plan.price || 0) <= 0) {
+      setPaymentReference("free_preview");
+      setStep(6);
+      return;
+    }
+    setLoading(true);
+    try {
+      const checkout = await api.getPublicCheckoutLink(selectedPlan);
+      if (checkout.checkout_url) {
+        window.open(checkout.checkout_url, "_blank", "noopener,noreferrer");
+        setPaymentReference(`hosted_checkout_started:${selectedPlan}`);
+        setPaymentMessage("Checkout opened in a new tab. Return here after payment to finish account creation.");
+      } else {
+        setPaymentReference("checkout_not_configured");
+        setPaymentMessage(checkout.message || "Checkout is not configured yet, so preview access remains enabled.");
+      }
+      setStep(6);
+    } catch (err) {
+      setError((err as Error).message || "Could not start checkout. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -703,6 +762,62 @@ export default function SignUp() {
 
         {step === 5 && (
           <motion.div initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <CreditCard size={16} color={T.red} />
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: T.text, fontFamily: F.sans }}>Choose your access plan</div>
+                <div style={{ fontSize: 11.5, color: T.t3, fontFamily: F.sans }}>{paymentMessage}</div>
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+              {(plans.length ? plans : [
+                { id: "basic", name: "Basic", price: 0, interval: "preview", features: ["Job matching", "Resume ATS score", "Saved jobs"] },
+                { id: "pro", name: "Pro", price: 0, interval: "preview", features: ["Everything in Basic", "Application tracking", "Priority job alerts"] },
+                { id: "elite", name: "Elite", price: 0, interval: "preview", features: ["Everything in Pro", "Visa sponsor insights", "Concierge support"] },
+              ] as api.PaymentPlan[]).map((plan) => {
+                const active = selectedPlan === plan.id;
+                const price = Number(plan.price || 0);
+                return (
+                  <button
+                    key={plan.id}
+                    type="button"
+                    onClick={() => setSelectedPlan(plan.id)}
+                    style={{
+                      minHeight: 168,
+                      padding: 14,
+                      borderRadius: 14,
+                      border: `1px solid ${active ? "rgba(37,99,235,0.48)" : T.border}`,
+                      background: active ? "rgba(37,99,235,0.08)" : T.input,
+                      boxShadow: active ? "0 10px 26px rgba(37,99,235,0.16)" : "none",
+                      textAlign: "left",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 8 }}>
+                      <span style={{ fontSize: 14, fontWeight: 850, color: T.text, fontFamily: F.sans }}>{plan.name}</span>
+                      {active && <Check size={15} color="#16A34A" />}
+                    </div>
+                    <div style={{ fontSize: 24, fontWeight: 900, color: T.text, fontFamily: F.sans, lineHeight: 1 }}>
+                      {price <= 0 ? "$0" : `$${price.toFixed(2)}`}
+                      <span style={{ fontSize: 11, color: T.t3, fontWeight: 700 }}> / {plan.interval}</span>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 12 }}>
+                      {(plan.features || []).slice(0, 4).map((feature) => (
+                        <span key={feature} style={{ display: "flex", gap: 6, fontSize: 11.5, color: T.t2, fontFamily: F.sans, lineHeight: 1.35 }}>
+                          <ShieldCheck size={12} color="#16A34A" style={{ flexShrink: 0, marginTop: 1 }} />
+                          {feature}
+                        </span>
+                      ))}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+
+        {step === 6 && (
+          <motion.div initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }}>
             {!otpSent ? (
               <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14 }}>
                 <div style={{ gridColumn: "1 / -1", fontSize: 12, color: T.t3, fontFamily: F.sans }}>
@@ -733,7 +848,7 @@ export default function SignUp() {
           </motion.div>
         )}
 
-        {step === 6 && (
+        {step === 7 && (
           <motion.div initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }}>
             <div style={{ fontSize: 12, fontWeight: 500, color: T.t2, fontFamily: F.sans, marginBottom: 8 }}>
               Upload your resume (required, 1 file)
@@ -775,7 +890,7 @@ export default function SignUp() {
         )}
 
         <div style={{ display: "flex", gap: 10, marginTop: 24 }}>
-          {step > 1 && step !== 6 && !(step === 5 && otpSent) && (
+          {step > 1 && step !== 7 && !(step === 6 && otpSent) && (
             <button type="button" onClick={back} disabled={loading} style={GHOST_BTN}>Back</button>
           )}
 
@@ -783,18 +898,24 @@ export default function SignUp() {
             <button type="button" onClick={next} disabled={loading} style={PRIMARY_BTN}>Continue</button>
           )}
 
-          {step === 5 && !otpSent && (
+          {step === 5 && (
+            <button type="button" onClick={handlePaymentContinue} disabled={loading} style={PRIMARY_BTN}>
+              {loading ? "Checking plan..." : "Continue to verification"}
+            </button>
+          )}
+
+          {step === 6 && !otpSent && (
             <button type="button" onClick={createAccountAndSendCode} disabled={loading} style={PRIMARY_BTN}>
               {loading ? "Creating account…" : "Create account & send code"}
             </button>
           )}
-          {step === 5 && otpSent && (
+          {step === 6 && otpSent && (
             <button type="button" onClick={verifyCode} disabled={loading} style={PRIMARY_BTN}>
               {loading ? "Verifying…" : "Verify & continue"}
             </button>
           )}
 
-          {step === 6 && (
+          {step === 7 && (
             <button type="button" onClick={finishWithResume} disabled={loading} style={PRIMARY_BTN}>
               {loading ? "Finishing…" : "Finish and go to dashboard"}
             </button>

@@ -22,7 +22,7 @@ $ErrorActionPreference = "Stop"
 $Image = "$Region-docker.pkg.dev/$ProjectId/placeup/backend:latest"
 # DB_STATEMENT_TIMEOUT_MS=15000: API queries fail fast into the stale-page
 # cache instead of hanging when the scraper has Cloud SQL busy.
-$ApiEnv = "APP_ENV=production,DATABASE_BACKEND=postgres,DB_POOL_SIZE=5,DB_MAX_OVERFLOW=10,DB_STATEMENT_TIMEOUT_MS=15000,USER_DATABASE_BACKEND=$UserDatabaseBackend,USER_FIRESTORE_PROJECT_ID=$UserFirestoreProjectId,USER_FIRESTORE_DATABASE=$UserFirestoreDatabase,SCRAPE_INTERVAL_HOURS=6,SCRAPEGRAPH_ENABLED=false,ADMIN_EMAILS=operations@placeupcareer.com,FREE_ACCESS_ENABLED=true,SIGNUP_REQUIRE_PAYMENT=false,CONTACT_RECIPIENT_EMAIL=operations@placeupcareer.com"
+$ApiEnv = "APP_ENV=production,DATABASE_BACKEND=postgres,DB_POOL_SIZE=5,DB_MAX_OVERFLOW=10,DB_STATEMENT_TIMEOUT_MS=15000,USER_DATABASE_BACKEND=$UserDatabaseBackend,USER_FIRESTORE_PROJECT_ID=$UserFirestoreProjectId,USER_FIRESTORE_DATABASE=$UserFirestoreDatabase,SCRAPE_INTERVAL_HOURS=6,SCRAPEGRAPH_ENABLED=false,ADMIN_EMAILS=operations@placeupcareer.com,FREE_ACCESS_ENABLED=true,SIGNUP_REQUIRE_PAYMENT=false,INVITE_GATE_ENABLED=false,CONTACT_RECIPIENT_EMAIL=operations@placeupcareer.com"
 if ($FrontendUrl) {
   $ApiEnv = "$ApiEnv,FRONTEND_URL=$FrontendUrl"
 }

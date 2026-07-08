@@ -18,6 +18,7 @@ from app.config import settings
 from app.db import user_store
 from app.db import feedback_store
 from app.security import current_user_id
+from app.services.global_visa_rules import country_options
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -274,11 +275,7 @@ async def admin_revoke_sessions(user_id: str, admin: dict = Depends(require_admi
 
 # Countries we actively try to cover. Used to render the coverage chart even
 # for countries that currently have zero rows.
-_COVERAGE_COUNTRIES = [
-    "United States", "Canada", "United Kingdom", "Australia", "Germany",
-    "Netherlands", "Ireland", "Singapore", "United Arab Emirates", "India",
-    "New Zealand",
-]
+_COVERAGE_COUNTRIES = country_options()
 
 
 @router.get("/coverage")
@@ -307,9 +304,11 @@ async def admin_coverage(_: dict = Depends(require_admin_user)):
             total = await db.count_jobs()
         except Exception:
             total = 0
-        for name in _COVERAGE_COUNTRIES:
+        for country in _COVERAGE_COUNTRIES:
+            code = str(country.get("code") or "")
+            name = str(country.get("name") or code)
             try:
-                count = await db.count_jobs({"country": name})
+                count = await db.count_jobs({"country": code})
             except Exception:
                 count = 0
             # Roles the scraper has collected for this country. Best-effort and
@@ -317,10 +316,10 @@ async def admin_coverage(_: dict = Depends(require_admin_user)):
             top_roles: list[dict] = []
             if count:
                 try:
-                    top_roles = await db.top_roles_by_country(name, limit=8)
+                    top_roles = await db.top_roles_by_country(code, limit=8)
                 except Exception:
                     top_roles = []
-            per_country.append({"country": name, "positions": count, "top_roles": top_roles})
+            per_country.append({"country": code, "country_name": name, "positions": count, "top_roles": top_roles})
     per_country.sort(key=lambda r: r["positions"], reverse=True)
     return {"total_positions": total, "per_country": per_country, "top_roles": []}
 

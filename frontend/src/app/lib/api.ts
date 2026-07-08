@@ -715,12 +715,18 @@ export async function getMyBilling() {
 }
 
 export async function startCheckout(plan: "basic" | "pro" | "elite") {
-  void plan;
-  throw new Error("Payments are temporarily disabled. Complete access is free right now.");
+  return request<{ url?: string; session_id?: string; message?: string }>("/api/billing/checkout", {
+    method: "POST",
+    body: JSON.stringify({
+      plan,
+      success_url: `${window.location.origin}/dashboard/settings?billing=success`,
+      cancel_url: `${window.location.origin}/dashboard/settings?billing=cancelled`,
+    }),
+  });
 }
 
 export async function openBillingPortal() {
-  throw new Error("Payments are temporarily disabled. Complete access is free right now.");
+  return request<{ url?: string }>("/api/billing/portal");
 }
 
 export async function getNotifications() { return request<NotificationItem[]>("/api/user/notifications"); }
@@ -1123,15 +1129,22 @@ export async function getPaymentPlans() {
 }
 
 export async function createCheckout(plan_id: string) {
-  void plan_id;
-  throw new Error("Payments are temporarily disabled. Complete access is free right now.");
+  return request<{ plan: PaymentPlan; checkout_url: string; processor?: string; message?: string }>("/api/payments/checkout", {
+    method: "POST",
+    body: JSON.stringify({ plan_id }),
+  });
 }
 
 // Public (no-auth) hosted checkout link — used by the signup wizard, where
 // payment happens before the account exists.
 export async function getPublicCheckoutLink(plan_id: string) {
-  void plan_id;
-  throw new Error("Payments are temporarily disabled. Complete access is free right now.");
+  return request<{
+    plan: PaymentPlan;
+    checkout_url: string;
+    configured: boolean;
+    processor?: string;
+    message?: string;
+  }>(`/api/payments/checkout-link/${encodeURIComponent(plan_id)}`);
 }
 
 export async function submitContactMessage(payload: { name: string; email: string; subject: string; message: string }) {

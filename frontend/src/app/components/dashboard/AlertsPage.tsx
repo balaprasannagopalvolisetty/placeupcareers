@@ -49,27 +49,29 @@ export function AlertsPage() {
     let active = true;
     setLoading(true);
 
-    api.getJobs({ personalized: true, time_filter: "today", page: 1, page_size: 1, tz_offset: new Date().getTimezoneOffset() })
-      .then((resp: any) => {
-        if (!active) return;
-        const total = typeof resp?.total === "number" ? resp.total
-          : Array.isArray(resp?.jobs) ? resp.jobs.length
-          : Array.isArray(resp) ? resp.length : 0;
-        setRecentCount(total);
-      })
-      .catch(() => { if (active) setRecentCount(null); });
-
     api.getAlertsDigest()
       .then((d) => { if (active) setDigest(d); })
       .catch(() => { if (active) setDigest(null); });
 
-    api.getTopMatches({ page_size: 6 })
+    api.getTopMatches({
+      limit: 20,
+      time_filter: "8h",
+      fresh_basis: "added",
+      min_score: 85,
+      tz_offset: new Date().getTimezoneOffset(),
+    })
       .then((resp: any) => {
         if (!active) return;
         const items = Array.isArray(resp?.jobs) ? resp.jobs : Array.isArray(resp) ? resp : [];
-        setTopPicks(items.slice(0, 6));
+        setTopPicks(items.slice(0, 20));
+        setRecentCount(typeof resp?.total === "number" ? resp.total : items.length);
       })
-      .catch(() => { if (active) setTopPicks([]); });
+      .catch(() => {
+        if (active) {
+          setTopPicks([]);
+          setRecentCount(null);
+        }
+      });
 
     Promise.all([
       withTimeout(api.getAlerts(), 8000, []).then(data => {
@@ -234,13 +236,22 @@ export function AlertsPage() {
         </div>
       )}
 
-      {/* Personalized top picks */}
-      {topPicks.length > 0 && (
-        <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: "18px 22px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+      {/* Personalized top 85+ picks added in the last 8 hours */}
+      <div style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 20, padding: "18px 22px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <Sparkles size={15} color={T.red} />
-            <span style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 600, color: T.text }}>Top picks for you</span>
+            <span style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 600, color: T.text }}>Top 85+ matches added in the last 8 hours</span>
           </div>
+          <span style={{ fontSize: 11.5, color: T.t3, fontFamily: F.sans }}>
+            {recentCount == null ? "Fresh database window" : `${Math.min(topPicks.length, 20)} of ${recentCount} positions`}
+          </span>
+        </div>
+        {topPicks.length === 0 ? (
+          <div style={{ padding: "28px 12px", textAlign: "center", color: T.t3, fontFamily: F.sans, fontSize: 13 }}>
+            No 85+ ATS matches were added in the last 8 hours yet. New database entries will appear here automatically.
+          </div>
+        ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 10 }}>
             {topPicks.map((job: any) => (
               <Link key={String(job.id)} to={`/dashboard/jobs/${encodeURIComponent(String(job.id))}`}
@@ -257,8 +268,8 @@ export function AlertsPage() {
               </Link>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Settings */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
@@ -289,7 +300,7 @@ export function AlertsPage() {
             Recent Alerts
             {recentCount != null && (
               <span style={{ fontSize: 12, color: T.red, fontWeight: 700, marginLeft: 6 }}>
-                {recentCount} new {recentCount === 1 ? "position" : "positions"} today for your picks
+                {recentCount} fresh 85+ {recentCount === 1 ? "position" : "positions"} in last 8h
               </span>
             )}
           </div>

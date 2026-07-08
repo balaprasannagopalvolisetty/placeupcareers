@@ -4,7 +4,7 @@ import { Link } from "react-router";
 import {
   ArrowRight, Target, Mail, Shield, BarChart3,
   Users, Bell, Mic, Check, Send, MapPin, Phone, Globe,
-  FileText, Search, Sparkles,
+  FileText, Search, Sparkles, CreditCard,
 } from "lucide-react";
 import { Navbar } from "../components/Navbar";
 import { BrandLogo } from "../components/BrandLogo";
@@ -83,6 +83,7 @@ export default function Home() {
       <HeroSection />
       <HowItWorksSection />
       <FeaturesSection />
+      <PricingSection />
       <ContactSection />
       <Footer />
     </div>
@@ -329,6 +330,91 @@ function FeaturesSection() {
 // ═══════════════════════════
 // 5. CONTACT
 // ═══════════════════════════
+function PricingSection() {
+  const { isMobile } = useViewportFlags();
+  const [plans, setPlans] = useState<api.PaymentPlan[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    api.getPaymentPlans()
+      .then((res) => { if (active) setPlans(Array.isArray(res.plans) ? res.plans : []); })
+      .catch(() => {
+        if (!active) return;
+        setPlans([
+          { id: "basic", name: "Basic", price: 0, interval: "preview", features: ["Job matching", "Resume ATS score", "Saved jobs"] },
+          { id: "pro", name: "Pro", price: 0, interval: "preview", features: ["Everything in Basic", "Application tracking", "Priority alerts"] },
+          { id: "elite", name: "Elite", price: 0, interval: "preview", features: ["Everything in Pro", "Visa sponsor insights", "Concierge support"] },
+        ]);
+      });
+    return () => { active = false; };
+  }, []);
+
+  const displayPlans = plans.length ? plans : [
+    { id: "basic", name: "Basic", price: 0, interval: "preview", features: ["Job matching", "Resume ATS score", "Saved jobs"] },
+    { id: "pro", name: "Pro", price: 0, interval: "preview", features: ["Everything in Basic", "Application tracking", "Priority alerts"] },
+    { id: "elite", name: "Elite", price: 0, interval: "preview", features: ["Everything in Pro", "Visa sponsor insights", "Concierge support"] },
+  ] as api.PaymentPlan[];
+
+  return (
+    <section id="pricing" style={{ padding: isMobile ? "64px 0" : "96px 0", background: T.bgAlt }}>
+      <div style={{ maxWidth: 1140, margin: "0 auto", padding: "0 24px" }}>
+        <Reveal><SectionTag text="Pricing" /></Reveal>
+        <Reveal delay={0.08}>
+          <h2 style={{
+            fontFamily: F.sans, fontWeight: 800, fontSize: "clamp(28px, 4vw, 44px)",
+            lineHeight: 1.15, letterSpacing: "-0.02em", textAlign: "center",
+            color: T.text, marginBottom: 12,
+          }}>
+            Choose the access level that fits your search
+          </h2>
+        </Reveal>
+        <p style={{ textAlign: "center", fontSize: 15.5, color: T.t2, fontFamily: F.sans, maxWidth: 620, margin: "0 auto 38px", lineHeight: 1.7 }}>
+          Launch preview access is free right now. Plan selection prepares your limits and support level before paid checkout is enabled.
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 18 }}>
+          {displayPlans.map((plan) => {
+            const highlighted = plan.id === "pro";
+            const price = Number(plan.price || 0);
+            return (
+              <Card key={plan.id} style={{ padding: 26, height: "100%", borderColor: highlighted ? "rgba(37,99,235,0.35)" : T.border }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ width: 38, height: 38, borderRadius: 11, background: highlighted ? T.grad : "rgba(37,99,235,0.08)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                      <CreditCard size={17} color={highlighted ? "#fff" : T.accent} />
+                    </span>
+                    <span style={{ fontFamily: F.sans, fontSize: 18, fontWeight: 800, color: T.text }}>{plan.name}</span>
+                  </div>
+                  {highlighted && <span style={{ fontSize: 11, fontWeight: 800, color: T.accent, background: "rgba(37,99,235,0.08)", border: "1px solid rgba(37,99,235,0.18)", borderRadius: 999, padding: "4px 9px", fontFamily: F.sans }}>Popular</span>}
+                </div>
+                <div style={{ fontFamily: F.sans, fontSize: 34, fontWeight: 900, color: T.text, lineHeight: 1, marginBottom: 6 }}>
+                  {price <= 0 ? "$0" : `$${price.toFixed(2)}`}
+                  <span style={{ fontSize: 13, color: T.t3, fontWeight: 700 }}> / {plan.interval}</span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, margin: "20px 0 24px" }}>
+                  {(plan.features || []).map((feature) => (
+                    <div key={feature} style={{ display: "flex", gap: 8, fontSize: 13.5, color: T.t2, fontFamily: F.sans, lineHeight: 1.45 }}>
+                      <Check size={15} color="#16A34A" style={{ flexShrink: 0, marginTop: 1 }} />
+                      {feature}
+                    </div>
+                  ))}
+                </div>
+                <Link to="/signup" style={{
+                  display: "inline-flex", alignItems: "center", justifyContent: "center", width: "100%",
+                  height: 44, borderRadius: 12, textDecoration: "none", fontSize: 14, fontWeight: 800,
+                  fontFamily: F.sans, background: highlighted ? T.grad : "#fff", color: highlighted ? "#fff" : T.text,
+                  border: highlighted ? "none" : `1px solid ${T.border}`,
+                }}>
+                  Select {plan.name}
+                </Link>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function ContactSection() {
   const { isMobile } = useViewportFlags();
   const [form, setForm] = useState({ name: "", email: "", subject: "", message: "" });

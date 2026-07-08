@@ -878,6 +878,17 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const savedRoleMode = personalized && targetRoleCount > 0;
   const globalOpenPositionsCount = allJobsCount || total;
   const matchingPositionsCount = total;
+  const timeFilterLabel = TIME_OPTIONS.find((chip) => chip.value === timeFilter)?.label || timeFilter;
+  const pageCountLabel = `${filtered.length.toLocaleString()} of ${Math.min(pageSize, total || filtered.length).toLocaleString()} positions`;
+  const filterSummaryParts = [
+    pageCountLabel,
+    visaOnly ? "Visa-friendly" : "",
+    countryFilter ? `Country: ${countryFlag(countryFilter)} ${countryFilter}` : "",
+    timeFilter ? `Time: ${timeFilterLabel}` : "",
+    activeRole ? `Role: ${activeRole}` : "",
+    activeCategory ? `Category: ${activeCategory}` : "",
+    visaProgramFilter ? `Visa: ${visibleVisaPrograms.find((program) => program.code === visaProgramFilter)?.name || visaProgramFilter}` : "",
+  ].filter(Boolean);
 
   const persistApplication = async (job: api.JobPost, status: "applied" | "interview" | "not_applied") => {
     const id = String(job.id || "");
@@ -1201,6 +1212,24 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
           )}
         </motion.div>
 
+        <div style={{
+          display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: 10,
+          padding: "11px 13px", borderRadius: 10, border: `1px solid ${J.line}`, background: "rgba(15,30,55,0.36)",
+          color: J.t2, fontFamily: F.sans, fontSize: 11.5,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+            <ShieldCheck size={13} color="#86EFAC" style={{ flexShrink: 0 }} />
+            <span style={{ lineHeight: 1.45 }}>
+              Official-source pipeline: ATS boards, employer career pages, country portals, and job boards across {targetCountries.length || 32} countries.
+            </span>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: isMobile ? "flex-start" : "flex-end" }}>
+            {filterSummaryParts.map((part) => (
+              <span key={part} style={activeFilterChipStyle()}>{part}</span>
+            ))}
+          </div>
+        </div>
+
         {resumeLink.checked && (
           <div style={{
             display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: 12,
@@ -1243,7 +1272,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
         {/* Active filters strip */}
         {(activeRole || activeCategory || search || location || countryFilter || visaProgramFilter || visaOnly || timeFilter) && (
           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-            <span style={{ fontSize: 11, color: J.t2, fontFamily: F.sans, fontWeight: 750 }}>{filtered.length} of {total} positions</span>
+            <span style={{ fontSize: 11, color: J.t2, fontFamily: F.sans, fontWeight: 750 }}>{filterSummaryParts.join("  ")}</span>
             {activeCategory && (
               <span style={activeFilterChipStyle()}>
                 Category: {activeCategory}

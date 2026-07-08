@@ -53,8 +53,8 @@ export default function AdminConsole() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0B1220", padding: "32px 20px" }}>
-      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+    <div style={{ minHeight: "100vh", background: "#0B1220", padding: "clamp(18px, 3vw, 32px) clamp(12px, 2.5vw, 28px)" }}>
+      <div style={{ maxWidth: 1440, margin: "0 auto", minWidth: 0 }}>
         <AdminPage />
       </div>
     </div>

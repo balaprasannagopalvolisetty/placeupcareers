@@ -20,8 +20,8 @@ const card: CSSProperties = {
 function ResumeSection({ title, lines }: { title: string; lines?: string[] }) {
   if (!lines || lines.length === 0) return null;
   return (
-    <div style={{ marginBottom: 18 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: T.red, fontFamily: F.sans, marginBottom: 8, paddingBottom: 5, borderBottom: `1px solid ${T.border}` }}>
+    <div style={{ background: "rgba(15,30,55,0.42)", border: `1px solid ${T.border}`, borderRadius: 14, padding: 14, minWidth: 0 }}>
+      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: T.red, fontFamily: F.sans, marginBottom: 10 }}>
         {title}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
@@ -198,27 +198,34 @@ export function UserProfilePage() {
               {parsed?.error || "No active resume found. Upload one from the Resumes tab to see it here."}
             </div>
           ) : (
-            <div style={{ background: "rgba(1,14,34,0.45)", border: `1px solid ${T.border}`, borderRadius: 14, padding: "20px 22px", maxHeight: 520, overflowY: "auto" }}>
+            <div style={{ background: "rgba(1,14,34,0.32)", border: `1px solid ${T.border}`, borderRadius: 16, padding: isMobile ? 14 : 18 }}>
               {/* Resume header */}
-              <div style={{ marginBottom: 16, paddingBottom: 12, borderBottom: `1px solid ${T.border}` }}>
-                <div style={{ fontFamily: F.sans, fontSize: 17, fontWeight: 700, color: T.text }}>{fullName}</div>
+              <div style={{ marginBottom: 16, paddingBottom: 14, borderBottom: `1px solid ${T.border}`, display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontFamily: F.sans, fontSize: 18, fontWeight: 850, color: T.text }}>{fullName}</div>
                 <div style={{ fontSize: 11.5, color: T.t3, fontFamily: F.sans, marginTop: 3, display: "flex", flexWrap: "wrap", gap: "4px 12px" }}>
                   {rj.contact?.email && <span>{rj.contact.email}</span>}
                   {rj.contact?.phone && <span>{rj.contact.phone}</span>}
                   {(rj.contact?.links || []).slice(0, 3).map((l) => <span key={l}>{l}</span>)}
                 </div>
+                </div>
+                <span style={{ alignSelf: "flex-start", fontSize: 11, fontWeight: 800, padding: "5px 10px", borderRadius: 999, background: score >= 80 ? "rgba(34,197,94,0.12)" : "rgba(59,130,246,0.12)", color: score >= 80 ? "#86EFAC" : T.red, border: `1px solid ${score >= 80 ? "rgba(34,197,94,0.26)" : "rgba(59,130,246,0.25)"}`, fontFamily: F.sans }}>
+                  ATS {score}/100
+                </span>
               </div>
               {rj.summary && (
-                <div style={{ marginBottom: 18 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: T.red, fontFamily: F.sans, marginBottom: 8, paddingBottom: 5, borderBottom: `1px solid ${T.border}` }}>Summary</div>
+                <div style={{ background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.18)", borderRadius: 14, padding: 14, marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: T.red, fontFamily: F.sans, marginBottom: 8 }}>Summary</div>
                   <p style={{ fontSize: 12.5, color: T.t2, fontFamily: F.sans, lineHeight: 1.65, margin: 0 }}>{rj.summary}</p>
                 </div>
               )}
-              <ResumeSection title="Experience" lines={rj.experience} />
-              <ResumeSection title="Skills" lines={rj.sections?.skills} />
-              <ResumeSection title="Projects" lines={rj.projects} />
-              <ResumeSection title="Education" lines={rj.education} />
-              <ResumeSection title="Certifications" lines={rj.certifications} />
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+                <div style={{ gridColumn: isMobile ? "auto" : "1 / -1" }}><ResumeSection title="Experience" lines={rj.experience} /></div>
+                <ResumeSection title="Skills" lines={rj.sections?.skills} />
+                <ResumeSection title="Projects" lines={rj.projects} />
+                <ResumeSection title="Education" lines={rj.education} />
+                <ResumeSection title="Certifications" lines={rj.certifications} />
+              </div>
             </div>
           )}
         </div>

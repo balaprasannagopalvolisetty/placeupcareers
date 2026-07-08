@@ -2228,6 +2228,8 @@ async def get_top_matches(
     location: Optional[str] = Query(None),
     time_filter: Optional[str] = Query(None),
     visa_only: bool = Query(False),
+    min_score: Optional[int] = Query(None, ge=0, le=100),
+    fresh_basis: str = Query("posted", description="posted uses posted_at; added uses first_seen/created_at"),
     tz_offset: int = Query(0, description="Client timezone offset in minutes from UTC (JS getTimezoneOffset)"),
     db=Depends(get_db),
     user_id: Optional[str] = Depends(optional_user_id),
@@ -2242,9 +2244,12 @@ async def get_top_matches(
     post_filter_since: Optional[datetime] = None
     post_filter_before: Optional[datetime] = None
     if fresh_since:
-        filters["seen_since"] = _visible_jobs_cutoff()
-        post_filter_since = max(fresh_since, _visible_jobs_cutoff())
-        post_filter_before = fresh_before
+        if fresh_basis.strip().lower() in {"added", "first_seen", "database", "created"}:
+            filters["first_seen_since"] = max(fresh_since, _visible_jobs_cutoff())
+        else:
+            filters["seen_since"] = _visible_jobs_cutoff()
+            post_filter_since = max(fresh_since, _visible_jobs_cutoff())
+            post_filter_before = fresh_before
     else:
         today_since, today_before = _posted_window("today", tz_offset_minutes=tz_offset)
         filters["effective_since"] = today_since or _recent_jobs_cutoff()
@@ -2312,7 +2317,7 @@ async def get_top_matches(
     # this out (the old fallback still pinned effective_since to today).
     # Relax progressively: drop the posted-today window, then role terms.
     if not ranked:
-        relaxed = {k: v for k, v in filters.items() if k not in ("effective_since", "seen_since")}
+        relaxed = {k: v for k, v in filters.items() if k not in ("effective_since", "seen_since", "first_seen_since")}
         relaxed["seen_since"] = _visible_jobs_cutoff()
         for attempt in (relaxed, {k: v for k, v in relaxed.items() if k != "title_terms"}):
             pool = await db.get_jobs(filters=attempt, limit=min(max(limit * 8, 80), 180), offset=0)
@@ -2320,6 +2325,11 @@ async def get_top_matches(
             if ranked:
                 filters = attempt
                 break
+    if min_score is not None:
+        ranked = [
+            row for row in ranked
+            if isinstance(row.get("match_score"), int) and int(row.get("match_score") or 0) >= min_score
+        ]
     ranked.sort(key=lambda row: _projection_sort_key(row, tz_offset_minutes=tz_offset))
     return {
         "jobs": ranked[:limit],
@@ -2327,7 +2337,7 @@ async def get_top_matches(
         "page": 1,
         "page_size": limit,
         "total_pages": 1,
-        "filters_applied": filters,
+        "filters_applied": {**filters, "min_score": min_score, "fresh_basis": fresh_basis},
     }
 
 

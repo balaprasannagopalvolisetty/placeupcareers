@@ -125,8 +125,10 @@ export function AdminPage() {
   const [metrics, setMetrics] = useState<api.AdminMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const reload = () => {
+    setRefreshKey((value) => value + 1);
     setLoading(true);
     api.getAdminMetrics(30)
       .then((m) => { setMetrics(m); setErr(""); })
@@ -185,10 +187,10 @@ export function AdminPage() {
       </div>
 
       {tab === "overview" && <OverviewTab metrics={metrics} />}
-      {tab === "users" && <UsersTab />}
-      {tab === "activity" && <ActivityTab />}
-      {tab === "positions" && <PositionsTab />}
-      {tab === "feedback" && <FeedbackTab />}
+      {tab === "users" && <UsersTab refreshKey={refreshKey} />}
+      {tab === "activity" && <ActivityTab refreshKey={refreshKey} />}
+      {tab === "positions" && <PositionsTab refreshKey={refreshKey} />}
+      {tab === "feedback" && <FeedbackTab refreshKey={refreshKey} />}
 
       <style>{`.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
@@ -215,15 +217,16 @@ function OverviewTab({ metrics }: { metrics: api.AdminMetrics | null }) {
 }
 
 // ─── Users ───────────────────────────────────────────────────────────────────
-function UsersTab() {
+function UsersTab({ refreshKey }: { refreshKey: number }) {
   const [users, setUsers] = useState<Array<Record<string, unknown>>>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
 
   useEffect(() => {
+    setLoading(true);
     api.getAdminUsers(500).then((r: any) => setUsers(r.users || r || [])).catch(() => setUsers([])).finally(() => setLoading(false));
-  }, []);
+  }, [refreshKey]);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -351,7 +354,7 @@ function UserDrawer({ userId, onClose }: { userId: string; onClose: () => void }
 }
 
 // ─── Activity ────────────────────────────────────────────────────────────────
-function ActivityTab() {
+function ActivityTab({ refreshKey }: { refreshKey: number }) {
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [kind, setKind] = useState("");
@@ -359,7 +362,7 @@ function ActivityTab() {
   useEffect(() => {
     setLoading(true);
     api.getAdminEvents({ limit: 200, kind: kind || undefined }).then((r: any) => setEvents(r.events || [])).catch(() => setEvents([])).finally(() => setLoading(false));
-  }, [kind]);
+  }, [kind, refreshKey]);
 
   const kinds = useMemo(() => Array.from(new Set(events.map((e) => str(e.kind)).filter(Boolean))), [events]);
   const levelColor = (l: string) => l === "error" ? T.red : l === "warning" ? T.amber : T.accent;
@@ -393,14 +396,15 @@ function ActivityTab() {
 }
 
 // ─── Positions ───────────────────────────────────────────────────────────────
-function PositionsTab() {
+function PositionsTab({ refreshKey }: { refreshKey: number }) {
   const [cov, setCov] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState<string | null>(null);
 
   useEffect(() => {
+    setLoading(true);
     api.getAdminCoverage().then(setCov).catch(() => setCov(null)).finally(() => setLoading(false));
-  }, []);
+  }, [refreshKey]);
 
   const perCountry: any[] = cov?.per_country || [];
   const chartData: api.LabelCount[] = perCountry.slice(0, 10).map((c) => ({ label: str(c.country || c.country_name), count: Number(c.positions) || 0 }));
@@ -435,12 +439,12 @@ function PositionsTab() {
 }
 
 // ─── Feedback ────────────────────────────────────────────────────────────────
-function FeedbackTab() {
+function FeedbackTab({ refreshKey }: { refreshKey: number }) {
   const [data, setData] = useState<{ feedback: api.FeedbackItem[]; stats: api.FeedbackStats } | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = () => { setLoading(true); api.getAdminFeedback({ limit: 300 }).then(setData).catch(() => setData(null)).finally(() => setLoading(false)); };
-  useEffect(load, []);
+  useEffect(load, [refreshKey]);
 
   const stats = data?.stats;
   const distData: api.LabelCount[] = stats ? [5, 4, 3, 2, 1].map((n) => ({ label: `${n}★`, count: stats.distribution[String(n)] || 0 })) : [];
