@@ -10,6 +10,7 @@ import argparse
 import asyncio
 import logging
 import os
+import re
 import time
 
 from sqlalchemy import text
@@ -26,7 +27,7 @@ from app.job_taxonomy import (
     all_role_names,
     categorize,
 )
-from app.services.global_visa_rules import COUNTRY_RULES, TARGET_COUNTRIES, resolve_country
+from app.services.global_visa_rules import COUNTRY_RULES, TARGET_COUNTRIES, normalize_country_code, resolve_country
 from app.utils.terminal_table import render_table
 
 logger = logging.getLogger(__name__)
@@ -96,9 +97,24 @@ def _encoded_terms(terms: list[str]) -> str:
     return "~".join(term.replace(" ", "_") for term in terms)
 
 
+def _selected_target_countries() -> list[str]:
+    raw = os.getenv("SCRAPER_TARGET_COUNTRIES", "").strip()
+    if not raw:
+        return list(sorted(TARGET_COUNTRIES))
+    selected: list[str] = []
+    for part in re.split(r"[,~\s]+", raw):
+        code = normalize_country_code(part)
+        if code and code not in selected:
+            selected.append(code)
+    if not selected:
+        logger.warning("SCRAPER_TARGET_COUNTRIES=%r resolved to no known target countries; using all.", raw)
+        return list(sorted(TARGET_COUNTRIES))
+    return sorted(selected)
+
+
 def _target_locations() -> str:
     locations: list[str] = []
-    for country_code in sorted(TARGET_COUNTRIES):
+    for country_code in _selected_target_countries():
         rule = COUNTRY_RULES.get(country_code)
         name = rule.name if rule else country_code
         locations.append(name.replace(" ", "_"))
@@ -157,7 +173,7 @@ async def _run_batched() -> int:
     roles = all_role_names()
     linkedin_style_roles = all_linkedin_style_role_names()
     terms = all_balanced_taxonomy_scrape_search_terms()
-    countries = list(sorted(TARGET_COUNTRIES))
+    countries = _selected_target_countries()
     country_locations = _target_locations()
     role_country_pairs = len(roles) * len(countries)
     public_role_batches = [roles[i:i + BATCH_SIZE] for i in range(0, len(roles), BATCH_SIZE)]

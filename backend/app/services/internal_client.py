@@ -41,6 +41,23 @@ def _base_url() -> str:
     return url
 
 
+def _headers(scopes: Iterable[str]) -> dict[str, str]:
+    """Build Cloud Run IAM + application-level service identity headers."""
+    service_token = create_service_token(_SERVICE_NAME, scopes=scopes)
+    headers = {"X-Service-Token": service_token}
+    if settings.app_server_iam_auth:
+        try:
+            from google.auth.transport.requests import Request
+            from google.oauth2 import id_token
+
+            headers["Authorization"] = f"Bearer {id_token.fetch_id_token(Request(), _base_url())}"
+        except Exception as exc:  # noqa: BLE001
+            log.warning("could not mint Cloud Run ID token for app-server call: %s", exc)
+    else:
+        headers["Authorization"] = f"Bearer {service_token}"
+    return headers
+
+
 def call_app_server(
     path: str,
     *,
@@ -51,7 +68,6 @@ def call_app_server(
     timeout_seconds: float = 30.0,
 ) -> httpx.Response:
     """Synchronous call to the application server with a fresh service token."""
-    token = create_service_token(_SERVICE_NAME, scopes=scopes)
     url = f"{_base_url()}/{path.lstrip('/')}"
     with httpx.Client(timeout=timeout_seconds) as client:
         response = client.request(
@@ -59,7 +75,7 @@ def call_app_server(
             url,
             json=json,
             params=params,
-            headers={"Authorization": f"Bearer {token}"},
+            headers=_headers(scopes),
         )
     if response.status_code >= 400:
         log.warning(
@@ -78,7 +94,6 @@ async def call_app_server_async(
     timeout_seconds: float = 30.0,
 ) -> httpx.Response:
     """Async variant for FastAPI request handlers."""
-    token = create_service_token(_SERVICE_NAME, scopes=scopes)
     url = f"{_base_url()}/{path.lstrip('/')}"
     async with httpx.AsyncClient(timeout=timeout_seconds) as client:
         response = await client.request(
@@ -86,7 +101,7 @@ async def call_app_server_async(
             url,
             json=json,
             params=params,
-            headers={"Authorization": f"Bearer {token}"},
+            headers=_headers(scopes),
         )
     if response.status_code >= 400:
         log.warning(

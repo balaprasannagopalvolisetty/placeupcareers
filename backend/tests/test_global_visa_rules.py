@@ -5,7 +5,7 @@ from app.services.global_visa_rules import (
     in_target_country,
     normalize_country_code,
 )
-from app.etl.jobs_scraper_6h import PUBLIC_MAX_BATCHES_PER_RUN, _target_locations
+from app.etl.jobs_scraper_6h import PUBLIC_MAX_BATCHES_PER_RUN, _selected_target_countries, _target_locations
 
 
 def test_india_is_target_country_with_city_aliases():
@@ -42,3 +42,10 @@ def test_scraper_targets_all_configured_countries_by_default():
     assert len(TARGET_COUNTRIES) >= 30
     assert len(locations) == len(TARGET_COUNTRIES)
     assert PUBLIC_MAX_BATCHES_PER_RUN == 0
+
+
+def test_country_scraper_can_isolate_one_country(monkeypatch):
+    monkeypatch.setenv("SCRAPER_TARGET_COUNTRIES", "DE")
+
+    assert _selected_target_countries() == ["DE"]
+    assert _target_locations() == "Germany"

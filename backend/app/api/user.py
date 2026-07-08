@@ -123,8 +123,13 @@ def _to_prefs(raw: dict) -> UserPreferences:
         notification_marketing_emails=bool(raw.get("notification_marketing_emails", False)),
         visa_status=raw.get("visa_status"),
         experience_level=raw.get("experience_level"),
+        sponsorship_required=bool(raw.get("sponsorship_required", True)),
+        english_friendly_only=bool(raw.get("english_friendly_only", True)),
+        max_years_required=raw.get("max_years_required", 5),
         target_roles=list(raw.get("target_roles") or [])[:25],
         target_locations=list(raw.get("target_locations") or []),
+        target_keywords=list(raw.get("target_keywords") or [])[:80],
+        avoid_title_signals=list(raw.get("avoid_title_signals") or [])[:40],
     )
 
 

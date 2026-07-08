@@ -103,8 +103,13 @@ class UserPreferences(BaseModel):
     notification_marketing_emails: bool = False
     visa_status: Optional[str] = None
     experience_level: Optional[str] = None
+    sponsorship_required: bool = True
+    english_friendly_only: bool = True
+    max_years_required: Optional[int] = Field(default=5, ge=0, le=40)
     target_roles: list[str] = Field(default_factory=list, max_length=25)
     target_locations: list[str] = Field(default_factory=list)
+    target_keywords: list[str] = Field(default_factory=list, max_length=80)
+    avoid_title_signals: list[str] = Field(default_factory=list, max_length=40)
 
 
 class NotificationItem(BaseModel):

@@ -253,8 +253,13 @@ export interface UserPreferences {
   notification_marketing_emails: boolean;
   visa_status?: string;
   experience_level?: string;
+  sponsorship_required?: boolean;
+  english_friendly_only?: boolean;
+  max_years_required?: number;
   target_roles?: string[];
   target_locations?: string[];
+  target_keywords?: string[];
+  avoid_title_signals?: string[];
 }
 
 export interface JobPost {

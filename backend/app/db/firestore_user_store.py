@@ -85,8 +85,13 @@ def create_user(
         "updated_at": now,
         "visa_status": visa_status,
         "experience_level": experience_years,
+        "sponsorship_required": True,
+        "english_friendly_only": True,
+        "max_years_required": 5,
         "target_roles": [],
         "target_locations": [],
+        "target_keywords": [],
+        "avoid_title_signals": [],
     })
     batch.set(_doc("user_alert_settings", user_id), {
         "user_id": user_id,
@@ -178,11 +183,21 @@ def get_preferences(user_id: str) -> dict:
             "updated_at": _now_iso(),
             "target_roles": [],
             "target_locations": [],
+            "sponsorship_required": True,
+            "english_friendly_only": True,
+            "max_years_required": 5,
+            "target_keywords": [],
+            "avoid_title_signals": [],
         })
         snap = ref.get()
     data = snap.to_dict() or {}
     data.setdefault("target_roles", [])
     data.setdefault("target_locations", [])
+    data.setdefault("sponsorship_required", True)
+    data.setdefault("english_friendly_only", True)
+    data.setdefault("max_years_required", 5)
+    data.setdefault("target_keywords", [])
+    data.setdefault("avoid_title_signals", [])
     return data
 
 
@@ -193,12 +208,17 @@ def update_preferences(user_id: str, fields: dict[str, Any]) -> dict:
         "notification_weekly_summary", "notification_ats_updates",
         "notification_marketing_emails",
         "visa_status", "experience_level",
+        "sponsorship_required", "english_friendly_only", "max_years_required",
     }
     updates = {k: v for k, v in fields.items() if k in allowed}
     if "target_roles" in fields:
         updates["target_roles"] = list(fields.get("target_roles") or [])[:25]
     if "target_locations" in fields:
         updates["target_locations"] = list(fields.get("target_locations") or [])
+    if "target_keywords" in fields:
+        updates["target_keywords"] = list(fields.get("target_keywords") or [])[:80]
+    if "avoid_title_signals" in fields:
+        updates["avoid_title_signals"] = list(fields.get("avoid_title_signals") or [])[:40]
     updates["updated_at"] = _now_iso()
     _doc("user_preferences", user_id).set(updates, merge=True)
     return get_preferences(user_id)

@@ -82,6 +82,13 @@ function Toggle({ label, desc, on, onChange }: { label: string; desc: string; on
   );
 }
 
+function splitTerms(value: string): string[] {
+  return value
+    .split(/[,;\n]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 export function SettingsPage() {
   const [profile, setProfile] = useState<api.UserProfile | null>(null);
   const [prefs, setPrefs] = useState<api.UserPreferences | null>(null);
@@ -102,6 +109,9 @@ export function SettingsPage() {
   const [verifyStatus, setVerifyStatus] = useState<string | null>(null);
   const [allRoles, setAllRoles] = useState<string[]>([]);
   const [roleToAdd, setRoleToAdd] = useState("");
+  const [locationText, setLocationText] = useState("");
+  const [keywordText, setKeywordText] = useState("");
+  const [avoidTitleText, setAvoidTitleText] = useState("");
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -111,6 +121,9 @@ export function SettingsPage() {
         if (active) {
           setProfile(p);
           setPrefs(pr);
+          setLocationText((pr.target_locations || []).join(", "));
+          setKeywordText((pr.target_keywords || []).join(", "));
+          setAvoidTitleText((pr.avoid_title_signals || []).join(", "));
           const roles = Array.from(new Set((taxonomy.categories || []).flatMap((cat) => cat.roles.map((role: any) => String(role.name || "")).filter(isVisibleRole))));
           setAllRoles(roles);
         }
@@ -150,6 +163,9 @@ export function SettingsPage() {
         ...prefs,
         job_preferences: (prefs.target_roles || []).join(", "),
         target_roles: (prefs.target_roles || []).slice(0, 25),
+        target_locations: splitTerms(locationText),
+        target_keywords: splitTerms(keywordText).slice(0, 80),
+        avoid_title_signals: splitTerms(avoidTitleText).slice(0, 40),
       });
       if (pwNew) {
         if (pwNew !== pwConfirm) throw new Error("Passwords don't match");
@@ -186,6 +202,20 @@ export function SettingsPage() {
           <SelectField label="Current Visa Status" value={profile.visa_status || ""} options={api.VISA_STATUS_OPTIONS} onChange={(v) => update("visa_status", v)} />
           <SelectField label="Years of Experience" value={profile.experience_years || ""} options={api.YEARS_OPTIONS} onChange={(v) => update("experience_years", v)} />
         </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 14 }}>
+          <Field
+            label="Maximum Required Years"
+            type="number"
+            value={String(prefs.max_years_required ?? 5)}
+            onChange={(v) => updatePref("max_years_required", Math.max(0, Math.min(40, Number(v) || 0)))}
+          />
+          <Field
+            label="Target Countries / Locations"
+            placeholder="US, Canada, Germany, Remote"
+            value={locationText}
+            onChange={setLocationText}
+          />
+        </div>
         <div style={{ marginTop: 14 }}>
           <label style={{ fontSize: 12, fontWeight: 600, color: T.t2, fontFamily: F.sans, display: "block", marginBottom: 5 }}>Job Preferences</label>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -207,6 +237,24 @@ export function SettingsPage() {
               </span>
             ))}
           </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14, marginTop: 14 }}>
+          <Field
+            label="Target Keywords"
+            placeholder="Splunk, SIEM, incident response, Python"
+            value={keywordText}
+            onChange={setKeywordText}
+          />
+          <Field
+            label="Avoid Title Signals"
+            placeholder="senior, principal, director, manager"
+            value={avoidTitleText}
+            onChange={setAvoidTitleText}
+          />
+        </div>
+        <div style={{ marginTop: 14 }}>
+          <Toggle label="Require sponsorship-friendly roles" desc="Prioritize jobs with visa sponsor signals and hide hard no-sponsorship matches." on={prefs.sponsorship_required !== false} onChange={(v) => updatePref("sponsorship_required", v)} />
+          <Toggle label="English-friendly roles only" desc="Prefer roles whose posting language and country route support English-friendly hiring." on={prefs.english_friendly_only !== false} onChange={(v) => updatePref("english_friendly_only", v)} />
         </div>
       </Section>
 

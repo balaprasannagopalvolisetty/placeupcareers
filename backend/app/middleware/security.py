@@ -442,9 +442,12 @@ class ServiceOnlyGateMiddleware(BaseHTTPMiddleware):
         if path in self._OPEN_PATHS or request.method.upper() in {"OPTIONS", "HEAD"}:
             return await call_next(request)
 
+        x_service_token = request.headers.get("x-service-token", "").strip()
         authorization = request.headers.get("authorization", "")
         token = ""
-        if authorization.lower().startswith("bearer "):
+        if x_service_token:
+            token = x_service_token
+        elif authorization.lower().startswith("bearer "):
             token = authorization.split(" ", 1)[1].strip()
 
         from app.zero_trust import principal_from_service_token

@@ -73,6 +73,11 @@ $InternalApiSecret = Test-SecretExists "INTERNAL_API_KEY"
 if ($InternalApiSecret) {
   $ApiSecrets = "$ApiSecrets,INTERNAL_API_KEY=INTERNAL_API_KEY:latest"
 }
+$ServiceTokenSecret = Test-SecretExists "SERVICE_TOKEN_SECRET"
+if ($ServiceTokenSecret) {
+  $ApiSecrets = "$ApiSecrets,SERVICE_TOKEN_SECRET=SERVICE_TOKEN_SECRET:latest"
+  $ScraperSecrets = "$ScraperSecrets,SERVICE_TOKEN_SECRET=SERVICE_TOKEN_SECRET:latest"
+}
 $GoogleClientIdSecret = Test-SecretExists "OIDC_GOOGLE_CLIENT_ID"
 if ($GoogleClientIdSecret) {
   $ApiSecrets = "$ApiSecrets,OIDC_GOOGLE_CLIENT_ID=OIDC_GOOGLE_CLIENT_ID:latest"

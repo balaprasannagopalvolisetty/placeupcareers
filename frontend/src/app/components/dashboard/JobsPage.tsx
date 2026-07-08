@@ -1015,7 +1015,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                 English-friendly roles by country and visa route
               </div>
               <div style={{ marginTop: 9, color: J.t2, fontSize: 13, lineHeight: 1.55, maxWidth: 680, fontFamily: F.sans }}>
-                Search current roles across the 25-country target map, then narrow by local visa names like H-1B, LMIA, Skilled Worker, EU Blue Card, Employment Pass, and more.
+                Search current roles across the 32-country target map, then narrow by local visa names like H-1B, LMIA, Skilled Worker, EU Blue Card, Employment Pass, and more.
               </div>
               <div style={{ marginTop: 14, display: "flex", flexWrap: "wrap", gap: 8 }}>
                 {(targetCountries.length ? targetCountries : priorityCountries).map((country) => (

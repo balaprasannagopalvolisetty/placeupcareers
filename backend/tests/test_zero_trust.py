@@ -97,6 +97,15 @@ def test_service_token_not_accepted_as_access():
     assert zt.principal_from_access_token(tok) is None
 
 
+def test_service_token_header_is_separate_from_cloud_run_iam():
+    tok = zt.create_service_token("web-server", scopes=["pipeline"])
+    p = zt.principal_from_service_token(tok)
+
+    assert p is not None
+    assert p.subject == "svc:web-server"
+    assert p.has_scope("pipeline")
+
+
 # ─── Authorization helpers (deny-by-default) ─────────────────────────────────
 def test_require_authenticated_rejects_anonymous():
     with pytest.raises(zt.AccessDenied) as e:

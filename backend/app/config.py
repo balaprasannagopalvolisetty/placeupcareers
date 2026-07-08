@@ -209,6 +209,12 @@ class Settings(BaseSettings):
                     "web server to forward pipeline/admin work (e.g. "
                     "https://placeup-app-xxxx.a.run.app). Empty = calls disabled.",
     )
+    app_server_iam_auth: bool = Field(
+        default=True,
+        description="When true, web->app calls include a Google-signed ID token "
+                    "for Cloud Run IAM and a separate X-Service-Token for the "
+                    "application-level zero-trust gate.",
+    )
 
     # --- Database / Firebase / GCP ---
     database_backend: str = Field(default="postgres")
