@@ -7,6 +7,10 @@ import logging
 import math
 import re
 import html
+import copy
+import hashlib
+import json
+import time
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, Header, HTTPException, Query
 from typing import Any, Optional
@@ -43,6 +47,12 @@ _detail_repair_recent: dict[str, datetime] = {}
 _match_score_cache: dict[str, tuple[datetime, int]] = {}
 _MATCH_SCORE_CACHE_TTL = timedelta(minutes=30)
 _MATCH_SCORE_CACHE_MAX = 20000
+_USER_CONTEXT_CACHE_TTL_SECONDS = 60
+_user_preference_cache: dict[str, tuple[float, tuple[list[str], list[str]]]] = {}
+_active_resume_text_cache: dict[str, tuple[float, str, Optional[str]]] = {}
+_FAST_RESPONSE_CACHE_TTL_SECONDS = 45
+_FAST_RESPONSE_CACHE_MAX = 250
+_fast_response_cache: dict[str, tuple[float, dict]] = {}
 
 
 async def fast_optional_user_id(
@@ -223,6 +233,55 @@ _company_link_recent: dict[str, datetime] = {}
 
 # 5-minute cache of exact inventory counts for personalized/role feeds.
 _title_count_cache: dict[str, tuple[float, int]] = {}
+
+
+def _resume_signature(resume_text: Optional[str]) -> str:
+    if not resume_text:
+        return "none"
+    return hashlib.sha1(resume_text[:50000].encode("utf-8", "ignore")).hexdigest()[:16]
+
+
+def _stable_cache_key(namespace: str, payload: dict[str, Any]) -> str:
+    raw = json.dumps(payload, sort_keys=True, default=str, separators=(",", ":"))
+    return f"{namespace}:{hashlib.sha1(raw.encode('utf-8', 'ignore')).hexdigest()}"
+
+
+def _cache_copy(payload: dict) -> dict:
+    return copy.deepcopy(payload)
+
+
+def _get_fast_response(key: str) -> Optional[dict]:
+    entry = _fast_response_cache.get(key)
+    if not entry:
+        return None
+    at, payload = entry
+    age = time.monotonic() - at
+    if age > _FAST_RESPONSE_CACHE_TTL_SECONDS:
+        _fast_response_cache.pop(key, None)
+        return None
+    cached = _cache_copy(payload)
+    cached["cached"] = True
+    cached["cache_age_seconds"] = round(age, 3)
+    return cached
+
+
+def _store_fast_response(key: str, payload: dict) -> None:
+    now = time.monotonic()
+    if len(_fast_response_cache) >= _FAST_RESPONSE_CACHE_MAX:
+        expired = [k for k, (at, _) in _fast_response_cache.items() if now - at > _FAST_RESPONSE_CACHE_TTL_SECONDS]
+        for k in expired:
+            _fast_response_cache.pop(k, None)
+        while len(_fast_response_cache) >= _FAST_RESPONSE_CACHE_MAX and _fast_response_cache:
+            _fast_response_cache.pop(next(iter(_fast_response_cache)))
+    _fast_response_cache[key] = (now, _cache_copy(payload))
+
+
+def invalidate_user_job_caches(user_id: Optional[str] = None) -> None:
+    """Clear short-lived jobs caches after resume/preference mutations."""
+    if user_id:
+        _user_preference_cache.pop(user_id, None)
+        _active_resume_text_cache.pop(user_id, None)
+    _fast_response_cache.clear()
 
 
 def _should_schedule_company_link(job: dict) -> bool:
@@ -941,12 +1000,20 @@ def _taxonomy_terms(category: Optional[str], role: Optional[str]) -> list[str]:
 def _preference_terms(user_id: Optional[str]) -> tuple[list[str], list[str]]:
     if not user_id:
         return [], []
+    now = time.monotonic()
+    cached = _user_preference_cache.get(user_id)
+    if cached and now - cached[0] < _USER_CONTEXT_CACHE_TTL_SECONDS:
+        roles, locations = cached[1]
+        return list(roles), list(locations)
     try:
         prefs = user_store.get_preferences(user_id)
     except Exception:
         return [], []
     roles = [str(v).lower() for v in (prefs.get("target_roles") or []) if str(v).strip()]
     locations = [str(v).lower() for v in (prefs.get("target_locations") or []) if str(v).strip()]
+    if len(_user_preference_cache) > 2000:
+        _user_preference_cache.clear()
+    _user_preference_cache[user_id] = (now, (roles, locations))
     return roles, locations
 
 
@@ -996,6 +1063,10 @@ async def _active_resume_text(user_id: Optional[str]) -> Optional[str]:
     """Return the parsed text of the user's active resume, if any."""
     if not user_id:
         return None
+    now = time.monotonic()
+    cached = _active_resume_text_cache.get(user_id)
+    if cached and now - cached[0] < _USER_CONTEXT_CACHE_TTL_SECONDS:
+        return cached[2]
     try:
         resumes = user_store.list_resumes(user_id)
     except Exception as exc:
@@ -1003,8 +1074,12 @@ async def _active_resume_text(user_id: Optional[str]) -> Optional[str]:
         return None
     active = next((r for r in resumes if r.get("active")), None) or (resumes[0] if resumes else None)
     if not active:
+        _active_resume_text_cache[user_id] = (now, "none", None)
         return None
     text = (active.get("parsed_text") or "").strip()
+    if len(_active_resume_text_cache) > 2000:
+        _active_resume_text_cache.clear()
+    _active_resume_text_cache[user_id] = (now, _resume_signature(text), text or None)
     return text or None
 
 
@@ -1319,6 +1394,38 @@ async def list_jobs(
         filters["title_terms"] = title_terms
 
     offset = (page - 1) * page_size
+    resume_text = await _active_resume_text(user_id) if include_scores else None
+    resume_sig = _resume_signature(resume_text)
+    response_cache_key = _stable_cache_key("jobs:list:v2", {
+        "user_id": user_id or "anon",
+        "resume_sig": resume_sig if include_scores else "scores_off",
+        "page": page,
+        "page_size": page_size,
+        "search": search,
+        "location": location,
+        "country": country,
+        "visa_program": visa_program,
+        "category": category,
+        "source": source,
+        "status": status,
+        "visa_only": visa_only,
+        "min_salary": min_salary,
+        "job_type": job_type,
+        "role": role,
+        "time_filter": time_filter,
+        "sort": sort,
+        "personalized": personalized,
+        "include_scores": include_scores,
+        "entry_level": entry_level,
+        "max_years": max_years,
+        "tz_offset": tz_offset,
+        "filters": filters,
+        "preferred_roles": preferred_roles,
+        "preferred_locations": preferred_locations,
+    })
+    cached_response = _get_fast_response(response_cache_key)
+    if cached_response is not None:
+        return cached_response
 
     async def _safe_count(count_filters: dict, *, fallback: int) -> int:
         """Exact COUNT(*) that degrades to an estimate instead of 500-ing.
@@ -1544,7 +1651,6 @@ async def list_jobs(
                 total = max(offset + len(decorated) + page_size, page * page_size + 1)
             total_pages = max(1, math.ceil(total / page_size))
 
-        resume_text = await _active_resume_text(user_id) if include_scores else None
         resume_cache = _prepare_resume_tokens(resume_text) if resume_text else None
         def _score_visible_job(j: dict) -> None:
             jd = j.get("description") or ""
@@ -1759,6 +1865,7 @@ async def list_jobs(
         }
         if job_posts:
             _store_stale_jobs_response(_stale_key, response_payload)
+            _store_fast_response(response_cache_key, response_payload)
         return response_payload
     except Exception as e:
         logger.error(f"Error listing jobs: {e}")
@@ -2264,6 +2371,23 @@ async def get_top_matches(
     if terms:
         filters["title_terms"] = terms
     candidate_limit = 500 if (post_filter_since or post_filter_before) else min(max(limit * 8, 80), 180)
+    response_cache_key = _stable_cache_key("jobs:top:v2", {
+        "user_id": user_id or "anon",
+        "resume_sig": _resume_signature(resume_text),
+        "limit": limit,
+        "location": location,
+        "time_filter": time_filter,
+        "visa_only": visa_only,
+        "min_score": min_score,
+        "fresh_basis": fresh_basis,
+        "tz_offset": tz_offset,
+        "filters": filters,
+        "preferred_roles": preferred_roles,
+        "preferred_locations": preferred_locations,
+    })
+    cached_response = _get_fast_response(response_cache_key)
+    if cached_response is not None:
+        return cached_response
     resume_cache = _prepare_resume_tokens(resume_text) if resume_text else None
 
     def _rank_pool(pool: list, *, apply_window: bool) -> list[dict]:
@@ -2286,10 +2410,11 @@ async def get_top_matches(
                 title = item.get("title") or ""
                 description = item.get("description") or ""
                 if _can_score_job_text(title, description):
-                    item["match_score"] = _score_job_against_resume(
+                    item["match_score"] = _cached_score_job_against_resume(
                         resume_text,
                         f"{title}\n{description}",
                         resume_cache=resume_cache,
+                        job_id=str(item.get("id") or ""),
                     )
                     item["score_type"] = "resume_match"
                 else:
@@ -2331,7 +2456,7 @@ async def get_top_matches(
             if isinstance(row.get("match_score"), int) and int(row.get("match_score") or 0) >= min_score
         ]
     ranked.sort(key=lambda row: _projection_sort_key(row, tz_offset_minutes=tz_offset))
-    return {
+    response_payload = {
         "jobs": ranked[:limit],
         "total": len(ranked),
         "page": 1,
@@ -2339,6 +2464,8 @@ async def get_top_matches(
         "total_pages": 1,
         "filters_applied": {**filters, "min_score": min_score, "fresh_basis": fresh_basis},
     }
+    _store_fast_response(response_cache_key, response_payload)
+    return response_payload
 
 
 @router.get("/{job_id}")

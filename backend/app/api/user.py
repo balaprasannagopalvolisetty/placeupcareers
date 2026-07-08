@@ -9,6 +9,7 @@ import base64
 import html
 import io
 import textwrap
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -36,6 +37,20 @@ router = APIRouter(prefix="/user", tags=["User"])
 MAX_RESUME_BYTES = 10 * 1024 * 1024
 ALLOWED_RESUME_EXT = {"pdf", "docx"}
 TAILOR_DAILY_LIMIT = 25
+_DASHBOARD_SUMMARY_TTL_SECONDS = 45
+_dashboard_summary_cache: dict[str, tuple[float, DashboardSummary]] = {}
+
+
+def _invalidate_dashboard_summary(user_id: str) -> None:
+    _dashboard_summary_cache.pop(user_id, None)
+
+
+def _invalidate_jobs_context(user_id: str) -> None:
+    try:
+        from app.api.jobs import invalidate_user_job_caches
+        invalidate_user_job_caches(user_id)
+    except Exception as exc:  # pragma: no cover - defensive cache cleanup
+        log.debug("Jobs cache invalidation skipped for %s: %s", user_id, exc)
 
 
 class TailorQueueRequest(BaseModel):
@@ -1401,6 +1416,7 @@ async def get_preferences(user_id: str = Depends(current_user_id)):
 @router.put("/preferences", response_model=UserPreferences)
 async def update_preferences(preferences: UserPreferences = Body(...), user_id: str = Depends(current_user_id)):
     raw = user_store.update_preferences(user_id, preferences.model_dump(exclude_unset=False))
+    _invalidate_jobs_context(user_id)
     return _to_prefs(raw)
 
 
@@ -1428,6 +1444,11 @@ async def get_dashboard_summary(
     db=Depends(get_db),
 ):
     """Compact data bundle for the dashboard overview cards/activity feed."""
+    now = time.monotonic()
+    cached = _dashboard_summary_cache.get(user_id)
+    if cached and now - cached[0] < _DASHBOARD_SUMMARY_TTL_SECONDS:
+        return cached[1].model_copy(deep=True)
+
     resumes = user_store.list_resumes(user_id)
     active_resume = next((r for r in resumes if r.get("active")), None) or (resumes[0] if resumes else None)
     resume_score = int((active_resume or {}).get("score") or 0)
@@ -1454,7 +1475,7 @@ async def get_dashboard_summary(
             unread=bool(alert.get("unread")),
         ))
 
-    return DashboardSummary(
+    payload = DashboardSummary(
         resume_score=resume_score,
         has_resume=bool(active_resume),
         active_resume_name=(active_resume or {}).get("name"),
@@ -1463,13 +1484,19 @@ async def get_dashboard_summary(
         total_applications=total_applications,
         recent_alerts=recent_alerts,
     )
+    if len(_dashboard_summary_cache) > 2000:
+        _dashboard_summary_cache.clear()
+    _dashboard_summary_cache[user_id] = (now, payload)
+    return payload
 
 
 @router.post("/applications")
 async def save_user_application(payload: UserApplication = Body(...), user_id: str = Depends(current_user_id)):
     """Store whether a user applied or skipped a job for analytics."""
     try:
-        return user_store.upsert_user_application(user_id, payload.model_dump())
+        result = user_store.upsert_user_application(user_id, payload.model_dump())
+        _invalidate_dashboard_summary(user_id)
+        return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -1785,6 +1812,8 @@ async def upload_user_resume(
     if row is None:
         log.error("Resume save failed for %s after retries: %s", user_id, last_exc)
         raise HTTPException(status_code=500, detail="Could not save your resume. Please try again or contact support.")
+    _invalidate_dashboard_summary(user_id)
+    _invalidate_jobs_context(user_id)
     return _to_resume_meta(row)
 
 
@@ -1793,6 +1822,8 @@ async def activate_user_resume(resume_id: str, user_id: str = Depends(current_us
     row = user_store.set_active_resume(user_id, resume_id)
     if not row:
         raise HTTPException(status_code=404, detail="Resume not found")
+    _invalidate_dashboard_summary(user_id)
+    _invalidate_jobs_context(user_id)
     return _to_resume_meta(row)
 
 
@@ -1801,6 +1832,8 @@ async def delete_user_resume(resume_id: str, user_id: str = Depends(current_user
     deleted = user_store.delete_resume(user_id, resume_id)
     if deleted == 0:
         raise HTTPException(status_code=404, detail="Resume not found")
+    _invalidate_dashboard_summary(user_id)
+    _invalidate_jobs_context(user_id)
     return {"deleted": resume_id}
 
 

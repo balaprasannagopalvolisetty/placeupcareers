@@ -235,26 +235,14 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
       setFeaturedJobs(jobs);
       setFeaturedLoading(false);
     };
-    // Prefer today's matches, but never leave "Featured Positions Today" empty:
-    // if nothing was posted/scraped today, fall back to the most recent matches
-    // so the section always shows positions.
+    // Prefer today's matches. The backend now relaxes the window internally if
+    // today's pool is empty, so the frontend should not issue a second serial
+    // request that doubles the perceived load time.
     api.getTopMatches({ limit: 20, time_filter: "today", tz_offset: new Date().getTimezoneOffset() })
-      .then((response) => {
-        if (!active) return;
-        const todayJobs = mapJobs(response.jobs);
-        if (todayJobs.length > 0) {
-          commit(todayJobs);
-          return;
-        }
-        api.getTopMatches({ limit: 20, tz_offset: new Date().getTimezoneOffset() })
-          .then((fallback) => commit(mapJobs(fallback.jobs)))
-          .catch(() => { if (active) setFeaturedLoading(false); });
-      })
+      .then((response) => commit(mapJobs(response.jobs)))
       .catch(() => {
         // Network/timeout: keep any cached snapshot rather than blanking.
-        api.getTopMatches({ limit: 20, tz_offset: new Date().getTimezoneOffset() })
-          .then((fallback) => commit(mapJobs(fallback.jobs)))
-          .catch(() => { if (active) setFeaturedLoading(false); });
+        if (active) setFeaturedLoading(false);
       });
     return () => { active = false; };
   }, []);
@@ -263,43 +251,45 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
   useEffect(() => {
     let active = true;
     setSummaryLoading(true);
-    Promise.allSettled([
-      withTimeout(api.getDashboardSummary(), 6500, null),
-      withTimeout(api.getResumeList(), 6500, []),
-      withTimeout(api.getUserApplications(), 6500, []),
-      // Fourth source: the parsed-active-resume endpoint. It reads the same
-      // resume the Jobs page uses, so even if the summary/list calls are slow
-      // or fail, the ATS score and "has resume" state still resolve correctly.
-      withTimeout(api.getParsedActiveResume(), 6500, null),
-    ])
-      .then(([summaryResult, resumesResult, applicationsResult, parsedResult]) => {
+    withTimeout(api.getDashboardSummary(), 1900, null)
+      .then((summary) => {
         if (!active) return;
-        const summary = summaryResult.status === "fulfilled" ? summaryResult.value : null;
-        const resumes = resumesResult.status === "fulfilled" ? resumesResult.value : [];
-        const applicationRows = applicationsResult.status === "fulfilled" ? applicationsResult.value : [];
-        const parsed = parsedResult.status === "fulfilled" ? parsedResult.value : null;
-        const activeResume = resumes.find((resume) => resume.active) || resumes[0];
-
-        const resolvedScore = Number(
-          summary?.resume_score || activeResume?.score || (parsed as any)?.score || 0,
-        );
-        const resolvedResumeCount = Math.max(
-          Number(summary?.total_resumes || 0),
-          resumes.length,
-          activeResume ? 1 : 0,
-          (parsed as any)?.has_resume ? 1 : 0,
-        );
-        const resolvedResumeName =
-          summary?.active_resume_name || activeResume?.name || (parsed as any)?.name || "";
-
-        setResumeScore(resolvedScore);
-        setHasResume(Boolean(summary?.has_resume || (parsed as any)?.has_resume || resolvedResumeName || resolvedResumeCount > 0));
-        setActiveResumeName(resolvedResumeName);
-        setApplications(applicationRows.filter((row) => row.status === "applied" || row.status === "interview"));
-        setTotalApplications(Number(summary?.total_applications || applicationRows.length || 0));
-        setTotalResumes(resolvedResumeCount);
+        if (summary) {
+          setResumeScore(Number(summary.resume_score || 0));
+          setHasResume(Boolean(summary.has_resume || summary.active_resume_name || Number(summary.total_resumes || 0) > 0));
+          setActiveResumeName(summary.active_resume_name || "");
+          setTotalApplications(Number(summary.total_applications || 0));
+          setTotalResumes(Number(summary.total_resumes || 0));
+        }
       })
       .finally(() => { if (active) setSummaryLoading(false); });
+
+    Promise.allSettled([
+      withTimeout(api.getResumeList(), 2400, []),
+      withTimeout(api.getUserApplications(), 2400, []),
+      withTimeout(api.getParsedActiveResume(), 2400, null),
+    ]).then(([resumesResult, applicationsResult, parsedResult]) => {
+      if (!active) return;
+      const resumes = resumesResult.status === "fulfilled" ? resumesResult.value : [];
+      const applicationRows = applicationsResult.status === "fulfilled" ? applicationsResult.value : [];
+      const parsed = parsedResult.status === "fulfilled" ? parsedResult.value : null;
+      const activeResume = resumes.find((resume) => resume.active) || resumes[0];
+      const resolvedScore = Number(activeResume?.score || (parsed as any)?.score || 0);
+      const resolvedResumeCount = Math.max(
+        resumes.length,
+        activeResume ? 1 : 0,
+        (parsed as any)?.has_resume ? 1 : 0,
+      );
+      const resolvedResumeName = activeResume?.name || (parsed as any)?.name || "";
+      if (resolvedScore > 0) setResumeScore(resolvedScore);
+      if (resolvedResumeCount > 0 || resolvedResumeName || (parsed as any)?.has_resume) {
+        setHasResume(true);
+        setTotalResumes((current) => Math.max(current, resolvedResumeCount));
+        setActiveResumeName((current) => current || resolvedResumeName);
+      }
+      setApplications(applicationRows.filter((row) => row.status === "applied" || row.status === "interview"));
+      if (applicationRows.length > 0) setTotalApplications(applicationRows.length);
+    });
     return () => { active = false; };
   }, []);
 
@@ -472,14 +462,17 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    api.getNotifications().then((data) => {
-      setNotifications(data.map((item) => ({ ...item, unread: Boolean((item as any).unread) })));
-    }).catch(() => {
-      setNotifications([]);
-    });
-    // Target-role digest powers the bell badge: how many roles matching the
-    // user's target positions were added to the database in the last 24h.
-    api.getAlertsDigest().then(setRolesDigest).catch(() => setRolesDigest(null));
+    const timer = window.setTimeout(() => {
+      api.getNotifications().then((data) => {
+        setNotifications(data.map((item) => ({ ...item, unread: Boolean((item as any).unread) })));
+      }).catch(() => {
+        setNotifications([]);
+      });
+      // Target-role digest powers the bell badge: how many roles matching the
+      // user's target positions were added to the database in the last 24h.
+      api.getAlertsDigest().then(setRolesDigest).catch(() => setRolesDigest(null));
+    }, 450);
+    return () => window.clearTimeout(timer);
   }, [isAuthenticated]);
 
   const displayName = user ? `${user.first_name} ${user.last_name}` : "Loading...";

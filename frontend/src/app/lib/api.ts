@@ -105,7 +105,7 @@ function shouldAttemptRefresh(path: string) {
 // "fetching time" feel near-instant.
 const _readCache = new Map<string, { at: number; data: unknown }>();
 const _inflight = new Map<string, Promise<unknown>>();
-const READ_TTL_MS = 15000;
+const READ_TTL_MS = 60000;
 
 function _readCacheKey(path: string, init: RequestInit) {
   return `${(init.method || "GET").toUpperCase()} ${path}`;

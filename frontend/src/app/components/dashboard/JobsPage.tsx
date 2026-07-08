@@ -665,7 +665,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   }, []);
 
   useEffect(() => {
-    const refresh = () => {
+    const refreshForResumeChange = () => {
       setPage(1);
       setResumeVersion(typeof window !== "undefined" ? localStorage.getItem("placeup_resume_version") || String(Date.now()) : String(Date.now()));
       // Re-read saved/tracked state from localStorage whenever the window regains
@@ -673,11 +673,15 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       setSavedVersion((v) => v + 1);
       setAppliedVersion((v) => v + 1);
     };
-    window.addEventListener("placeup:resume-changed", refresh as EventListener);
-    window.addEventListener("focus", refresh);
+    const refreshTrackingState = () => {
+      setSavedVersion((v) => v + 1);
+      setAppliedVersion((v) => v + 1);
+    };
+    window.addEventListener("placeup:resume-changed", refreshForResumeChange as EventListener);
+    window.addEventListener("focus", refreshTrackingState);
     return () => {
-      window.removeEventListener("placeup:resume-changed", refresh as EventListener);
-      window.removeEventListener("focus", refresh);
+      window.removeEventListener("placeup:resume-changed", refreshForResumeChange as EventListener);
+      window.removeEventListener("focus", refreshTrackingState);
     };
   }, []);
 
@@ -791,7 +795,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       .finally(() => { if (active && jobsRequestId.current === requestId) setLoading(false); });
 
     return () => { active = false; };
-  }, [activeCategory, activeRole, search, location, countryFilter, visaProgramFilter, visaOnly, timeFilter, maxYears, personalized, sortBy, page, resumeVersion, resumeLink.hasResume, reloadKey]);
+  }, [activeCategory, activeRole, search, location, countryFilter, visaProgramFilter, visaOnly, timeFilter, maxYears, personalized, sortBy, page, resumeVersion, reloadKey]);
 
   // Debounce search/location so API is only called after typing stops.
   useEffect(() => {
