@@ -52,8 +52,15 @@ foreach ($country in $Countries) {
     $schedule = "$minute */6 * * *"
     $schedulerName = "$jobName-6h"
     $uri = "https://$Region-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/$ProjectId/jobs/$jobName`:run"
-    & gcloud.cmd scheduler jobs describe $schedulerName --project $ProjectId --location $Region *> $null
-    if ($LASTEXITCODE -eq 0) {
+    $previousErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+      & gcloud.cmd scheduler jobs describe $schedulerName --project $ProjectId --location $Region *> $null
+      $schedulerExists = $LASTEXITCODE -eq 0
+    } finally {
+      $ErrorActionPreference = $previousErrorAction
+    }
+    if ($schedulerExists) {
       & gcloud.cmd scheduler jobs update http $schedulerName `
         --project $ProjectId --location $Region `
         --schedule $schedule --time-zone "America/Chicago" `
