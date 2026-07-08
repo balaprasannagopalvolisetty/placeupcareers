@@ -176,8 +176,8 @@ class Settings(BaseSettings):
     stripe_api_key: str = Field(default="", description="Stripe secret API key (sk_test_… or sk_live_…)")
     stripe_webhook_secret: str = Field(default="", description="Stripe webhook signing secret (whsec_…)")
     stripe_price_basic: str = Field(default="", description="Stripe price ID for the $9.99/mo Basic plan")
-    stripe_price_pro: str = Field(default="", description="Stripe price ID for the $15.99/mo Pro plan")
-    stripe_price_elite: str = Field(default="", description="Stripe price ID for the $45/mo Elite plan")
+    stripe_price_pro: str = Field(default="", description="Stripe price ID for the $24.99/mo Pro plan")
+    stripe_price_elite: str = Field(default="", description="Stripe price ID for the $149.99/mo Elite plan")
 
     # --- Payments ---
     payment_basic_checkout_url: str = Field(default="", description="Hosted checkout URL for Basic plan")

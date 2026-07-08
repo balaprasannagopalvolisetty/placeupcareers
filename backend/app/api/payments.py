@@ -18,23 +18,29 @@ PLANS = {
     "basic": {
         "id": "basic",
         "name": "Basic",
-        "price": 0.00 if settings.free_access_enabled else 9.99,
-        "interval": "preview" if settings.free_access_enabled else "month",
+        "price": 9.99,
+        "interval": "m",
         "features": ["Job matching", "Resume ATS score", "Saved jobs"],
     },
     "pro": {
         "id": "pro",
         "name": "Pro",
-        "price": 0.00 if settings.free_access_enabled else 15.99,
-        "interval": "preview" if settings.free_access_enabled else "month",
+        "price": 24.99,
+        "interval": "m",
         "features": ["Everything in Basic", "Recruiter contacts", "Application tracking", "Priority job alerts"],
     },
     "elite": {
         "id": "elite",
         "name": "Elite",
-        "price": 0.00 if settings.free_access_enabled else 45.00,
-        "interval": "preview" if settings.free_access_enabled else "month",
-        "features": ["Everything in Pro", "Premium enrichment", "Visa sponsor insights", "Concierge support"],
+        "price": 149.99,
+        "interval": "m",
+        "features": [
+            "Everything in Pro",
+            "Premium enrichment",
+            "Visa sponsor insights",
+            "Concierge support",
+            "Dedicated employee applies for you to 25-30 filtered positions daily",
+        ],
     },
 }
 
@@ -56,7 +62,7 @@ async def list_plans():
     return {
         "plans": list(PLANS.values()),
         "free_access_enabled": settings.free_access_enabled,
-        "message": "Complete application access is currently free." if settings.free_access_enabled else "",
+        "message": "Plan catalog is live. Checkout is not required during launch preview." if settings.free_access_enabled else "",
     }
 
 
@@ -77,7 +83,7 @@ async def public_checkout_link(plan_id: str):
             "checkout_url": "",
             "configured": False,
             "processor": "free_access",
-            "message": "Payments are temporarily disabled. Complete access is free right now.",
+            "message": "Plan selected. Checkout is not required during launch preview.",
         }
     url = _checkout_url(plan_id)
     return {
@@ -99,7 +105,7 @@ async def create_checkout_session(payload: CheckoutRequest = Body(...), user_id:
             "checkout_url": "",
             "user_id": user_id,
             "processor": "free_access",
-            "message": "Payments are temporarily disabled. Complete access is free right now.",
+            "message": "Plan selected. Checkout is not required during launch preview.",
         }
     url = _checkout_url(plan_id)
     if not url:

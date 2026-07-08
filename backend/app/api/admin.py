@@ -92,7 +92,7 @@ async def admin_payments(_: dict = Depends(require_admin_user)):
     return {
         "payments": [],
         "note": (
-            "Payments are temporarily disabled; complete application access is free."
+            "Plan catalog is live; checkout is not required during launch preview."
             if settings.free_access_enabled
             else "Payment provider webhooks are not connected yet; hosted checkout links are configured via environment variables."
         ),

@@ -471,7 +471,7 @@ export default function SignUp() {
   const [plans, setPlans] = useState<api.PaymentPlan[]>([]);
   const [selectedPlan, setSelectedPlan] = useState("pro");
   const [paymentReference, setPaymentReference] = useState("");
-  const [paymentMessage, setPaymentMessage] = useState("Complete access is currently free during launch preview.");
+  const [paymentMessage, setPaymentMessage] = useState("Choose the monthly plan that fits your job search.");
 
   const visaOptions = useMemo(() => visaOptionsForCountry(country), [country]);
   useEffect(() => {
@@ -507,9 +507,9 @@ export default function SignUp() {
       .catch(() => {
         if (!active) return;
         setPlans([
-          { id: "basic", name: "Basic", price: 0, interval: "preview", features: ["Job matching", "Resume ATS score", "Saved jobs"] },
-          { id: "pro", name: "Pro", price: 0, interval: "preview", features: ["Everything in Basic", "Application tracking", "Priority job alerts"] },
-          { id: "elite", name: "Elite", price: 0, interval: "preview", features: ["Everything in Pro", "Visa sponsor insights", "Concierge support"] },
+          { id: "basic", name: "Basic", price: 9.99, interval: "m", features: ["Job matching", "Resume ATS score", "Saved jobs"] },
+          { id: "pro", name: "Pro", price: 24.99, interval: "m", features: ["Everything in Basic", "Recruiter contacts", "Application tracking", "Priority job alerts"] },
+          { id: "elite", name: "Elite", price: 149.99, interval: "m", features: ["Everything in Pro", "Premium enrichment", "Visa sponsor insights", "Concierge support", "Dedicated employee applies for you to 25-30 filtered positions daily"] },
         ]);
       });
     return () => { active = false; };
@@ -642,7 +642,7 @@ export default function SignUp() {
         setPaymentMessage("Checkout opened in a new tab. Return here after payment to finish account creation.");
       } else {
         setPaymentReference("checkout_not_configured");
-        setPaymentMessage(checkout.message || "Checkout is not configured yet, so preview access remains enabled.");
+        setPaymentMessage(checkout.message || "Checkout is not configured yet, so your plan selection is saved and you can continue.");
       }
       setStep(6);
     } catch (err) {
@@ -713,7 +713,7 @@ export default function SignUp() {
                 <Link to="/terms" target="_blank" style={{ color: T.red }}>Terms of Service</Link>,{" "}
                 <Link to="/privacy" target="_blank" style={{ color: T.red }}>Privacy Policy</Link>,{" "}
                 <Link to="/cookies" target="_blank" style={{ color: T.red }}>Cookies notice</Link>, and{" "}
-          <Link to="/disclaimer" target="_blank" style={{ color: T.red }}>Disclaimer</Link>. Complete application access is currently free while we finish the launch preview.
+          <Link to="/disclaimer" target="_blank" style={{ color: T.red }}>Disclaimer</Link>. Your selected plan is used for access limits and support routing during launch preview.
               </p>
               <p style={{ marginBottom: 0 }}>You must be 18+ and provide accurate information. We record your acceptance (date, version, and IP) for compliance.</p>
             </div>
@@ -771,9 +771,9 @@ export default function SignUp() {
             </div>
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 10 }}>
               {(plans.length ? plans : [
-                { id: "basic", name: "Basic", price: 0, interval: "preview", features: ["Job matching", "Resume ATS score", "Saved jobs"] },
-                { id: "pro", name: "Pro", price: 0, interval: "preview", features: ["Everything in Basic", "Application tracking", "Priority job alerts"] },
-                { id: "elite", name: "Elite", price: 0, interval: "preview", features: ["Everything in Pro", "Visa sponsor insights", "Concierge support"] },
+                { id: "basic", name: "Basic", price: 9.99, interval: "m", features: ["Job matching", "Resume ATS score", "Saved jobs"] },
+                { id: "pro", name: "Pro", price: 24.99, interval: "m", features: ["Everything in Basic", "Recruiter contacts", "Application tracking", "Priority job alerts"] },
+                { id: "elite", name: "Elite", price: 149.99, interval: "m", features: ["Everything in Pro", "Premium enrichment", "Visa sponsor insights", "Concierge support", "Dedicated employee applies for you to 25-30 filtered positions daily"] },
               ] as api.PaymentPlan[]).map((plan) => {
                 const active = selectedPlan === plan.id;
                 const price = Number(plan.price || 0);
@@ -783,7 +783,7 @@ export default function SignUp() {
                     type="button"
                     onClick={() => setSelectedPlan(plan.id)}
                     style={{
-                      minHeight: 168,
+                      minHeight: 190,
                       padding: 14,
                       borderRadius: 14,
                       border: `1px solid ${active ? "rgba(37,99,235,0.48)" : T.border}`,
@@ -802,7 +802,7 @@ export default function SignUp() {
                       <span style={{ fontSize: 11, color: T.t3, fontWeight: 700 }}> / {plan.interval}</span>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 12 }}>
-                      {(plan.features || []).slice(0, 4).map((feature) => (
+                      {(plan.features || []).map((feature) => (
                         <span key={feature} style={{ display: "flex", gap: 6, fontSize: 11.5, color: T.t2, fontFamily: F.sans, lineHeight: 1.35 }}>
                           <ShieldCheck size={12} color="#16A34A" style={{ flexShrink: 0, marginTop: 1 }} />
                           {feature}

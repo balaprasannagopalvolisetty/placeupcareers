@@ -79,9 +79,9 @@ export function PrivacyPage() {
       <p style={P}>
         Account data (name, email, phone, password hash, optional LinkedIn URL),
         résumé content you upload (parsed text used for analysis), your job
-        preferences and work-authorization/visa status, access status, and
-        usage/device data. Payments are currently disabled during the free
-        preview, and we do not store card numbers.
+        preferences and work-authorization/visa status, selected plan and
+        payment status, and usage/device data. Card details are handled by the
+        payment processor, and we do not store card numbers.
       </p>
 
       <h2 style={H2}>2. How we use it</h2>
@@ -220,12 +220,13 @@ export function TermsPage() {
         accounts that violate these Terms.
       </p>
 
-      <h2 style={H2}>4. Free preview access</h2>
+      <h2 style={H2}>4. Plans, billing, and launch preview</h2>
       <p style={P}>
-        Payments and subscriptions are temporarily disabled. During this free
-        preview, complete application access is available without a card or
-        checkout step. If paid plans are re-enabled later, we will update these
-        terms before charging is required.
+        PlaceUp offers monthly Basic, Pro, and Elite plans. During launch
+        preview, checkout may not be required immediately, but your selected
+        plan can still be used for access limits, support routing, and future
+        billing setup. We will not charge you unless a hosted checkout or other
+        payment authorization clearly presents the amount and you complete it.
       </p>
 
       <h2 style={H2}>5. Disclaimers & limitation of liability</h2>
@@ -412,35 +413,38 @@ export function ReturnPolicyPage() {
   return (
     <LegalShell title="Refund & Cancellation Policy" updated="June 21, 2026">
       <p style={P}>
-        Payments are temporarily disabled during the free preview, so there are
-        no subscription charges to refund or cancel right now.
+        This policy explains refunds and cancellation for paid PlaceUp plans.
+        If checkout is unavailable during launch preview, there is no charge to
+        refund or cancel until you complete a paid checkout.
       </p>
 
       <h2 style={H2}>1. 24-hour refund window</h2>
       <p style={P}>
-        Because checkout is disabled, PlaceUp is not collecting payments during
-        the preview period. If you believe you were charged in error, email{" "}
+        If you believe you were charged in error or need help with a recent
+        paid checkout, email{" "}
         <a href="mailto:refund@placeupcareer.com" style={{ color: T.text }}>refund@placeupcareer.com</a>.
       </p>
 
       <h2 style={H2}>2. Cancellation & future charges</h2>
       <p style={P}>
-        There are currently no renewal charges. If subscriptions are re-enabled
-        later, cancellation controls and updated terms will be provided before
-        paid access is required.
+        When a recurring subscription is active, you can request cancellation
+        help by email or through any billing portal we provide. Cancellation
+        stops future renewals but does not remove access already delivered for
+        the paid period unless required by law.
       </p>
 
       <h2 style={H2}>3. Processing fees</h2>
       <p style={P}>
-        No payment-processing fees apply while checkout is disabled.
+        Payment-processing fees may be non-refundable where permitted by law and
+        by the payment processor's rules.
       </p>
 
       <h2 style={H2}>4. EU/UK consumers</h2>
       <p style={P}>
-        Because no paid purchase is required during the free preview, withdrawal
-        rights tied to paid subscriptions are not triggered by current access.
-        If paid plans return later, the applicable consumer notices will be
-        presented before checkout.
+        If you are an EU or UK consumer, additional withdrawal rights may apply
+        depending on when paid service begins and what you authorize at
+        checkout. Any required consumer notices will be presented before paid
+        checkout.
       </p>
 
       <h2 style={H2}>5. Contact</h2>

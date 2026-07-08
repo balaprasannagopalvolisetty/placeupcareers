@@ -341,18 +341,18 @@ function PricingSection() {
       .catch(() => {
         if (!active) return;
         setPlans([
-          { id: "basic", name: "Basic", price: 0, interval: "preview", features: ["Job matching", "Resume ATS score", "Saved jobs"] },
-          { id: "pro", name: "Pro", price: 0, interval: "preview", features: ["Everything in Basic", "Application tracking", "Priority alerts"] },
-          { id: "elite", name: "Elite", price: 0, interval: "preview", features: ["Everything in Pro", "Visa sponsor insights", "Concierge support"] },
+          { id: "basic", name: "Basic", price: 9.99, interval: "m", features: ["Job matching", "Resume ATS score", "Saved jobs"] },
+          { id: "pro", name: "Pro", price: 24.99, interval: "m", features: ["Everything in Basic", "Recruiter contacts", "Application tracking", "Priority job alerts"] },
+          { id: "elite", name: "Elite", price: 149.99, interval: "m", features: ["Everything in Pro", "Premium enrichment", "Visa sponsor insights", "Concierge support", "Dedicated employee applies for you to 25-30 filtered positions daily"] },
         ]);
       });
     return () => { active = false; };
   }, []);
 
   const displayPlans = plans.length ? plans : [
-    { id: "basic", name: "Basic", price: 0, interval: "preview", features: ["Job matching", "Resume ATS score", "Saved jobs"] },
-    { id: "pro", name: "Pro", price: 0, interval: "preview", features: ["Everything in Basic", "Application tracking", "Priority alerts"] },
-    { id: "elite", name: "Elite", price: 0, interval: "preview", features: ["Everything in Pro", "Visa sponsor insights", "Concierge support"] },
+    { id: "basic", name: "Basic", price: 9.99, interval: "m", features: ["Job matching", "Resume ATS score", "Saved jobs"] },
+    { id: "pro", name: "Pro", price: 24.99, interval: "m", features: ["Everything in Basic", "Recruiter contacts", "Application tracking", "Priority job alerts"] },
+    { id: "elite", name: "Elite", price: 149.99, interval: "m", features: ["Everything in Pro", "Premium enrichment", "Visa sponsor insights", "Concierge support", "Dedicated employee applies for you to 25-30 filtered positions daily"] },
   ] as api.PaymentPlan[];
 
   return (
@@ -369,7 +369,7 @@ function PricingSection() {
           </h2>
         </Reveal>
         <p style={{ textAlign: "center", fontSize: 15.5, color: T.t2, fontFamily: F.sans, maxWidth: 620, margin: "0 auto 38px", lineHeight: 1.7 }}>
-          Launch preview access is free right now. Plan selection prepares your limits and support level before paid checkout is enabled.
+          Straightforward monthly plans for different levels of search support, from self-serve matching to concierge application help.
         </p>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 18 }}>
           {displayPlans.map((plan) => {

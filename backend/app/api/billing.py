@@ -2,9 +2,9 @@
 Stripe billing endpoints.
 
 Three subscription tiers (matching the product requirement):
-    Basic   $9.99 / month   — basic features + 50 ATS scores / month
-    Pro    $15.99 / month   — Pro features + unlimited ATS + email enrichment
-    Elite     $45 / month   — Pro + admin tools + LinkedIn CSV bulk enrichment
+    Basic   $9.99 / month   - job matching, resume ATS score, saved jobs
+    Pro     $24.99 / month  - Basic + recruiter contacts, tracking, alerts
+    Elite   $149.99 / month - Pro + enrichment, sponsor insights, concierge
 
 Endpoints
 ---------
@@ -20,7 +20,7 @@ Operational setup
        stripe products create --name "PlaceUp Basic"
        stripe prices create --product=<id> --unit-amount=999 --currency=usd \
            --recurring="interval=month"
-   ...repeat for Pro ($1599) and Elite ($4500).
+   ...repeat for Pro ($2499) and Elite ($14999).
 
 2. Put the resulting price IDs into env vars:
        STRIPE_PRICE_BASIC=price_xxx
@@ -88,47 +88,46 @@ PLANS: list[PlanCard] = [
     PlanCard(
         slug="basic",
         name="Basic",
-        price_cents=0 if settings.free_access_enabled else 999,
-        interval="preview" if settings.free_access_enabled else "month",
-        description="Complete access during the free preview." if settings.free_access_enabled else "Daily job alerts + 50 ATS scores per month.",
+        price_cents=999,
+        interval="month",
+        description="Job matching, resume ATS scoring, and saved jobs.",
         stripe_price_id=_price_id("STRIPE_PRICE_BASIC"),
         features=[
-            PlanFeature(label="Daily job alerts"),
-            PlanFeature(label="50 ATS match scores / month"),
-            PlanFeature(label="Application tracker"),
-            PlanFeature(label="Unlimited resume uploads", included=False),
-            PlanFeature(label="Email enrichment (FinalScout)", included=False),
+            PlanFeature(label="Job matching"),
+            PlanFeature(label="Resume ATS score"),
+            PlanFeature(label="Saved jobs"),
+            PlanFeature(label="Recruiter contacts", included=False),
+            PlanFeature(label="Priority job alerts", included=False),
         ],
     ),
     PlanCard(
         slug="pro",
         name="Pro",
-        price_cents=0 if settings.free_access_enabled else 1599,
-        interval="preview" if settings.free_access_enabled else "month",
+        price_cents=2499,
+        interval="month",
         recommended=True,
-        description="Complete access during the free preview." if settings.free_access_enabled else "Unlimited ATS scoring + recruiter email lookup.",
+        description="Recruiter contacts, application tracking, and priority job alerts.",
         stripe_price_id=_price_id("STRIPE_PRICE_PRO"),
         features=[
             PlanFeature(label="Everything in Basic"),
-            PlanFeature(label="Unlimited ATS match scores"),
-            PlanFeature(label="Unlimited resume uploads"),
-            PlanFeature(label="Recruiter email lookup (FinalScout)"),
-            PlanFeature(label="Priority support"),
+            PlanFeature(label="Recruiter contacts"),
+            PlanFeature(label="Application tracking"),
+            PlanFeature(label="Priority job alerts"),
         ],
     ),
     PlanCard(
         slug="elite",
         name="Elite",
-        price_cents=0 if settings.free_access_enabled else 4500,
-        interval="preview" if settings.free_access_enabled else "month",
-        description="Complete access during the free preview." if settings.free_access_enabled else "Everything in Pro + bulk LinkedIn CSV processing + early access.",
+        price_cents=14999,
+        interval="month",
+        description="Premium enrichment, visa sponsor insights, concierge support, and daily filtered applications.",
         stripe_price_id=_price_id("STRIPE_PRICE_ELITE"),
         features=[
             PlanFeature(label="Everything in Pro"),
-            PlanFeature(label="LinkedIn CSV bulk enrichment"),
-            PlanFeature(label="Custom job-alert rules"),
-            PlanFeature(label="Dedicated success manager"),
-            PlanFeature(label="Early access to new features"),
+            PlanFeature(label="Premium enrichment"),
+            PlanFeature(label="Visa sponsor insights"),
+            PlanFeature(label="Concierge support"),
+            PlanFeature(label="Dedicated employee applies for you to 25-30 filtered positions daily"),
         ],
     ),
 ]
@@ -146,9 +145,9 @@ async def my_billing(user_id: str = Depends(current_user_id)):
     if settings.free_access_enabled:
         return {
             "plan": user.get("plan") or "pro",
-            "subscription_status": "free_access",
+            "subscription_status": "launch_preview",
             "free_access_enabled": True,
-            "message": "Payments are temporarily disabled. Complete application access is free right now.",
+            "message": "Plan catalog is live. Checkout is not required during launch preview.",
         }
     return {
         "plan": user.get("plan") or "free",
@@ -174,7 +173,7 @@ def _stripe_or_503():
     if settings.free_access_enabled:
         raise HTTPException(
             status_code=403,
-            detail="Payments are temporarily disabled. Complete application access is free right now.",
+            detail="Checkout is not required during launch preview.",
         )
     api_key = os.getenv("STRIPE_API_KEY", "").strip() or getattr(settings, "stripe_api_key", "")
     if not api_key:
