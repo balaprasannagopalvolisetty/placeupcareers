@@ -122,6 +122,12 @@ function getScoreMeta(score: number | null | undefined, scoreType?: string) {
       border: T.border,
     };
   }
+  if (scoreType === "baseline_ats") {
+    return { label: "ATS estimate", detail: "Upload or activate a resume for an exact match score.", color: T.t2, bg: "rgba(148,163,184,0.06)", border: T.border };
+  }
+  if (scoreType === "insufficient_jd") {
+    return { label: "ATS estimate", detail: "This posting needs more job description detail before exact scoring.", color: T.t2, bg: "rgba(148,163,184,0.06)", border: T.border };
+  }
   if (score >= 80) return { label: "Strong match", detail: "This role lines up well with your active resume.", color: "#22c55e", bg: "rgba(34,197,94,0.10)", border: "rgba(34,197,94,0.25)" };
   if (score >= 60) return { label: "Good match", detail: "A few resume keyword updates could improve your odds.", color: T.red, bg: "rgba(59,130,246,0.12)", border: "rgba(59,130,246,0.28)" };
   if (score >= 40) return { label: "Partial match", detail: "Review requirements before applying.", color: T.burnt, bg: "rgba(37,99,235,0.12)", border: "rgba(37,99,235,0.28)" };

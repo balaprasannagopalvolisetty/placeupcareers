@@ -38,6 +38,7 @@ export function clearStoredToken() {
   accessToken = null;
   if (typeof window !== "undefined") {
     localStorage.removeItem(STORAGE_TOKEN_KEY);
+    window.dispatchEvent(new CustomEvent("placeup:auth-cleared"));
   }
   invalidateApiCache();
 }
@@ -174,6 +175,7 @@ async function request<T>(path: string, init: RequestInit = {}, retryOnAuth = tr
         return request<T>(path, init, false);
       } catch {
         clearStoredToken();
+        throw new Error("Your session expired. Please sign in again.");
       }
     }
     const parsed = await parseResponse<T>(response);
@@ -290,6 +292,7 @@ export interface JobPost {
   description?: string;
   description_html?: string;
   score_type?: "resume_match" | "insufficient_jd" | "resume_required" | string;
+  score_guarded?: boolean;
   job_url?: string;
   source_url?: string;
   taxonomy_category?: string;

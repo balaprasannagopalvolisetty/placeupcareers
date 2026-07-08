@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router";
 import { motion } from "motion/react";
 import { Search, Filter, X, Bookmark, ExternalLink, ShieldCheck, RefreshCw, Globe2, Route, Languages, Building2, Sparkles, Clock, Wand2 } from "lucide-react";
 import * as api from "../../lib/api";
+import { useAuth } from "../../context/AuthContext";
 import { LoadingLogo } from "../LoadingLogo";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
@@ -468,6 +469,9 @@ function getScoreMeta(score: number | null | undefined, scoreType?: string) {
   if (scoreType === "baseline_ats") {
     return { label: "ATS estimate", detail: "Resume score still loading", color: T.t2, bg: "rgba(148,163,184,0.06)", border: T.border };
   }
+  if (scoreType === "insufficient_jd") {
+    return { label: "ATS estimate", detail: "Job description still being enriched", color: T.t2, bg: "rgba(148,163,184,0.06)", border: T.border };
+  }
   if (score >= 80) return { label: "Strong match", detail: "High keyword overlap", color: "#22c55e", bg: "rgba(34,197,94,0.10)", border: "rgba(34,197,94,0.25)" };
   if (score >= 60) return { label: "Good match", detail: "Review missing keywords", color: T.violet, bg: "rgba(59,130,246,0.12)", border: "rgba(59,130,246,0.28)" };
   if (score >= 40) return { label: "Partial match", detail: "Resume may need tailoring", color: T.burnt, bg: "rgba(245,158,11,0.12)", border: "rgba(245,158,11,0.28)" };
@@ -478,6 +482,7 @@ const HIDDEN_ROLE_PATTERN = /\b(volunteer|intern|open source contributor|communi
 const isVisibleRole = (role: string) => Boolean(role.trim()) && !HIDDEN_ROLE_PATTERN.test(role);
 
 export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
+  const { loading: authLoading, isAuthenticated } = useAuth();
   const { isMobile, isTablet } = useResponsiveFlags();
   const [taxonomy, setTaxonomy] = useState<TaxonomyCategory[]>([]);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -629,6 +634,10 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   }, []);
 
   useEffect(() => {
+    if (authLoading || !isAuthenticated) {
+      setLoading(authLoading);
+      return;
+    }
     let active = true;
     api.getUserApplications()
       .then((rows) => {
@@ -643,7 +652,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       })
       .catch(() => {});
     return () => { active = false; };
-  }, [appliedVersion]);
+  }, [authLoading, isAuthenticated, appliedVersion]);
 
   useEffect(() => {
     let active = true;
@@ -725,6 +734,10 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   // always requested, so gating on resumeLink.checked only delayed the first
   // page load by a full extra network round trip.
   useEffect(() => {
+    if (authLoading || !isAuthenticated) {
+      setLoading(authLoading);
+      return;
+    }
     let active = true;
     const requestId = jobsRequestId.current + 1;
     jobsRequestId.current = requestId;
@@ -795,7 +808,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       .finally(() => { if (active && jobsRequestId.current === requestId) setLoading(false); });
 
     return () => { active = false; };
-  }, [activeCategory, activeRole, search, location, countryFilter, visaProgramFilter, visaOnly, timeFilter, maxYears, personalized, sortBy, page, resumeVersion, reloadKey]);
+  }, [authLoading, isAuthenticated, activeCategory, activeRole, search, location, countryFilter, visaProgramFilter, visaOnly, timeFilter, maxYears, personalized, sortBy, page, resumeVersion, reloadKey]);
 
   // Debounce search/location so API is only called after typing stops.
   useEffect(() => {

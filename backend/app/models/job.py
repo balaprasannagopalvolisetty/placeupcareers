@@ -164,6 +164,7 @@ class JobPost(BaseModel):
     # Matching (populated per-user)
     match_score: Optional[int] = Field(default=None, ge=0, le=100)
     score_type: Optional[str] = None
+    score_guarded: Optional[bool] = None
 
     # Deduplication
     content_hash: str = ""

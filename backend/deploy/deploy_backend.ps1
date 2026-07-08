@@ -14,7 +14,7 @@ param(
   # warm instance keeps logins fast while cutting ~2/3 of always-on cost.
   # Set to 0 to scale fully to zero (cheapest; adds a cold start on the first
   # request after idle).
-  [int]$ApiMinInstances = 0,
+  [int]$ApiMinInstances = 1,
   [int]$ApiMaxInstances = 10
 )
 

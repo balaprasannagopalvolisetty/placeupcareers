@@ -39,6 +39,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleAuthCleared = () => {
+      setUser(null);
+      setLoading(false);
+    };
+    window.addEventListener("placeup:auth-cleared", handleAuthCleared);
+    return () => window.removeEventListener("placeup:auth-cleared", handleAuthCleared);
+  }, []);
+
+  useEffect(() => {
     let active = true;
 
     async function loadProfile() {

@@ -708,6 +708,13 @@ def _baseline_ats_score(job: dict) -> int:
     return max(25, min(78, score))
 
 
+def _set_insufficient_jd_score(job: dict) -> None:
+    """Expose an honest estimate when a posting is too thin for exact scoring."""
+    job["match_score"] = _baseline_ats_score(job)
+    job["score_type"] = "insufficient_jd"
+    job["score_guarded"] = True
+
+
 def _posted_since(value: Optional[str], tz_offset_minutes: int = 0) -> Optional[datetime]:
     """Convert a time filter label to a UTC datetime cutoff.
 
@@ -1662,8 +1669,7 @@ async def list_jobs(
                     )
                     j["score_type"] = "resume_match"
                 else:
-                    j["match_score"] = None
-                    j["score_type"] = "insufficient_jd"
+                    _set_insufficient_jd_score(j)
             else:
                 j["match_score"] = _baseline_ats_score(j)
                 j["score_type"] = "baseline_ats"
@@ -1791,8 +1797,7 @@ async def list_jobs(
                         )
                         j["score_type"] = "resume_match"
                     else:
-                        j["match_score"] = None
-                        j["score_type"] = "insufficient_jd"
+                        _set_insufficient_jd_score(j)
                 if sort == "recent":
                     def _rescored_recent_key(row: dict) -> tuple:
                         effective = _coerce_datetime(
@@ -2299,12 +2304,15 @@ async def get_job_detail(
         # frontend can show a "Why this score?" tooltip — addresses
         # complaints that the match number "feels random".
         breakdown = score_breakdown(resume_text, combined)
-        payload["match_score"] = breakdown["score"]
-        payload["score_type"] = "resume_match" if breakdown["score"] is not None else "insufficient_jd"
+        if isinstance(breakdown.get("score"), int):
+            payload["match_score"] = breakdown["score"]
+            payload["score_type"] = "resume_match"
+        else:
+            _set_insufficient_jd_score(payload)
         payload["score_breakdown"] = breakdown
     else:
-        payload["match_score"] = None
-        payload["score_type"] = "resume_required"
+        payload["match_score"] = _baseline_ats_score(payload)
+        payload["score_type"] = "baseline_ats"
         payload["score_breakdown"] = None
 
     sections = _split_description_points(description)
@@ -2339,7 +2347,7 @@ async def get_top_matches(
     fresh_basis: str = Query("posted", description="posted uses posted_at; added uses first_seen/created_at"),
     tz_offset: int = Query(0, description="Client timezone offset in minutes from UTC (JS getTimezoneOffset)"),
     db=Depends(get_db),
-    user_id: Optional[str] = Depends(optional_user_id),
+    user_id: Optional[str] = Depends(fast_optional_user_id),
 ):
     """Return the strongest jobs for the user's active resume/preferences."""
     filters: dict[str, Any] = {}
@@ -2418,11 +2426,10 @@ async def get_top_matches(
                     )
                     item["score_type"] = "resume_match"
                 else:
-                    item["match_score"] = None
-                    item["score_type"] = "insufficient_jd"
+                    _set_insufficient_jd_score(item)
             else:
-                item["match_score"] = None
-                item["score_type"] = "resume_required"
+                item["match_score"] = _baseline_ats_score(item)
+                item["score_type"] = "baseline_ats"
             hay = f"{item.get('title') or ''} {rname} {cat}".lower()
             loc_hay = f"{item.get('location') or ''}".lower()
             if isinstance(item.get("match_score"), int) and preferred_roles and any(term in hay for term in preferred_roles):
