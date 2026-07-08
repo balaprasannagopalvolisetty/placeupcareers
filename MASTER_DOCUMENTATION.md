@@ -255,13 +255,15 @@ Internal application server:
   -DbInstance placeup-backend
 ```
 
-Firebase Hosting frontend:
+Cloud Run frontend:
 
 ```powershell
 cd frontend
-.\deploy_firebase_hosting.ps1 `
-  -ProjectId placeup-firebase-641222668282 `
-  -ApiBase "https://placeup-api-rui2a74muq-ue.a.run.app"
+.\deploy_frontend.ps1 `
+  -ProjectId steel-shine-492401-u6 `
+  -Region us-east1 `
+  -ApiBase "" `
+  -BackendOrigin "https://placeup-api-rui2a74muq-ue.a.run.app"
 ```
 
 Health check:
