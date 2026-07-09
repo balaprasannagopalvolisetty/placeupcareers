@@ -39,6 +39,7 @@ _HEADERS = {
 # (ats_name, regex with one capture group = board token)
 _ATS_URL_PATTERNS: tuple[tuple[str, re.Pattern], ...] = (
     ("smartrecruiters", re.compile(r"(?:jobs|careers)\.smartrecruiters\.com/([A-Za-z0-9_-]+)", re.I)),
+    ("greenhouse", re.compile(r"greenhouse\.io/embed/job_board\?for=([A-Za-z0-9_-]+)", re.I)),
     ("greenhouse", re.compile(r"boards(?:-api)?\.greenhouse\.io/(?:v1/boards/)?([A-Za-z0-9_-]+)", re.I)),
     ("greenhouse", re.compile(r"job-boards\.greenhouse\.io/([A-Za-z0-9_-]+)", re.I)),
     ("lever", re.compile(r"jobs\.lever\.co/([A-Za-z0-9_-]+)", re.I)),
@@ -47,6 +48,10 @@ _ATS_URL_PATTERNS: tuple[tuple[str, re.Pattern], ...] = (
     ("recruitee", re.compile(r"([A-Za-z0-9-]+)\.recruitee\.com", re.I)),
     ("teamtailor", re.compile(r"([A-Za-z0-9-]+)\.teamtailor\.com", re.I)),
     ("bamboohr", re.compile(r"([A-Za-z0-9-]+)\.bamboohr\.com", re.I)),
+    ("jazzhr", re.compile(r"([A-Za-z0-9-]+)\.applytojob\.com", re.I)),
+    ("personio", re.compile(r"([A-Za-z0-9-]+)\.jobs\.personio\.(?:de|com)", re.I)),
+    ("rippling", re.compile(r"ats\.rippling\.com/api/v1/companies/([A-Za-z0-9_-]+)", re.I)),
+    ("rippling", re.compile(r"ats\.rippling\.com/([A-Za-z0-9_-]+)(?:/jobs)?", re.I)),
 )
 
 # Workday: tenant + site live in the URL ({tenant}.wd5.myworkdayjobs.com/{site}).
@@ -355,9 +360,13 @@ async def ingest_careers_url(url: str, db) -> dict:
     if meta is None:
         return {
             "ok": False,
-            "error": "No supported careers platform found at this URL. Supported: "
+            "error": "No supported careers platform found at this URL. Direct structured support: "
                      "SmartRecruiters, Greenhouse, Lever, Ashby, Workable, Recruitee, "
-                     "Teamtailor, BambooHR, Workday, Eightfold.",
+                     "Teamtailor, BambooHR, JazzHR, Personio, Rippling, Workday, Eightfold. "
+                     "The broader career-site feed recognizes Workday, iCIMS, ADP, Oracle, "
+                     "Paylocity, UKG, Zoho Recruit, Jobvite, BreezyHR, SAP SuccessFactors, "
+                     "Pinpoint, Polymer, Phenom, Dayforce, JOIN, Hireology, Dover, Gem, "
+                     "and similar employer career pages.",
             "url": url,
         }
     ats_name = meta.get("ats")

@@ -222,7 +222,7 @@ const steps = [
   },
   {
     icon: Search, step: "02", title: "We find visa-friendly jobs",
-    desc: "Our pipeline collects fresh postings from official company sources across 32 countries and screens each one for sponsorship signals.",
+    desc: "Our pipeline collects fresh postings from Greenhouse, Workday, Lever, Ashby, iCIMS, BambooHR, SmartRecruiters, and similar official career systems across 32 countries.",
   },
   {
     icon: Sparkles, step: "03", title: "Every job is scored for you",

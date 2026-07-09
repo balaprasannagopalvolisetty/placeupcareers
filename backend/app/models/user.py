@@ -32,6 +32,13 @@ class SignupRequest(BaseModel):
     country: Optional[str] = None                 # country (drives visa options)
     visa_status_other: Optional[str] = None       # free text when visa_status == "Other"
     linkedin_url: Optional[str] = None
+    gender: Optional[str] = None
+    race_ethnicity: Optional[str] = None
+    disability_status: Optional[str] = None
+    veteran_status: Optional[str] = None
+    open_to_relocation: Optional[bool] = None
+    authorized_to_work: Optional[bool] = None
+    requires_sponsorship: Optional[bool] = None
     # Preferences
     target_roles: list[str] = Field(default_factory=list, max_length=25)
     target_locations: list[str] = Field(default_factory=list)
@@ -79,6 +86,13 @@ class UserProfile(BaseModel):
     linkedin_url: Optional[str] = None
     github_url: Optional[str] = None
     portfolio_url: Optional[str] = None
+    gender: Optional[str] = None
+    race_ethnicity: Optional[str] = None
+    disability_status: Optional[str] = None
+    veteran_status: Optional[str] = None
+    open_to_relocation: Optional[bool] = None
+    authorized_to_work: Optional[bool] = None
+    requires_sponsorship: Optional[bool] = None
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 

@@ -15,13 +15,16 @@ clean job descriptions from first-party or official sources.
 Core user flows:
 
 - Visitor lands on `placeupcareer.com`.
-- Private beta invite gate controls signup.
+- Signup collects account credentials, legal acceptance, target roles/country,
+  visa/work-authorization status, common ATS application questions, plan choice,
+  email verification, and a required resume upload.
 - Verified users sign in and use the dashboard.
 - Users upload resumes, set target roles/countries/visa needs, and browse jobs.
 - Jobs are labeled by country, visa route, sponsor signal, English friendliness,
   role taxonomy, description quality, and ATS/resume match.
-- Application preparation stays human-in-the-loop. The app may prepare, score,
-  tailor, and queue; it must not auto-submit applications.
+- Application support uses the saved profile to prepare tailored resumes, cover
+  letters, application packets, and status tracking. Submission automation must
+  stay behind explicit user authorization and platform-compliance controls.
 
 ## Infrastructure
 
@@ -121,18 +124,37 @@ Avoid:
 Primary ATS/career systems currently supported:
 
 - Greenhouse
+- Workday
 - Lever
 - Ashby
-- SmartRecruiters
-- Workday
-- Recruitee
-- Personio
-- Teamtailor
-- JazzHR
 - Rippling
+- iCIMS
 - BambooHR
 - Workable
+- JazzHR
+- Jobvite
+- BreezyHR
+- Oracle Recruiting / Oracle Cloud HCM / Taleo
+- Paylocity
+- SmartRecruiters
+- UltiPro / UKG
+- Zoho Recruit
+- ADP
+- Dover
+- Gem
+- SAP SuccessFactors
+- Recruitee
+- Pinpoint
+- Personio
+- Teamtailor
+- Polymer
+- Phenom
+- Dayforce
+- JOIN
+- Hireology
 - Eightfold discovery through career page ingestion
+- Similar official employer career pages through the career-site feed and
+  first-party page discovery
 
 Important files:
 
@@ -181,6 +203,10 @@ User data stays in Firestore. Profiles and preferences support:
 - max years required
 - target keywords
 - avoid-title signals
+- current country and target country
+- LinkedIn URL, phone, current company, and experience level
+- common ATS application answers such as work authorization, sponsorship need,
+  relocation openness, gender, race/ethnicity, disability, and veteran status
 
 The Career Copilot local files (`candidate_profile.json`, `discover.py`,
 `jobs_data.js`, and the system prompt) are patterns for production behavior,
@@ -260,7 +286,7 @@ Cloud Run frontend:
 ```powershell
 cd frontend
 .\deploy_frontend.ps1 `
-  -ProjectId steel-shine-492401-u6 `
+  -ProjectId placeup-firebase-641222668282 `
   -Region us-east1 `
   -ApiBase "" `
   -BackendOrigin "https://placeup-api-rui2a74muq-ue.a.run.app"

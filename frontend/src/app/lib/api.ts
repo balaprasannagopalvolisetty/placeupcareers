@@ -227,14 +227,24 @@ export interface UserProfile {
   email: string;
   phone?: string;
   location?: string;
+  country?: string;
   visa_status?: string;
+  visa_status_other?: string;
   experience_years?: string;
   current_role?: string;
+  current_company?: string;
   plan: string;
   summary?: string;
   linkedin_url?: string;
   github_url?: string;
   portfolio_url?: string;
+  gender?: string;
+  race_ethnicity?: string;
+  disability_status?: string;
+  veteran_status?: string;
+  open_to_relocation?: boolean;
+  authorized_to_work?: boolean;
+  requires_sponsorship?: boolean;
 }
 
 export interface SessionResponse {
@@ -449,6 +459,13 @@ export interface SignupPayload {
   location?: string;
   country?: string;
   linkedin_url?: string;
+  gender?: string;
+  race_ethnicity?: string;
+  disability_status?: string;
+  veteran_status?: string;
+  open_to_relocation?: boolean;
+  authorized_to_work?: boolean;
+  requires_sponsorship?: boolean;
   target_roles?: string[];
   target_locations?: string[];
   targets?: string[];

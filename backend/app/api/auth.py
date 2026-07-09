@@ -323,7 +323,14 @@ async def signup(payload: SignupRequest, request: Request, response: Response):
             "payment_plan": payload.payment_plan or ("free_access" if settings.free_access_enabled else None),
             "payment_reference": payload.payment_reference,
             "payment_status": _signup_payment_status(payload),
-        }.items() if v
+            "gender": payload.gender,
+            "race_ethnicity": payload.race_ethnicity,
+            "disability_status": payload.disability_status,
+            "veteran_status": payload.veteran_status,
+            "open_to_relocation": payload.open_to_relocation,
+            "authorized_to_work": payload.authorized_to_work,
+            "requires_sponsorship": payload.requires_sponsorship,
+        }.items() if v is not None and v != ""
     }
     if profile_updates:
         user_store.update_user_profile(user["id"], profile_updates)
@@ -336,6 +343,8 @@ async def signup(payload: SignupRequest, request: Request, response: Response):
         pref_updates["target_locations"] = list(payload.target_locations)
     if payload.visa_status:
         pref_updates["visa_status"] = payload.visa_status
+    if payload.requires_sponsorship is not None:
+        pref_updates["sponsorship_required"] = bool(payload.requires_sponsorship)
     if payload.experience_level:
         pref_updates["experience_level"] = payload.experience_level
     if pref_updates:

@@ -162,6 +162,10 @@ def update_user_profile(user_id: str, fields: dict[str, Any]) -> Optional[dict]:
         "first_name", "last_name", "phone", "location", "visa_status",
         "experience_years", "current_role", "current_company", "summary",
         "linkedin_url", "github_url", "portfolio_url", "plan",
+        "country", "visa_status_other", "payment_plan", "payment_reference",
+        "payment_status", "gender", "race_ethnicity", "disability_status",
+        "veteran_status", "open_to_relocation", "authorized_to_work",
+        "requires_sponsorship",
     }
     updates = {k: v for k, v in fields.items() if k in allowed}
     if updates:

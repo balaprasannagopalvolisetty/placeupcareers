@@ -1,4 +1,4 @@
-from app.services.careers_page_ingest import _WORKDAY_URL_RE
+from app.services.careers_page_ingest import _WORKDAY_URL_RE, detect_ats_from_url
 from app.services.careers_ats import ATS_DISPATCH
 from app.services.company_career_resolver import PROBE_ATS
 from app.services.company_career_resolver import _slug_candidates
@@ -23,3 +23,21 @@ def test_workday_url_detector_supports_jobs_and_site_domains():
 def test_company_resolver_probes_all_slug_based_ats_platforms():
     # Workday needs a (tenant, site) tuple and is discovered from URLs/page HTML.
     assert set(PROBE_ATS) == set(ATS_DISPATCH)
+
+
+def test_careers_page_ingest_detects_direct_structured_ats_urls():
+    samples = {
+        "https://boards.greenhouse.io/example": ("greenhouse", "example"),
+        "https://boards.greenhouse.io/embed/job_board?for=example": ("greenhouse", "example"),
+        "https://jobs.lever.co/example": ("lever", "example"),
+        "https://jobs.ashbyhq.com/example": ("ashby", "example"),
+        "https://apply.workable.com/example": ("workable", "example"),
+        "https://example.recruitee.com": ("recruitee", "example"),
+        "https://example.teamtailor.com": ("teamtailor", "example"),
+        "https://example.bamboohr.com/careers": ("bamboohr", "example"),
+        "https://example.applytojob.com/apply": ("jazzhr", "example"),
+        "https://example.jobs.personio.de": ("personio", "example"),
+        "https://ats.rippling.com/api/v1/companies/example/jobs": ("rippling", "example"),
+    }
+    for url, expected in samples.items():
+        assert detect_ats_from_url(url) == expected

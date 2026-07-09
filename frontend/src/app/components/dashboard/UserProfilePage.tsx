@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { motion } from "motion/react";
-import { MapPin, Globe, Linkedin, Github, Briefcase, Award, ExternalLink, FileText, Target, Building2 } from "lucide-react";
+import { MapPin, Globe, Linkedin, Github, Briefcase, Award, ExternalLink, FileText, Target, Building2, ShieldCheck } from "lucide-react";
 import * as api from "../../lib/api";
 import { LoadingLogo } from "../LoadingLogo";
 import { useIsMobile } from "../ui/use-mobile";
@@ -31,6 +31,12 @@ function ResumeSection({ title, lines }: { title: string; lines?: string[] }) {
       </div>
     </div>
   );
+}
+
+function answer(value?: boolean) {
+  if (value === true) return "Yes";
+  if (value === false) return "No";
+  return "—";
 }
 
 export function UserProfilePage() {
@@ -77,6 +83,16 @@ export function UserProfilePage() {
   const targetRoles = parsed?.target_roles || [];
   const pastCompanies = parsed?.past_companies || [];
   const rj = parsed?.resume_json;
+  const applicationRows = [
+    ["Current country", profile.country || "—"],
+    ["Authorized to work", answer(profile.authorized_to_work)],
+    ["Needs sponsorship", answer(profile.requires_sponsorship)],
+    ["Open to relocation", answer(profile.open_to_relocation)],
+    ["Gender", profile.gender || "—"],
+    ["Race / ethnicity", profile.race_ethnicity || "—"],
+    ["Disability", profile.disability_status || "—"],
+    ["Veteran status", profile.veteran_status || "—"],
+  ];
 
   const links: { icon: typeof Linkedin; href?: string; label: string }[] = [
     { icon: Linkedin, href: profile?.linkedin_url || undefined, label: "LinkedIn" },
@@ -154,6 +170,22 @@ export function UserProfilePage() {
             {pastCompanies.length === 0 && <span style={{ fontSize: 12, color: T.t3, fontFamily: F.sans }}>Companies are detected from your active resume's experience section.</span>}
             {pastCompanies.map((c) => (
               <span key={c} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 8, background: "rgba(148,163,184,0.05)", color: T.t2, border: `1px solid ${T.border}`, fontFamily: F.sans }}>{c}</span>
+            ))}
+          </div>
+        </div>
+
+        {/* Application profile */}
+        <div style={card}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+            <ShieldCheck size={15} color={T.red} />
+            <span style={{ fontFamily: F.sans, fontSize: 14, fontWeight: 600, color: T.text }}>Application Profile</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {applicationRows.map(([label, value]) => (
+              <div key={label} style={{ display: "flex", justifyContent: "space-between", gap: 12, borderBottom: `1px solid ${T.border}`, paddingBottom: 7 }}>
+                <span style={{ fontSize: 11.5, color: T.t3, fontFamily: F.sans }}>{label}</span>
+                <span style={{ fontSize: 11.5, color: T.t2, fontFamily: F.sans, textAlign: "right" }}>{value}</span>
+              </div>
             ))}
           </div>
         </div>

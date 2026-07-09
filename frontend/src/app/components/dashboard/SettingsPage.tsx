@@ -4,6 +4,7 @@ import { motion } from "motion/react";
 import { Save, AlertTriangle, MailCheck, KeyRound, Trash2 } from "lucide-react";
 import * as api from "../../lib/api";
 import { clearStoredToken } from "../../lib/api";
+import { COUNTRIES } from "../../lib/countries";
 import { BillingPage } from "./BillingPage";
 import { LoadingLogo } from "../LoadingLogo";
 
@@ -17,6 +18,12 @@ const T = {
 const SELECT_DARK_STYLE: CSSProperties = { background: "#1D4ED8", color: "#F1F5F9" };
 const HIDDEN_ROLE_PATTERN = /\b(volunteer|intern|open source contributor|community tech educator|growth hacker)\b/i;
 const isVisibleRole = (role: string) => Boolean(role.trim()) && !HIDDEN_ROLE_PATTERN.test(role);
+const COUNTRY_OPTIONS = COUNTRIES.map((country) => country.code);
+const YES_NO_OPTIONS = ["Yes", "No"] as const;
+const GENDER_OPTIONS = ["Male", "Female", "Non-binary", "Prefer not to answer", "Self-describe"] as const;
+const RACE_OPTIONS = ["Asian", "Black or African American", "Hispanic or Latino", "Middle Eastern or North African", "Native American or Alaska Native", "Native Hawaiian or Pacific Islander", "White", "Two or more races", "Prefer not to answer", "Self-describe"] as const;
+const DISABILITY_OPTIONS = ["No", "Yes", "Prefer not to answer"] as const;
+const VETERAN_OPTIONS = ["Not a veteran", "Veteran", "Protected veteran", "Prefer not to answer"] as const;
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -89,6 +96,18 @@ function splitTerms(value: string): string[] {
     .filter(Boolean);
 }
 
+function boolToAnswer(value?: boolean): string {
+  if (value === true) return "Yes";
+  if (value === false) return "No";
+  return "";
+}
+
+function answerToBool(value: string): boolean | undefined {
+  if (value === "Yes") return true;
+  if (value === "No") return false;
+  return undefined;
+}
+
 export function SettingsPage() {
   const [profile, setProfile] = useState<api.UserProfile | null>(null);
   const [prefs, setPrefs] = useState<api.UserPreferences | null>(null);
@@ -132,7 +151,8 @@ export function SettingsPage() {
     return () => { active = false; };
   }, []);
 
-  const update = (k: keyof api.UserProfile, v: string) => setProfile((p) => p ? ({ ...p, [k]: v }) : p);
+  const update = (k: keyof api.UserProfile, v: api.UserProfile[keyof api.UserProfile]) => setProfile((p) => p ? ({ ...p, [k]: v }) : p);
+  const updateBool = (k: keyof api.UserProfile, v: string) => update(k, answerToBool(v));
   const updatePref = (k: keyof api.UserPreferences, v: any) => setPrefs((pr) => pr ? ({ ...pr, [k]: v }) : pr);
   const addJobPreference = (suggestion: string) => {
     setPrefs((pr) => {
@@ -189,20 +209,28 @@ export function SettingsPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 720 }}>
       <Section title="Profile Information">
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
           <Field label="First Name" value={profile.first_name || ""} onChange={(v) => update("first_name", v)} />
           <Field label="Last Name" value={profile.last_name || ""} onChange={(v) => update("last_name", v)} />
           <Field label="Email" type="email" value={profile.email || ""} disabled />
           <Field label="Phone" type="tel" value={profile.phone || ""} onChange={(v) => update("phone", v)} />
+          <Field label="Location" value={profile.location || ""} onChange={(v) => update("location", v)} />
+          <SelectField label="Current Country" value={profile.country || ""} options={COUNTRY_OPTIONS} onChange={(v) => update("country", v)} />
+          <Field label="Current Role" value={profile.current_role || ""} onChange={(v) => update("current_role", v)} />
+          <Field label="Current Company" value={profile.current_company || ""} onChange={(v) => update("current_company", v)} />
+          <Field label="LinkedIn Profile" value={profile.linkedin_url || ""} onChange={(v) => update("linkedin_url", v)} />
         </div>
       </Section>
 
       <Section title="Career Preferences">
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
           <SelectField label="Current Visa Status" value={profile.visa_status || ""} options={api.VISA_STATUS_OPTIONS} onChange={(v) => update("visa_status", v)} />
           <SelectField label="Years of Experience" value={profile.experience_years || ""} options={api.YEARS_OPTIONS} onChange={(v) => update("experience_years", v)} />
+          {profile.visa_status === "Other" && (
+            <Field label="Describe Visa / Work Authorization" value={profile.visa_status_other || ""} onChange={(v) => update("visa_status_other", v)} />
+          )}
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginTop: 14 }}>
           <Field
             label="Maximum Required Years"
             type="number"
@@ -255,6 +283,21 @@ export function SettingsPage() {
         <div style={{ marginTop: 14 }}>
           <Toggle label="Require sponsorship-friendly roles" desc="Prioritize jobs with visa sponsor signals and hide hard no-sponsorship matches." on={prefs.sponsorship_required !== false} onChange={(v) => updatePref("sponsorship_required", v)} />
           <Toggle label="English-friendly roles only" desc="Prefer roles whose posting language and country route support English-friendly hiring." on={prefs.english_friendly_only !== false} onChange={(v) => updatePref("english_friendly_only", v)} />
+        </div>
+      </Section>
+
+      <Section title="Application Profile">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
+          <SelectField label="Authorized to work in target country" value={boolToAnswer(profile.authorized_to_work)} options={YES_NO_OPTIONS} onChange={(v) => updateBool("authorized_to_work", v)} />
+          <SelectField label="Need visa sponsorship" value={boolToAnswer(profile.requires_sponsorship)} options={YES_NO_OPTIONS} onChange={(v) => updateBool("requires_sponsorship", v)} />
+          <SelectField label="Open to relocation" value={boolToAnswer(profile.open_to_relocation)} options={YES_NO_OPTIONS} onChange={(v) => updateBool("open_to_relocation", v)} />
+          <SelectField label="Sex / Gender" value={profile.gender || ""} options={GENDER_OPTIONS} onChange={(v) => update("gender", v)} />
+          <SelectField label="Race / Ethnicity" value={profile.race_ethnicity || ""} options={RACE_OPTIONS} onChange={(v) => update("race_ethnicity", v)} />
+          <SelectField label="Disability" value={profile.disability_status || ""} options={DISABILITY_OPTIONS} onChange={(v) => update("disability_status", v)} />
+          <SelectField label="Veteran Status" value={profile.veteran_status || ""} options={VETERAN_OPTIONS} onChange={(v) => update("veteran_status", v)} />
+        </div>
+        <div style={{ fontSize: 12, color: T.t3, fontFamily: F.sans, lineHeight: 1.55, marginTop: 12 }}>
+          These answers are used to prepare cleaner application packets across ATS forms. Optional answers can be left blank or set to "Prefer not to answer".
         </div>
       </Section>
 

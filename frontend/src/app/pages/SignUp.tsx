@@ -29,6 +29,11 @@ const STEP_LABELS = ["Account", "Terms", "Profile", "Top 5 Positions", "Payment"
 const TOTAL_STEPS = STEP_LABELS.length;
 // Users pick exactly this many positions — no more, no less.
 const MAX_TARGET_ROLES = 5;
+const GENDER_OPTIONS = ["Male", "Female", "Non-binary", "Prefer not to answer", "Self-describe"];
+const RACE_OPTIONS = ["Asian", "Black or African American", "Hispanic or Latino", "Middle Eastern or North African", "Native American or Alaska Native", "Native Hawaiian or Pacific Islander", "White", "Two or more races", "Prefer not to answer", "Self-describe"];
+const DISABILITY_OPTIONS = ["No", "Yes", "Prefer not to answer"];
+const VETERAN_OPTIONS = ["Not a veteran", "Veteran", "Protected veteran", "Prefer not to answer"];
+const YES_NO_OPTIONS = ["Yes", "No"];
 
 // Fallback position list used only if the /api/jobs/taxonomy fetch fails or
 // returns nothing (e.g. local dev with no API proxy, or a transient outage).
@@ -455,8 +460,16 @@ export default function SignUp() {
   const [currentCompany, setCurrentCompany] = useState("");
   const [experienceLevel, setExperienceLevel] = useState("");
   const [country, setCountry] = useState("US");
+  const [targetCountry, setTargetCountry] = useState("US");
   const [visaStatus, setVisaStatus] = useState("");
   const [visaOther, setVisaOther] = useState("");
+  const [gender, setGender] = useState("");
+  const [raceEthnicity, setRaceEthnicity] = useState("");
+  const [disabilityStatus, setDisabilityStatus] = useState("");
+  const [veteranStatus, setVeteranStatus] = useState("");
+  const [openToRelocation, setOpenToRelocation] = useState("");
+  const [authorizedToWork, setAuthorizedToWork] = useState("");
+  const [requiresSponsorship, setRequiresSponsorship] = useState("");
   const [allRoles, setAllRoles] = useState<string[]>(FALLBACK_ROLES);
   const [roleSearch, setRoleSearch] = useState("");
   const [targetRoles, setTargetRoles] = useState<string[]>([]);
@@ -519,6 +532,8 @@ export default function SignUp() {
     const dial = (COUNTRY_BY_CODE[phoneCountry] || COUNTRIES[0]).dial;
     return `${dial} ${phoneNumber.trim()}`.trim();
   };
+  const boolAnswer = (value: string) => value ? value === "Yes" : undefined;
+  const countryName = (code: string) => COUNTRY_BY_CODE[code]?.name || code;
 
   const validateStep = (): string | null => {
     if (step === 1) {
@@ -532,8 +547,11 @@ export default function SignUp() {
     if (step === 3) {
       if (!isValidLinkedInUrl(linkedinUrl)) return "Enter a valid LinkedIn profile URL like https://linkedin.com/in/your-name.";
       if (!country) return "Please select your country.";
+      if (!targetCountry) return "Please select your target country.";
       if (!visaStatus) return "Please select your visa / work-authorization status.";
       if (visaStatus === "Other" && !visaOther.trim()) return "Please describe your visa / work-authorization status.";
+      if (!authorizedToWork) return "Please answer whether you are currently authorized to work in your target country.";
+      if (!requiresSponsorship) return "Please answer whether you need visa sponsorship.";
     }
     if (step === 4) {
       if (targetRoles.length !== MAX_TARGET_ROLES) return `Please select exactly ${MAX_TARGET_ROLES} target positions so your Jobs feed stays relevant.`;
@@ -571,7 +589,15 @@ export default function SignUp() {
         experience_level: experienceLevel || undefined,
         current_company: currentCompany.trim() || undefined,
         linkedin_url: linkedinUrl.trim() || undefined,
+        gender: gender || undefined,
+        race_ethnicity: raceEthnicity || undefined,
+        disability_status: disabilityStatus || undefined,
+        veteran_status: veteranStatus || undefined,
+        open_to_relocation: boolAnswer(openToRelocation),
+        authorized_to_work: boolAnswer(authorizedToWork),
+        requires_sponsorship: boolAnswer(requiresSponsorship),
         target_roles: targetRoles.slice(0, MAX_TARGET_ROLES),
+        target_locations: [countryName(targetCountry)],
         agreement_accepted: true,
         agreement_version: AGREEMENT_VERSION,
         payment_plan: selectedPlan || "pro",
@@ -744,13 +770,24 @@ export default function SignUp() {
             </div>
             <Field label="Current Company" value={currentCompany} onChange={setCurrentCompany} placeholder="Acme Corp" />
             <Dropdown label="Years of Experience" value={experienceLevel} onChange={setExperienceLevel} options={api.YEARS_OPTIONS} />
-            <CountryDropdown label="Country" value={country} onChange={setCountry} required />
+            <CountryDropdown label="Current Country" value={country} onChange={setCountry} required />
+            <CountryDropdown label="Target Country" value={targetCountry} onChange={setTargetCountry} required />
             <Dropdown label="Visa / Work Authorization" value={visaStatus} onChange={(v) => { setVisaStatus(v); if (v !== "Other") setVisaOther(""); }} options={visaOptions} required placeholder="Select status" />
+            <Dropdown label="Authorized to work in target country?" value={authorizedToWork} onChange={setAuthorizedToWork} options={YES_NO_OPTIONS} required placeholder="Select answer" />
+            <Dropdown label="Need visa sponsorship?" value={requiresSponsorship} onChange={setRequiresSponsorship} options={YES_NO_OPTIONS} required placeholder="Select answer" />
+            <Dropdown label="Open to relocation?" value={openToRelocation} onChange={setOpenToRelocation} options={YES_NO_OPTIONS} placeholder="Select answer" />
+            <Dropdown label="Sex / Gender" value={gender} onChange={setGender} options={GENDER_OPTIONS} placeholder="Optional" />
+            <Dropdown label="Race / Ethnicity" value={raceEthnicity} onChange={setRaceEthnicity} options={RACE_OPTIONS} placeholder="Optional" />
+            <Dropdown label="Disability" value={disabilityStatus} onChange={setDisabilityStatus} options={DISABILITY_OPTIONS} placeholder="Optional" />
+            <Dropdown label="Veteran Status" value={veteranStatus} onChange={setVeteranStatus} options={VETERAN_OPTIONS} placeholder="Optional" />
             {visaStatus === "Other" && (
               <div style={{ gridColumn: "1 / -1" }}>
                 <Field label="Describe your status" value={visaOther} onChange={setVisaOther} placeholder="e.g. Dependent visa with work rights" required />
               </div>
             )}
+            <div style={{ gridColumn: "1 / -1", fontSize: 11.5, color: T.t3, fontFamily: F.sans, lineHeight: 1.55 }}>
+              Optional EEO-style answers are stored privately so application packets can be prefilled consistently across ATS forms. Choose "Prefer not to answer" where available.
+            </div>
           </motion.div>
         )}
 

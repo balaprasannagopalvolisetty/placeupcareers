@@ -1237,7 +1237,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
           <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
             <ShieldCheck size={13} color="#86EFAC" style={{ flexShrink: 0 }} />
             <span style={{ lineHeight: 1.45 }}>
-              Official-source pipeline: ATS boards, employer career pages, country portals, and job boards across {targetCountries.length || 32} countries.
+              Official-source pipeline: Greenhouse, Workday, Lever, Ashby, Rippling, iCIMS, BambooHR, Workable, JazzHR, Jobvite, Oracle, UKG, ADP, SmartRecruiters, and similar career pages across {targetCountries.length || 32} countries.
             </span>
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: isMobile ? "flex-start" : "flex-end" }}>
