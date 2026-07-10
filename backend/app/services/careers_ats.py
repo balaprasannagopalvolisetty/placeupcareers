@@ -20,6 +20,23 @@ identifier visible in the careers URL):
     Teamtailor         "hellofresh"             api.teamtailor.com/v1/jobs?filter[company]={token}
     JazzHR             "mycompany"              jazzhr.com/{token}/jobs.json
     Rippling           "stripe"                 ats.rippling.com/api/v1/companies/{token}/jobs
+    BreezyHR           "acme"                   {token}.breezy.hr/json
+    Pinpoint           "acme"                   {token}.pinpointhq.com/postings.json
+    Polymer            "acme"                   jobs.polymer.co/api/v1/postings?job_board_slug={token}
+    Jobvite            "acme"                   jobs.jobvite.com/{token} (anchor extraction)
+    iCIMS              "acme"                   careers-{token}.icims.com/jobs/search (paginated HTML)
+    Oracle Recruiting  ("host","CX_1")          {host}/hcmRestApi/resources/latest/recruitingCEJobRequisitions
+    Paylocity          "guid"                   recruiting.paylocity.com/recruiting/v2/api/feed/jobs/{token}
+    UKG / UltiPro      "TEN123/JobBoard/guid"   recruiting.ultipro.com/{token}/JobBoardView/LoadSearchResults
+    Zoho Recruit       "acme"                   {token}.zohorecruit.com/jobs/Careers (anchor extraction)
+    ADP WFN            "cid-guid"               workforcenow.adp.com .../staffing/v1/job-requisitions?cid={token}
+    Dover              "acme"                   app.dover.io/api/v1/careers-page/{token}/jobs
+    Gem                "acme"                   jobs.gem.com/{token} (anchor extraction)
+    SuccessFactors     "https://jobs.acme.com"  {token}/search/?startrow=N (paginated HTML)
+    Phenom             "careers.acme.com"       {domain}/api/apply/v2/jobs?domain={domain}
+    Dayforce           "acme"                   jobs.dayforcehcm.com (JSON feed, HTML fallback)
+    Join.com           "acme"                   join.com/companies/{token} (anchor extraction)
+    Hireology          "acme"                   {token}.hireology.com (anchor extraction)
 
 Every function returns a list of normalized JobPost objects compatible with
 the rest of the pipeline. All scrapers degrade gracefully on error.
@@ -1091,6 +1108,876 @@ def _workable_item_to_jobpost(item: dict, board_token: str) -> Optional[JobPost]
     )
 
 
+# ─── Extended-coverage helpers ───────────────────────────────────────────────
+#
+# The scrapers below cover the remaining major ATS platforms. All follow the
+# same contract as the originals: public unauthenticated endpoint, JSON first,
+# HTML anchor-extraction fallback where a platform has no JSON feed, and
+# graceful [] + warning on any failure so one provider never kills a sweep.
+
+import re as _re
+
+_TAG_RE = _re.compile(r"<[^>]+>")
+_WS_RE = _re.compile(r"\s+")
+
+
+def _strip_html(value: Any) -> str:
+    import html as _html
+    text = _TAG_RE.sub(" ", str(value or ""))
+    return _WS_RE.sub(" ", _html.unescape(text)).strip()
+
+
+async def _http_json(
+    url: str,
+    *,
+    method: str = "GET",
+    params: dict | None = None,
+    json_body: dict | None = None,
+    timeout: float = 45.0,
+) -> Any:
+    async with httpx.AsyncClient(timeout=timeout, headers=DEFAULT_HEADERS, follow_redirects=True) as client:
+        if method == "POST":
+            response = await client.post(url, params=params, json=json_body)
+        else:
+            response = await client.get(url, params=params)
+        response.raise_for_status()
+        return response.json()
+
+
+async def _http_text(url: str, *, params: dict | None = None, timeout: float = 45.0) -> str:
+    async with httpx.AsyncClient(timeout=timeout, headers=DEFAULT_HEADERS, follow_redirects=True) as client:
+        response = await client.get(url, params=params)
+        response.raise_for_status()
+        return response.text
+
+
+def _anchor_jobs(page_html: str, href_pattern: str, *, base_url: str = "") -> list[tuple[str, str]]:
+    """Extract (absolute_url, anchor_text) pairs whose href matches the pattern.
+
+    Used for ATS platforms without a public JSON feed. Only anchors with a
+    non-empty text payload survive, which filters nav/pagination links.
+    """
+    out: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    anchor_re = _re.compile(
+        rf"<a\b[^>]*?href=[\"']({href_pattern})[\"'][^>]*>(.*?)</a>",
+        _re.IGNORECASE | _re.DOTALL,
+    )
+    for match in anchor_re.finditer(page_html or ""):
+        href = match.group(1).strip()
+        title = _strip_html(match.group(2))
+        if not title or len(title) < 3:
+            continue
+        if href.startswith("/") and base_url:
+            href = base_url.rstrip("/") + href
+        if href in seen:
+            continue
+        seen.add(href)
+        out.append((href, title))
+    return out
+
+
+def _company_from_token(board_token: str) -> str:
+    return str(board_token or "").replace("-", " ").replace("_", " ").strip().title()
+
+
+def _simple_jobpost(
+    *,
+    ats: str,
+    source: JobSource,
+    board_token: str,
+    title: str,
+    job_url: str,
+    location: str = "",
+    description: str = "",
+    source_job_id: str = "",
+    posted_at: Optional[datetime] = None,
+    job_type: str = "",
+    extra: dict | None = None,
+) -> JobPost:
+    company = _company_from_token(board_token)
+    metadata = {"ats": ats, "board_token": str(board_token)}
+    for key, value in (extra or {}).items():
+        if value not in (None, "", [], {}):
+            metadata[key] = value
+    return JobPost(
+        id=generate_job_id(title, company, location or source_job_id or job_url),
+        title=title,
+        company=company,
+        location=location,
+        description=description,
+        job_url=job_url,
+        category=JobCategory.OTHER,
+        job_type=job_type,
+        source=source,
+        source_job_id=source_job_id,
+        posted_at=posted_at,
+        content_hash=generate_content_hash(title, company, location or str(board_token)),
+        scraped_at=datetime.utcnow(),
+        extra_metadata=metadata,
+    )
+
+
+# ─── BreezyHR ────────────────────────────────────────────────────────────────
+
+async def scrape_breezyhr_board(board_token: str, *, max_jobs: int = 2000) -> list[JobPost]:
+    """Public endpoint: https://{token}.breezy.hr/json"""
+    token = board_token.strip()
+    if not token:
+        return []
+    try:
+        payload = await _http_json(f"https://{token}.breezy.hr/json")
+    except Exception as exc:
+        logger.warning("BreezyHR %r: %s", token, exc)
+        return []
+    items = payload if isinstance(payload, list) else []
+    jobs: list[JobPost] = []
+    for item in items[:max_jobs]:
+        try:
+            title = _safe_str(item.get("name"))
+            if not title:
+                continue
+            loc = item.get("location") or {}
+            location = _location_name(loc)
+            country = _safe_str((loc.get("country") or {}).get("name")) if isinstance(loc, dict) else ""
+            jobs.append(_simple_jobpost(
+                ats="breezyhr", source=JobSource.BREEZYHR, board_token=token,
+                title=title,
+                job_url=_safe_str(item.get("url")) or f"https://{token}.breezy.hr/p/{_safe_str(item.get('id'))}",
+                location=location,
+                description=_strip_html(item.get("description")),
+                source_job_id=_safe_str(item.get("id")),
+                posted_at=_parse_dt(item.get("published_date")),
+                job_type=_safe_str((item.get("type") or {}).get("name") if isinstance(item.get("type"), dict) else item.get("type")),
+                extra={"department": _safe_str(item.get("department")), "country": country},
+            ))
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("BreezyHR: skip row: %s", exc)
+    logger.info("BreezyHR %r: normalized %s jobs", token, len(jobs))
+    return jobs
+
+
+# ─── Pinpoint ────────────────────────────────────────────────────────────────
+
+async def scrape_pinpoint_board(board_token: str, *, max_jobs: int = 2000) -> list[JobPost]:
+    """Public endpoint: https://{token}.pinpointhq.com/postings.json"""
+    token = board_token.strip()
+    if not token:
+        return []
+    try:
+        payload = await _http_json(f"https://{token}.pinpointhq.com/postings.json")
+    except Exception as exc:
+        logger.warning("Pinpoint %r: %s", token, exc)
+        return []
+    items = payload.get("data") if isinstance(payload, dict) else payload
+    if not isinstance(items, list):
+        return []
+    jobs: list[JobPost] = []
+    for item in items[:max_jobs]:
+        try:
+            attrs = item.get("attributes") if isinstance(item.get("attributes"), dict) else item
+            title = _safe_str(attrs.get("title") or attrs.get("name"))
+            if not title:
+                continue
+            location = _location_name(attrs.get("location")) or _safe_str(attrs.get("location_name"))
+            jobs.append(_simple_jobpost(
+                ats="pinpoint", source=JobSource.PINPOINT, board_token=token,
+                title=title,
+                job_url=_safe_str(attrs.get("url") or attrs.get("careers_url"))
+                        or f"https://{token}.pinpointhq.com/postings/{_safe_str(item.get('id'))}",
+                location=location,
+                description=_strip_html(attrs.get("description")),
+                source_job_id=_safe_str(item.get("id")),
+                posted_at=_parse_dt(attrs.get("created_at") or attrs.get("published_at")),
+                job_type=_safe_str(attrs.get("employment_type")),
+                extra={"department": _location_name(attrs.get("department")), "workplace_type": _safe_str(attrs.get("workplace_type"))},
+            ))
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Pinpoint: skip row: %s", exc)
+    logger.info("Pinpoint %r: normalized %s jobs", token, len(jobs))
+    return jobs
+
+
+# ─── Polymer ─────────────────────────────────────────────────────────────────
+
+async def scrape_polymer_board(board_token: str, *, max_jobs: int = 2000) -> list[JobPost]:
+    """JSON widget API first, HTML board fallback.
+
+    Widget endpoint: https://jobs.polymer.co/api/v1/postings?job_board_slug={token}
+    Board page:      https://jobs.polymer.co/{token}
+    """
+    token = board_token.strip()
+    if not token:
+        return []
+    jobs: list[JobPost] = []
+    try:
+        payload = await _http_json("https://jobs.polymer.co/api/v1/postings", params={"job_board_slug": token})
+        items = payload.get("items") or payload.get("postings") or payload.get("data") if isinstance(payload, dict) else payload
+        if isinstance(items, list):
+            for item in items[:max_jobs]:
+                title = _safe_str(item.get("title") or item.get("name"))
+                if not title:
+                    continue
+                jobs.append(_simple_jobpost(
+                    ats="polymer", source=JobSource.POLYMER, board_token=token,
+                    title=title,
+                    job_url=_safe_str(item.get("url") or item.get("public_url")) or f"https://jobs.polymer.co/{token}/{_safe_str(item.get('id'))}",
+                    location=_location_name(item.get("location")),
+                    description=_strip_html(item.get("description")),
+                    source_job_id=_safe_str(item.get("id")),
+                    posted_at=_parse_dt(item.get("created_at") or item.get("published_at")),
+                    job_type=_safe_str(item.get("employment_type")),
+                ))
+    except Exception as exc:
+        logger.debug("Polymer JSON %r failed (%s); falling back to HTML", token, exc)
+    if not jobs:
+        try:
+            page = await _http_text(f"https://jobs.polymer.co/{token}")
+            for url, title in _anchor_jobs(page, rf"(?:https://jobs\.polymer\.co)?/{_re.escape(token)}/[A-Za-z0-9_-]+", base_url="https://jobs.polymer.co")[:max_jobs]:
+                jobs.append(_simple_jobpost(
+                    ats="polymer", source=JobSource.POLYMER, board_token=token,
+                    title=title, job_url=url, source_job_id=url.rsplit("/", 1)[-1],
+                ))
+        except Exception as exc:
+            logger.warning("Polymer %r: %s", token, exc)
+            return []
+    logger.info("Polymer %r: normalized %s jobs", token, len(jobs))
+    return jobs
+
+
+# ─── Jobvite ─────────────────────────────────────────────────────────────────
+
+async def scrape_jobvite_board(board_token: str, *, max_jobs: int = 2000) -> list[JobPost]:
+    """Jobvite hosted boards render server-side; extract /{token}/job/{id} anchors.
+
+    Board page: https://jobs.jobvite.com/{token}
+    """
+    token = board_token.strip()
+    if not token:
+        return []
+    jobs: list[JobPost] = []
+    try:
+        page = await _http_text(f"https://jobs.jobvite.com/{token}/search?c=&q=")
+    except Exception:
+        try:
+            page = await _http_text(f"https://jobs.jobvite.com/{token}")
+        except Exception as exc:
+            logger.warning("Jobvite %r: %s", token, exc)
+            return []
+    pairs = _anchor_jobs(
+        page,
+        rf"(?:https://jobs\.jobvite\.com)?/{_re.escape(token)}/job/[A-Za-z0-9_-]+",
+        base_url="https://jobs.jobvite.com",
+    )
+    for url, title in pairs[:max_jobs]:
+        jobs.append(_simple_jobpost(
+            ats="jobvite", source=JobSource.JOBVITE, board_token=token,
+            title=title, job_url=url, source_job_id=url.rsplit("/", 1)[-1],
+        ))
+    logger.info("Jobvite %r: normalized %s jobs", token, len(jobs))
+    return jobs
+
+
+# ─── iCIMS ───────────────────────────────────────────────────────────────────
+
+async def scrape_icims_board(board_token: str, *, max_jobs: int = 2000) -> list[JobPost]:
+    """iCIMS hosted career portals paginate server-rendered search results.
+
+    Search page: https://careers-{token}.icims.com/jobs/search?ss=1&in_iframe=1&pr={page}
+    """
+    token = board_token.strip()
+    if not token:
+        return []
+    base = f"https://careers-{token}.icims.com"
+    jobs: list[JobPost] = []
+    seen_urls: set[str] = set()
+    for page_num in range(0, 40):  # 40 pages ≈ 800+ postings, plenty per portal
+        try:
+            page = await _http_text(
+                f"{base}/jobs/search",
+                params={"ss": "1", "in_iframe": "1", "pr": str(page_num)},
+            )
+        except Exception as exc:
+            if page_num == 0:
+                logger.warning("iCIMS %r: %s", token, exc)
+                return []
+            break
+        pairs = _anchor_jobs(page, rf"(?:{_re.escape(base)})?/jobs/\d+/[^\"']+/job[^\"']*", base_url=base)
+        new = [(u, t) for u, t in pairs if u not in seen_urls]
+        if not new:
+            break
+        for url, title in new:
+            seen_urls.add(url)
+            id_match = _re.search(r"/jobs/(\d+)/", url)
+            jobs.append(_simple_jobpost(
+                ats="icims", source=JobSource.ICIMS, board_token=token,
+                title=title, job_url=url.split("?")[0],
+                source_job_id=id_match.group(1) if id_match else "",
+            ))
+            if len(jobs) >= max_jobs:
+                break
+        if len(jobs) >= max_jobs:
+            break
+    logger.info("iCIMS %r: normalized %s jobs", token, len(jobs))
+    return jobs
+
+
+# ─── Oracle Recruiting Cloud (ORC) ───────────────────────────────────────────
+
+async def scrape_oracle_board(board_token: str | tuple[str, str], *, max_jobs: int = 2000) -> list[JobPost]:
+    """Oracle Recruiting Cloud CandidateExperience public REST API.
+
+    board_token: (host, siteNumber) tuple or "host|siteNumber" string,
+    e.g. ("acme.fa.us2.oraclecloud.com", "CX_1").
+    Endpoint: https://{host}/hcmRestApi/resources/latest/recruitingCEJobRequisitions
+    """
+    if isinstance(board_token, (tuple, list)):
+        host, site = (str(board_token[0]).strip(), str(board_token[1]).strip())
+    else:
+        parts = str(board_token).replace(",", "|").split("|")
+        host = parts[0].strip()
+        site = parts[1].strip() if len(parts) > 1 else "CX_1"
+    if not host:
+        return []
+    host = host.replace("https://", "").rstrip("/")
+    jobs: list[JobPost] = []
+    offset = 0
+    page_size = 100
+    while len(jobs) < max_jobs:
+        finder = (
+            f"findReqs;siteNumber={site},limit={page_size},offset={offset},"
+            "sortBy=POSTING_DATES_DESC"
+        )
+        try:
+            payload = await _http_json(
+                f"https://{host}/hcmRestApi/resources/latest/recruitingCEJobRequisitions",
+                params={"onlyData": "true", "finder": finder},
+            )
+        except Exception as exc:
+            if offset == 0:
+                logger.warning("Oracle ORC %r: %s", host, exc)
+                return []
+            break
+        items = payload.get("items") if isinstance(payload, dict) else None
+        req_list = (items[0].get("requisitionList") if items and isinstance(items[0], dict) else None) or []
+        if not req_list:
+            break
+        for item in req_list:
+            try:
+                title = _safe_str(item.get("Title"))
+                req_id = _safe_str(item.get("Id"))
+                if not title or not req_id:
+                    continue
+                location = _safe_str(item.get("PrimaryLocation"))
+                jobs.append(_simple_jobpost(
+                    ats="oracle_recruiting", source=JobSource.ORACLE_RECRUITING, board_token=host,
+                    title=title,
+                    job_url=f"https://{host}/hcmUI/CandidateExperience/en/sites/{site}/job/{req_id}",
+                    location=location,
+                    description=_strip_html(item.get("ShortDescriptionStr") or item.get("ExternalDescriptionStr")),
+                    source_job_id=req_id,
+                    posted_at=_parse_dt(item.get("PostedDate")),
+                    extra={"site": site, "secondary_locations": _location_name(item.get("secondaryLocations"))},
+                ))
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Oracle ORC: skip row: %s", exc)
+        if len(req_list) < page_size:
+            break
+        offset += page_size
+    logger.info("Oracle ORC %r: normalized %s jobs", host, len(jobs))
+    return jobs
+
+
+# ─── Paylocity ───────────────────────────────────────────────────────────────
+
+async def scrape_paylocity_board(board_token: str, *, max_jobs: int = 2000) -> list[JobPost]:
+    """Public feed: https://recruiting.paylocity.com/recruiting/v2/api/feed/jobs/{companyId}"""
+    token = board_token.strip()
+    if not token:
+        return []
+    try:
+        payload = await _http_json(f"https://recruiting.paylocity.com/recruiting/v2/api/feed/jobs/{token}")
+    except Exception as exc:
+        logger.warning("Paylocity %r: %s", token, exc)
+        return []
+    items = payload.get("jobs") if isinstance(payload, dict) else payload
+    if not isinstance(items, list):
+        return []
+    jobs: list[JobPost] = []
+    for item in items[:max_jobs]:
+        try:
+            title = _safe_str(item.get("title") or item.get("jobTitle") or item.get("positionTitle"))
+            if not title:
+                continue
+            job_id_n = _safe_str(item.get("jobId") or item.get("id"))
+            jobs.append(_simple_jobpost(
+                ats="paylocity", source=JobSource.PAYLOCITY, board_token=token,
+                title=title,
+                job_url=_safe_str(item.get("applyUrl") or item.get("jobUrl"))
+                        or f"https://recruiting.paylocity.com/recruiting/jobs/Details/{job_id_n}",
+                location=_location_name(item.get("location") or item.get("locationName")),
+                description=_strip_html(item.get("description") or item.get("jobDescription")),
+                source_job_id=job_id_n,
+                posted_at=_parse_dt(item.get("publishedDate") or item.get("datePosted")),
+                job_type=_safe_str(item.get("employmentType")),
+            ))
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Paylocity: skip row: %s", exc)
+    logger.info("Paylocity %r: normalized %s jobs", token, len(jobs))
+    return jobs
+
+
+# ─── UKG Pro / UltiPro Recruiting ────────────────────────────────────────────
+
+async def scrape_ukg_board(board_token: str, *, max_jobs: int = 2000) -> list[JobPost]:
+    """UKG job boards expose a POST search endpoint used by their own UI.
+
+    board_token: the board path, e.g. "COMPA123COMP/JobBoard/11111111-2222-...".
+    Endpoint: https://recruiting.ultipro.com/{token}/JobBoardView/LoadSearchResults
+    """
+    token = board_token.strip().strip("/")
+    if not token:
+        return []
+    body = {
+        "opportunitySearch": {
+            "Top": min(max_jobs, 1000),
+            "Skip": 0,
+            "QueryString": "",
+            "OrderBy": [{"Value": "postedDateDesc", "PropertyName": "PostedDate", "Ascending": False}],
+            "Filters": [],
+        },
+        "matchCriteria": {
+            "PreferredJobs": [], "Educations": [], "LicenseAndCertifications": [],
+            "Skills": [], "hasNoLicenses": False, "SkippedSkills": [],
+        },
+    }
+    try:
+        payload = await _http_json(
+            f"https://recruiting.ultipro.com/{token}/JobBoardView/LoadSearchResults",
+            method="POST", json_body=body,
+        )
+    except Exception as exc:
+        logger.warning("UKG %r: %s", token, exc)
+        return []
+    items = payload.get("opportunities") if isinstance(payload, dict) else None
+    if not isinstance(items, list):
+        return []
+    jobs: list[JobPost] = []
+    for item in items[:max_jobs]:
+        try:
+            title = _safe_str(item.get("Title"))
+            if not title:
+                continue
+            locations = item.get("Locations") or []
+            loc_parts = []
+            for loc in locations:
+                addr = (loc or {}).get("Address") or {}
+                city = _safe_str((addr.get("City") or ""))
+                state = _safe_str(((addr.get("State") or {}).get("Code") if isinstance(addr.get("State"), dict) else addr.get("State")))
+                country = _safe_str(((addr.get("Country") or {}).get("Code") if isinstance(addr.get("Country"), dict) else addr.get("Country")))
+                loc_parts.append(", ".join(p for p in (city, state, country) if p))
+            link = _safe_str(item.get("Link"))
+            jobs.append(_simple_jobpost(
+                ats="ukg", source=JobSource.UKG, board_token=token.split("/")[0],
+                title=title,
+                job_url=link or f"https://recruiting.ultipro.com/{token}/OpportunityDetail?opportunityId={_safe_str(item.get('Id'))}",
+                location="; ".join(p for p in loc_parts if p),
+                description=_strip_html(item.get("BriefDescription") or item.get("Description")),
+                source_job_id=_safe_str(item.get("Id") or item.get("RequisitionNumber")),
+                posted_at=_parse_dt(item.get("PostedDate")),
+                job_type=_safe_str(item.get("FullTime")),
+                extra={"requisition_number": _safe_str(item.get("RequisitionNumber"))},
+            ))
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("UKG: skip row: %s", exc)
+    logger.info("UKG %r: normalized %s jobs", token, len(jobs))
+    return jobs
+
+
+# ─── Zoho Recruit ────────────────────────────────────────────────────────────
+
+async def scrape_zoho_recruit_board(board_token: str, *, max_jobs: int = 2000) -> list[JobPost]:
+    """Zoho Recruit hosted careers pages are server-rendered.
+
+    Board page: https://{token}.zohorecruit.com/jobs/Careers
+    """
+    token = board_token.strip()
+    if not token:
+        return []
+    base = f"https://{token}.zohorecruit.com"
+    try:
+        page = await _http_text(f"{base}/jobs/Careers")
+    except Exception as exc:
+        logger.warning("Zoho Recruit %r: %s", token, exc)
+        return []
+    jobs: list[JobPost] = []
+    pairs = _anchor_jobs(page, rf"(?:{_re.escape(base)})?/jobs/Careers/\d+[^\"']*", base_url=base)
+    for url, title in pairs[:max_jobs]:
+        id_match = _re.search(r"/jobs/Careers/(\d+)", url)
+        jobs.append(_simple_jobpost(
+            ats="zoho_recruit", source=JobSource.ZOHO_RECRUIT, board_token=token,
+            title=title, job_url=url,
+            source_job_id=id_match.group(1) if id_match else "",
+        ))
+    logger.info("Zoho Recruit %r: normalized %s jobs", token, len(jobs))
+    return jobs
+
+
+# ─── ADP Workforce Now ───────────────────────────────────────────────────────
+
+async def scrape_adp_board(board_token: str, *, max_jobs: int = 2000) -> list[JobPost]:
+    """ADP WFN career centers expose a public job-requisitions JSON feed.
+
+    board_token: the cid GUID from the careers URL
+    (workforcenow.adp.com/mascsr/default/mdf/recruitment/recruitment.html?cid={cid}).
+    """
+    token = board_token.strip()
+    if not token:
+        return []
+    try:
+        payload = await _http_json(
+            "https://workforcenow.adp.com/mascsr/default/careercenter/public/events/staffing/v1/job-requisitions",
+            params={"cid": token, "timeStamp": str(int(datetime.utcnow().timestamp() * 1000)),
+                    "lang": "en_US", "ccId": "19000101_000001", "locale": "en_US",
+                    "$top": str(min(max_jobs, 500)), "$skip": "0"},
+        )
+    except Exception as exc:
+        logger.warning("ADP %r: %s", token, exc)
+        return []
+    items = payload.get("jobRequisitions") if isinstance(payload, dict) else None
+    if not isinstance(items, list):
+        return []
+    jobs: list[JobPost] = []
+    for item in items[:max_jobs]:
+        try:
+            title = _safe_str(item.get("requisitionTitle") or (item.get("job") or {}).get("jobTitle"))
+            if not title:
+                continue
+            req_id = _safe_str(item.get("itemID") or (item.get("requisitionID") or ""))
+            locs = item.get("requisitionLocations") or []
+            loc_parts = []
+            for loc in locs:
+                name = ((loc or {}).get("nameCode") or {}).get("shortName") or _location_name(loc)
+                if name:
+                    loc_parts.append(_safe_str(name))
+            jobs.append(_simple_jobpost(
+                ats="adp", source=JobSource.ADP, board_token=token,
+                title=title,
+                job_url=(
+                    "https://workforcenow.adp.com/mascsr/default/mdf/recruitment/recruitment.html"
+                    f"?cid={token}&jobId={req_id}&lang=en_US&source=CC2"
+                ),
+                location="; ".join(loc_parts),
+                description=_strip_html(item.get("requisitionDescription")),
+                source_job_id=req_id,
+                posted_at=_parse_dt(item.get("postDate")),
+            ))
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("ADP: skip row: %s", exc)
+    logger.info("ADP %r: normalized %s jobs", token, len(jobs))
+    return jobs
+
+
+# ─── Dover ───────────────────────────────────────────────────────────────────
+
+async def scrape_dover_board(board_token: str, *, max_jobs: int = 2000) -> list[JobPost]:
+    """Dover careers pages: JSON API first, HTML fallback.
+
+    API:  https://app.dover.io/api/v1/careers-page/{token}/jobs
+    Page: https://app.dover.io/{token}/careers
+    """
+    token = board_token.strip()
+    if not token:
+        return []
+    jobs: list[JobPost] = []
+    try:
+        payload = await _http_json(f"https://app.dover.io/api/v1/careers-page/{token}/jobs")
+        items = payload.get("results") or payload.get("jobs") or payload.get("data") if isinstance(payload, dict) else payload
+        if isinstance(items, list):
+            for item in items[:max_jobs]:
+                title = _safe_str(item.get("title") or item.get("name"))
+                if not title:
+                    continue
+                job_id_n = _safe_str(item.get("id"))
+                jobs.append(_simple_jobpost(
+                    ats="dover", source=JobSource.DOVER, board_token=token,
+                    title=title,
+                    job_url=_safe_str(item.get("url")) or f"https://app.dover.io/apply/{token}/{job_id_n}",
+                    location=_location_name(item.get("location") or item.get("locations")),
+                    source_job_id=job_id_n,
+                ))
+    except Exception as exc:
+        logger.debug("Dover JSON %r failed (%s); falling back to HTML", token, exc)
+    if not jobs:
+        try:
+            page = await _http_text(f"https://app.dover.io/{token}/careers")
+            for url, title in _anchor_jobs(page, r"(?:https://app\.dover\.io)?/apply/[^\"']+", base_url="https://app.dover.io")[:max_jobs]:
+                jobs.append(_simple_jobpost(
+                    ats="dover", source=JobSource.DOVER, board_token=token,
+                    title=title, job_url=url, source_job_id=url.rsplit("/", 1)[-1],
+                ))
+        except Exception as exc:
+            logger.warning("Dover %r: %s", token, exc)
+            return []
+    logger.info("Dover %r: normalized %s jobs", token, len(jobs))
+    return jobs
+
+
+# ─── Gem ─────────────────────────────────────────────────────────────────────
+
+async def scrape_gem_board(board_token: str, *, max_jobs: int = 2000) -> list[JobPost]:
+    """Gem hosted job boards (jobs.gem.com/{token}) — anchor extraction."""
+    token = board_token.strip()
+    if not token:
+        return []
+    try:
+        page = await _http_text(f"https://jobs.gem.com/{token}")
+    except Exception as exc:
+        logger.warning("Gem %r: %s", token, exc)
+        return []
+    jobs: list[JobPost] = []
+    pairs = _anchor_jobs(
+        page,
+        rf"(?:https://jobs\.gem\.com)?/{_re.escape(token)}/[A-Za-z0-9=_-]{{8,}}",
+        base_url="https://jobs.gem.com",
+    )
+    for url, title in pairs[:max_jobs]:
+        jobs.append(_simple_jobpost(
+            ats="gem", source=JobSource.GEM, board_token=token,
+            title=title, job_url=url, source_job_id=url.rsplit("/", 1)[-1],
+        ))
+    logger.info("Gem %r: normalized %s jobs", token, len(jobs))
+    return jobs
+
+
+# ─── SAP SuccessFactors (Career Site Builder) ────────────────────────────────
+
+async def scrape_successfactors_board(board_token: str, *, max_jobs: int = 2000) -> list[JobPost]:
+    """SuccessFactors Career Site Builder sites (e.g. jobs.sap.com) paginate
+    server-rendered /search/ pages via the startrow parameter.
+
+    board_token: full base URL of the career site, e.g. "https://jobs.sap.com".
+    """
+    base = board_token.strip().rstrip("/")
+    if not base:
+        return []
+    if not base.startswith("http"):
+        base = f"https://{base}"
+    jobs: list[JobPost] = []
+    seen_urls: set[str] = set()
+    row_re = _re.compile(
+        r"<a[^>]+class=\"[^\"]*jobTitle-link[^\"]*\"[^>]+href=\"([^\"]+)\"[^>]*>(.*?)</a>",
+        _re.IGNORECASE | _re.DOTALL,
+    )
+    for startrow in range(0, max_jobs, 25):
+        try:
+            page = await _http_text(f"{base}/search/", params={"q": "", "startrow": str(startrow)})
+        except Exception as exc:
+            if startrow == 0:
+                logger.warning("SuccessFactors %r: %s", base, exc)
+                return []
+            break
+        found_new = False
+        for match in row_re.finditer(page):
+            href = match.group(1).strip()
+            title = _strip_html(match.group(2))
+            if not title:
+                continue
+            url = href if href.startswith("http") else base + href
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
+            found_new = True
+            jobs.append(_simple_jobpost(
+                ats="successfactors", source=JobSource.SUCCESSFACTORS,
+                board_token=base.replace("https://", "").replace("http://", ""),
+                title=title, job_url=url, source_job_id=url.rstrip("/").rsplit("/", 1)[-1],
+            ))
+            if len(jobs) >= max_jobs:
+                break
+        if not found_new or len(jobs) >= max_jobs:
+            break
+    logger.info("SuccessFactors %r: normalized %s jobs", base, len(jobs))
+    return jobs
+
+
+# ─── Phenom ──────────────────────────────────────────────────────────────────
+
+async def scrape_phenom_board(board_token: str, *, max_jobs: int = 2000) -> list[JobPost]:
+    """Phenom-powered career sites expose a public jobs JSON used by their SPA.
+
+    board_token: the careers domain, e.g. "careers.example.com".
+    Endpoint: https://{domain}/api/apply/v2/jobs?domain={domain}
+    """
+    domain = board_token.strip().replace("https://", "").replace("http://", "").rstrip("/")
+    if not domain:
+        return []
+    jobs: list[JobPost] = []
+    start = 0
+    page_size = 100
+    while len(jobs) < max_jobs:
+        try:
+            payload = await _http_json(
+                f"https://{domain}/api/apply/v2/jobs",
+                params={"domain": domain, "start": str(start), "num": str(page_size)},
+            )
+        except Exception as exc:
+            if start == 0:
+                logger.warning("Phenom %r: %s", domain, exc)
+                return []
+            break
+        items = None
+        if isinstance(payload, dict):
+            items = payload.get("positions") or payload.get("jobs") or (payload.get("data") or {}).get("jobs")
+        if not isinstance(items, list) or not items:
+            break
+        for item in items:
+            try:
+                title = _safe_str(item.get("name") or item.get("title"))
+                if not title:
+                    continue
+                path = _safe_str(item.get("canonicalPositionUrl") or item.get("externalPath") or item.get("applyUrl"))
+                url = path if path.startswith("http") else f"https://{domain}{path}"
+                jobs.append(_simple_jobpost(
+                    ats="phenom", source=JobSource.PHENOM, board_token=domain,
+                    title=title, job_url=url,
+                    location=_location_name(item.get("location") or item.get("locations")),
+                    description=_strip_html(item.get("description") or item.get("job_description")),
+                    source_job_id=_safe_str(item.get("jobId") or item.get("id") or item.get("positionId")),
+                    posted_at=_parse_dt(item.get("postedDate") or item.get("t_create")),
+                ))
+                if len(jobs) >= max_jobs:
+                    break
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Phenom: skip row: %s", exc)
+        if len(items) < page_size:
+            break
+        start += page_size
+    logger.info("Phenom %r: normalized %s jobs", domain, len(jobs))
+    return jobs
+
+
+# ─── Dayforce ────────────────────────────────────────────────────────────────
+
+async def scrape_dayforce_board(board_token: str, *, max_jobs: int = 2000) -> list[JobPost]:
+    """Dayforce hosted portals (jobs.dayforcehcm.com/en-US/{token}/CANDIDATEPORTAL).
+
+    The portal SPA reads a JSON feed; we try the feed first and fall back to
+    anchor extraction for tenants with server-rendered boards.
+    """
+    token = board_token.strip().strip("/")
+    if not token:
+        return []
+    parts = token.split("/")
+    client_name = parts[0]
+    site = parts[1] if len(parts) > 1 else "CANDIDATEPORTAL"
+    jobs: list[JobPost] = []
+    try:
+        payload = await _http_json(
+            f"https://jobs.dayforcehcm.com/api/jobposting/en-US/{client_name}/{site}",
+            params={"page": "1", "pageSize": str(min(max_jobs, 500))},
+        )
+        items = payload.get("jobPostings") or payload.get("postings") or payload.get("jobs") if isinstance(payload, dict) else payload
+        if isinstance(items, list):
+            for item in items[:max_jobs]:
+                title = _safe_str(item.get("title") or item.get("jobTitle"))
+                if not title:
+                    continue
+                job_id_n = _safe_str(item.get("id") or item.get("jobPostingId") or item.get("referenceNumber"))
+                jobs.append(_simple_jobpost(
+                    ats="dayforce", source=JobSource.DAYFORCE, board_token=client_name,
+                    title=title,
+                    job_url=_safe_str(item.get("jobDetailsUrl"))
+                            or f"https://jobs.dayforcehcm.com/en-US/{client_name}/{site}/jobs/{job_id_n}",
+                    location=_location_name(item.get("location") or item.get("city")),
+                    description=_strip_html(item.get("description")),
+                    source_job_id=job_id_n,
+                    posted_at=_parse_dt(item.get("datePosted") or item.get("postedDate")),
+                ))
+    except Exception as exc:
+        logger.debug("Dayforce JSON %r failed (%s); falling back to HTML", token, exc)
+    if not jobs:
+        try:
+            page = await _http_text(f"https://jobs.dayforcehcm.com/en-US/{client_name}/{site}")
+            pairs = _anchor_jobs(
+                page,
+                rf"(?:https://jobs\.dayforcehcm\.com)?/en-US/{_re.escape(client_name)}/{_re.escape(site)}/jobs/\d+",
+                base_url="https://jobs.dayforcehcm.com",
+            )
+            for url, title in pairs[:max_jobs]:
+                jobs.append(_simple_jobpost(
+                    ats="dayforce", source=JobSource.DAYFORCE, board_token=client_name,
+                    title=title, job_url=url, source_job_id=url.rsplit("/", 1)[-1],
+                ))
+        except Exception as exc:
+            logger.warning("Dayforce %r: %s", token, exc)
+            return []
+    logger.info("Dayforce %r: normalized %s jobs", token, len(jobs))
+    return jobs
+
+
+# ─── Join.com ────────────────────────────────────────────────────────────────
+
+async def scrape_join_board(board_token: str, *, max_jobs: int = 2000) -> list[JobPost]:
+    """Join.com company pages are server-rendered; extract job anchors.
+
+    Board page: https://join.com/companies/{token}
+    """
+    token = board_token.strip()
+    if not token:
+        return []
+    try:
+        page = await _http_text(f"https://join.com/companies/{token}")
+    except Exception as exc:
+        logger.warning("Join %r: %s", token, exc)
+        return []
+    jobs: list[JobPost] = []
+    pairs = _anchor_jobs(
+        page,
+        rf"(?:https://join\.com)?/companies/{_re.escape(token)}/\d+[^\"']*",
+        base_url="https://join.com",
+    )
+    for url, title in pairs[:max_jobs]:
+        id_match = _re.search(rf"/companies/{_re.escape(token)}/(\d+)", url)
+        jobs.append(_simple_jobpost(
+            ats="join", source=JobSource.JOIN_COM, board_token=token,
+            title=title, job_url=url,
+            source_job_id=id_match.group(1) if id_match else "",
+        ))
+    logger.info("Join %r: normalized %s jobs", token, len(jobs))
+    return jobs
+
+
+# ─── Hireology ───────────────────────────────────────────────────────────────
+
+async def scrape_hireology_board(board_token: str, *, max_jobs: int = 2000) -> list[JobPost]:
+    """Hireology hosted career sites ({token}.hireology.com) — anchor extraction."""
+    token = board_token.strip()
+    if not token:
+        return []
+    base = f"https://{token}.hireology.com"
+    page = ""
+    for candidate in (base, f"{base}/careers"):
+        try:
+            page = await _http_text(candidate)
+            if page:
+                break
+        except Exception as exc:
+            logger.debug("Hireology %r: %s failed: %s", token, candidate, exc)
+    if not page:
+        logger.warning("Hireology %r: no reachable career page", token)
+        return []
+    jobs: list[JobPost] = []
+    pairs = _anchor_jobs(page, rf"(?:{_re.escape(base)})?/(?:careers|jobs)/[A-Za-z0-9_-]+[^\"']*", base_url=base)
+    for url, title in pairs[:max_jobs]:
+        jobs.append(_simple_jobpost(
+            ats="hireology", source=JobSource.HIREOLOGY, board_token=token,
+            title=title, job_url=url, source_job_id=url.rstrip("/").rsplit("/", 1)[-1],
+        ))
+    logger.info("Hireology %r: normalized %s jobs", token, len(jobs))
+    return jobs
+
+
 # ─── Multi-ATS dispatcher ────────────────────────────────────────────────────
 
 ATS_DISPATCH = {
@@ -1105,6 +1992,27 @@ ATS_DISPATCH = {
     "rippling": scrape_rippling_board,
     "bamboohr": scrape_bamboohr_board,
     "workable": scrape_workable_board,
+    # Extended coverage
+    "breezyhr": scrape_breezyhr_board,
+    "breezy": scrape_breezyhr_board,
+    "pinpoint": scrape_pinpoint_board,
+    "polymer": scrape_polymer_board,
+    "jobvite": scrape_jobvite_board,
+    "icims": scrape_icims_board,
+    "paylocity": scrape_paylocity_board,
+    "ukg": scrape_ukg_board,
+    "ultipro": scrape_ukg_board,
+    "zoho_recruit": scrape_zoho_recruit_board,
+    "zoho": scrape_zoho_recruit_board,
+    "adp": scrape_adp_board,
+    "dover": scrape_dover_board,
+    "gem": scrape_gem_board,
+    "successfactors": scrape_successfactors_board,
+    "sap_successfactors": scrape_successfactors_board,
+    "phenom": scrape_phenom_board,
+    "dayforce": scrape_dayforce_board,
+    "join": scrape_join_board,
+    "hireology": scrape_hireology_board,
 }
 
 
@@ -1118,6 +2026,7 @@ async def scrape_ats(
     """Dispatch to the appropriate ATS scraper.
 
     For Workday, board_token must be a 2-tuple of (tenant, site).
+    For Oracle Recruiting, board_token is (host, siteNumber) or "host|siteNumber".
     For all other ATS, board_token is a string.
     """
     name = ats_name.lower().strip()
@@ -1127,9 +2036,14 @@ async def scrape_ats(
             return []
         tenant, site = board_token
         return await scrape_workday_board(tenant=tenant, site=site, base_host=base_host, max_jobs=max_jobs)
+    if name in {"oracle", "oracle_recruiting", "orc"}:
+        return await scrape_oracle_board(board_token, max_jobs=max_jobs)
 
     fn = ATS_DISPATCH.get(name)
     if not fn:
         logger.warning("Unknown ATS %r", ats_name)
         return []
     return await fn(board_token=board_token, max_jobs=max_jobs)
+
+
+SUPPORTED_ATS: frozenset[str] = frozenset(ATS_DISPATCH) | {"workday", "oracle", "oracle_recruiting", "orc"}

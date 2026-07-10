@@ -6,6 +6,26 @@
     <meta name="theme-color" content="#FFFFFF" />
     <meta name="color-scheme" content="light dark" />
 
+    <!-- Apply the saved/system theme before first paint (no flash).
+         Mirrors the logic in Layout.tsx's ThemeProvider. -->
+    <script>
+      (function () {
+        var dark = true;
+        try {
+          var s = localStorage.getItem("placeup-theme");
+          if (s === "dark") dark = true;
+          else if (s === "light") dark = false;
+          else dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        } catch (e) {
+          dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        }
+        var root = document.documentElement;
+        root.setAttribute("data-theme", dark ? "dark" : "light");
+        root.classList.toggle("dark", dark);
+        root.style.colorScheme = dark ? "dark" : "light";
+      })();
+    </script>
+
     <title>PlaceUp Careers</title>
     <meta
       name="description"

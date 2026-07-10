@@ -73,7 +73,7 @@ export function FloatingParticles() {
         // Draw subtle glow
         const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 3);
         gradient.addColorStop(0, `rgba(166, 55, 45, ${currentOpacity * 0.3})`);
-        gradient.addColorStop(1, "rgba(166, 55, 45, 0)");
+        gradient.addColorStop(1, "rgba(166,55,45,0)");
         ctx.fillStyle = gradient;
         ctx.fillRect(p.x - p.size * 3, p.y - p.size * 3, p.size * 6, p.size * 6);
       });

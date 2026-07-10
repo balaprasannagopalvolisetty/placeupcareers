@@ -1,6 +1,6 @@
 # PlaceUp Career Master Documentation
 
-Last updated: 2026-07-08
+Last updated: 2026-07-10
 
 This is the single source of truth for PlaceUp Career. Keep this file current
 and avoid adding scattered markdown files unless the team explicitly decides to
@@ -156,6 +156,32 @@ Primary ATS/career systems currently supported:
 - Similar official employer career pages through the career-site feed and
   first-party page discovery
 
+As of 2026-07-10 every platform above has a direct scraper in
+`backend/app/services/careers_ats.py` (29 providers in `ATS_DISPATCH`).
+Coverage works in three layers that all feed the same normalize → stage →
+load pipeline and the 32-target-country prefilter:
+
+1. Curated seed catalog — `h1b_sponsor_boards.H1B_SPONSOR_BOARDS` maps known
+   sponsor companies to their board tokens. Token formats per platform are
+   documented at the top of `careers_ats.py` (Workday uses `(tenant, site)`,
+   Oracle Recruiting uses `(host, siteNumber)` or `"host|CX_1"`, UKG uses the
+   board path, ADP/Paylocity use GUIDs, SuccessFactors/Phenom use the careers
+   domain, everything else uses the company slug).
+2. Slug probing — `company_career_resolver.PROBE_ATS` guesses boards for every
+   sponsor company in `visa_sponsors`/`h1b_sponsors` (22 slug-guessable
+   platforms probed; run by `board_discovery_sweep`).
+3. Careers-page ingest — detects embedded/unknown ATS from the company's own
+   careers URL.
+
+Scoring validation (2026-07-10): match and ATS scores now validate inputs
+(empty/short resume or JD returns flagged low scores instead of noise), clamp
+every component to 0-100, calibrate TF-IDF similarity, and cross-check that
+80+ scores are backed by real skill evidence. See
+`backend/app/services/match_engine.py` and `backend/app/services/ats_scorer.py`.
+
+Resume Tailor (2026-07-10): unlocked by default. `TAILOR_FEATURE_ENABLED=false`
+in the service env re-locks it without a deploy.
+
 Important files:
 
 - `backend/app/etl/jobs_scraper_6h.py`
@@ -234,6 +260,27 @@ depend on `jobs_data.js` or local `.careercopilot` state.
 ## Frontend Rules
 
 The frontend uses React, Vite, Tailwind CSS, Motion, and lucide-react.
+
+### Theming (dark + light, 2026-07-10)
+
+The whole app supports dark and light modes. How it works:
+
+- Every color in inline styles resolves to a CSS variable
+  (`var(--pu-...)`) defined in `frontend/src/styles/theme-tokens.css`,
+  which holds the full dark palette (the original brand colors) and a
+  tuned light palette, switched by `data-theme` on `<html>`.
+- `Layout.tsx` owns the ThemeProvider: explicit user choice persists in
+  localStorage (`placeup-theme`); otherwise the OS preference is followed
+  live. `index.html` applies the same logic pre-paint (no flash). The
+  `.dark` class is kept in sync for the shadcn/Tailwind components, and
+  `ThemeToggle` (exported from `Layout.tsx`) renders the sun/moon switch
+  used in the public navbar and the dashboard topbar.
+- `BrandLogo` auto-swaps wordmark variants with the theme; toasts
+  (`ui/sonner.tsx`) follow the same provider.
+- NEW CODE RULE: never hardcode a color in a component. Use an existing
+  `--pu-*` token (or add the token to BOTH palettes in theme-tokens.css).
+  The only exceptions are the static "paper" resume document in
+  UserProfilePage and unused canvas components.
 
 Non-negotiable coding rules:
 

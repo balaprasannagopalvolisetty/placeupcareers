@@ -12,14 +12,14 @@ import { Link, useNavigate, useSearchParams } from "react-router";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif" };
 const T = {
-  bg: "#0B1220",
-  text: "#F1F5F9",
-  t2: "rgba(148,163,184,0.7)",
-  t3: "rgba(148,163,184,0.75)",
-  border: "rgba(148,163,184,0.12)",
-  grad: "linear-gradient(135deg, #2563EB, #0EA5E9)",
-  red: "#3B82F6",
-  input: "rgba(148,163,184,0.05)",
+  bg: "var(--pu-0b1220)",
+  text: "var(--pu-f1f5f9-t)",
+  t2: "var(--pu-148-163-184-07)",
+  t3: "var(--pu-148-163-184-075)",
+  border: "var(--pu-148-163-184-012)",
+  grad: "linear-gradient(135deg, var(--pu-2563eb), var(--pu-0ea5e9))",
+  red: "var(--pu-3b82f6-t)",
+  input: "var(--pu-148-163-184-005)",
 };
 
 const API_BASE = ((import.meta.env.VITE_API_BASE as string | undefined) || "").replace(/\/+$/, "");
@@ -43,7 +43,7 @@ function Shell({ title, subtitle, children }: { title: string; subtitle: string;
         style={{
           width: "100%",
           maxWidth: 420,
-          background: "rgba(15,30,55,0.55)",
+          background: "var(--pu-15-30-55-055)",
           border: `1px solid ${T.border}`,
           borderRadius: 18,
           padding: "32px 28px",
@@ -81,7 +81,7 @@ function primaryButtonStyle(disabled?: boolean): React.CSSProperties {
     borderRadius: 10,
     border: "none",
     background: T.grad,
-    color: "#fff",
+    color: "var(--pu-ffffff-t)",
     fontSize: 14,
     fontWeight: 600,
     fontFamily: F.sans,
@@ -135,7 +135,7 @@ export function ForgotPasswordPage() {
           style={{ ...fieldStyle(), marginTop: 6 }}
         />
         {status === "sent" && (
-          <p style={{ color: "#22c55e", fontSize: 12, marginTop: 12 }}>{message}</p>
+          <p style={{ color: "var(--pu-22c55e-t)", fontSize: 12, marginTop: 12 }}>{message}</p>
         )}
         {status === "error" && (
           <p style={{ color: T.red, fontSize: 12, marginTop: 12 }}>
@@ -227,7 +227,7 @@ export function ResetPasswordPage() {
         />
         {err && <p style={{ color: T.red, fontSize: 12, marginTop: 12 }}>{err}</p>}
         {status === "done" && (
-          <p style={{ color: "#22c55e", fontSize: 12, marginTop: 12 }}>
+          <p style={{ color: "var(--pu-22c55e-t)", fontSize: 12, marginTop: 12 }}>
             Password updated. Redirecting you to sign in…
           </p>
         )}

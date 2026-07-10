@@ -10,10 +10,10 @@ import { Link } from "react-router";
 
 const F = "'Plus Jakarta Sans', sans-serif";
 const T = {
-  text: "#F1F5F9",
-  t2: "rgba(148,163,184,0.75)",
-  t3: "rgba(148,163,184,0.55)",
-  border: "rgba(148,163,184,0.12)",
+  text: "var(--pu-f1f5f9-t)",
+  t2: "var(--pu-148-163-184-075)",
+  t3: "var(--pu-148-163-184-055)",
+  border: "var(--pu-148-163-184-012)",
 };
 
 const SHELL: React.CSSProperties = {

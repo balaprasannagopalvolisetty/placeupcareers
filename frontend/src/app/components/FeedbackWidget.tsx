@@ -6,14 +6,14 @@ import * as api from "../lib/api";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif" };
 const T = {
-  surface: "#FFFFFF",
-  border: "#E2E8F0",
-  text: "#0F172A",
-  t2: "#475569",
-  t3: "#94A3B8",
-  accent: "#2563EB",
-  grad: "linear-gradient(135deg, #2563EB, #0EA5E9)",
-  input: "#F8FAFC",
+  surface: "var(--pu-ffffff-b)",
+  border: "var(--pu-e2e8f0-b)",
+  text: "var(--pu-0f172a-t)",
+  t2: "var(--pu-475569-t)",
+  t3: "var(--pu-94a3b8-t)",
+  accent: "var(--pu-2563eb)",
+  grad: "linear-gradient(135deg, var(--pu-2563eb), var(--pu-0ea5e9))",
+  input: "var(--pu-f8fafc-b)",
 };
 
 const CATEGORIES: { value: string; label: string }[] = [
@@ -69,10 +69,10 @@ export default function FeedbackWidget() {
         style={{
           position: "fixed", right: 20, bottom: 20, zIndex: 60,
           height: 48, padding: "0 16px", borderRadius: 999, border: "none",
-          background: T.grad, color: "#fff", cursor: "pointer",
+          background: T.grad, color: "var(--pu-ffffff-t)", cursor: "pointer",
           display: "inline-flex", alignItems: "center", gap: 8,
           fontFamily: F.sans, fontSize: 13.5, fontWeight: 700,
-          boxShadow: "0 8px 22px rgba(37,99,235,0.35)",
+          boxShadow: "0 8px 22px var(--pu-37-99-235-035)",
         }}
       >
         <MessageSquarePlus size={17} /> Feedback
@@ -88,13 +88,13 @@ export default function FeedbackWidget() {
             style={{
               position: "fixed", right: 20, bottom: 80, zIndex: 61, width: 340, maxWidth: "calc(100vw - 40px)",
               background: T.surface, border: `1px solid ${T.border}`, borderRadius: 18,
-              boxShadow: "0 20px 50px rgba(15,23,42,0.22)", padding: 20, fontFamily: F.sans,
+              boxShadow: "0 20px 50px var(--pu-15-23-42-022)", padding: 20, fontFamily: F.sans,
             }}
           >
             {done ? (
               <div style={{ textAlign: "center", padding: "18px 6px" }}>
-                <span style={{ display: "inline-flex", width: 46, height: 46, borderRadius: 14, background: "rgba(22,163,74,0.1)", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
-                  <Check size={22} color="#16A34A" />
+                <span style={{ display: "inline-flex", width: 46, height: 46, borderRadius: 14, background: "var(--pu-22-163-74-01)", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
+                  <Check size={22} color="var(--pu-16a34a)" />
                 </span>
                 <div style={{ fontSize: 16, fontWeight: 800, color: T.text, marginBottom: 4 }}>Thank you!</div>
                 <div style={{ fontSize: 13, color: T.t2 }}>Your feedback helps us improve PlaceUp.</div>
@@ -111,7 +111,7 @@ export default function FeedbackWidget() {
                   {[1, 2, 3, 4, 5].map((n) => (
                     <button key={n} onMouseEnter={() => setHover(n)} onMouseLeave={() => setHover(0)} onClick={() => { setRating(n); setError(null); }}
                       style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}>
-                      <Star size={28} color={(hover || rating) >= n ? "#F59E0B" : "#CBD5E1"} fill={(hover || rating) >= n ? "#F59E0B" : "none"} />
+                      <Star size={28} color={(hover || rating) >= n ? "var(--pu-f59e0b-b)" : "var(--pu-cbd5e1-b)"} fill={(hover || rating) >= n ? "var(--pu-f59e0b-b)" : "none"} />
                     </button>
                   ))}
                 </div>
@@ -125,10 +125,10 @@ export default function FeedbackWidget() {
                 <textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Tell us more (optional)…" rows={3}
                   style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${T.border}`, background: T.input, color: T.text, fontSize: 13.5, fontFamily: F.sans, resize: "vertical", outline: "none", boxSizing: "border-box", marginBottom: 12 }} />
 
-                {error && <div style={{ color: "#DC2626", fontSize: 12.5, marginBottom: 10 }}>{error}</div>}
+                {error && <div style={{ color: "var(--pu-dc2626)", fontSize: 12.5, marginBottom: 10 }}>{error}</div>}
 
                 <button onClick={submit} disabled={submitting}
-                  style={{ width: "100%", height: 44, borderRadius: 11, border: "none", background: T.grad, color: "#fff", fontSize: 14, fontWeight: 700, fontFamily: F.sans, cursor: submitting ? "wait" : "pointer", opacity: submitting ? 0.75 : 1 }}>
+                  style={{ width: "100%", height: 44, borderRadius: 11, border: "none", background: T.grad, color: "var(--pu-ffffff-t)", fontSize: 14, fontWeight: 700, fontFamily: F.sans, cursor: submitting ? "wait" : "pointer", opacity: submitting ? 0.75 : 1 }}>
                   {submitting ? "Sending…" : "Send feedback"}
                 </button>
               </>

@@ -130,8 +130,45 @@ def _fallback_parse(resume_text: str) -> ParsedResume:
     )
 
 
+def _clamp_score(value: float) -> float:
+    """Clamp any component score into the valid 0-100 range."""
+    try:
+        return max(0.0, min(100.0, float(value)))
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _fallback_score(resume_text: str, job_description: str) -> ATSResult:
-    """Strict deterministic ATS score using 6 weighted dimensions."""
+    """Strict deterministic ATS score using 6 weighted dimensions.
+
+    Validation rules:
+      - Empty/near-empty inputs return a flagged zero-ish result instead of a
+        misleading score (an empty JD used to inflate keyword overlap).
+      - Every component score is clamped to 0-100 before weighting.
+      - The overall score is cross-checked against skill evidence: no resume
+        scores 80+ against a JD whose required skills it doesn't mention.
+    """
+    resume_len = len((resume_text or "").strip())
+    jd_len = len((job_description or "").strip())
+    if resume_len < 80 or jd_len < 40:
+        return ATSResult(
+            overall_score=0.0,
+            recommendation="Weak Match",
+            skill_match=SkillMatch(matched_skills=[], missing_skills=[], match_percentage=0.0),
+            experience_score=0.0,
+            education_score=0.0,
+            projects_score=0.0,
+            certifications_score=0.0,
+            cultural_fit_score=0.0,
+            keyword_analysis=KeywordAnalysis(
+                strong_keywords=[], missing_keywords=[], additional_keywords=[],
+                keyword_density_score=0.0,
+            ),
+            strengths=[],
+            concerns=["Resume or job description text is too short for a reliable ATS score"],
+            improvement_suggestions=["Upload a complete resume with experience, education, and skills sections"],
+        )
+
     keyword_analysis = _enhance_keyword_analysis(resume_text, job_description)
     jd_skills = extract_skills_from_text(job_description)
     resume_skills = extract_skills_from_text(resume_text)
@@ -173,6 +210,15 @@ def _fallback_score(resume_text: str, job_description: str) -> ATSResult:
     jd_soft_terms = [term for term in soft_terms if term in jd_clean]
     soft_score = 70.0 if not jd_soft_terms else sum(1 for term in jd_soft_terms if term in resume_clean) / len(jd_soft_terms) * 100
 
+    # Clamp every dimension before weighting so no component can push the
+    # composite out of range or mask a bad signal elsewhere.
+    skill_pct = _clamp_score(skill_pct)
+    title_score = _clamp_score(title_score)
+    keyword_pct = _clamp_score(keyword_pct)
+    education_score = _clamp_score(education_score)
+    soft_score = _clamp_score(soft_score)
+    resume_quality = _clamp_score(resume_quality)
+
     overall = (
         skill_pct * 0.30
         + title_score * 0.25
@@ -185,6 +231,11 @@ def _fallback_score(resume_text: str, job_description: str) -> ATSResult:
         overall = min(overall, 45.0)
     if required_years and resume_years is None:
         overall = min(overall, 65.0)
+    # Cross-validation: an 80+ "Strong Match" requires real skill evidence,
+    # not just generic keyword overlap.
+    if jd_skills and skill_pct < 40.0:
+        overall = min(overall, 79.0)
+    overall = _clamp_score(overall)
 
     recommendation = "Strong Match" if overall >= 80 else \
                      "Good Match" if overall >= 65 else \

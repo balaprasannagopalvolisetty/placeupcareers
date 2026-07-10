@@ -29,26 +29,26 @@ export function CookieConsent() {
         position: "fixed", left: 16, right: 16, bottom: 16, zIndex: 4000,
         maxWidth: 720, margin: "0 auto", display: "flex", gap: 14, flexWrap: "wrap",
         alignItems: "center", justifyContent: "space-between",
-        background: "rgba(8,18,38,0.97)", border: "1px solid rgba(148,163,184,0.14)",
+        background: "var(--pu-8-18-38-097)", border: "1px solid var(--pu-148-163-184-014)",
         borderRadius: 14, padding: "14px 18px", backdropFilter: "blur(20px)",
-        boxShadow: "0 18px 48px rgba(1,17,38,0.5)", fontFamily: "'Plus Jakarta Sans', sans-serif",
+        boxShadow: "0 18px 48px var(--pu-1-17-38-05)", fontFamily: "'Plus Jakarta Sans', sans-serif",
       }}
     >
-      <div style={{ flex: "1 1 320px", minWidth: 0, fontSize: 12.5, lineHeight: 1.55, color: "rgba(148,163,184,0.78)" }}>
+      <div style={{ flex: "1 1 320px", minWidth: 0, fontSize: 12.5, lineHeight: 1.55, color: "var(--pu-148-163-184-078)" }}>
         We use essential cookies to run PlaceUp and, with your consent, analytics
         cookies to improve it. See our{" "}
-        <a href="/cookies" style={{ color: "#3B82F6", textDecoration: "none" }}>Cookies notice</a>.
+        <a href="/cookies" style={{ color: "var(--pu-3b82f6-t)", textDecoration: "none" }}>Cookies notice</a>.
       </div>
       <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
         <button
           onClick={() => choose(false)}
-          style={{ padding: "9px 16px", borderRadius: 9, border: "1px solid rgba(148,163,184,0.16)", background: "transparent", color: "rgba(148,163,184,0.7)", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
+          style={{ padding: "9px 16px", borderRadius: 9, border: "1px solid var(--pu-148-163-184-016)", background: "transparent", color: "var(--pu-148-163-184-07)", fontSize: 12.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
         >
           Decline
         </button>
         <button
           onClick={() => choose(true)}
-          style={{ padding: "9px 18px", borderRadius: 9, border: "none", background: "linear-gradient(135deg, #2563EB, #0EA5E9)", color: "#fff", fontSize: 12.5, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}
+          style={{ padding: "9px 18px", borderRadius: 9, border: "none", background: "linear-gradient(135deg, var(--pu-2563eb), var(--pu-0ea5e9))", color: "var(--pu-ffffff-t)", fontSize: 12.5, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}
         >
           Accept
         </button>

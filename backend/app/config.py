@@ -191,9 +191,12 @@ class Settings(BaseSettings):
     smtp_password: str = Field(default="")
     email_from: str = Field(default="jobs@placeupcareer.com")
     contact_recipient_email: str = Field(default="operations@placeupcareer.com")
-    # Resume Tailor kill switch. Locked (False) while output quality is being
-    # tuned; set TAILOR_FEATURE_ENABLED=true in the service env to re-open.
-    tailor_feature_enabled: bool = Field(default=False)
+    # Resume Tailor kill switch. UNLOCKED by default (2026-07-10) — output
+    # quality guards now live in the tailor pipeline itself (deterministic
+    # fallback + original-preserving pass + score guard). Set
+    # TAILOR_FEATURE_ENABLED=false in the service env to re-lock in an
+    # emergency without a deploy.
+    tailor_feature_enabled: bool = Field(default=True)
 
     # --- Server topology (web/app split) ---
     server_role: str = Field(

@@ -8,21 +8,21 @@ import * as api from "../../lib/api";
 
 const F = "'Plus Jakarta Sans', sans-serif";
 const T = {
-  text: "#F1F5F9",
-  t2: "rgba(226,232,240,0.72)",
-  t3: "rgba(148,163,184,0.75)",
-  border: "rgba(148,163,184,0.1)",
-  input: "rgba(148,163,184,0.05)",
-  red: "#3B82F6",
-  grad: "linear-gradient(135deg, #2563EB, #0EA5E9)",
-  panel: "rgba(1,17,38,0.55)",
+  text: "var(--pu-f1f5f9-t)",
+  t2: "var(--pu-226-232-240-072)",
+  t3: "var(--pu-148-163-184-075)",
+  border: "var(--pu-148-163-184-01)",
+  input: "var(--pu-148-163-184-005)",
+  red: "var(--pu-3b82f6-t)",
+  grad: "linear-gradient(135deg, var(--pu-2563eb), var(--pu-0ea5e9))",
+  panel: "var(--pu-1-17-38-055)",
 };
 
 function statusChip(status: string) {
   const map: Record<string, { bg: string; fg: string; icon: React.ReactNode; label: string }> = {
-    pending: { bg: "rgba(59,130,246,0.12)", fg: T.red, icon: <Clock size={11} />, label: "Pending" },
-    approved: { bg: "rgba(34,197,94,0.12)", fg: "#22c55e", icon: <Check size={11} />, label: "Approved" },
-    rejected: { bg: "rgba(239,68,68,0.12)", fg: "#f87171", icon: <X size={11} />, label: "Rejected" },
+    pending: { bg: "var(--pu-59-130-246-012)", fg: T.red, icon: <Clock size={11} />, label: "Pending" },
+    approved: { bg: "var(--pu-34-197-94-012)", fg: "var(--pu-22c55e-t)", icon: <Check size={11} />, label: "Approved" },
+    rejected: { bg: "var(--pu-239-68-68-012)", fg: "var(--pu-f87171-t)", icon: <X size={11} />, label: "Rejected" },
   };
   const s = map[status] || map.pending;
   return (
@@ -72,7 +72,7 @@ export function RoleRequestPanel() {
           </div>
         </div>
         <button type="button" onClick={() => setOpen((v) => !v)}
-          style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 10, border: "none", background: T.grad, color: "#fff", fontSize: 12, fontWeight: 600, fontFamily: F, cursor: "pointer", whiteSpace: "nowrap" }}>
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 10, border: "none", background: T.grad, color: "var(--pu-ffffff-t)", fontSize: 12, fontWeight: 600, fontFamily: F, cursor: "pointer", whiteSpace: "nowrap" }}>
           <Plus size={14} /> Request a role
         </button>
       </div>
@@ -87,7 +87,7 @@ export function RoleRequestPanel() {
           <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Anything else? (optional)" style={inputStyle} />
           <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8 }}>
             <button type="button" onClick={submit} disabled={loading}
-              style={{ padding: "9px 16px", borderRadius: 10, border: "none", background: T.grad, color: "#fff", fontSize: 12, fontWeight: 600, fontFamily: F, cursor: loading ? "wait" : "pointer" }}>
+              style={{ padding: "9px 16px", borderRadius: 10, border: "none", background: T.grad, color: "var(--pu-ffffff-t)", fontSize: 12, fontWeight: 600, fontFamily: F, cursor: loading ? "wait" : "pointer" }}>
               {loading ? "Submitting…" : "Submit request"}
             </button>
           </div>
@@ -95,7 +95,7 @@ export function RoleRequestPanel() {
       )}
 
       {msg && (
-        <div style={{ marginTop: 12, fontSize: 12, fontFamily: F, color: msg.kind === "ok" ? "#22c55e" : "#f87171" }}>{msg.text}</div>
+        <div style={{ marginTop: 12, fontSize: 12, fontFamily: F, color: msg.kind === "ok" ? "var(--pu-22c55e-b)" : "var(--pu-f87171-b)" }}>{msg.text}</div>
       )}
 
       {requests.length > 0 && (

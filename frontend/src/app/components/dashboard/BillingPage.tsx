@@ -3,12 +3,12 @@ import { CheckCircle2, ShieldCheck } from "lucide-react";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif" };
 const T = {
-  text: "#F1F5F9",
-  t2: "rgba(226,232,240,0.72)",
-  border: "rgba(148,163,184,0.08)",
-  glass: "rgba(15,30,55,0.55)",
-  grad: "linear-gradient(135deg, #2563EB, #0EA5E9)",
-  red: "#3B82F6",
+  text: "var(--pu-f1f5f9-t)",
+  t2: "var(--pu-226-232-240-072)",
+  border: "var(--pu-148-163-184-008)",
+  glass: "var(--pu-15-30-55-055)",
+  grad: "linear-gradient(135deg, var(--pu-2563eb), var(--pu-0ea5e9))",
+  red: "var(--pu-3b82f6-t)",
 };
 
 const plans = [
@@ -52,7 +52,7 @@ export function BillingPage() {
             Choose the support level that fits your search, from self-serve matching to daily concierge applications.
           </p>
         </div>
-        <div style={{ padding: "10px 12px", borderRadius: 12, border: `1px solid ${T.border}`, background: "rgba(34,197,94,0.08)", color: "#22c55e", fontSize: 12, fontWeight: 800 }}>
+        <div style={{ padding: "10px 12px", borderRadius: 12, border: `1px solid ${T.border}`, background: "var(--pu-34-197-94-008)", color: "var(--pu-22c55e-t)", fontSize: 12, fontWeight: 800 }}>
           Launch preview
         </div>
       </div>
@@ -62,7 +62,7 @@ export function BillingPage() {
         animate={{ opacity: 1, y: 0 }}
         style={{
           borderRadius: 18,
-          border: `1px solid rgba(59,130,246,0.32)`,
+          border: `1px solid var(--pu-59-130-246-032)`,
           background: T.glass,
           backdropFilter: "blur(20px)",
           padding: 20,
@@ -76,8 +76,8 @@ export function BillingPage() {
               style={{
                 minHeight: 238,
                 borderRadius: 16,
-                border: `1px solid ${plan.featured ? "rgba(59,130,246,0.42)" : T.border}`,
-                background: plan.featured ? "rgba(37,99,235,0.12)" : "rgba(15,23,42,0.36)",
+                border: `1px solid ${plan.featured ? "var(--pu-59-130-246-042)" : T.border}`,
+                background: plan.featured ? "var(--pu-37-99-235-012)" : "var(--pu-15-23-42-036)",
                 padding: 16,
                 display: "flex",
                 flexDirection: "column",
@@ -94,7 +94,7 @@ export function BillingPage() {
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {plan.features.map((feature) => (
                   <div key={feature} style={{ display: "flex", gap: 8, color: T.t2, fontSize: 12.5, lineHeight: 1.45 }}>
-                    <CheckCircle2 size={15} color="#22c55e" style={{ flexShrink: 0, marginTop: 1 }} />
+                    <CheckCircle2 size={15} color="var(--pu-22c55e-t)" style={{ flexShrink: 0, marginTop: 1 }} />
                     {feature}
                   </div>
                 ))}
@@ -102,7 +102,7 @@ export function BillingPage() {
             </motion.div>
           ))}
         </div>
-        <div style={{ marginTop: 16, padding: 12, borderRadius: 12, background: "rgba(148,163,184,0.04)", border: `1px solid ${T.border}`, color: T.t2, fontSize: 12, lineHeight: 1.55 }}>
+        <div style={{ marginTop: 16, padding: 12, borderRadius: 12, background: "var(--pu-148-163-184-004)", border: `1px solid ${T.border}`, color: T.t2, fontSize: 12, lineHeight: 1.55 }}>
           Checkout is not required during launch preview. Your plan selection is still saved for access limits and support routing.
         </div>
       </motion.div>

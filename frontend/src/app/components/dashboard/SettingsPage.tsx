@@ -10,12 +10,12 @@ import { LoadingLogo } from "../LoadingLogo";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif" };
 const T = {
-  text: "#F1F5F9", t2: "rgba(226,232,240,0.72)", t3: "rgba(148,163,184,0.75)",
-  border: "rgba(148,163,184,0.08)", glass: "rgba(15,30,55,0.55)",
-  grad: "linear-gradient(135deg, #2563EB, #0EA5E9)", red: "#3B82F6",
-  input: "rgba(148,163,184,0.05)",
+  text: "var(--pu-f1f5f9-t)", t2: "var(--pu-226-232-240-072)", t3: "var(--pu-148-163-184-075)",
+  border: "var(--pu-148-163-184-008)", glass: "var(--pu-15-30-55-055)",
+  grad: "linear-gradient(135deg, var(--pu-2563eb), var(--pu-0ea5e9))", red: "var(--pu-3b82f6-t)",
+  input: "var(--pu-148-163-184-005)",
 };
-const SELECT_DARK_STYLE: CSSProperties = { background: "#1D4ED8", color: "#F1F5F9" };
+const SELECT_DARK_STYLE: CSSProperties = { background: "var(--pu-1d4ed8)", color: "var(--pu-f1f5f9-t)" };
 const HIDDEN_ROLE_PATTERN = /\b(volunteer|intern|open source contributor|community tech educator|growth hacker)\b/i;
 const isVisibleRole = (role: string) => Boolean(role.trim()) && !HIDDEN_ROLE_PATTERN.test(role);
 const COUNTRY_OPTIONS = COUNTRIES.map((country) => country.code);
@@ -82,8 +82,8 @@ function Toggle({ label, desc, on, onChange }: { label: string; desc: string; on
         <div style={{ fontSize: 13, fontWeight: 500, color: T.text, fontFamily: F.sans }}>{label}</div>
         <div style={{ fontSize: 12, color: T.t3, fontFamily: F.sans, marginTop: 2 }}>{desc}</div>
       </div>
-      <button onClick={() => onChange(!on)} style={{ width: 44, height: 24, borderRadius: 9999, border: "none", background: on ? T.grad : "rgba(148,163,184,0.1)", cursor: "pointer", position: "relative", transition: "background 0.25s", flexShrink: 0 }}>
-        <div style={{ position: "absolute", top: 2, left: on ? 22 : 2, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left 0.25s", boxShadow: "0 1px 4px rgba(0,0,0,0.3)" }} />
+      <button onClick={() => onChange(!on)} style={{ width: 44, height: 24, borderRadius: 9999, border: "none", background: on ? T.grad : "var(--pu-148-163-184-01)", cursor: "pointer", position: "relative", transition: "background 0.25s", flexShrink: 0 }}>
+        <div style={{ position: "absolute", top: 2, left: on ? 22 : 2, width: 20, height: 20, borderRadius: "50%", background: "var(--pu-ffffff-b)", transition: "left 0.25s", boxShadow: "0 1px 4px var(--pu-0-0-0-03)" }} />
       </button>
     </div>
   );
@@ -253,13 +253,13 @@ export function SettingsPage() {
               {allRoles.map((role) => <option style={SELECT_DARK_STYLE} key={role} value={role}>{role}</option>)}
             </select>
             <button type="button" onClick={() => { if (roleToAdd) { addJobPreference(roleToAdd); setRoleToAdd(""); } }}
-              style={{ height: 44, padding: "0 14px", borderRadius: 10, border: "none", background: T.grad, color: "#fff", fontSize: 12, fontWeight: 700, fontFamily: F.sans, cursor: "pointer" }}>
+              style={{ height: 44, padding: "0 14px", borderRadius: 10, border: "none", background: T.grad, color: "var(--pu-ffffff-t)", fontSize: 12, fontWeight: 700, fontFamily: F.sans, cursor: "pointer" }}>
               Add
             </button>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
             {(prefs.target_roles || []).map((role) => (
-              <span key={role} style={{ fontSize: 11, fontWeight: 600, padding: "5px 9px", borderRadius: 6, fontFamily: F.sans, background: "rgba(59,130,246,0.16)", color: T.red, border: "1px solid rgba(59,130,246,0.28)", display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <span key={role} style={{ fontSize: 11, fontWeight: 600, padding: "5px 9px", borderRadius: 6, fontFamily: F.sans, background: "var(--pu-59-130-246-016)", color: T.red, border: "1px solid var(--pu-59-130-246-028)", display: "inline-flex", alignItems: "center", gap: 6 }}>
                 {role}
                 <button type="button" onClick={() => removeJobPreference(role)} style={{ background: "none", border: "none", color: T.red, cursor: "pointer", padding: 0 }}>×</button>
               </span>
@@ -318,10 +318,10 @@ export function SettingsPage() {
           <div style={{
             display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap",
             padding: "12px 14px", borderRadius: 10,
-            background: (profile as any).email_verified ? "rgba(34,197,94,0.07)" : "rgba(148,163,184,0.04)",
-            border: `1px solid ${(profile as any).email_verified ? "rgba(34,197,94,0.22)" : T.border}`,
+            background: (profile as any).email_verified ? "var(--pu-34-197-94-007)" : "var(--pu-148-163-184-004)",
+            border: `1px solid ${(profile as any).email_verified ? "var(--pu-34-197-94-022)" : T.border}`,
           }}>
-            <MailCheck size={16} color={(profile as any).email_verified ? "#22c55e" : T.t3} />
+            <MailCheck size={16} color={(profile as any).email_verified ? "var(--pu-22c55e-b)" : T.t3} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, color: T.text, fontFamily: F.sans, fontWeight: 600 }}>
                 {profile.email || "—"}
@@ -344,7 +344,7 @@ export function SettingsPage() {
                 }}
                 style={{
                   padding: "8px 12px", borderRadius: 8, border: `1px solid ${T.border}`,
-                  background: "rgba(148,163,184,0.05)", color: T.text,
+                  background: "var(--pu-148-163-184-005)", color: T.text,
                   fontSize: 12, fontFamily: F.sans, cursor: "pointer",
                 }}
               >Resend verification</button>
@@ -391,7 +391,7 @@ export function SettingsPage() {
               <KeyRound size={12} /> Forgot password? Send reset link
             </button>
             {forgotStatus && (
-              <span style={{ fontSize: 12, color: "#22c55e", fontFamily: F.sans }}>{forgotStatus}</span>
+              <span style={{ fontSize: 12, color: "var(--pu-22c55e-t)", fontFamily: F.sans }}>{forgotStatus}</span>
             )}
           </div>
         </div>
@@ -401,7 +401,7 @@ export function SettingsPage() {
         <div style={{
           display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap",
           padding: 14, borderRadius: 10,
-          background: "rgba(59,130,246,0.06)", border: "1px solid rgba(59,130,246,0.25)",
+          background: "var(--pu-59-130-246-006)", border: "1px solid var(--pu-59-130-246-025)",
         }}>
           <AlertTriangle size={18} color={T.red} style={{ marginTop: 2 }} />
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -418,7 +418,7 @@ export function SettingsPage() {
             style={{
               display: "inline-flex", alignItems: "center", gap: 6,
               padding: "9px 14px", borderRadius: 9,
-              border: "1px solid rgba(59,130,246,0.4)", background: "rgba(59,130,246,0.12)",
+              border: "1px solid var(--pu-59-130-246-04)", background: "var(--pu-59-130-246-012)",
               color: T.red, fontSize: 12, fontWeight: 600, fontFamily: F.sans, cursor: "pointer",
             }}
           >
@@ -434,7 +434,7 @@ export function SettingsPage() {
           onClick={() => !deleting && setShowDeleteModal(false)}
           style={{
             position: "fixed", inset: 0, zIndex: 200,
-            background: "rgba(1,17,38,0.85)", backdropFilter: "blur(6px)",
+            background: "var(--pu-1-17-38-085)", backdropFilter: "blur(6px)",
             display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
           }}
         >
@@ -442,7 +442,7 @@ export function SettingsPage() {
             onClick={(e) => e.stopPropagation()}
             style={{
               width: "min(440px, 100%)", padding: "28px 26px", borderRadius: 18,
-              background: "rgba(15,30,55,0.92)", border: "1px solid rgba(148,163,184,0.1)",
+              background: "var(--pu-15-30-55-092)", border: "1px solid var(--pu-148-163-184-01)",
               color: T.text, fontFamily: F.sans,
             }}
           >
@@ -495,8 +495,8 @@ export function SettingsPage() {
                 }}
                 style={{
                   padding: "9px 14px", borderRadius: 9, border: "none",
-                  background: "linear-gradient(135deg, #2563EB, #0EA5E9)",
-                  color: "#fff", fontSize: 13, fontWeight: 600, fontFamily: F.sans,
+                  background: "linear-gradient(135deg, var(--pu-2563eb), var(--pu-0ea5e9))",
+                  color: "var(--pu-ffffff-t)", fontSize: 13, fontWeight: 600, fontFamily: F.sans,
                   cursor: deleting || !deletePassword ? "not-allowed" : "pointer",
                   opacity: deleting || !deletePassword ? 0.6 : 1,
                 }}
@@ -509,11 +509,11 @@ export function SettingsPage() {
       )}
 
       {error ? (
-        <div style={{ color: "#ef4444", fontFamily: F.sans, fontSize: 13 }}>{error}</div>
+        <div style={{ color: "var(--pu-ef4444-t)", fontFamily: F.sans, fontSize: 13 }}>{error}</div>
       ) : null}
 
       <motion.button whileTap={{ scale: 0.97 }} onClick={handleSave} disabled={saving}
-        style={{ display: "flex", alignItems: "center", gap: 8, padding: "13px 28px", borderRadius: 12, border: "none", background: saved ? "rgba(34,197,94,0.9)" : T.grad, color: "#fff", fontSize: 14, fontWeight: 600, fontFamily: F.sans, cursor: saving ? "wait" : "pointer", width: "fit-content", boxShadow: "0 0 20px rgba(59,130,246,0.3)", transition: "background 0.3s" }}>
+        style={{ display: "flex", alignItems: "center", gap: 8, padding: "13px 28px", borderRadius: 12, border: "none", background: saved ? "var(--pu-34-197-94-09)" : T.grad, color: "var(--pu-ffffff-t)", fontSize: 14, fontWeight: 600, fontFamily: F.sans, cursor: saving ? "wait" : "pointer", width: "fit-content", boxShadow: "0 0 20px var(--pu-59-130-246-03)", transition: "background 0.3s" }}>
         <Save size={15} /> {saving ? "Saving…" : saved ? "Saved!" : "Save Changes"}
       </motion.button>
     </div>

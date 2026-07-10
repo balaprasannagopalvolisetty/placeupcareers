@@ -1591,6 +1591,10 @@ async def generate_tailored_resume(
     # certifications arrays), then merge only the gaps. This is why tailored
     # files used to arrive with whole sections missing.
     _tailor_keys = ("experience", "education", "projects", "certifications", "skills", "summary", "sections", "contact")
+    from app.services.resume_parser import resume_json_looks_shattered
+    if resume_json_looks_shattered(resume_json):
+        # Word-per-line legacy JSON poisons tailored output — rebuild fully.
+        resume_json = {}
     if any(not resume_json.get(k) for k in _tailor_keys):
         try:
             from app.services.resume_parser import resume_text_to_json
@@ -1869,10 +1873,16 @@ async def get_parsed_active_resume(user_id: str = Depends(current_user_id)):
                 "missing_keywords": [],
             }
         resume_json = active.get("parsed_json") or {}
-        # Resumes uploaded before parsed_json existed have only parsed_text.
-        # Derive the structured document on the fly so the Profile page's
-        # Active Resume view and Past Companies always render.
-        if not (resume_json.get("sections") or resume_json.get("experience") or resume_json.get("summary")):
+        # Re-derive on the fly when the stored JSON is missing (resumes
+        # uploaded before parsed_json existed) OR shattered (uploaded before
+        # the word-per-line PDF repair — each section item was a single word,
+        # which rendered a broken one-word-per-line document).
+        from app.services.resume_parser import resume_json_looks_shattered
+        needs_derive = (
+            not (resume_json.get("sections") or resume_json.get("experience") or resume_json.get("summary"))
+            or resume_json_looks_shattered(resume_json)
+        )
+        if needs_derive:
             try:
                 from app.services.resume_parser import resume_text_to_json
                 resume_json = resume_text_to_json(

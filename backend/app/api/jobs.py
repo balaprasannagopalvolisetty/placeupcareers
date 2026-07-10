@@ -228,6 +228,10 @@ _FIRST_PARTY_SOURCES = {
     "greenhouse", "lever", "ashby", "smartrecruiters", "workday", "recruitee",
     "personio", "teamtailor", "jazzhr", "rippling", "bamboohr", "workable",
     "h1b_sponsor", "tier1_ats",
+    # Extended direct-ATS coverage (app/services/careers_ats.py)
+    "icims", "jobvite", "breezyhr", "oracle_recruiting", "paylocity", "ukg",
+    "zoho_recruit", "adp", "dover", "gem", "successfactors", "pinpoint",
+    "polymer", "phenom", "dayforce", "join", "hireology",
 }
 _company_link_recent: dict[str, datetime] = {}
 

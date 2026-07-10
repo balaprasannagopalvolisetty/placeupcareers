@@ -12,18 +12,18 @@ import * as api from "../lib/api";
 
 // ─── Design tokens: clean, light, professional SaaS ───
 const T = {
-  bg:        "#FFFFFF",
-  bgAlt:     "#F8FAFC",
-  card:      "#FFFFFF",
-  border:    "#E2E8F0",
-  text:      "#0F172A",
-  t2:        "#475569",
-  t3:        "#64748B",
-  accent:    "#2563EB",
-  accentDeep:"#1D4ED8",
-  grad:      "linear-gradient(135deg, #2563EB, #0EA5E9)",
-  shadow:    "0 1px 3px rgba(15,23,42,0.06), 0 8px 24px rgba(15,23,42,0.05)",
-  shadowH:   "0 4px 12px rgba(15,23,42,0.08), 0 16px 40px rgba(15,23,42,0.10)",
+  bg:        "var(--pu-ffffff-b)",
+  bgAlt:     "var(--pu-f8fafc-b)",
+  card:      "var(--pu-ffffff-b)",
+  border:    "var(--pu-e2e8f0-b)",
+  text:      "var(--pu-0f172a-t)",
+  t2:        "var(--pu-475569-t)",
+  t3:        "var(--pu-64748b-t)",
+  accent:    "var(--pu-2563eb)",
+  accentDeep:"var(--pu-1d4ed8)",
+  grad:      "linear-gradient(135deg, var(--pu-2563eb), var(--pu-0ea5e9))",
+  shadow:    "0 1px 3px var(--pu-15-23-42-006), 0 8px 24px var(--pu-15-23-42-005)",
+  shadowH:   "0 4px 12px var(--pu-15-23-42-008), 0 16px 40px var(--pu-15-23-42-01)",
 };
 const F = { sans: "'Plus Jakarta Sans', sans-serif" };
 
@@ -47,7 +47,7 @@ function SectionTag({ text }: { text: string }) {
     <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
       <span style={{
         display: "inline-block", padding: "6px 14px", borderRadius: 9999,
-        background: "rgba(37,99,235,0.08)", border: "1px solid rgba(37,99,235,0.18)",
+        background: "var(--pu-37-99-235-008)", border: "1px solid var(--pu-37-99-235-018)",
         fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase",
         color: T.accent, fontFamily: F.sans,
       }}>{text}</span>
@@ -124,7 +124,7 @@ function HeroSection() {
   return (
     <section style={{
       paddingTop: isMobile ? 120 : 150, paddingBottom: isMobile ? 64 : 96,
-      background: `radial-gradient(1200px 500px at 50% -10%, rgba(37,99,235,0.07), transparent 70%), ${T.bg}`,
+      background: `radial-gradient(1200px 500px at 50% -10%, var(--pu-37-99-235-007), transparent 70%), ${T.bg}`,
       position: "relative",
     }}>
       <div style={{ maxWidth: 860, margin: "0 auto", padding: "0 24px", textAlign: "center" }}>
@@ -133,9 +133,9 @@ function HeroSection() {
           <div style={{
             display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 16px",
             borderRadius: 9999, marginBottom: 28,
-            background: "rgba(37,99,235,0.06)", border: "1px solid rgba(37,99,235,0.16)",
+            background: "var(--pu-37-99-235-006)", border: "1px solid var(--pu-37-99-235-016)",
           }}>
-            <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#22C55E", boxShadow: "0 0 0 3px rgba(34,197,94,0.18)" }} />
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--pu-22c55e-b)", boxShadow: "0 0 0 3px var(--pu-34-197-94-018)" }} />
             <span style={{ fontSize: 12.5, fontWeight: 600, color: T.accent, fontFamily: F.sans }}>
               Visa-friendly roles in 32 countries, refreshed every 6 hours
             </span>
@@ -173,8 +173,8 @@ function HeroSection() {
             <Link to="/signup" style={{
               display: "inline-flex", alignItems: "center", gap: 8,
               padding: "15px 30px", borderRadius: 12, background: T.grad,
-              color: "#fff", fontSize: 16, fontWeight: 700, fontFamily: F.sans,
-              textDecoration: "none", boxShadow: "0 8px 24px rgba(37,99,235,0.28)",
+              color: "var(--pu-ffffff-t)", fontSize: 16, fontWeight: 700, fontFamily: F.sans,
+              textDecoration: "none", boxShadow: "0 8px 24px var(--pu-37-99-235-028)",
             }}>
               Get started free <ArrowRight size={17} />
             </Link>
@@ -183,7 +183,7 @@ function HeroSection() {
               style={{
                 display: "inline-flex", alignItems: "center", gap: 8,
                 padding: "15px 26px", borderRadius: 12,
-                background: "#fff", border: `1px solid ${T.border}`,
+                background: "var(--pu-ffffff-b)", border: `1px solid ${T.border}`,
                 color: T.text, fontSize: 16, fontFamily: F.sans, fontWeight: 600,
                 cursor: "pointer", boxShadow: T.shadow,
               }}>
@@ -260,12 +260,12 @@ function HowItWorksSection() {
               <Card style={{ padding: 28, height: "100%" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
                   <div style={{
-                    width: 44, height: 44, borderRadius: 12, background: "rgba(37,99,235,0.08)",
+                    width: 44, height: 44, borderRadius: 12, background: "var(--pu-37-99-235-008)",
                     display: "flex", alignItems: "center", justifyContent: "center",
                   }}>
                     <s.icon size={20} color={T.accent} />
                   </div>
-                  <span style={{ fontFamily: F.sans, fontSize: 13, fontWeight: 700, color: "#CBD5E1" }}>{s.step}</span>
+                  <span style={{ fontFamily: F.sans, fontSize: 13, fontWeight: 700, color: "var(--pu-cbd5e1-t)" }}>{s.step}</span>
                 </div>
                 <h3 style={{ fontFamily: F.sans, fontSize: 17, fontWeight: 700, color: T.text, marginBottom: 8 }}>{s.title}</h3>
                 <p style={{ fontSize: 14.5, lineHeight: 1.65, color: T.t2, fontFamily: F.sans }}>{s.desc}</p>
@@ -312,9 +312,9 @@ function FeaturesSection() {
                 <div style={{
                   width: 44, height: 44, borderRadius: 12, background: T.grad,
                   display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 18,
-                  boxShadow: "0 6px 16px rgba(37,99,235,0.22)",
+                  boxShadow: "0 6px 16px var(--pu-37-99-235-022)",
                 }}>
-                  <f.icon size={20} color="#fff" />
+                  <f.icon size={20} color="var(--pu-ffffff-t)" />
                 </div>
                 <h3 style={{ fontFamily: F.sans, fontSize: 17, fontWeight: 700, color: T.text, marginBottom: 8 }}>{f.title}</h3>
                 <p style={{ fontSize: 14.5, lineHeight: 1.65, color: T.t2, fontFamily: F.sans }}>{f.desc}</p>
@@ -376,15 +376,15 @@ function PricingSection() {
             const highlighted = plan.id === "pro";
             const price = Number(plan.price || 0);
             return (
-              <Card key={plan.id} style={{ padding: 26, height: "100%", borderColor: highlighted ? "rgba(37,99,235,0.35)" : T.border }}>
+              <Card key={plan.id} style={{ padding: 26, height: "100%", borderColor: highlighted ? "var(--pu-37-99-235-035)" : T.border }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 16 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ width: 38, height: 38, borderRadius: 11, background: highlighted ? T.grad : "rgba(37,99,235,0.08)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                      <CreditCard size={17} color={highlighted ? "#fff" : T.accent} />
+                    <span style={{ width: 38, height: 38, borderRadius: 11, background: highlighted ? T.grad : "var(--pu-37-99-235-008)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                      <CreditCard size={17} color={highlighted ? "var(--pu-ffffff-b)" : T.accent} />
                     </span>
                     <span style={{ fontFamily: F.sans, fontSize: 18, fontWeight: 800, color: T.text }}>{plan.name}</span>
                   </div>
-                  {highlighted && <span style={{ fontSize: 11, fontWeight: 800, color: T.accent, background: "rgba(37,99,235,0.08)", border: "1px solid rgba(37,99,235,0.18)", borderRadius: 999, padding: "4px 9px", fontFamily: F.sans }}>Popular</span>}
+                  {highlighted && <span style={{ fontSize: 11, fontWeight: 800, color: T.accent, background: "var(--pu-37-99-235-008)", border: "1px solid var(--pu-37-99-235-018)", borderRadius: 999, padding: "4px 9px", fontFamily: F.sans }}>Popular</span>}
                 </div>
                 <div style={{ fontFamily: F.sans, fontSize: 34, fontWeight: 900, color: T.text, lineHeight: 1, marginBottom: 6 }}>
                   {price <= 0 ? "$0" : `$${price.toFixed(2)}`}
@@ -393,7 +393,7 @@ function PricingSection() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 10, margin: "20px 0 24px" }}>
                   {(plan.features || []).map((feature) => (
                     <div key={feature} style={{ display: "flex", gap: 8, fontSize: 13.5, color: T.t2, fontFamily: F.sans, lineHeight: 1.45 }}>
-                      <Check size={15} color="#16A34A" style={{ flexShrink: 0, marginTop: 1 }} />
+                      <Check size={15} color="var(--pu-16a34a)" style={{ flexShrink: 0, marginTop: 1 }} />
                       {feature}
                     </div>
                   ))}
@@ -401,7 +401,7 @@ function PricingSection() {
                 <Link to="/signup" style={{
                   display: "inline-flex", alignItems: "center", justifyContent: "center", width: "100%",
                   height: 44, borderRadius: 12, textDecoration: "none", fontSize: 14, fontWeight: 800,
-                  fontFamily: F.sans, background: highlighted ? T.grad : "#fff", color: highlighted ? "#fff" : T.text,
+                  fontFamily: F.sans, background: highlighted ? T.grad : "var(--pu-ffffff-b)", color: highlighted ? "var(--pu-ffffff-b)" : T.text,
                   border: highlighted ? "none" : `1px solid ${T.border}`,
                 }}>
                   Select {plan.name}
@@ -454,7 +454,7 @@ function ContactSection() {
 
   const inputStyle: React.CSSProperties = {
     padding: "13px 15px", borderRadius: 10, border: `1px solid ${T.border}`,
-    background: "#fff", color: T.text, fontSize: 14.5, fontFamily: F.sans,
+    background: "var(--pu-ffffff-b)", color: T.text, fontSize: 14.5, fontFamily: F.sans,
     outline: "none", width: "100%",
   };
 
@@ -485,7 +485,7 @@ function ContactSection() {
                 <Card key={item.label} style={{ padding: "20px 22px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                     <div style={{
-                      width: 42, height: 42, borderRadius: 11, background: "rgba(37,99,235,0.08)",
+                      width: 42, height: 42, borderRadius: 11, background: "var(--pu-37-99-235-008)",
                       display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
                     }}>
                       <item.icon size={17} color={T.accent} />
@@ -509,17 +509,17 @@ function ContactSection() {
               {sent ? (
                 <div style={{ textAlign: "center", padding: "48px 0" }}>
                   <div style={{
-                    width: 56, height: 56, borderRadius: "50%", background: "rgba(34,197,94,0.12)",
+                    width: 56, height: 56, borderRadius: "50%", background: "var(--pu-34-197-94-012)",
                     display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 18px",
                   }}>
-                    <Check size={26} color="#16A34A" strokeWidth={3} />
+                    <Check size={26} color="var(--pu-16a34a)" strokeWidth={3} />
                   </div>
                   <div style={{ fontFamily: F.sans, fontSize: 19, fontWeight: 700, color: T.text, marginBottom: 8 }}>Message delivered</div>
                   <div style={{ fontSize: 14.5, color: T.t2, fontFamily: F.sans }}>
                     Your message was delivered to <strong>operations@placeupcareer.com</strong>. We will get back to you within 24 hours.
                   </div>
                   <button onClick={() => { setSent(false); setForm({ name: "", email: "", subject: "", message: "" }); }}
-                    style={{ marginTop: 18, padding: "10px 18px", borderRadius: 10, border: `1px solid ${T.border}`, background: "#fff", color: T.t2, fontSize: 13.5, fontWeight: 600, fontFamily: F.sans, cursor: "pointer" }}>
+                    style={{ marginTop: 18, padding: "10px 18px", borderRadius: 10, border: `1px solid ${T.border}`, background: "var(--pu-ffffff-b)", color: T.t2, fontSize: 13.5, fontWeight: 600, fontFamily: F.sans, cursor: "pointer" }}>
                     Send another message
                   </button>
                 </div>
@@ -540,15 +540,15 @@ function ContactSection() {
                   <textarea placeholder="Your message..." value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })}
                     style={{ ...inputStyle, height: 120, resize: "none", marginBottom: 14 }} />
                   {contactError && (
-                    <div style={{ color: "#DC2626", fontSize: 13, fontFamily: F.sans, marginBottom: 12 }}>{contactError}</div>
+                    <div style={{ color: "var(--pu-dc2626)", fontSize: 13, fontFamily: F.sans, marginBottom: 12 }}>{contactError}</div>
                   )}
                   <button onClick={submitContact} disabled={submitting}
                     style={{
                       width: "100%", padding: "14px", borderRadius: 12, border: "none",
-                      cursor: submitting ? "wait" : "pointer", background: T.grad, color: "#fff",
+                      cursor: submitting ? "wait" : "pointer", background: T.grad, color: "var(--pu-ffffff-t)",
                       fontSize: 15.5, fontWeight: 700, fontFamily: F.sans,
                       display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                      boxShadow: "0 8px 20px rgba(37,99,235,0.25)", opacity: submitting ? 0.75 : 1,
+                      boxShadow: "0 8px 20px var(--pu-37-99-235-025)", opacity: submitting ? 0.75 : 1,
                     }}>
                     {submitting ? "Sending..." : "Send message"} <Send size={15} />
                   </button>

@@ -34,7 +34,12 @@ from app.services.sponsor_domains import best_domain, is_safe_domain
 
 logger = logging.getLogger(__name__)
 
-# ATS platforms with cheap public JSON probes (board token = company slug).
+# ATS platforms with cheap public probes (board token = company slug).
+# Ordered by hit-rate: JSON-API platforms first (cheap 404 on miss), then the
+# slug-guessable HTML platforms. Platforms whose tokens are NOT guessable from
+# the company name (Workday tenant+site, Oracle host, Paylocity/ADP GUIDs, UKG
+# board paths, Phenom/SuccessFactors domains) are excluded here — they are
+# reached via the curated H1B_SPONSOR_BOARDS catalog and careers-page ingest.
 PROBE_ATS = (
     "greenhouse",
     "lever",
@@ -47,6 +52,18 @@ PROBE_ATS = (
     "jazzhr",
     "rippling",
     "bamboohr",
+    # Extended coverage (slug-guessable public boards)
+    "breezyhr",
+    "pinpoint",
+    "polymer",
+    "dover",
+    "gem",
+    "join",
+    "jobvite",
+    "icims",
+    "zoho_recruit",
+    "dayforce",
+    "hireology",
 )
 
 # Common careers paths to probe on the corporate domain, in order.

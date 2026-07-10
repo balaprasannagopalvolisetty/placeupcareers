@@ -3,10 +3,10 @@ import { BrandLogo } from "./BrandLogo";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif" };
 const T = {
-  text: "#F1F5F9",
-  t2: "rgba(148,163,184,0.65)",
-  border: "rgba(148,163,184,0.08)",
-  grad: "linear-gradient(135deg, #2563EB, #0EA5E9)",
+  text: "var(--pu-f1f5f9-t)",
+  t2: "var(--pu-148-163-184-065)",
+  border: "var(--pu-148-163-184-008)",
+  grad: "linear-gradient(135deg, var(--pu-2563eb), var(--pu-0ea5e9))",
 };
 
 export function LoadingLogo({ label = "Loading", fullScreen = false }: { label?: string; fullScreen?: boolean }) {
@@ -43,7 +43,7 @@ export function LoadingLogo({ label = "Loading", fullScreen = false }: { label?:
           </motion.div>
         </motion.div>
         <div style={{ fontFamily: F.sans, color: T.text, fontSize: 13, fontWeight: 700, letterSpacing: "0.02em" }}>{label}</div>
-        <div style={{ width: 120, height: 3, borderRadius: 999, background: "rgba(148,163,184,0.08)", overflow: "hidden" }}>
+        <div style={{ width: 120, height: 3, borderRadius: 999, background: "var(--pu-148-163-184-008)", overflow: "hidden" }}>
           <motion.div
             animate={{ x: ["-45%", "120%"] }}
             transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}

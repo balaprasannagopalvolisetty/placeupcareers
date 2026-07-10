@@ -11,16 +11,16 @@ import * as api from "../lib/api";
 
 const F = "'Plus Jakarta Sans', sans-serif";
 const T = {
-  text: "#F1F5F9",
-  t2: "rgba(226,232,240,0.72)",
-  border: "rgba(148,163,184,0.08)",
-  glass: "rgba(15,30,55,0.55)",
-  red: "#3B82F6",
+  text: "var(--pu-f1f5f9-t)",
+  t2: "var(--pu-226-232-240-072)",
+  border: "var(--pu-148-163-184-008)",
+  glass: "var(--pu-15-30-55-055)",
+  red: "var(--pu-3b82f6-t)",
 };
 
 function PrivateMessage({ message }: { message: string }) {
   return (
-    <div style={{ minHeight: "100vh", background: "#0B1220", padding: "32px 20px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <div style={{ minHeight: "100vh", background: "var(--pu-0b1220)", padding: "32px 20px", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div style={{ width: "100%", maxWidth: 520, borderRadius: 18, border: `1px solid ${T.border}`, background: T.glass, backdropFilter: "blur(20px)", padding: 28, textAlign: "center", fontFamily: F }}>
         <div style={{ color: T.text, fontSize: 20, fontWeight: 850, marginBottom: 8 }}>Private admin area</div>
         <div style={{ color: T.t2, fontSize: 13, lineHeight: 1.6, marginBottom: 18 }}>{message}</div>
@@ -53,7 +53,7 @@ export default function AdminConsole() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0B1220", padding: "clamp(18px, 3vw, 32px) clamp(12px, 2.5vw, 28px)" }}>
+    <div style={{ minHeight: "100vh", background: "var(--pu-0b1220)", padding: "clamp(18px, 3vw, 32px) clamp(12px, 2.5vw, 28px)" }}>
       <div style={{ maxWidth: 1440, margin: "0 auto", minWidth: 0 }}>
         <AdminPage />
       </div>

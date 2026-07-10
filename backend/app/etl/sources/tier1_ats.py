@@ -64,6 +64,24 @@ TIER1_ATS_PROVIDERS: frozenset[str] = frozenset({
     "jazzhr",
     "rippling",
     "bamboohr",
+    # Extended coverage — see app/services/careers_ats.py
+    "breezyhr",
+    "pinpoint",
+    "polymer",
+    "jobvite",
+    "icims",
+    "oracle_recruiting",
+    "paylocity",
+    "ukg",
+    "zoho_recruit",
+    "adp",
+    "dover",
+    "gem",
+    "successfactors",
+    "phenom",
+    "dayforce",
+    "join",
+    "hireology",
 })
 
 

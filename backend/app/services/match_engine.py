@@ -29,6 +29,51 @@ TFIDF_WEIGHT = 0.50
 KEYWORD_WEIGHT = 0.50
 SEMANTIC_WEIGHT = 0.0
 
+# Validation thresholds — below these, inputs are too thin for a trustworthy
+# score, so the result is capped and flagged instead of silently misleading.
+MIN_RESUME_CHARS = 200
+MIN_JD_CHARS = 120
+LOW_CONFIDENCE_CAP = 60
+
+
+def _clamp(value: float) -> float:
+    """Clamp any component score into the valid 0-100 range."""
+    try:
+        return max(0.0, min(100.0, float(value)))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _input_confidence(resume_text: str, job_description: str) -> tuple[bool, list[str]]:
+    """Validate scoring inputs. Returns (is_confident, warnings).
+
+    Empty or near-empty inputs previously produced arbitrary scores (an empty
+    JD can yield 100% keyword overlap). Now they are detected up front.
+    """
+    warnings: list[str] = []
+    resume_len = len((resume_text or "").strip())
+    jd_len = len((job_description or "").strip())
+    if resume_len < MIN_RESUME_CHARS:
+        warnings.append("Resume text is too short for a reliable match score")
+    if jd_len < MIN_JD_CHARS:
+        warnings.append("Job description is too short for a reliable match score")
+    return not warnings, warnings
+
+
+def _calibrate_tfidf(raw_score: float) -> float:
+    """Calibrate raw TF-IDF cosine similarity to the 0-100 UI scale.
+
+    Raw cosine similarity between a resume and a JD rarely exceeds ~0.5 even
+    for excellent matches (different document lengths and vocabularies), which
+    systematically dragged the composite down. A concave power curve keeps
+    0→0 and 100→100 fixed while giving realistic mid-range separation:
+    raw 25 → ~41, raw 40 → ~55, raw 60 → ~72.
+    """
+    raw = _clamp(raw_score)
+    if raw <= 0:
+        return 0.0
+    return round(100.0 * (raw / 100.0) ** 0.65, 1)
+
 
 def compute_tfidf_score(resume_text: str, job_description: str) -> float:
     """Compute TF-IDF cosine similarity between resume and job description.
@@ -183,11 +228,33 @@ async def compute_match_score(
     """
     start_time = time.time()
 
-    # 1. TF-IDF score
-    tfidf_score = compute_tfidf_score(resume_text, job_description)
+    # 0. Input validation — thin inputs get flagged + capped, empty gets 0.
+    confident, input_warnings = _input_confidence(resume_text, job_description)
+    if not (resume_text or "").strip() or not (job_description or "").strip():
+        return MatchResult(
+            overall_match_score=0,
+            recommendation="Needs Work",
+            scores=MatchScores(tfidf_score=0.0, keyword_score=0.0, semantic_score=0.0),
+            matched_keywords=[],
+            missing_keywords=[],
+            visa_compatibility=visa_badges or VisaBadges(),
+            strengths=[],
+            gaps=input_warnings or ["Missing resume or job description text"],
+            suggestions=["Upload a complete resume to compute an accurate match score"],
+        )
+
+    # 1. TF-IDF score (calibrated — raw cosine underestimates real matches)
+    tfidf_score = _calibrate_tfidf(compute_tfidf_score(resume_text, job_description))
 
     # 2. Keyword score
     keyword_score, matched_kws, missing_kws = compute_keyword_score(resume_text, job_description)
+    keyword_score = _clamp(keyword_score)
+
+    # Cross-validation: a high keyword score with zero actually-matched
+    # keywords (or vice versa) indicates extraction noise — trust the
+    # conservative signal.
+    if keyword_score > 50 and not matched_kws:
+        keyword_score = 25.0
 
     # Compute weighted composite
     overall = round(
@@ -195,6 +262,8 @@ async def compute_match_score(
         keyword_score * KEYWORD_WEIGHT
     )
     overall = max(0, min(100, overall))
+    if not confident:
+        overall = min(overall, LOW_CONFIDENCE_CAP)
 
     # Determine recommendation
     if overall >= 80:
@@ -210,6 +279,8 @@ async def compute_match_score(
     strengths, gaps, suggestions = _build_insights(
         matched_kws, missing_kws, tfidf_score, keyword_score, overall
     )
+    if input_warnings:
+        gaps = input_warnings + gaps
 
     elapsed = (time.time() - start_time) * 1000
     logger.info(f"Match scoring completed in {elapsed:.0f}ms — Score: {overall}")

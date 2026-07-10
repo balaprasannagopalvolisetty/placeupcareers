@@ -5,10 +5,10 @@ import * as api from "../../lib/api";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 const T = {
-  text: "#F1F5F9", t2: "rgba(226,232,240,0.72)", t3: "rgba(148,163,184,0.75)",
-  border: "rgba(148,163,184,0.08)", glass: "rgba(15,30,55,0.55)",
-  grad: "linear-gradient(135deg, #2563EB, #0EA5E9)",
-  red: "#3B82F6", burnt: "#60A5FA", dark: "#1D4ED8",
+  text: "var(--pu-f1f5f9-t)", t2: "var(--pu-226-232-240-072)", t3: "var(--pu-148-163-184-075)",
+  border: "var(--pu-148-163-184-008)", glass: "var(--pu-15-30-55-055)",
+  grad: "linear-gradient(135deg, var(--pu-2563eb), var(--pu-0ea5e9))",
+  red: "var(--pu-3b82f6-t)", burnt: "var(--pu-60a5fa-t)", dark: "var(--pu-1d4ed8)",
 };
 
 function normalizeVisa(visa: unknown): string[] {
@@ -82,15 +82,15 @@ function ATSRingLarge({ score }: { score: number | null | undefined }) {
   const safeScore = hasScore ? Math.max(0, Math.min(100, score)) : 0;
   const r = 52, circ = 2 * Math.PI * r, offset = circ * (1 - safeScore / 100);
   // Keep the ring legible even at low scores by avoiding the near-background T.dark.
-  const color = !hasScore ? T.t3 : safeScore >= 80 ? "#22c55e" : safeScore >= 60 ? T.red : safeScore >= 40 ? T.burnt : "#F1F5F9";
-  const textColor = safeScore >= 40 ? color : "#F1F5F9";
+  const color = !hasScore ? T.t3 : safeScore >= 80 ? "var(--pu-22c55e-b)" : safeScore >= 60 ? T.red : safeScore >= 40 ? T.burnt : "var(--pu-f1f5f9-t)";
+  const textColor = safeScore >= 40 ? color : "var(--pu-f1f5f9-t)";
   return (
     <div style={{ position: "relative", width: 120, height: 120 }}>
       <svg viewBox="0 0 120 120" style={{ width: "100%", height: "100%", transform: "rotate(-90deg)" }}>
         <defs>
           <filter id="jd-glow"><feGaussianBlur stdDeviation="3" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
         </defs>
-        <circle cx="60" cy="60" r={r} fill="none" stroke="rgba(148,163,184,0.12)" strokeWidth="9" />
+        <circle cx="60" cy="60" r={r} fill="none" stroke="var(--pu-148-163-184-012)" strokeWidth="9" />
         <motion.circle cx="60" cy="60" r={r} fill="none" stroke={color} strokeWidth="9" strokeLinecap="round"
           strokeDasharray={circ} initial={{ strokeDashoffset: circ }} animate={{ strokeDashoffset: offset }}
           transition={{ duration: 1.5, ease: "easeOut" }} filter="url(#jd-glow)" />
@@ -110,7 +110,7 @@ function getScoreMeta(score: number | null | undefined, scoreType?: string) {
         label: "Job details incomplete",
         detail: "This role needs a complete job description before it can be scored.",
         color: T.t3,
-        bg: "rgba(148,163,184,0.05)",
+        bg: "var(--pu-148-163-184-005)",
         border: T.border,
       };
     }
@@ -118,20 +118,20 @@ function getScoreMeta(score: number | null | undefined, scoreType?: string) {
       label: "Resume match unavailable",
       detail: "Upload or activate a resume to calculate a real score.",
       color: T.t3,
-      bg: "rgba(148,163,184,0.05)",
+      bg: "var(--pu-148-163-184-005)",
       border: T.border,
     };
   }
   if (scoreType === "baseline_ats") {
-    return { label: "ATS estimate", detail: "Upload or activate a resume for an exact match score.", color: T.t2, bg: "rgba(148,163,184,0.06)", border: T.border };
+    return { label: "ATS estimate", detail: "Upload or activate a resume for an exact match score.", color: T.t2, bg: "var(--pu-148-163-184-006)", border: T.border };
   }
   if (scoreType === "insufficient_jd") {
-    return { label: "ATS estimate", detail: "This posting needs more job description detail before exact scoring.", color: T.t2, bg: "rgba(148,163,184,0.06)", border: T.border };
+    return { label: "ATS estimate", detail: "This posting needs more job description detail before exact scoring.", color: T.t2, bg: "var(--pu-148-163-184-006)", border: T.border };
   }
-  if (score >= 80) return { label: "Strong match", detail: "This role lines up well with your active resume.", color: "#22c55e", bg: "rgba(34,197,94,0.10)", border: "rgba(34,197,94,0.25)" };
-  if (score >= 60) return { label: "Good match", detail: "A few resume keyword updates could improve your odds.", color: T.red, bg: "rgba(59,130,246,0.12)", border: "rgba(59,130,246,0.28)" };
-  if (score >= 40) return { label: "Partial match", detail: "Review requirements before applying.", color: T.burnt, bg: "rgba(37,99,235,0.12)", border: "rgba(37,99,235,0.28)" };
-  return { label: "Low match", detail: "This posting appears far from your active resume.", color: "#F1F5F9", bg: "rgba(148,163,184,0.06)", border: "rgba(148,163,184,0.12)" };
+  if (score >= 80) return { label: "Strong match", detail: "This role lines up well with your active resume.", color: "var(--pu-22c55e-t)", bg: "var(--pu-34-197-94-01)", border: "var(--pu-34-197-94-025)" };
+  if (score >= 60) return { label: "Good match", detail: "A few resume keyword updates could improve your odds.", color: T.red, bg: "var(--pu-59-130-246-012)", border: "var(--pu-59-130-246-028)" };
+  if (score >= 40) return { label: "Partial match", detail: "Review requirements before applying.", color: T.burnt, bg: "var(--pu-37-99-235-012)", border: "var(--pu-37-99-235-028)" };
+  return { label: "Low match", detail: "This posting appears far from your active resume.", color: "var(--pu-f1f5f9-t)", bg: "var(--pu-148-163-184-006)", border: "var(--pu-148-163-184-012)" };
 }
 
 function useViewportWidth() {
@@ -164,7 +164,7 @@ function renderInline(text: string): ReactNode {
     else if (tok.startsWith("*"))
       parts.push(<em key={k++} style={{ fontStyle: "italic" }}>{tok.slice(1, -1)}</em>);
     else
-      parts.push(<code key={k++} style={{ fontSize: 12, background: "rgba(148,163,184,0.08)", padding: "1px 5px", borderRadius: 4, fontFamily: F.mono }}>{tok.slice(1, -1)}</code>);
+      parts.push(<code key={k++} style={{ fontSize: 12, background: "var(--pu-148-163-184-008)", padding: "1px 5px", borderRadius: 4, fontFamily: F.mono }}>{tok.slice(1, -1)}</code>);
     last = m.index + tok.length;
   }
   if (last < text.length) parts.push(text.slice(last));
@@ -539,17 +539,17 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
   };
 
   if (loading) {
-    return <div style={{ color: "#F1F5F9", fontFamily: F.sans, fontSize: 14 }}>Loading job details...</div>;
+    return <div style={{ color: "var(--pu-f1f5f9-t)", fontFamily: F.sans, fontSize: 14 }}>Loading job details...</div>;
   }
 
   if (error) {
-    return <div style={{ color: "#ff7f7f", fontFamily: F.sans, fontSize: 14 }}>{error}</div>;
+    return <div style={{ color: "var(--pu-ff7f7f-t)", fontFamily: F.sans, fontSize: 14 }}>{error}</div>;
   }
 
   const visaBadge: Record<string, { bg: string; color: string; border: string }> = {
-    "H-1B":    { bg: "rgba(37,99,235,0.15)", color: T.burnt,  border: "rgba(37,99,235,0.35)" },
-    "F1-OPT":  { bg: "rgba(59,130,246,0.12)", color: T.red,    border: "rgba(59,130,246,0.3)" },
-    "F1-STEM": { bg: "rgba(15,30,55,0.15)",  color: T.red,    border: "rgba(15,30,55,0.3)" },
+    "H-1B":    { bg: "var(--pu-37-99-235-015)", color: T.burnt,  border: "var(--pu-37-99-235-035)" },
+    "F1-OPT":  { bg: "var(--pu-59-130-246-012)", color: T.red,    border: "var(--pu-59-130-246-03)" },
+    "F1-STEM": { bg: "var(--pu-15-30-55-015)",  color: T.red,    border: "var(--pu-15-30-55-03)" },
   };
 
   // Scrapers occasionally leak HTTP errors, "nan"/"null" tokens, or full HTML
@@ -599,9 +599,9 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
     { label: "Sections", value: String([responsibilityHighlights, requirementHighlights, niceHighlights].filter((items) => items.length).length || 1) },
   ];
   const highlightCards = [
-    { title: "What you'll do", items: responsibilityHighlights, tone: "rgba(59,130,246,0.10)" },
-    { title: "What they need", items: requirementHighlights, tone: "rgba(148,163,184,0.06)" },
-    { title: "Standout signals", items: niceHighlights.length ? niceHighlights : visibleMissing.slice(0, 3).map((item) => `${item.kw} (${item.impact})`), tone: "rgba(37,99,235,0.13)" },
+    { title: "What you'll do", items: responsibilityHighlights, tone: "var(--pu-59-130-246-01)" },
+    { title: "What they need", items: requirementHighlights, tone: "var(--pu-148-163-184-006)" },
+    { title: "Standout signals", items: niceHighlights.length ? niceHighlights : visibleMissing.slice(0, 3).map((item) => `${item.kw} (${item.impact})`), tone: "var(--pu-37-99-235-013)" },
   ].filter((card) => card.items.length);
 
   return (
@@ -613,11 +613,11 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
         </button>
 
         {/* Header card */}
-        <div style={{ background: "rgba(8,18,38,0.55)", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 18, padding: isMobile ? 18 : 24 }}>
+        <div style={{ background: "var(--pu-8-18-38-055)", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 18, padding: isMobile ? 18 : 24 }}>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) 230px", gap: 20, alignItems: "start" }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                <div style={{ width: 38, height: 38, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "#fff", fontSize: 16, fontFamily: F.sans, background: `linear-gradient(135deg, ${T.red}, #0B1220)` }}>
+                <div style={{ width: 38, height: 38, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "var(--pu-ffffff-t)", fontSize: 16, fontFamily: F.sans, background: `linear-gradient(135deg, ${T.red}, var(--pu-0b1220))` }}>
                   {(currentJob.company || "?").charAt(0).toUpperCase()}
                 </div>
                 <div style={{ minWidth: 0 }}>
@@ -637,30 +637,30 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
 
               <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 18 }}>
                 {(currentJob.visa ?? []).map((v) => (
-                  <span key={v} style={{ fontSize: 11, fontWeight: 700, padding: "5px 11px", borderRadius: 999, background: "rgba(52,211,153,0.12)", color: "#6EE7B7", border: "1px solid rgba(52,211,153,0.3)", fontFamily: F.sans, display: "inline-flex", alignItems: "center", gap: 5 }}><Check size={11} /> {v}</span>
+                  <span key={v} style={{ fontSize: 11, fontWeight: 700, padding: "5px 11px", borderRadius: 999, background: "var(--pu-52-211-153-012)", color: "var(--pu-6ee7b7-t)", border: "1px solid var(--pu-52-211-153-03)", fontFamily: F.sans, display: "inline-flex", alignItems: "center", gap: 5 }}><Check size={11} /> {v}</span>
                 ))}
-                {applied && <span style={{ fontSize: 11, fontWeight: 700, padding: "5px 11px", borderRadius: 999, background: "rgba(52,211,153,0.12)", color: "#6EE7B7", border: "1px solid rgba(52,211,153,0.3)", fontFamily: F.sans }}>Applied</span>}
+                {applied && <span style={{ fontSize: 11, fontWeight: 700, padding: "5px 11px", borderRadius: 999, background: "var(--pu-52-211-153-012)", color: "var(--pu-6ee7b7-t)", border: "1px solid var(--pu-52-211-153-03)", fontFamily: F.sans }}>Applied</span>}
               </div>
 
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <button type="button" onClick={openCompanyApply} title={currentJob.jobUrl ? currentJob.jobUrl : "Open a Google search for this role"}
-                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "11px 22px", borderRadius: 10, border: "none", background: T.grad, color: "#fff", fontSize: 13, fontWeight: 800, fontFamily: F.sans, cursor: "pointer" }}>
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "11px 22px", borderRadius: 10, border: "none", background: T.grad, color: "var(--pu-ffffff-t)", fontSize: 13, fontWeight: 800, fontFamily: F.sans, cursor: "pointer" }}>
                   <ExternalLink size={14} /> {applyLabel}
                 </button>
                 <button type="button" onClick={toggleSave}
-                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "11px 16px", borderRadius: 10, border: `1px solid ${saved ? "rgba(59,130,246,0.35)" : T.border}`, background: saved ? "rgba(59,130,246,0.10)" : "rgba(148,163,184,0.03)", color: saved ? T.red : T.t2, fontSize: 13, fontWeight: 700, fontFamily: F.sans, cursor: "pointer" }}>
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "11px 16px", borderRadius: 10, border: `1px solid ${saved ? "var(--pu-59-130-246-035)" : T.border}`, background: saved ? "var(--pu-59-130-246-01)" : "var(--pu-148-163-184-003)", color: saved ? T.red : T.t2, fontSize: 13, fontWeight: 700, fontFamily: F.sans, cursor: "pointer" }}>
                   <Bookmark size={14} fill={saved ? T.red : "none"} /> {saved ? "Saved" : "Save"}
                 </button>
                 <button type="button" onClick={shareJob}
-                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "11px 16px", borderRadius: 10, border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.03)", color: copied ? T.red : T.t2, fontSize: 13, fontWeight: 700, fontFamily: F.sans, cursor: "pointer" }}>
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "11px 16px", borderRadius: 10, border: `1px solid ${T.border}`, background: "var(--pu-148-163-184-003)", color: copied ? T.red : T.t2, fontSize: 13, fontWeight: 700, fontFamily: F.sans, cursor: "pointer" }}>
                   <Share2 size={14} /> {copied ? "Copied!" : "Share"}
                 </button>
               </div>
             </div>
 
             {/* Match panel */}
-            <div style={{ background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.25)", borderRadius: 14, overflow: "hidden" }}>
-              <div style={{ padding: "14px 16px", display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, borderBottom: "1px solid rgba(59,130,246,0.18)" }}>
+            <div style={{ background: "var(--pu-59-130-246-008)", border: "1px solid var(--pu-59-130-246-025)", borderRadius: 14, overflow: "hidden" }}>
+              <div style={{ padding: "14px 16px", display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, borderBottom: "1px solid var(--pu-59-130-246-018)" }}>
                 <span style={{ fontSize: 30, fontWeight: 800, color: T.text, fontFamily: F.sans, lineHeight: 1 }}>{typeof currentJob.match === "number" ? currentJob.match : "--"}<span style={{ fontSize: 15, color: T.t3 }}>{typeof currentJob.match === "number" ? "%" : ""}</span></span>
                 <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.05em", textTransform: "uppercase", color: scoreMeta.color, fontFamily: F.sans, textAlign: "right" }}>{scoreMeta.label}</span>
               </div>
@@ -669,7 +669,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
                   <span style={{ color: T.t2 }}>Keywords matched</span>
                   <span style={{ color: T.text, fontWeight: 700 }}>{visibleKeywords.length}/{visibleKeywords.length + visibleMissing.length}</span>
                 </div>
-                <div style={{ height: 5, borderRadius: 999, background: "rgba(148,163,184,0.1)", marginBottom: 12 }}>
+                <div style={{ height: 5, borderRadius: 999, background: "var(--pu-148-163-184-01)", marginBottom: 12 }}>
                   <div style={{ height: 5, borderRadius: 999, background: T.red, width: `${(visibleKeywords.length + visibleMissing.length) ? Math.round((visibleKeywords.length / (visibleKeywords.length + visibleMissing.length)) * 100) : 0}%` }} />
                 </div>
                 <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, lineHeight: 1.5 }}>{scoreMeta.detail}</div>
@@ -680,15 +680,15 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
 
         {/* ATS keyword analysis */}
         {(visibleKeywords.length > 0 || visibleMissing.length > 0) && (
-          <div style={{ background: "rgba(8,18,38,0.55)", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 18, padding: isMobile ? 18 : 24 }}>
+          <div style={{ background: "var(--pu-8-18-38-055)", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 18, padding: isMobile ? 18 : 24 }}>
             <h3 style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 800, color: T.text, margin: "0 0 4px" }}>ATS keyword analysis</h3>
             <div style={{ fontFamily: F.sans, fontSize: 12, color: T.t3, marginBottom: 16 }}>How your active resume lines up with this posting.</div>
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6EE7B7", fontFamily: F.sans, marginBottom: 10 }}>You have</div>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--pu-6ee7b7-t)", fontFamily: F.sans, marginBottom: 10 }}>You have</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
                   {visibleKeywords.length ? visibleKeywords.map((kw) => (
-                    <span key={kw} style={{ fontSize: 11.5, padding: "5px 10px", borderRadius: 8, background: "rgba(52,211,153,0.12)", color: "#6EE7B7", border: "1px solid rgba(52,211,153,0.28)", fontFamily: F.sans, display: "inline-flex", alignItems: "center", gap: 5 }}><Check size={11} /> {kw}</span>
+                    <span key={kw} style={{ fontSize: 11.5, padding: "5px 10px", borderRadius: 8, background: "var(--pu-52-211-153-012)", color: "var(--pu-6ee7b7-t)", border: "1px solid var(--pu-52-211-153-028)", fontFamily: F.sans, display: "inline-flex", alignItems: "center", gap: 5 }}><Check size={11} /> {kw}</span>
                   )) : <span style={{ fontSize: 12, color: T.t3, fontFamily: F.sans }}>{atsAnalysis?.has_resume ? "No keyword matches for this role." : "Activate a resume to see matches."}</span>}
                 </div>
               </div>
@@ -696,7 +696,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
                 <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: T.t3, fontFamily: F.sans, marginBottom: 10 }}>Missing</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
                   {visibleMissing.length ? visibleMissing.map(({ kw, impact }) => (
-                    <span key={kw} style={{ fontSize: 11.5, padding: "5px 10px", borderRadius: 8, background: "rgba(148,163,184,0.05)", color: T.t2, border: `1px solid ${T.border}`, fontFamily: F.sans }}>{kw}<span style={{ marginLeft: 5, fontSize: 9.5, color: impact === "High" ? "#ef4444" : T.t3 }}>{impact}</span></span>
+                    <span key={kw} style={{ fontSize: 11.5, padding: "5px 10px", borderRadius: 8, background: "var(--pu-148-163-184-005)", color: T.t2, border: `1px solid ${T.border}`, fontFamily: F.sans }}>{kw}<span style={{ marginLeft: 5, fontSize: 9.5, color: impact === "High" ? "var(--pu-ef4444-b)" : T.t3 }}>{impact}</span></span>
                   )) : <span style={{ fontSize: 12, color: T.t3, fontFamily: F.sans }}>No gaps detected.</span>}
                 </div>
               </div>
@@ -706,7 +706,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
 
         {/* Advanced ATS breakdown + red flags */}
         {atsAnalysis?.breakdown && atsAnalysis.breakdown.length > 0 && (() => {
-          const cmap: Record<string, string> = { success: "#6EE7B7", warning: "#60A5FA", danger: "#ef4444" };
+          const cmap: Record<string, string> = { success: "var(--pu-6ee7b7-b)", warning: "var(--pu-60a5fa-b)", danger: "var(--pu-ef4444-b)" };
           const scoreLabels: Record<string, string> = {
             technical_fit: "Technical fit",
             experience_fit: "Experience fit",
@@ -716,7 +716,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
           };
           const recruiterScores = Object.entries(atsAnalysis.recruiter_scores || {}).filter(([, value]) => typeof value === "number");
           return (
-            <div style={{ background: "rgba(8,18,38,0.55)", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 18, padding: isMobile ? 18 : 24 }}>
+            <div style={{ background: "var(--pu-8-18-38-055)", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 18, padding: isMobile ? 18 : 24 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
                 <div>
                   <h3 style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 800, color: T.text, margin: "0 0 4px" }}>ATS score breakdown</h3>
@@ -734,7 +734,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
                       <span style={{ color: T.t2 }}>{b.label}</span>
                       <span style={{ fontWeight: 700, color: cmap[b.color] || T.text }}>{b.score}/{b.max}</span>
                     </div>
-                    <div style={{ height: 5, borderRadius: 999, background: "rgba(148,163,184,0.1)" }}>
+                    <div style={{ height: 5, borderRadius: 999, background: "var(--pu-148-163-184-01)" }}>
                       <div style={{ height: 5, borderRadius: 999, width: `${Math.round((b.score / b.max) * 100)}%`, background: cmap[b.color] || T.red }} />
                     </div>
                   </div>
@@ -742,13 +742,13 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
               </div>
               {atsAnalysis.red_flags && atsAnalysis.red_flags.length > 0 && (
                 <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${T.border}` }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "#60A5FA", fontFamily: F.sans, marginBottom: 10 }}>Bullets to strengthen</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--pu-60a5fa-t)", fontFamily: F.sans, marginBottom: 10 }}>Bullets to strengthen</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     {atsAnalysis.red_flags.slice(0, 5).map((f, idx) => (
-                      <div key={idx} style={{ border: `1px solid ${T.border}`, borderRadius: 12, background: "rgba(1,17,38,0.3)", padding: 12 }}>
-                        <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase", color: f.impact === "High" ? "#ef4444" : T.t3, fontFamily: F.sans, marginBottom: 6 }}>{f.category}{f.impact ? ` · ${f.impact}` : ""}</div>
-                        <div style={{ fontSize: 12, color: T.t3, fontFamily: F.sans, lineHeight: 1.5, marginBottom: 6, textDecoration: "line-through", textDecorationColor: "rgba(239,68,68,0.5)" }}>{f.original}</div>
-                        <div style={{ fontSize: 12, color: T.text, fontFamily: F.sans, lineHeight: 1.5, display: "flex", gap: 6 }}><span style={{ color: "#6EE7B7", flexShrink: 0 }}>→</span>{f.suggestion}</div>
+                      <div key={idx} style={{ border: `1px solid ${T.border}`, borderRadius: 12, background: "var(--pu-1-17-38-03)", padding: 12 }}>
+                        <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase", color: f.impact === "High" ? "var(--pu-ef4444-b)" : T.t3, fontFamily: F.sans, marginBottom: 6 }}>{f.category}{f.impact ? ` · ${f.impact}` : ""}</div>
+                        <div style={{ fontSize: 12, color: T.t3, fontFamily: F.sans, lineHeight: 1.5, marginBottom: 6, textDecoration: "line-through", textDecorationColor: "var(--pu-239-68-68-05)" }}>{f.original}</div>
+                        <div style={{ fontSize: 12, color: T.text, fontFamily: F.sans, lineHeight: 1.5, display: "flex", gap: 6 }}><span style={{ color: "var(--pu-6ee7b7-t)", flexShrink: 0 }}>→</span>{f.suggestion}</div>
                       </div>
                     ))}
                   </div>
@@ -757,25 +757,25 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
               {(recruiterScores.length > 0 || (atsAnalysis.knockout_risks || []).length > 0 || (atsAnalysis.resume_improvements || []).length > 0) && (
                 <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${T.border}`, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14 }}>
                   {recruiterScores.length > 0 && (
-                    <div style={{ border: `1px solid ${T.border}`, borderRadius: 14, background: "rgba(1,17,38,0.28)", padding: 14 }}>
+                    <div style={{ border: `1px solid ${T.border}`, borderRadius: 14, background: "var(--pu-1-17-38-028)", padding: 14 }}>
                       <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: T.text, fontFamily: F.sans, marginBottom: 10 }}>Recruiter review</div>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}>
                         {recruiterScores.map(([key, value]) => (
-                          <div key={key} style={{ borderRadius: 10, background: "rgba(148,163,184,0.04)", border: `1px solid ${T.border}`, padding: 10 }}>
+                          <div key={key} style={{ borderRadius: 10, background: "var(--pu-148-163-184-004)", border: `1px solid ${T.border}`, padding: 10 }}>
                             <div style={{ fontSize: 10.5, color: T.t3, fontFamily: F.sans, marginBottom: 4 }}>{scoreLabels[key] || key}</div>
-                            <div style={{ fontSize: 18, fontWeight: 850, color: value >= 75 ? "#6EE7B7" : value >= 55 ? "#60A5FA" : "#ef4444", fontFamily: F.mono }}>{value}/100</div>
+                            <div style={{ fontSize: 18, fontWeight: 850, color: value >= 75 ? "var(--pu-6ee7b7-b)" : value >= 55 ? "var(--pu-60a5fa-b)" : "var(--pu-ef4444-b)", fontFamily: F.mono }}>{value}/100</div>
                           </div>
                         ))}
                       </div>
                     </div>
                   )}
                   {(atsAnalysis.knockout_risks || []).length > 0 && (
-                    <div style={{ border: `1px solid ${T.border}`, borderRadius: 14, background: "rgba(1,17,38,0.28)", padding: 14 }}>
+                    <div style={{ border: `1px solid ${T.border}`, borderRadius: 14, background: "var(--pu-1-17-38-028)", padding: 14 }}>
                       <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: T.text, fontFamily: F.sans, marginBottom: 10 }}>Knockout risks</div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                         {(atsAnalysis.knockout_risks || []).slice(0, 5).map((risk) => (
                           <div key={`${risk.label}-${risk.jd_signal}`} style={{ fontSize: 11.5, color: T.t2, fontFamily: F.sans, lineHeight: 1.45 }}>
-                            <span style={{ color: risk.resume_evidence ? "#6EE7B7" : risk.impact === "High" ? "#ef4444" : "#60A5FA", fontWeight: 800 }}>{risk.label}</span>
+                            <span style={{ color: risk.resume_evidence ? "var(--pu-6ee7b7-b)" : risk.impact === "High" ? "var(--pu-ef4444-b)" : "var(--pu-60a5fa-b)", fontWeight: 800 }}>{risk.label}</span>
                             <span style={{ color: T.t3 }}> · {risk.resume_evidence ? "evidence found" : "needs review"}</span>
                             <div style={{ color: T.t3 }}>{risk.guidance}</div>
                           </div>
@@ -784,12 +784,12 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
                     </div>
                   )}
                   {(atsAnalysis.resume_improvements || []).length > 0 && (
-                    <div style={{ gridColumn: "1 / -1", border: `1px solid ${T.border}`, borderRadius: 14, background: "rgba(1,17,38,0.28)", padding: 14 }}>
+                    <div style={{ gridColumn: "1 / -1", border: `1px solid ${T.border}`, borderRadius: 14, background: "var(--pu-1-17-38-028)", padding: 14 }}>
                       <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: T.text, fontFamily: F.sans, marginBottom: 10 }}>Resume improvements</div>
                       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 8 }}>
                         {(atsAnalysis.resume_improvements || []).slice(0, 6).map((item) => (
                           <div key={item} style={{ fontSize: 11.5, color: T.t2, fontFamily: F.sans, lineHeight: 1.45, display: "flex", gap: 7 }}>
-                            <span style={{ color: "#6EE7B7", flexShrink: 0 }}>✓</span><span>{item}</span>
+                            <span style={{ color: "var(--pu-6ee7b7-t)", flexShrink: 0 }}>✓</span><span>{item}</span>
                           </div>
                         ))}
                       </div>
@@ -802,12 +802,12 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
         })()}
 
         {/* Job description */}
-        <div style={{ background: "rgba(8,18,38,0.55)", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 18, padding: isMobile ? 18 : 24, overflow: "hidden" }}>
+        <div style={{ background: "var(--pu-8-18-38-055)", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 18, padding: isMobile ? 18 : 24, overflow: "hidden" }}>
           <div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", gap: 12, flexDirection: isMobile ? "column" : "row", marginBottom: 16 }}>
             <h3 style={{ fontFamily: F.sans, fontSize: 16, fontWeight: 800, color: T.text, margin: 0 }}>Job description</h3>
             <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
               {jdSignals.map((signal) => (
-                <span key={signal.label} style={{ padding: "6px 10px", borderRadius: 999, border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.04)", fontFamily: F.sans }}>
+                <span key={signal.label} style={{ padding: "6px 10px", borderRadius: 999, border: `1px solid ${T.border}`, background: "var(--pu-148-163-184-004)", fontFamily: F.sans }}>
                   <span style={{ fontSize: 10, color: T.t3, marginRight: 6 }}>{signal.label}</span>
                   <span style={{ fontSize: 11, fontWeight: 800, color: T.text }}>{signal.value}</span>
                 </span>
@@ -831,7 +831,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
               ))}
             </div>
           )}
-          <div style={{ border: `1px solid ${T.border}`, borderRadius: 14, background: "rgba(1,17,38,0.22)", padding: isMobile ? 16 : 24 }}>
+          <div style={{ border: `1px solid ${T.border}`, borderRadius: 14, background: "var(--pu-1-17-38-022)", padding: isMobile ? 16 : 24 }}>
             {/* Both the sanitized-HTML and plain-text sources are routed through
                 the same structured renderer so every JD reads as clean,
                 titled sections instead of a wall of text — and we avoid
@@ -843,7 +843,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
 
       {/* SIDEBAR */}
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <div style={{ background: "rgba(8,18,38,0.55)", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 18, padding: 20 }}>
+        <div style={{ background: "var(--pu-8-18-38-055)", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 18, padding: 20 }}>
           <h4 style={{ fontFamily: F.sans, fontSize: 13, fontWeight: 800, color: T.text, marginBottom: 14 }}>Posting snapshot</h4>
           {[
             { label: "Role", value: role || "Active", icon: Briefcase },
@@ -854,7 +854,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
             const Icon = item.icon;
             return (
               <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: `1px solid ${T.border}` }}>
-                <div style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(59,130,246,0.10)", border: "1px solid rgba(59,130,246,0.20)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <div style={{ width: 28, height: 28, borderRadius: 8, background: "var(--pu-59-130-246-01)", border: "1px solid var(--pu-59-130-246-02)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   <Icon size={13} color={T.red} />
                 </div>
                 <div style={{ minWidth: 0 }}>
@@ -866,17 +866,17 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
           })}
         </div>
 
-        {(currentJob.visa.length > 0 || (currentJob.approvalRate != null && currentJob.petitions != null)) && <div style={{ background: "rgba(8,18,38,0.55)", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 18, padding: 20 }}>
+        {(currentJob.visa.length > 0 || (currentJob.approvalRate != null && currentJob.petitions != null)) && <div style={{ background: "var(--pu-8-18-38-055)", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 18, padding: 20 }}>
           <h4 style={{ fontFamily: F.sans, fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 14 }}>Visa sponsorship info</h4>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
             {(currentJob.visa ?? []).map((v) => (
-              <span key={v} style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 999, background: "rgba(52,211,153,0.12)", color: "#6EE7B7", border: "1px solid rgba(52,211,153,0.3)", fontFamily: F.sans }}>{v}</span>
+              <span key={v} style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 999, background: "var(--pu-52-211-153-012)", color: "var(--pu-6ee7b7-t)", border: "1px solid var(--pu-52-211-153-03)", fontFamily: F.sans }}>{v}</span>
             ))}
           </div>
           {currentJob.approvalRate != null && currentJob.petitions != null && <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div style={{ position: "relative", width: 60, height: 60 }}>
               <svg viewBox="0 0 60 60" style={{ transform: "rotate(-90deg)", width: "100%", height: "100%" }}>
-                <circle cx="30" cy="30" r="24" fill="none" stroke="rgba(148,163,184,0.07)" strokeWidth="6" />
+                <circle cx="30" cy="30" r="24" fill="none" stroke="var(--pu-148-163-184-007)" strokeWidth="6" />
                 <motion.circle cx="30" cy="30" r="24" fill="none" stroke={T.red} strokeWidth="6" strokeLinecap="round"
                   strokeDasharray={2 * Math.PI * 24}
                   initial={{ strokeDashoffset: 2 * Math.PI * 24 }}
@@ -895,12 +895,12 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
           </div>}
         </div>}
 
-        {(currentJob.benefits ?? []).length > 0 && <div style={{ background: "rgba(8,18,38,0.55)", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 18, padding: 20 }}>
+        {(currentJob.benefits ?? []).length > 0 && <div style={{ background: "var(--pu-8-18-38-055)", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 18, padding: 20 }}>
           <h4 style={{ fontFamily: F.sans, fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 12 }}>Benefits & perks</h4>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {(currentJob.benefits ?? []).map((b) => (
               <div key={b} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ width: 20, height: 20, borderRadius: "50%", background: "rgba(59,130,246,0.12)", border: "1px solid rgba(59,130,246,0.25)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <div style={{ width: 20, height: 20, borderRadius: "50%", background: "var(--pu-59-130-246-012)", border: "1px solid var(--pu-59-130-246-025)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   <Check size={10} color={T.red} />
                 </div>
                 <span style={{ fontSize: 13, color: T.t2, fontFamily: F.sans }}>{b}</span>
@@ -914,7 +914,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
       <AnimatePresence>
         {showApplyModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            style={{ position: "fixed", inset: 0, background: "rgba(1,17,38,0.85)", backdropFilter: "blur(8px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}
+            style={{ position: "fixed", inset: 0, background: "var(--pu-1-17-38-085)", backdropFilter: "blur(8px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}
             onClick={() => setShowApplyModal(false)}
           >
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
@@ -923,9 +923,9 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
                 width: "min(460px, calc(100vw - 24px))",
                 maxHeight: "85vh",
                 overflowY: "auto",
-                background: "rgba(15,30,55,0.9)",
+                background: "var(--pu-15-30-55-09)",
                 backdropFilter: "blur(24px)",
-                border: "1px solid rgba(148,163,184,0.1)",
+                border: "1px solid var(--pu-148-163-184-01)",
                 borderRadius: 24,
                 padding: isMobile ? "24px 20px" : "36px 32px",
               }}
@@ -941,7 +941,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
               <div style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: F.sans, marginBottom: 10 }}>Did you complete the application?</div>
 
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
-                <button disabled={savingApplication} onClick={() => recordApplication("applied")} style={{ flex: "1 1 180px", padding: "13px", borderRadius: 12, border: "none", background: T.grad, color: "#fff", fontSize: 14, fontWeight: 600, fontFamily: F.sans, cursor: "pointer" }}>
+                <button disabled={savingApplication} onClick={() => recordApplication("applied")} style={{ flex: "1 1 180px", padding: "13px", borderRadius: 12, border: "none", background: T.grad, color: "var(--pu-ffffff-t)", fontSize: 14, fontWeight: 600, fontFamily: F.sans, cursor: "pointer" }}>
                   Yes, I applied
                 </button>
                 <button disabled={savingApplication} onClick={() => recordApplication("not_applied", "will_apply_later")} style={{ flex: "1 1 180px", padding: "13px", borderRadius: 12, border: `1px solid ${T.border}`, background: "transparent", color: T.t2, fontSize: 14, fontFamily: F.sans, cursor: "pointer" }}>
@@ -955,7 +955,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
                   <select
                     value={heardBack}
                     onChange={(e) => setHeardBack(e.target.value as "unknown" | "yes" | "no")}
-                    style={{ height: 38, borderRadius: 10, border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.04)", color: T.text, fontSize: 13, fontFamily: F.sans, padding: "0 10px", outline: "none" }}
+                    style={{ height: 38, borderRadius: 10, border: `1px solid ${T.border}`, background: "var(--pu-148-163-184-004)", color: T.text, fontSize: 13, fontFamily: F.sans, padding: "0 10px", outline: "none" }}
                   >
                     <option value="unknown">Not yet</option>
                     <option value="yes">Yes</option>
@@ -967,7 +967,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
                   <select
                     value={positionOpen}
                     onChange={(e) => setPositionOpen(e.target.value as "unknown" | "yes" | "no")}
-                    style={{ height: 38, borderRadius: 10, border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.04)", color: T.text, fontSize: 13, fontFamily: F.sans, padding: "0 10px", outline: "none" }}
+                    style={{ height: 38, borderRadius: 10, border: `1px solid ${T.border}`, background: "var(--pu-148-163-184-004)", color: T.text, fontSize: 13, fontFamily: F.sans, padding: "0 10px", outline: "none" }}
                   >
                     <option value="unknown">Unknown</option>
                     <option value="yes">Yes</option>
@@ -983,7 +983,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
                 placeholder="Example: $140K-$165K base, bonus, equity..."
                 style={{
                   width: "100%", height: 40, padding: "0 12px", borderRadius: 12,
-                  border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.04)",
+                  border: `1px solid ${T.border}`, background: "var(--pu-148-163-184-004)",
                   color: T.text, fontSize: 13, fontFamily: F.sans, outline: "none",
                   boxSizing: "border-box", marginBottom: 16,
                 }}
@@ -996,7 +996,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
                 onChange={(e) => setApplyNotes(e.target.value)}
                 style={{
                   width: "100%", minHeight: 72, padding: "12px 14px", borderRadius: 12,
-                  border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.04)",
+                  border: `1px solid ${T.border}`, background: "var(--pu-148-163-184-004)",
                   color: T.text, fontSize: 13, fontFamily: F.sans, resize: "vertical",
                   outline: "none", boxSizing: "border-box",
                 }}

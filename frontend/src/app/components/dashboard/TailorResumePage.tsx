@@ -6,15 +6,15 @@ import { LoadingLogo } from "../LoadingLogo";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 const T = {
-  text: "#F1F5F9",
-  t2: "rgba(226,232,240,0.72)",
-  t3: "rgba(148,163,184,0.75)",
-  border: "rgba(148,163,184,0.10)",
-  card: "rgba(15,30,55,0.45)",
-  panel: "linear-gradient(135deg, rgba(1,17,38,0.90), rgba(15,30,55,0.55))",
-  grad: "linear-gradient(135deg, #2563EB, #0EA5E9)",
-  orange: "#3B82F6",
-  green: "#86EFAC",
+  text: "var(--pu-f1f5f9-t)",
+  t2: "var(--pu-226-232-240-072)",
+  t3: "var(--pu-148-163-184-075)",
+  border: "var(--pu-148-163-184-01)",
+  card: "var(--pu-15-30-55-045)",
+  panel: "linear-gradient(135deg, var(--pu-1-17-38-09), var(--pu-15-30-55-055))",
+  grad: "linear-gradient(135deg, var(--pu-2563eb), var(--pu-0ea5e9))",
+  orange: "var(--pu-3b82f6-t)",
+  green: "var(--pu-86efac-t)",
 };
 
 function downloadBase64(payload: api.TailoredResumeDownload) {
@@ -42,8 +42,8 @@ function dateLabel(value?: string) {
 function scoreColor(score?: number) {
   if (!score) return T.t3;
   if (score >= 95) return T.green;
-  if (score >= 80) return "#60A5FA";
-  return "#F87171";
+  if (score >= 80) return "var(--pu-60a5fa-b)";
+  return "var(--pu-f87171-b)";
 }
 
 export function TailorResumePage() {
@@ -96,14 +96,14 @@ export function TailorResumePage() {
           borderRadius: 18,
           border: `1px solid ${T.border}`,
           background: T.panel,
-          boxShadow: "0 18px 44px rgba(1,17,38,0.28)",
+          boxShadow: "0 18px 44px var(--pu-1-17-38-028)",
           color: T.text,
         }}
       >
         <div style={{ display: "flex", gap: 14, alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap" }}>
           <div style={{ display: "flex", gap: 13, alignItems: "center", minWidth: 0 }}>
             <div style={{ width: 44, height: 44, borderRadius: 13, background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <Wand2 size={20} color="#fff" />
+              <Wand2 size={20} color="var(--pu-ffffff-t)" />
             </div>
             <div style={{ minWidth: 0 }}>
               <h2 style={{ fontFamily: F.sans, fontSize: 22, fontWeight: 850, lineHeight: 1.15, margin: 0 }}>Resume Tailor Queue</h2>
@@ -114,7 +114,7 @@ export function TailorResumePage() {
           </div>
           <button
             onClick={loadQueue}
-            style={{ height: 36, padding: "0 12px", borderRadius: 9, border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.05)", color: T.text, display: "flex", alignItems: "center", gap: 7, cursor: "pointer", fontSize: 12, fontWeight: 800, fontFamily: F.sans }}
+            style={{ height: 36, padding: "0 12px", borderRadius: 9, border: `1px solid ${T.border}`, background: "var(--pu-148-163-184-005)", color: T.text, display: "flex", alignItems: "center", gap: 7, cursor: "pointer", fontSize: 12, fontWeight: 800, fontFamily: F.sans }}
           >
             <RefreshCw size={13} /> Refresh
           </button>
@@ -126,7 +126,7 @@ export function TailorResumePage() {
             { label: "In queue", value: String(items.length) },
             { label: "Generated", value: String(generatedCount) },
           ].map((stat) => (
-            <div key={stat.label} style={{ padding: 14, borderRadius: 13, background: "rgba(148,163,184,0.04)", border: `1px solid ${T.border}` }}>
+            <div key={stat.label} style={{ padding: 14, borderRadius: 13, background: "var(--pu-148-163-184-004)", border: `1px solid ${T.border}` }}>
               <div style={{ fontSize: 11, color: T.t3, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>{stat.label}</div>
               <div style={{ fontFamily: F.mono, fontSize: 26, fontWeight: 850, color: T.text, lineHeight: 1.1, marginTop: 5 }}>{stat.value}</div>
             </div>
@@ -135,14 +135,14 @@ export function TailorResumePage() {
       </motion.div>
 
       {featureLocked && (
-        <div style={{ padding: "14px 16px", borderRadius: 12, border: "1px solid rgba(251,191,36,0.30)", background: "rgba(251,191,36,0.08)", color: "#FDE68A", fontSize: 13.5, lineHeight: 1.6 }}>
+        <div style={{ padding: "14px 16px", borderRadius: 12, border: "1px solid var(--pu-251-191-36-03)", background: "var(--pu-251-191-36-008)", color: "var(--pu-fde68a-t)", fontSize: 13.5, lineHeight: 1.6 }}>
           <strong>Resume Tailor is temporarily unavailable.</strong> We are upgrading the tailoring engine to produce
           higher quality documents. Your queue is saved and downloads will reopen here soon.
         </div>
       )}
 
       {error && (
-        <div style={{ padding: "12px 14px", borderRadius: 12, border: "1px solid rgba(248,113,113,0.28)", background: "rgba(248,113,113,0.08)", color: "#FECACA", fontSize: 13 }}>
+        <div style={{ padding: "12px 14px", borderRadius: 12, border: "1px solid var(--pu-248-113-113-028)", background: "var(--pu-248-113-113-008)", color: "var(--pu-fecaca)", fontSize: 13 }}>
           {error}
         </div>
       )}
@@ -172,11 +172,11 @@ export function TailorResumePage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.035 }}
               whileHover={{ y: -3 }}
-              style={{ padding: 16, borderRadius: 16, border: `1px solid ${T.border}`, background: "linear-gradient(135deg, rgba(1,17,38,0.84), rgba(15,30,55,0.52))", boxShadow: "0 12px 28px rgba(1,17,38,0.24)", color: T.text }}
+              style={{ padding: 16, borderRadius: 16, border: `1px solid ${T.border}`, background: "linear-gradient(135deg, var(--pu-1-17-38-084), var(--pu-15-30-55-052))", boxShadow: "0 12px 28px var(--pu-1-17-38-024)", color: T.text }}
             >
               <div style={{ display: "flex", gap: 14, justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap" }}>
                 <div style={{ display: "flex", gap: 12, minWidth: 0, flex: 1 }}>
-                  <div style={{ width: 42, height: 42, borderRadius: 12, background: "rgba(59,130,246,0.13)", border: "1px solid rgba(59,130,246,0.26)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <div style={{ width: 42, height: 42, borderRadius: 12, background: "var(--pu-59-130-246-013)", border: "1px solid var(--pu-59-130-246-026)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                     <FileText size={18} color={T.orange} />
                   </div>
                   <div style={{ minWidth: 0 }}>
@@ -185,16 +185,16 @@ export function TailorResumePage() {
                       {item.company || "Unknown company"} - {item.location || "Remote"} - {dateLabel(item.created_at)}
                     </div>
                     <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 9 }}>
-                      <span style={{ fontSize: 11, fontWeight: 800, padding: "4px 8px", borderRadius: 999, background: "rgba(59,130,246,0.12)", color: T.orange }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, padding: "4px 8px", borderRadius: 999, background: "var(--pu-59-130-246-012)", color: T.orange }}>
                         Current match {item.match_score || 0}%
                       </span>
-                      <span style={{ fontSize: 11, fontWeight: 800, padding: "4px 8px", borderRadius: 999, background: "rgba(34,197,94,0.10)", color: scoreColor(item.ats_score) }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, padding: "4px 8px", borderRadius: 999, background: "var(--pu-34-197-94-01)", color: scoreColor(item.ats_score) }}>
                         Tailored ATS {item.ats_score ? `${item.ats_score}%` : "Ready"}
                       </span>
                       {item.score_guarded && (
                         <span
                           title={item.raw_ats_score ? `Generated score was ${item.raw_ats_score}%; protected against lowering the current match.` : "Protected against lowering the current match."}
-                          style={{ fontSize: 11, fontWeight: 800, padding: "4px 8px", borderRadius: 999, background: "rgba(134,239,172,0.08)", color: T.green }}
+                          style={{ fontSize: 11, fontWeight: 800, padding: "4px 8px", borderRadius: 999, background: "var(--pu-134-239-172-008)", color: T.green }}
                         >
                           Protected
                         </span>
@@ -206,14 +206,14 @@ export function TailorResumePage() {
                   <button
                     disabled={featureLocked || busyId === `${item.id}:doc`}
                     onClick={() => generate(item, "doc")}
-                    style={{ height: 34, padding: "0 12px", borderRadius: 9, border: "none", background: T.grad, color: "#fff", display: "flex", alignItems: "center", gap: 7, cursor: featureLocked ? "not-allowed" : busyId ? "wait" : "pointer", opacity: featureLocked ? 0.5 : 1, fontSize: 12, fontWeight: 850, fontFamily: F.sans }}
+                    style={{ height: 34, padding: "0 12px", borderRadius: 9, border: "none", background: T.grad, color: "var(--pu-ffffff-t)", display: "flex", alignItems: "center", gap: 7, cursor: featureLocked ? "not-allowed" : busyId ? "wait" : "pointer", opacity: featureLocked ? 0.5 : 1, fontSize: 12, fontWeight: 850, fontFamily: F.sans }}
                   >
                     <Download size={13} /> DOC
                   </button>
                   <button
                     disabled={featureLocked || busyId === `${item.id}:pdf`}
                     onClick={() => generate(item, "pdf")}
-                    style={{ height: 34, padding: "0 12px", borderRadius: 9, border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.05)", color: T.text, display: "flex", alignItems: "center", gap: 7, cursor: featureLocked ? "not-allowed" : busyId ? "wait" : "pointer", opacity: featureLocked ? 0.5 : 1, fontSize: 12, fontWeight: 850, fontFamily: F.sans }}
+                    style={{ height: 34, padding: "0 12px", borderRadius: 9, border: `1px solid ${T.border}`, background: "var(--pu-148-163-184-005)", color: T.text, display: "flex", alignItems: "center", gap: 7, cursor: featureLocked ? "not-allowed" : busyId ? "wait" : "pointer", opacity: featureLocked ? 0.5 : 1, fontSize: 12, fontWeight: 850, fontFamily: F.sans }}
                   >
                     <Download size={13} /> PDF
                   </button>

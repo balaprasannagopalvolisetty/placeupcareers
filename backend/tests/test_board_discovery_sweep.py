@@ -20,9 +20,11 @@ def test_workday_url_detector_supports_jobs_and_site_domains():
     assert site_match.groups() == ("foo", "wd1", "myworkdaysite", "External")
 
 
-def test_company_resolver_probes_all_slug_based_ats_platforms():
-    # Workday needs a (tenant, site) tuple and is discovered from URLs/page HTML.
-    assert set(PROBE_ATS) == set(ATS_DISPATCH)
+def test_company_resolver_only_probes_dispatchable_slug_based_ats_platforms():
+    # Some dispatchers need GUIDs, hosts, or curated board paths and cannot be
+    # discovered from a company-name slug. Every platform we do probe must,
+    # however, have a dispatcher.
+    assert set(PROBE_ATS) <= set(ATS_DISPATCH)
 
 
 def test_careers_page_ingest_detects_direct_structured_ats_urls():

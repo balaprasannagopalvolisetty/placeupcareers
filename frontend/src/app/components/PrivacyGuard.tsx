@@ -88,7 +88,7 @@ export function PrivacyGuard() {
             display: flex;
             align-items: center;
             justify-content: center;
-            color: #111827;
+            color: var(--pu-111827-b);
             font-family: Inter, sans-serif;
             font-size: 24px;
             font-weight: 700;
@@ -106,15 +106,15 @@ export function PrivacyGuard() {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            background: "rgba(1, 17, 38, 0.94)",
+            background: "var(--pu-1-17-38-094)",
             backdropFilter: "blur(18px)",
-            color: "#ffffff",
+            color: "var(--pu-ffffff-t)",
             fontFamily: "'Plus Jakarta Sans', sans-serif",
           }}
         >
           <div style={{ textAlign: "center", padding: 24 }}>
             <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1.2 }}>PlaceUp Career</div>
-            <div style={{ marginTop: 10, fontSize: 14, fontWeight: 600, lineHeight: 1.5, color: "#c7d2fe" }}>
+            <div style={{ marginTop: 10, fontSize: 14, fontWeight: 600, lineHeight: 1.5, color: "var(--pu-c7d2fe-t)" }}>
               Protected view
             </div>
           </div>
@@ -129,11 +129,11 @@ export function PrivacyGuard() {
             right: 20,
             bottom: 20,
             zIndex: 2147483646,
-            border: "1px solid rgba(167, 139, 250, 0.45)",
+            border: "1px solid var(--pu-167-139-250-045)",
             borderRadius: 14,
-            background: "rgba(15, 23, 42, 0.92)",
-            boxShadow: "0 18px 55px rgba(0, 0, 0, 0.28)",
-            color: "#ffffff",
+            background: "var(--pu-15-23-42-092)",
+            boxShadow: "0 18px 55px var(--pu-0-0-0-028)",
+            color: "var(--pu-ffffff-t)",
             padding: "12px 16px",
             fontSize: 13,
             fontWeight: 700,

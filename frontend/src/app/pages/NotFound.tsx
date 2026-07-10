@@ -24,9 +24,9 @@ export default function NotFound() {
           width: "100%",
           padding: 32,
           borderRadius: 20,
-          background: "rgba(15,30,55,0.55)",
-          border: "1px solid rgba(148,163,184,0.1)",
-          color: "#F1F5F9",
+          background: "var(--pu-15-30-55-055)",
+          border: "1px solid var(--pu-148-163-184-01)",
+          color: "var(--pu-f1f5f9-t)",
           fontFamily: "'Plus Jakarta Sans', sans-serif",
           textAlign: "center",
         }}
@@ -35,7 +35,7 @@ export default function NotFound() {
           style={{
             fontSize: 56,
             fontWeight: 800,
-            background: "linear-gradient(135deg, #2563EB, #0EA5E9)",
+            background: "linear-gradient(135deg, var(--pu-2563eb), var(--pu-0ea5e9))",
             WebkitBackgroundClip: "text",
             WebkitTextFillColor: "transparent",
             backgroundClip: "text",
@@ -52,7 +52,7 @@ export default function NotFound() {
           style={{
             fontSize: 14,
             lineHeight: 1.5,
-            color: "rgba(226,232,240,0.72)",
+            color: "var(--pu-226-232-240-072)",
             marginBottom: 22,
           }}
         >
@@ -65,8 +65,8 @@ export default function NotFound() {
             style={{
               padding: "10px 18px",
               borderRadius: 10,
-              background: "linear-gradient(135deg, #2563EB, #0EA5E9)",
-              color: "#fff",
+              background: "linear-gradient(135deg, var(--pu-2563eb), var(--pu-0ea5e9))",
+              color: "var(--pu-ffffff-t)",
               fontWeight: 600,
               fontSize: 13,
               textDecoration: "none",
@@ -79,8 +79,8 @@ export default function NotFound() {
             style={{
               padding: "10px 18px",
               borderRadius: 10,
-              border: "1px solid rgba(148,163,184,0.18)",
-              color: "#F1F5F9",
+              border: "1px solid var(--pu-148-163-184-018)",
+              color: "var(--pu-f1f5f9-t)",
               fontWeight: 500,
               fontSize: 13,
               textDecoration: "none",

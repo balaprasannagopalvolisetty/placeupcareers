@@ -12,7 +12,11 @@ high signal-to-noise. Add new entries as you find more boards.
 Format (per entry):
     {
         "company": "Stripe",         # canonical display name
-        "ats": "greenhouse",          # one of greenhouse|lever|ashby|smartrecruiters|workday|recruitee|personio|teamtailor|jazzhr|rippling|bamboohr
+        "ats": "greenhouse",          # any key of careers_ats.ATS_DISPATCH (greenhouse|lever|ashby|
+                                      # smartrecruiters|workday|recruitee|personio|teamtailor|jazzhr|
+                                      # rippling|bamboohr|workable|breezyhr|pinpoint|polymer|jobvite|
+                                      # icims|oracle_recruiting|paylocity|ukg|zoho_recruit|adp|dover|
+                                      # gem|successfactors|phenom|dayforce|join|hireology)
         "token": "stripe",            # ATS-specific board token (string, OR tuple for workday)
         "h1b_tier": "T1",             # T1 = top 100 sponsor, T2 = top 500, T3 = active sponsor
     }
@@ -174,6 +178,12 @@ H1B_SPONSOR_BOARDS: list[dict] = [
     {"company": "Moderna",           "ats": "greenhouse",      "token": "moderna",         "h1b_tier": "T1", "active": False},
     {"company": "Genentech",         "ats": "workday",         "token": ("roche", "roche-ext"),                           "h1b_tier": "T1"},
     {"company": "Johnson & Johnson", "ats": "workday",         "token": ("jnj", "jnj"),                                   "h1b_tier": "T1"},
+
+    # ─── Extended-ATS seeds (SuccessFactors / iCIMS / UKG / etc.) ─
+    # Token formats per platform are documented in app/services/careers_ats.py.
+    # Add entries here as boards are confirmed; unknown/wrong tokens fail
+    # gracefully (warning + empty list) so seeding is safe.
+    {"company": "SAP",               "ats": "successfactors",  "token": "https://jobs.sap.com",                           "h1b_tier": "T1"},
 ]
 
 

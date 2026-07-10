@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
+import { useTheme } from "./Layout";
 
 type BrandLogoProps = {
   height?: number;
@@ -21,7 +22,14 @@ const ASSETS: Record<NonNullable<BrandLogoProps["variant"]>, { src: string; rati
 };
 
 export function BrandLogo({ height = 36, alt = "PlaceUp Career", style, variant = "full" }: BrandLogoProps) {
-  const asset = ASSETS[variant];
+  // Theme-aware: "full" (cream, for dark surfaces) and "dark" (navy, for
+  // light surfaces) auto-swap with the active theme so the wordmark stays
+  // readable in both modes. "mark" is theme-neutral. Outside the provider
+  // the context default ({ dark: true }) keeps the original behavior.
+  const { dark: isDarkMode } = useTheme();
+  const resolved: NonNullable<BrandLogoProps["variant"]> =
+    variant === "mark" ? "mark" : isDarkMode ? "full" : "dark";
+  const asset = ASSETS[resolved];
   const width = height * asset.ratio;
 
   return (

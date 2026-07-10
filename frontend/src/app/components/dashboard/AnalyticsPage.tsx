@@ -19,9 +19,9 @@ import * as api from "../../lib/api";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 const T = {
-  text: "#F1F5F9", t2: "rgba(226,232,240,0.72)", t3: "rgba(148,163,184,0.75)",
-  border: "rgba(148,163,184,0.08)", glass: "rgba(15,30,55,0.55)",
-  grad: "linear-gradient(135deg, #2563EB, #0EA5E9)", red: "#3B82F6", burnt: "#60A5FA",
+  text: "var(--pu-f1f5f9-t)", t2: "var(--pu-226-232-240-072)", t3: "var(--pu-148-163-184-075)",
+  border: "var(--pu-148-163-184-008)", glass: "var(--pu-15-30-55-055)",
+  grad: "linear-gradient(135deg, var(--pu-2563eb), var(--pu-0ea5e9))", red: "var(--pu-3b82f6-t)", burnt: "var(--pu-60a5fa-t)",
 };
 
 interface MetricCard {
@@ -127,7 +127,7 @@ export function AnalyticsPage() {
         {metrics.map((m, i) => (
           <motion.div key={m.label} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}
             style={{ background: T.glass, backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 16, padding: "20px" }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.2)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--pu-59-130-246-01)", border: "1px solid var(--pu-59-130-246-02)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
               <m.icon size={16} color={m.color} />
             </div>
             <div style={{ fontFamily: F.sans, fontSize: 30, fontWeight: 800, color: m.color, lineHeight: 1, marginBottom: 4 }}>{m.value}</div>
@@ -160,15 +160,15 @@ export function AnalyticsPage() {
                   <AreaChart data={(market.added_series || []).map((p) => ({ label: new Date(p.date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" }), count: p.count }))} margin={{ top: 6, right: 8, bottom: 0, left: -20 }}>
                     <defs>
                       <linearGradient id="mktFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#3B82F6" stopOpacity={0.5} />
-                        <stop offset="100%" stopColor="#3B82F6" stopOpacity={0.02} />
+                        <stop offset="0%" stopColor="var(--pu-3b82f6-b)" stopOpacity={0.5} />
+                        <stop offset="100%" stopColor="var(--pu-3b82f6-b)" stopOpacity={0.02} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.06)" vertical={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--pu-148-163-184-006)" vertical={false} />
                     <XAxis dataKey="label" tick={{ fill: T.t3, fontSize: 11, fontFamily: F.sans }} axisLine={false} tickLine={false} minTickGap={18} />
                     <YAxis allowDecimals={false} tick={{ fill: T.t3, fontSize: 11, fontFamily: F.sans }} axisLine={false} tickLine={false} width={40} />
-                    <Tooltip contentStyle={{ background: "rgba(8,14,32,0.96)", border: `1px solid ${T.border}`, borderRadius: 10, color: T.text, fontFamily: F.sans, fontSize: 12 }} formatter={(v: number) => [`${v} new`, "Positions"]} />
-                    <Area type="monotone" dataKey="count" stroke="#3B82F6" strokeWidth={2} fill="url(#mktFill)" activeDot={{ r: 4 }} />
+                    <Tooltip contentStyle={{ background: "var(--pu-8-14-32-096)", border: `1px solid ${T.border}`, borderRadius: 10, color: T.text, fontFamily: F.sans, fontSize: 12 }} formatter={(v: number) => [`${v} new`, "Positions"]} />
+                    <Area type="monotone" dataKey="count" stroke="var(--pu-3b82f6-t)" strokeWidth={2} fill="url(#mktFill)" activeDot={{ r: 4 }} />
                   </AreaChart>
                 </ResponsiveContainer>
               )}
@@ -182,8 +182,8 @@ export function AnalyticsPage() {
                   <BarChart data={(market.by_country || []).map((c) => ({ key: c.key, count: c.count }))} layout="vertical" margin={{ top: 0, right: 12, bottom: 0, left: 8 }}>
                     <XAxis type="number" hide />
                     <YAxis type="category" dataKey="key" tick={{ fill: T.t2, fontSize: 11, fontFamily: F.sans }} axisLine={false} tickLine={false} width={44} />
-                    <Tooltip cursor={{ fill: "rgba(59,130,246,0.08)" }} contentStyle={{ background: "rgba(8,14,32,0.96)", border: `1px solid ${T.border}`, borderRadius: 10, color: T.text, fontFamily: F.sans, fontSize: 12 }} formatter={(v: number) => [v.toLocaleString(), "Positions"]} />
-                    <Bar dataKey="count" radius={[0, 6, 6, 0]} fill="#3B82F6" />
+                    <Tooltip cursor={{ fill: "var(--pu-59-130-246-008)" }} contentStyle={{ background: "var(--pu-8-14-32-096)", border: `1px solid ${T.border}`, borderRadius: 10, color: T.text, fontFamily: F.sans, fontSize: 12 }} formatter={(v: number) => [v.toLocaleString(), "Positions"]} />
+                    <Bar dataKey="count" radius={[0, 6, 6, 0]} fill="var(--pu-3b82f6-t)" />
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -199,7 +199,7 @@ export function AnalyticsPage() {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {applications.map((app) => (
-              <div key={`${app.job_id}-${app.updated_at || app.created_at || app.title}`} style={{ padding: 14, borderRadius: 14, border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.04)" }}>
+              <div key={`${app.job_id}-${app.updated_at || app.created_at || app.title}`} style={{ padding: 14, borderRadius: 14, border: `1px solid ${T.border}`, background: "var(--pu-148-163-184-004)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: T.text, fontFamily: F.sans }}>{app.title || "Applied position"}</div>
@@ -237,7 +237,7 @@ export function AnalyticsPage() {
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {[{ label: "Applications", value: timeSeries.reduce((sum, point) => sum + (point.apps || 0), 0), color: T.red }, { label: "Interviews", value: timeSeries.reduce((sum, point) => sum + (point.interviews || 0), 0), color: T.burnt }].map((item) => (
-                <div key={item.label} style={{ minWidth: 92, padding: "8px 10px", borderRadius: 10, border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.04)" }}>
+                <div key={item.label} style={{ minWidth: 92, padding: "8px 10px", borderRadius: 10, border: `1px solid ${T.border}`, background: "var(--pu-148-163-184-004)" }}>
                   <div style={{ fontFamily: F.mono, fontSize: 18, fontWeight: 700, color: item.color, lineHeight: 1 }}>{item.value}</div>
                   <div style={{ fontFamily: F.sans, fontSize: 10, color: T.t3, marginTop: 3 }}>{item.label}</div>
                 </div>
@@ -251,16 +251,16 @@ export function AnalyticsPage() {
             <AreaChart data={timeSeries} margin={{ top: 8, right: 10, bottom: 0, left: -18 }}>
               <defs>
                 <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
+                  <stop offset="5%" stopColor="var(--pu-3b82f6-b)" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="var(--pu-3b82f6-b)" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid stroke="rgba(148,163,184,0.08)" vertical={false} />
+              <CartesianGrid stroke="var(--pu-148-163-184-008)" vertical={false} />
               <XAxis dataKey="month" tick={{ fill: T.t3, fontSize: 11, fontFamily: F.sans }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fill: T.t3, fontSize: 11, fontFamily: F.sans }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{ background: "rgba(15,30,55,0.9)", border: "1px solid rgba(148,163,184,0.1)", borderRadius: 10, color: T.text, fontFamily: F.sans, fontSize: 12 }} />
-              <Area type="monotone" dataKey="apps" stroke="#3B82F6" strokeWidth={2} fill="url(#areaGrad)" />
-              <Area type="monotone" dataKey="interviews" stroke="#60A5FA" strokeWidth={2} fill="none" strokeDasharray="4 2" />
+              <Tooltip contentStyle={{ background: "var(--pu-15-30-55-09)", border: "1px solid var(--pu-148-163-184-01)", borderRadius: 10, color: T.text, fontFamily: F.sans, fontSize: 12 }} />
+              <Area type="monotone" dataKey="apps" stroke="var(--pu-3b82f6-t)" strokeWidth={2} fill="url(#areaGrad)" />
+              <Area type="monotone" dataKey="interviews" stroke="var(--pu-60a5fa-t)" strokeWidth={2} fill="none" strokeDasharray="4 2" />
             </AreaChart>
           </ResponsiveContainer>
           )}
@@ -283,10 +283,10 @@ export function AnalyticsPage() {
             <BarChart data={scoreData} margin={{ top: 5, right: 10, bottom: 0, left: -20 }}>
               <XAxis dataKey="version" tick={{ fill: T.t3, fontSize: 11, fontFamily: F.sans }} axisLine={false} tickLine={false} />
               <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tick={{ fill: T.t3, fontSize: 11, fontFamily: F.sans }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{ background: "rgba(15,30,55,0.9)", border: "1px solid rgba(148,163,184,0.1)", borderRadius: 10, color: T.text, fontFamily: F.sans, fontSize: 12 }} />
+              <Tooltip contentStyle={{ background: "var(--pu-15-30-55-09)", border: "1px solid var(--pu-148-163-184-01)", borderRadius: 10, color: T.text, fontFamily: F.sans, fontSize: 12 }} />
               <Bar dataKey="score" radius={[6, 6, 0, 0]}>
                 {scoreData.map((_, i) => (
-                  <Cell key={`cell-${i}`} fill={i === scoreData.length - 1 ? T.red : "rgba(59,130,246,0.35)"} />
+                  <Cell key={`cell-${i}`} fill={i === scoreData.length - 1 ? T.red : "var(--pu-59-130-246-035)"} />
                 ))}
               </Bar>
             </BarChart>

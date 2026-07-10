@@ -7,13 +7,13 @@ import * as api from "../../lib/api";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 const T = {
-  text: "#F1F5F9",
-  t2: "rgba(226,232,240,0.72)",
-  t3: "rgba(148,163,184,0.75)",
-  border: "rgba(148,163,184,0.08)",
-  glass: "rgba(15,30,55,0.55)",
-  grad: "linear-gradient(135deg, #2563EB, #0EA5E9)",
-  red: "#3B82F6",
+  text: "var(--pu-f1f5f9-t)",
+  t2: "var(--pu-226-232-240-072)",
+  t3: "var(--pu-148-163-184-075)",
+  border: "var(--pu-148-163-184-008)",
+  glass: "var(--pu-15-30-55-055)",
+  grad: "linear-gradient(135deg, var(--pu-2563eb), var(--pu-0ea5e9))",
+  red: "var(--pu-3b82f6-t)",
 };
 
 type Row = api.UserApplicationRow;
@@ -28,15 +28,15 @@ const STATUS_PILLS: { label: string; value: string }[] = [
 
 function statusBadge(row: Row): { label: string; color: string; bg: string; border: string } {
   if (row.heard_back === true) {
-    return { label: "Heard back", color: "#22c55e", bg: "rgba(34,197,94,0.12)", border: "rgba(34,197,94,0.3)" };
+    return { label: "Heard back", color: "var(--pu-22c55e-t)", bg: "var(--pu-34-197-94-012)", border: "var(--pu-34-197-94-03)" };
   }
   if (row.status === "applied") {
-    return { label: "Applied", color: T.red, bg: "rgba(59,130,246,0.12)", border: "rgba(59,130,246,0.3)" };
+    return { label: "Applied", color: T.red, bg: "var(--pu-59-130-246-012)", border: "var(--pu-59-130-246-03)" };
   }
   if (row.status === "not_applied") {
-    return { label: row.not_applied_reason || "Skipped", color: T.t3, bg: "rgba(148,163,184,0.04)", border: T.border };
+    return { label: row.not_applied_reason || "Skipped", color: T.t3, bg: "var(--pu-148-163-184-004)", border: T.border };
   }
-  return { label: row.status || "Tracked", color: T.t2, bg: "rgba(148,163,184,0.04)", border: T.border };
+  return { label: row.status || "Tracked", color: T.t2, bg: "var(--pu-148-163-184-004)", border: T.border };
 }
 
 function formatDate(value?: string): string {
@@ -158,7 +158,7 @@ export function ApplicationsPage() {
           style={{
             display: "inline-flex", alignItems: "center", gap: 6,
             padding: "8px 12px", borderRadius: 10,
-            border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.04)",
+            border: `1px solid ${T.border}`, background: "var(--pu-148-163-184-004)",
             color: T.t2, fontSize: 12, fontFamily: F.sans, cursor: "pointer",
           }}
         >
@@ -171,7 +171,7 @@ export function ApplicationsPage() {
         {[
           { label: "Tracked", value: counts.total, icon: Briefcase, color: T.t2 },
           { label: "Applied", value: counts.applied, icon: CheckCircle2, color: T.red },
-          { label: "Heard back", value: counts.heard, icon: Clock, color: "#22c55e" },
+          { label: "Heard back", value: counts.heard, icon: Clock, color: "var(--pu-22c55e-t)" },
           { label: "Skipped", value: counts.skipped, icon: XCircle, color: T.t3 },
         ].map(({ label, value, icon: Icon, color }) => (
           <div key={label}
@@ -183,7 +183,7 @@ export function ApplicationsPage() {
           >
             <div style={{
               width: 32, height: 32, borderRadius: 9,
-              background: "rgba(59,130,246,0.10)", border: "1px solid rgba(59,130,246,0.22)",
+              background: "var(--pu-59-130-246-01)", border: "1px solid var(--pu-59-130-246-022)",
               display: "flex", alignItems: "center", justifyContent: "center",
             }}>
               <Icon size={14} color={color} />
@@ -207,7 +207,7 @@ export function ApplicationsPage() {
           <div style={{ fontSize: 12, fontWeight: 600, color: T.text, fontFamily: F.sans }}>14-day activity</div>
           <div style={{ display: "flex", gap: 14, fontSize: 11, color: T.t3, fontFamily: F.sans }}>
             <span><span style={{ display: "inline-block", width: 10, height: 10, background: T.red, borderRadius: 2, marginRight: 5, verticalAlign: "middle" }} /> Applied</span>
-            <span><span style={{ display: "inline-block", width: 10, height: 10, background: "#22c55e", borderRadius: 2, marginRight: 5, verticalAlign: "middle" }} /> Heard back</span>
+            <span><span style={{ display: "inline-block", width: 10, height: 10, background: "var(--pu-22c55e-b)", borderRadius: 2, marginRight: 5, verticalAlign: "middle" }} /> Heard back</span>
           </div>
         </div>
         <svg width="100%" height="120" viewBox={`0 0 ${trend.buckets.length * 28} 120`} preserveAspectRatio="none" role="img" aria-label="Daily applications trend">
@@ -220,7 +220,7 @@ export function ApplicationsPage() {
                 {/* Y axis lives in the parent — these are stacked vertical bars
                     anchored to the 100 baseline so growth pushes upward. */}
                 <rect x={3} y={100 - appliedH} width={9} height={appliedH || 0} fill={T.red} rx={1.5} opacity={0.95} />
-                <rect x={14} y={100 - heardH} width={9} height={heardH || 0} fill="#22c55e" rx={1.5} opacity={0.95} />
+                <rect x={14} y={100 - heardH} width={9} height={heardH || 0} fill="var(--pu-22c55e-t)" rx={1.5} opacity={0.95} />
                 {i % 2 === 0 && (
                   <text x={13} y={114} textAnchor="middle" fontSize="8" fill={T.t3} fontFamily="monospace">{b.label.split(" ")[1]}</text>
                 )}
@@ -239,7 +239,7 @@ export function ApplicationsPage() {
         <div style={{
           display: "flex", alignItems: "center", gap: 8, flex: "1 1 220px",
           height: 36, padding: "0 12px", borderRadius: 8,
-          border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.04)",
+          border: `1px solid ${T.border}`, background: "var(--pu-148-163-184-004)",
         }}>
           <Search size={13} color={T.t3} />
           <input value={search} onChange={(e) => setSearch(e.target.value)}
@@ -253,7 +253,7 @@ export function ApplicationsPage() {
                 height: 32, padding: "0 12px", borderRadius: 9999,
                 border: `1px solid ${filter === p.value ? "transparent" : T.border}`,
                 background: filter === p.value ? T.grad : "transparent",
-                color: filter === p.value ? "#fff" : T.t2,
+                color: filter === p.value ? "var(--pu-ffffff-b)" : T.t2,
                 fontSize: 12, cursor: "pointer", fontFamily: F.sans,
                 fontWeight: filter === p.value ? 600 : 400,
               }}>{p.label}</button>
@@ -263,7 +263,7 @@ export function ApplicationsPage() {
 
       {error && (
         <div style={{ padding: "14px 16px", borderRadius: 12,
-          background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.25)",
+          background: "var(--pu-59-130-246-008)", border: "1px solid var(--pu-59-130-246-025)",
           color: T.text, fontFamily: F.sans, fontSize: 13 }}>
           {error}
         </div>
@@ -289,7 +289,7 @@ export function ApplicationsPage() {
             <motion.div key={`${row.job_id}-${row.created_at || i}`}
               initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(0.02 * i, 0.3) }}
               style={{
-                background: "linear-gradient(135deg, rgba(15,30,55,0.62), rgba(25,18,32,0.72))",
+                background: "linear-gradient(135deg, var(--pu-15-30-55-062), var(--pu-25-18-32-072))",
                 backdropFilter: "blur(20px)", border: `1px solid ${T.border}`,
                 borderRadius: 14, padding: 14,
                 display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 12, alignItems: "center",

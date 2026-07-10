@@ -10,13 +10,13 @@ import { BrandLogo } from "./BrandLogo";
 
 // ─── Tokens ───
 const T = {
-  bg:     "#011126",
-  border: "rgba(242,238,179,0.08)",
-  text:   "#F2EEB3",
-  t2:     "rgba(242,238,179,0.65)",
-  t3:     "rgba(242,238,179,0.38)",
-  grad:   "linear-gradient(135deg, #F2A341, #ED7D2B, #C75A12)",
-  red:    "#ED7D2B",
+  bg:     "var(--pu-011126)",
+  border: "var(--pu-242-238-179-008)",
+  text:   "var(--pu-f2eeb3-t)",
+  t2:     "var(--pu-242-238-179-065)",
+  t3:     "var(--pu-242-238-179-038)",
+  grad:   "linear-gradient(135deg, var(--pu-f2a341-b), var(--pu-ed7d2b-b), var(--pu-c75a12))",
+  red:    "var(--pu-ed7d2b-t)",
 };
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 
@@ -62,10 +62,10 @@ const STEPS = [
 
 // ─── Job data ───
 const JOBS = [
-  { id: 1, title: "Senior Software Engineer", company: "Google", abbr: "G", color: "#4285F4", visa: "H-1B", ats: 94, location: "Mountain View, CA", tags: ["React", "Python", "K8s"] },
-  { id: 2, title: "ML Engineer",              company: "Meta",   abbr: "M", color: "#1877F2", visa: "H-1B", ats: 87, location: "Menlo Park, CA",    tags: ["PyTorch", "CUDA", "LLMs"] },
-  { id: 3, title: "Backend Engineer",         company: "Stripe", abbr: "S", color: "#635BFF", visa: "OPT",  ats: 91, location: "San Francisco, CA", tags: ["Go", "Ruby", "Kafka"] },
-  { id: 4, title: "Software Engineer II",     company: "Amazon", abbr: "A", color: "#FF9900", visa: "H-1B", ats: 89, location: "Seattle, WA",       tags: ["Java", "AWS", "DynamoDB"] },
+  { id: 1, title: "Senior Software Engineer", company: "Google", abbr: "G", color: "var(--pu-4285f4)", visa: "H-1B", ats: 94, location: "Mountain View, CA", tags: ["React", "Python", "K8s"] },
+  { id: 2, title: "ML Engineer",              company: "Meta",   abbr: "M", color: "var(--pu-1877f2)", visa: "H-1B", ats: 87, location: "Menlo Park, CA",    tags: ["PyTorch", "CUDA", "LLMs"] },
+  { id: 3, title: "Backend Engineer",         company: "Stripe", abbr: "S", color: "var(--pu-635bff)", visa: "OPT",  ats: 91, location: "San Francisco, CA", tags: ["Go", "Ruby", "Kafka"] },
+  { id: 4, title: "Software Engineer II",     company: "Amazon", abbr: "A", color: "var(--pu-ff9900)", visa: "H-1B", ats: 89, location: "Seattle, WA",       tags: ["Java", "AWS", "DynamoDB"] },
 ];
 
 // ─── Step thresholds (step i starts at i/6) ───
@@ -78,12 +78,12 @@ function getStep(v: number) { return Math.min(5, Math.floor(v * 6)); }
 // ═══════════════════════
 
 const GLOWS = [
-  "radial-gradient(ellipse 70% 60% at 50% 55%, rgba(140,58,39,0.10) 0%, transparent 70%)",
-  "radial-gradient(ellipse 70% 60% at 50% 55%, rgba(237,125,43,0.14) 0%, transparent 70%)",
-  "radial-gradient(ellipse 70% 60% at 50% 55%, rgba(237,125,43,0.18) 0%, transparent 70%)",
-  "radial-gradient(ellipse 70% 60% at 50% 55%, rgba(140,58,39,0.14) 0%, transparent 70%)",
-  "radial-gradient(ellipse 70% 60% at 50% 55%, rgba(34,197,94,0.06) 0%, transparent 70%)",
-  "radial-gradient(ellipse 70% 60% at 50% 55%, rgba(34,197,94,0.12) 0%, transparent 70%)",
+  "radial-gradient(ellipse 70% 60% at 50% 55%, var(--pu-140-58-39-01) 0%, transparent 70%)",
+  "radial-gradient(ellipse 70% 60% at 50% 55%, var(--pu-237-125-43-014) 0%, transparent 70%)",
+  "radial-gradient(ellipse 70% 60% at 50% 55%, var(--pu-237-125-43-018) 0%, transparent 70%)",
+  "radial-gradient(ellipse 70% 60% at 50% 55%, var(--pu-140-58-39-014) 0%, transparent 70%)",
+  "radial-gradient(ellipse 70% 60% at 50% 55%, var(--pu-34-197-94-006) 0%, transparent 70%)",
+  "radial-gradient(ellipse 70% 60% at 50% 55%, var(--pu-34-197-94-012) 0%, transparent 70%)",
 ];
 
 function BackgroundLayers({ step }: { step: number }) {
@@ -111,7 +111,7 @@ function BackgroundLayers({ step }: { step: number }) {
             transition={{ duration: 0.55 }}
             style={{
               fontSize: "clamp(160px, 28vw, 360px)", fontWeight: 800,
-              color: step >= 4 ? "#22c55e" : T.red,
+              color: step >= 4 ? "var(--pu-22c55e-b)" : T.red,
               fontFamily: F.sans, lineHeight: 1, userSelect: "none",
             }}
           >
@@ -149,7 +149,7 @@ function TopBar({ step, sectionProgress }: { step: number; sectionProgress: Moti
             key={i}
             animate={{
               width: step === i ? 20 : 6,
-              background: step === i ? T.red : step > i ? "#22c55e" : "rgba(242,238,179,0.18)",
+              background: step === i ? T.red : step > i ? "var(--pu-22c55e-b)" : "var(--pu-242-238-179-018)",
             }}
             transition={{ duration: 0.35 }}
             style={{ height: 5, borderRadius: 3 }}
@@ -194,7 +194,7 @@ function StepHeader({ step }: { step: number }) {
           <div style={{
             display: "inline-flex", alignItems: "center", gap: 7, marginBottom: 10,
             padding: "4px 12px", borderRadius: 99,
-            background: "rgba(237,125,43,0.10)", border: "1px solid rgba(237,125,43,0.22)",
+            background: "var(--pu-237-125-43-01)", border: "1px solid var(--pu-237-125-43-022)",
           }}>
             <span style={{ fontSize: 13 }}>{s.icon}</span>
             <span style={{ fontFamily: F.sans, fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: T.red }}>
@@ -250,11 +250,11 @@ function LoginScreen({ p0 }: { p0: MotionValue<number> }) {
   // Border color driven by scroll – computed as a MotionValue at hook level
   const emailBorderColor = useTransform(
     p0, [0.45, 0.6],
-    ["rgba(242,238,179,0.08)", "rgba(237,125,43,0.40)"]
+    ["var(--pu-242-238-179-008)", "var(--pu-237-125-43-04)"]
   );
   const buttonBoxShadow = useTransform(
     buttonGlow, [0, 1],
-    ["0 0 0px rgba(237,125,43,0)", "0 0 26px rgba(237,125,43,0.6)"]
+    ["0 0 0px var(--pu-237-125-43-0)", "0 0 26px var(--pu-237-125-43-06)"]
   );
 
   return (
@@ -267,10 +267,10 @@ function LoginScreen({ p0 }: { p0: MotionValue<number> }) {
     >
       <div style={{
         width: "100%", maxWidth: 290,
-        background: "rgba(1,17,38,0.92)", backdropFilter: "blur(24px)",
-        border: "1px solid rgba(242,238,179,0.09)",
+        background: "var(--pu-1-17-38-092)", backdropFilter: "blur(24px)",
+        border: "1px solid var(--pu-242-238-179-009)",
         borderRadius: 18, padding: "24px 20px",
-        boxShadow: "0 20px 60px rgba(1,17,38,0.7)",
+        boxShadow: "0 20px 60px var(--pu-1-17-38-07)",
       }}>
         {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: 18 }}>
@@ -283,7 +283,7 @@ function LoginScreen({ p0 }: { p0: MotionValue<number> }) {
           <label style={{ display: "block", fontSize: 9, color: T.t3, fontFamily: F.sans, marginBottom: 4, letterSpacing: "0.07em", textTransform: "uppercase" as const }}>Email</label>
           <motion.div
             style={{
-              background: "rgba(242,238,179,0.04)",
+              background: "var(--pu-242-238-179-004)",
               borderRadius: 9, padding: "8px 10px",
               border: "1px solid",
               borderColor: emailBorderColor,
@@ -305,7 +305,7 @@ function LoginScreen({ p0 }: { p0: MotionValue<number> }) {
         {/* Password */}
         <div style={{ marginBottom: 16 }}>
           <label style={{ display: "block", fontSize: 9, color: T.t3, fontFamily: F.sans, marginBottom: 4, letterSpacing: "0.07em", textTransform: "uppercase" as const }}>Password</label>
-          <div style={{ background: "rgba(242,238,179,0.04)", border: `1px solid ${T.border}`, borderRadius: 9, padding: "8px 10px" }}>
+          <div style={{ background: "var(--pu-242-238-179-004)", border: `1px solid ${T.border}`, borderRadius: 9, padding: "8px 10px" }}>
             <span style={{ fontFamily: F.mono, fontSize: 12, color: T.t3, letterSpacing: "0.07em" }}>••••••••••</span>
           </div>
         </div>
@@ -319,10 +319,10 @@ function LoginScreen({ p0 }: { p0: MotionValue<number> }) {
             boxShadow: buttonBoxShadow,
           }}
         >
-          <span style={{ fontFamily: F.sans, fontSize: 12, fontWeight: 700, color: "#fff" }}>
+          <span style={{ fontFamily: F.sans, fontSize: 12, fontWeight: 700, color: "var(--pu-ffffff-t)" }}>
             {isClicking ? "Signing in…" : "Sign In"}
           </span>
-          {isClicking && <ChevronRight size={12} color="#fff" />}
+          {isClicking && <ChevronRight size={12} color="var(--pu-ffffff-t)" />}
         </motion.div>
       </div>
     </motion.div>
@@ -335,7 +335,7 @@ function LiveDot() {
     <motion.div
       animate={{ scale: [1, 1.5, 1], opacity: [1, 0.5, 1] }}
       transition={{ duration: 1.6, repeat: Infinity }}
-      style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e", flexShrink: 0 }}
+      style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--pu-22c55e-b)", flexShrink: 0 }}
     />
   );
 }
@@ -359,7 +359,7 @@ function AnimatedJobCard({ job, p1, p2, index }: {
   const cardScore  = useTransform(p2, [0.08, 0.35], [T.t2, isSelected ? T.red : T.t3]);
   const cardShadow = useTransform(
     borderGlow, [0, 1],
-    [`0 0 0 1px rgba(242,238,179,0.08)`, `0 0 0 1px rgba(237,125,43,0.55), 0 0 22px rgba(237,125,43,0.18)`]
+    [`0 0 0 1px var(--pu-242-238-179-008)`, `0 0 0 1px var(--pu-237-125-43-055), 0 0 22px var(--pu-237-125-43-018)`]
   );
 
   return (
@@ -368,7 +368,7 @@ function AnimatedJobCard({ job, p1, p2, index }: {
         opacity: opac, y: yVal, scale: selScale,
         position: "relative" as const,
         padding: "9px 11px", borderRadius: 12, cursor: "default",
-        background: isSelected ? "rgba(237,125,43,0.09)" : "rgba(242,238,179,0.025)",
+        background: isSelected ? "var(--pu-237-125-43-009)" : "var(--pu-242-238-179-0025)",
       }}
     >
       {/* Animated border via box-shadow */}
@@ -404,13 +404,13 @@ function AnimatedJobCard({ job, p1, p2, index }: {
           <div style={{ display: "flex", gap: 3, marginTop: 5 }}>
             <div style={{
               padding: "1px 5px", borderRadius: 3,
-              background: job.visa === "H-1B" ? "rgba(34,197,94,0.09)" : "rgba(59,130,246,0.09)",
-              border: `1px solid ${job.visa === "H-1B" ? "rgba(34,197,94,0.28)" : "rgba(59,130,246,0.28)"}`,
+              background: job.visa === "H-1B" ? "var(--pu-34-197-94-009)" : "var(--pu-59-130-246-009)",
+              border: `1px solid ${job.visa === "H-1B" ? "var(--pu-34-197-94-028)" : "var(--pu-59-130-246-028)"}`,
               fontSize: 8, fontWeight: 600, fontFamily: F.sans,
-              color: job.visa === "H-1B" ? "#22c55e" : "#60a5fa",
+              color: job.visa === "H-1B" ? "var(--pu-22c55e-b)" : "var(--pu-60a5fa-b)",
             }}>{job.visa}</div>
             {job.tags.slice(0, 2).map((t) => (
-              <div key={t} style={{ padding: "1px 5px", borderRadius: 3, background: "rgba(242,238,179,0.04)", border: `1px solid ${T.border}`, fontSize: 8, color: T.t3, fontFamily: F.sans }}>{t}</div>
+              <div key={t} style={{ padding: "1px 5px", borderRadius: 3, background: "var(--pu-242-238-179-004)", border: `1px solid ${T.border}`, fontSize: 8, color: T.t3, fontFamily: F.sans }}>{t}</div>
             ))}
           </div>
         </div>
@@ -437,15 +437,15 @@ function JobFeedScreen({ p1, p2 }: { p1: MotionValue<number>; p2: MotionValue<nu
           <div style={{ fontFamily: F.sans, fontSize: 11, fontWeight: 600, color: T.text, marginBottom: 3 }}>Job Matches</div>
           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
             <LiveDot />
-            <span style={{ fontFamily: F.sans, fontSize: 9, color: "#22c55e" }}>Last 24 hours · 47 new</span>
+            <span style={{ fontFamily: F.sans, fontSize: 9, color: "var(--pu-22c55e-t)" }}>Last 24 hours · 47 new</span>
           </div>
         </div>
         <div style={{ display: "flex", gap: 4 }}>
           {["All", "H-1B", "OPT"].map((f) => (
             <div key={f} style={{
               padding: "2px 7px", borderRadius: 5, fontSize: 8, fontFamily: F.sans, fontWeight: 600,
-              background: f === "All" ? "rgba(237,125,43,0.14)" : "rgba(242,238,179,0.03)",
-              border: f === "All" ? "1px solid rgba(237,125,43,0.32)" : `1px solid ${T.border}`,
+              background: f === "All" ? "var(--pu-237-125-43-014)" : "var(--pu-242-238-179-003)",
+              border: f === "All" ? "1px solid var(--pu-237-125-43-032)" : `1px solid ${T.border}`,
               color: f === "All" ? T.red : T.t3,
             }}>{f}</div>
           ))}
@@ -477,11 +477,11 @@ function ATSCircle({ p3, size = 70 }: { p3: MotionValue<number>; size?: number }
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ display: "block" }}>
       <defs>
         <linearGradient id="atsG3" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#ED7D2B" />
-          <stop offset="100%" stopColor="#F2A341" />
+          <stop offset="0%" stopColor="var(--pu-ed7d2b-b)" />
+          <stop offset="100%" stopColor="var(--pu-f2a341-b)" />
         </linearGradient>
       </defs>
-      <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(242,238,179,0.06)" strokeWidth={sw} />
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--pu-242-238-179-006)" strokeWidth={sw} />
       <motion.circle
         cx={cx} cy={cy} r={r} fill="none"
         stroke="url(#atsG3)" strokeWidth={sw} strokeLinecap="round"
@@ -507,17 +507,17 @@ function ATSCard({ p3 }: { p3: MotionValue<number> }) {
       style={{
         position: "absolute", bottom: 14, right: 12, zIndex: 20,
         opacity: cardOpac, x: cardX,
-        background: "rgba(1,11,28,0.96)", backdropFilter: "blur(24px)",
-        border: "1px solid rgba(237,125,43,0.42)", borderRadius: 14,
+        background: "var(--pu-1-11-28-096)", backdropFilter: "blur(24px)",
+        border: "1px solid var(--pu-237-125-43-042)", borderRadius: 14,
         padding: "12px 14px", minWidth: 126,
-        boxShadow: "0 14px 44px rgba(1,17,38,0.80)",
+        boxShadow: "0 14px 44px var(--pu-1-17-38-08)",
       }}
     >
       <div style={{ display: "flex", justifyContent: "center", marginBottom: 5 }}>
         <ATSCircle p3={p3} size={68} />
       </div>
       <div style={{ fontFamily: F.sans, fontSize: 8, fontWeight: 700, color: T.t3, textAlign: "center", letterSpacing: "0.08em", textTransform: "uppercase" as const }}>ATS Match</div>
-      <div style={{ fontFamily: F.sans, fontSize: 9, color: "#22c55e", textAlign: "center", marginTop: 3, fontWeight: 600 }}>✓ Excellent</div>
+      <div style={{ fontFamily: F.sans, fontSize: 9, color: "var(--pu-22c55e-t)", textAlign: "center", marginTop: 3, fontWeight: 600 }}>✓ Excellent</div>
     </motion.div>
   );
 }
@@ -532,17 +532,17 @@ function HMCard({ p3 }: { p3: MotionValue<number> }) {
       style={{
         position: "absolute", top: 14, right: 12, zIndex: 20,
         opacity: cardOpac, y: cardY,
-        background: "rgba(1,11,28,0.96)", backdropFilter: "blur(24px)",
-        border: "1px solid rgba(242,238,179,0.09)",
+        background: "var(--pu-1-11-28-096)", backdropFilter: "blur(24px)",
+        border: "1px solid var(--pu-242-238-179-009)",
         borderRadius: 12, padding: "10px 12px", minWidth: 180,
-        boxShadow: "0 12px 40px rgba(1,17,38,0.80)",
+        boxShadow: "0 12px 40px var(--pu-1-17-38-08)",
       }}
     >
       <div style={{ fontFamily: F.sans, fontSize: 8, color: T.t3, letterSpacing: "0.08em", textTransform: "uppercase" as const, marginBottom: 7 }}>Application Fit</div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 9 }}>
         <div style={{
           width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
-          background: "rgba(237,125,43,0.18)", border: "1px solid rgba(237,125,43,0.38)",
+          background: "var(--pu-237-125-43-018)", border: "1px solid var(--pu-237-125-43-038)",
           display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12,
         }}>👤</div>
         <div>
@@ -551,10 +551,10 @@ function HMCard({ p3 }: { p3: MotionValue<number> }) {
         </div>
       </div>
       <div style={{ display: "flex", gap: 5 }}>
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 3, padding: "5px 7px", borderRadius: 7, background: "rgba(237,125,43,0.14)", border: "1px solid rgba(237,125,43,0.30)" }}>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 3, padding: "5px 7px", borderRadius: 7, background: "var(--pu-237-125-43-014)", border: "1px solid var(--pu-237-125-43-03)" }}>
           <Mail size={8} color={T.red} /><span style={{ fontFamily: F.sans, fontSize: 8, color: T.red, fontWeight: 600 }}>Email</span>
         </div>
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "5px 7px", borderRadius: 7, background: "rgba(242,238,179,0.04)", border: `1px solid ${T.border}` }}>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "5px 7px", borderRadius: 7, background: "var(--pu-242-238-179-004)", border: `1px solid ${T.border}` }}>
           <span style={{ fontFamily: F.sans, fontSize: 8, color: T.t3 }}>LinkedIn</span>
         </div>
       </div>
@@ -572,31 +572,31 @@ function ApplyOverlay({ p4, applied }: { p4: MotionValue<number>; applied: boole
       style={{
         position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 15,
         opacity: overlayOp, y: overlayY,
-        background: "linear-gradient(to top, rgba(1,17,38,1) 55%, transparent)",
+        background: "linear-gradient(to top, var(--pu-1-17-38-1) 55%, transparent)",
         padding: "28px 14px 12px",
       }}
     >
       <motion.div
         animate={applied ? {
           scale: [1, 0.96, 1.02, 1],
-          boxShadow: ["0 0 20px rgba(237,125,43,0.4)", "0 0 28px rgba(34,197,94,0.55)", "0 0 18px rgba(34,197,94,0.30)"],
+          boxShadow: ["0 0 20px var(--pu-237-125-43-04)", "0 0 28px var(--pu-34-197-94-055)", "0 0 18px var(--pu-34-197-94-03)"],
         } : {}}
         transition={{ duration: 0.55 }}
         style={{
           display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
           padding: "11px 18px", borderRadius: 11, cursor: "pointer",
-          background: applied ? "linear-gradient(135deg, #15803d, #22c55e)" : T.grad,
+          background: applied ? "linear-gradient(135deg, var(--pu-15803d), var(--pu-22c55e-b))" : T.grad,
           transition: "background 0.4s ease",
-          boxShadow: applied ? "0 0 22px rgba(34,197,94,0.35)" : "0 0 22px rgba(237,125,43,0.35)",
+          boxShadow: applied ? "0 0 22px var(--pu-34-197-94-035)" : "0 0 22px var(--pu-237-125-43-035)",
         }}
       >
         <AnimatePresence mode="wait">
           {applied ? (
             <motion.span key="done" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
-              style={{ fontFamily: F.sans, fontSize: 12, fontWeight: 700, color: "#fff" }}>✓ Submitted</motion.span>
+              style={{ fontFamily: F.sans, fontSize: 12, fontWeight: 700, color: "var(--pu-ffffff-t)" }}>✓ Submitted</motion.span>
           ) : (
             <motion.span key="apply" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-              style={{ fontFamily: F.sans, fontSize: 12, fontWeight: 700, color: "#fff" }}>Apply Now →</motion.span>
+              style={{ fontFamily: F.sans, fontSize: 12, fontWeight: 700, color: "var(--pu-ffffff-t)" }}>Apply Now →</motion.span>
           )}
         </AnimatePresence>
       </motion.div>
@@ -614,10 +614,10 @@ function EmailToast({ p5 }: { p5: MotionValue<number> }) {
       style={{
         position: "absolute", top: 10, left: 10, right: 10, zIndex: 30,
         y: toastY, opacity: toastOp,
-        background: "rgba(2,14,32,0.97)", backdropFilter: "blur(28px)",
-        border: "1px solid rgba(34,197,94,0.38)",
+        background: "var(--pu-2-14-32-097)", backdropFilter: "blur(28px)",
+        border: "1px solid var(--pu-34-197-94-038)",
         borderRadius: 14, padding: "11px 13px",
-        boxShadow: "0 14px 44px rgba(1,17,38,0.90)",
+        boxShadow: "0 14px 44px var(--pu-1-17-38-09)",
       }}
     >
       <div style={{ display: "flex", alignItems: "flex-start", gap: 9 }}>
@@ -629,16 +629,16 @@ function EmailToast({ p5 }: { p5: MotionValue<number> }) {
         <div style={{ flex: 1 }}>
           <div style={{ fontFamily: F.sans, fontSize: 11, fontWeight: 700, color: T.text, marginBottom: 3 }}>Interview Request!</div>
           <div style={{ fontFamily: F.sans, fontSize: 10, color: T.t2, lineHeight: 1.55 }}>
-            <strong style={{ color: "#4285F4" }}>Google</strong> – Senior Software Engineer
+            <strong style={{ color: "var(--pu-4285f4)" }}>Google</strong> – Senior Software Engineer
             <br />Check your email — an interview has been scheduled.
           </div>
         </div>
         <div style={{
           display: "flex", alignItems: "center", gap: 3, padding: "3px 7px",
-          borderRadius: 6, background: "rgba(34,197,94,0.10)", border: "1px solid rgba(34,197,94,0.28)", flexShrink: 0,
+          borderRadius: 6, background: "var(--pu-34-197-94-01)", border: "1px solid var(--pu-34-197-94-028)", flexShrink: 0,
         }}>
-          <Mail size={8} color="#22c55e" />
-          <span style={{ fontFamily: F.sans, fontSize: 8, color: "#22c55e", fontWeight: 600 }}>View</span>
+          <Mail size={8} color="var(--pu-22c55e-t)" />
+          <span style={{ fontFamily: F.sans, fontSize: 8, color: "var(--pu-22c55e-t)", fontWeight: 600 }}>View</span>
         </div>
       </div>
     </motion.div>
@@ -714,7 +714,7 @@ function ProgressDots({ step }: { step: number }) {
           key={i}
           animate={{
             width: step === i ? 20 : 7,
-            background: step === i ? T.red : step > i ? "#22c55e" : "rgba(242,238,179,0.12)",
+            background: step === i ? T.red : step > i ? "var(--pu-22c55e-b)" : "var(--pu-242-238-179-012)",
           }}
           transition={{ duration: 0.3 }}
           style={{ height: 6, borderRadius: 3 }}
@@ -783,7 +783,7 @@ export function HowItWorksScrollStory() {
   const barWidth = useTransform(scrollYProgress, [0, 1], ["0%", "100%"]);
   const barColor = useTransform(
     scrollYProgress, [0, 0.67, 0.84, 1],
-    ["#ED7D2B", "#F2A341", "#16a34a", "#22c55e"]
+    ["var(--pu-ed7d2b-b)", "var(--pu-f2a341-b)", "var(--pu-16a34a)", "var(--pu-22c55e-b)"]
   );
 
   // Discrete step state
@@ -855,17 +855,17 @@ export function HowItWorksScrollStory() {
                 {/* Chrome bar */}
                 <div style={{
                   borderRadius: "14px 14px 0 0",
-                  background: "rgba(242,238,179,0.03)", border: `1px solid ${T.border}`, borderBottom: "none",
+                  background: "var(--pu-242-238-179-003)", border: `1px solid ${T.border}`, borderBottom: "none",
                   padding: "8px 12px", display: "flex", alignItems: "center", gap: 7,
                   position: "relative",
                 }}>
                   <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-                    {["#ef4444", "#f59e0b", "#22c55e"].map((c, i) => (
+                    {["var(--pu-ef4444-b)", "var(--pu-f59e0b-b)", "var(--pu-22c55e-b)"].map((c, i) => (
                       <div key={i} style={{ width: 9, height: 9, borderRadius: "50%", background: c, opacity: 0.65 }} />
                     ))}
                   </div>
-                  <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, background: "rgba(242,238,179,0.04)", border: `1px solid ${T.border}`, borderRadius: 6, padding: "3px 9px" }}>
-                    <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e", opacity: 0.75 }} />
+                  <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, background: "var(--pu-242-238-179-004)", border: `1px solid ${T.border}`, borderRadius: 6, padding: "3px 9px" }}>
+                    <div style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--pu-22c55e-b)", opacity: 0.75 }} />
                     <span style={{ fontFamily: F.mono, fontSize: 9, color: T.t3, overflow: "hidden", whiteSpace: "nowrap" as const, textOverflow: "ellipsis" }}>
                       app.placeupcareer.com/dashboard
                     </span>
@@ -887,7 +887,7 @@ export function HowItWorksScrollStory() {
                 <div style={{
                   height: "clamp(300px, 44vh, 400px)",
                   position: "relative", overflow: "hidden",
-                  background: "rgba(1,14,34,0.92)",
+                  background: "var(--pu-1-14-34-092)",
                   border: `1px solid ${T.border}`, borderTop: "none",
                   borderRadius: "0 0 14px 14px",
                 }}>

@@ -32,7 +32,7 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
         style={{
           padding: "60px 20px",
           textAlign: "center",
-          color: "rgba(242,238,179,0.55)",
+          color: "var(--pu-242-238-179-055)",
           fontFamily: "'Plus Jakarta Sans', sans-serif",
           fontSize: 13,
         }}

@@ -7,15 +7,15 @@ import { BrandLogo } from "./BrandLogo";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif" };
 const T = {
-  bg: "#F8FAFC",
-  surface: "#FFFFFF",
-  border: "#E2E8F0",
-  text: "#0F172A",
-  t2: "#475569",
-  t3: "#94A3B8",
-  grad: "linear-gradient(135deg, #2563EB, #0EA5E9)",
-  accent: "#2563EB",
-  input: "#F8FAFC",
+  bg: "var(--pu-f8fafc-b)",
+  surface: "var(--pu-ffffff-b)",
+  border: "var(--pu-e2e8f0-b)",
+  text: "var(--pu-0f172a-t)",
+  t2: "var(--pu-475569-t)",
+  t3: "var(--pu-94a3b8-t)",
+  grad: "linear-gradient(135deg, var(--pu-2563eb), var(--pu-0ea5e9))",
+  accent: "var(--pu-2563eb)",
+  input: "var(--pu-f8fafc-b)",
 };
 
 function GateInput({
@@ -52,7 +52,7 @@ function GateInput({
         }}
         onFocus={(e) => {
           e.target.style.borderColor = T.accent;
-          e.target.style.boxShadow = "0 0 0 3px rgba(37,99,235,0.12)";
+          e.target.style.boxShadow = "0 0 0 3px var(--pu-37-99-235-012)";
         }}
         onBlur={(e) => {
           e.target.style.borderColor = T.border;
@@ -169,12 +169,12 @@ export default function InviteGate({ children }: { children: ReactNode }) {
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.22 }}
-            style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 18, padding: "32px 28px", boxShadow: "0 10px 30px rgba(15,23,42,0.06)" }}
+            style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 18, padding: "32px 28px", boxShadow: "0 10px 30px var(--pu-15-23-42-006)" }}
           >
             {!rejected ? (
               <>
                 <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
-                  <span style={{ width: 48, height: 48, borderRadius: 14, background: "rgba(37,99,235,0.08)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{ width: 48, height: 48, borderRadius: 14, background: "var(--pu-37-99-235-008)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
                     <Ticket size={22} color={T.accent} />
                   </span>
                 </div>
@@ -196,9 +196,9 @@ export default function InviteGate({ children }: { children: ReactNode }) {
                 </div>
                 {error && (
                   <div style={{
-                    color: "#DC2626", fontSize: 13, marginBottom: 14, fontFamily: F.sans,
-                    padding: "10px 12px", borderRadius: 8, background: "rgba(220,38,38,0.06)",
-                    border: "1px solid rgba(220,38,38,0.2)",
+                    color: "var(--pu-dc2626)", fontSize: 13, marginBottom: 14, fontFamily: F.sans,
+                    padding: "10px 12px", borderRadius: 8, background: "var(--pu-220-38-38-006)",
+                    border: "1px solid var(--pu-220-38-38-02)",
                   }}>{error}</div>
                 )}
                 <motion.button
@@ -207,9 +207,9 @@ export default function InviteGate({ children }: { children: ReactNode }) {
                   disabled={checking}
                   style={{
                     width: "100%", padding: "14px", borderRadius: 12, border: "none",
-                    cursor: checking ? "wait" : "pointer", background: T.grad, color: "#fff",
+                    cursor: checking ? "wait" : "pointer", background: T.grad, color: "var(--pu-ffffff-t)",
                     fontSize: 15.5, fontWeight: 700, fontFamily: F.sans,
-                    boxShadow: "0 8px 20px rgba(37,99,235,0.25)",
+                    boxShadow: "0 8px 20px var(--pu-37-99-235-025)",
                     opacity: checking ? 0.75 : 1,
                     display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
                   }}
@@ -230,8 +230,8 @@ export default function InviteGate({ children }: { children: ReactNode }) {
             ) : waitDone ? (
               <>
                 <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
-                  <span style={{ width: 48, height: 48, borderRadius: 14, background: "rgba(22,163,74,0.1)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                    <PartyPopper size={22} color="#16A34A" />
+                  <span style={{ width: 48, height: 48, borderRadius: 14, background: "var(--pu-22-163-74-01)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                    <PartyPopper size={22} color="var(--pu-16a34a)" />
                   </span>
                 </div>
                 <h2 style={{ fontFamily: F.sans, fontSize: 22, fontWeight: 800, color: T.text, textAlign: "center", marginBottom: 6, letterSpacing: "-0.02em" }}>
@@ -247,7 +247,7 @@ export default function InviteGate({ children }: { children: ReactNode }) {
             ) : (
               <>
                 <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
-                  <span style={{ width: 48, height: 48, borderRadius: 14, background: "rgba(37,99,235,0.08)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{ width: 48, height: 48, borderRadius: 14, background: "var(--pu-37-99-235-008)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
                     <Mail size={22} color={T.accent} />
                   </span>
                 </div>
@@ -271,9 +271,9 @@ export default function InviteGate({ children }: { children: ReactNode }) {
                 </div>
                 {waitError && (
                   <div style={{
-                    color: "#DC2626", fontSize: 13, marginBottom: 14, fontFamily: F.sans,
-                    padding: "10px 12px", borderRadius: 8, background: "rgba(220,38,38,0.06)",
-                    border: "1px solid rgba(220,38,38,0.2)",
+                    color: "var(--pu-dc2626)", fontSize: 13, marginBottom: 14, fontFamily: F.sans,
+                    padding: "10px 12px", borderRadius: 8, background: "var(--pu-220-38-38-006)",
+                    border: "1px solid var(--pu-220-38-38-02)",
                   }}>{waitError}</div>
                 )}
                 <motion.button
@@ -282,9 +282,9 @@ export default function InviteGate({ children }: { children: ReactNode }) {
                   disabled={waitSubmitting}
                   style={{
                     width: "100%", padding: "14px", borderRadius: 12, border: "none",
-                    cursor: waitSubmitting ? "wait" : "pointer", background: T.grad, color: "#fff",
+                    cursor: waitSubmitting ? "wait" : "pointer", background: T.grad, color: "var(--pu-ffffff-t)",
                     fontSize: 15.5, fontWeight: 700, fontFamily: F.sans,
-                    boxShadow: "0 8px 20px rgba(37,99,235,0.25)",
+                    boxShadow: "0 8px 20px var(--pu-37-99-235-025)",
                     opacity: waitSubmitting ? 0.75 : 1,
                   }}
                 >

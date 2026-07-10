@@ -193,7 +193,10 @@ def _clean_resume_text(text: str) -> str:
     """Clean and normalize extracted resume text.
 
     Removes common PDF artifacts like page numbers,
-    excessive whitespace, and control characters.
+    excessive whitespace, and control characters, then repairs
+    "word-shattered" extractions (one word per line) that some PDF
+    generators produce — those previously broke sectioning, keyword
+    extraction, and the Profile resume preview.
 
     Args:
         text: Raw extracted text
@@ -212,27 +215,118 @@ def _clean_resume_text(text: str) -> str:
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
 
-    return text.strip()
+    return _reconstruct_shattered_text(text.strip())
+
+
+# Section headings recognized both as standalone lines and as ALL-CAPS tokens
+# inside shattered text.
+_SECTION_HEADING_TOKENS = frozenset({
+    "summary", "profile", "objective",
+    "skills", "competencies", "technologies", "expertise",
+    "experience", "employment",
+    "education", "academics",
+    "projects", "portfolio",
+    "certifications", "licenses", "credentials",
+    "achievements", "awards", "publications",
+})
+_HEADING_MODIFIER_TOKENS = frozenset({
+    "technical", "core", "key", "relevant", "work", "professional",
+    "career", "academic", "personal", "selected",
+})
+_BULLET_CHARS = "•●▪‣◦∙·"
+
+
+def _reconstruct_shattered_text(text: str) -> str:
+    """Rejoin word-per-line PDF extractions into readable lines.
+
+    Some PDF generators position every word separately, so extract_text()
+    emits one word per line. Detection: most non-empty lines hold ≤2 short
+    words. Repair: stream the words back together, starting a new line at
+    section headings (ALL-CAPS tokens like EXPERIENCE / TECHNICAL SKILLS)
+    and at bullet markers (kept as "• " prefixes so the UI can render
+    real bullets). Normal multi-word extractions pass through untouched.
+    """
+    lines = [ln.strip() for ln in (text or "").splitlines()]
+    nonempty = [ln for ln in lines if ln]
+    if len(nonempty) < 15:
+        return text
+    shattered = sum(1 for ln in nonempty if len(ln.split()) <= 2 and len(ln) <= 24)
+    if shattered / len(nonempty) < 0.55:
+        return text
+
+    tokens: list[str] = []
+    for ln in nonempty:
+        tokens.extend(ln.split())
+
+    out: list[str] = []
+    buf: list[str] = []
+
+    def flush() -> None:
+        if buf:
+            out.append(" ".join(buf))
+            buf.clear()
+
+    for tok in tokens:
+        stripped = tok.strip(":;,.")
+        bare = stripped.lower()
+
+        # ALL-CAPS section headings start a new line (and absorb a leading
+        # modifier so "TECHNICAL SKILLS" / "WORK EXPERIENCE" stay intact).
+        if bare in _SECTION_HEADING_TOKENS and stripped.isupper() and len(stripped) >= 5:
+            modifier = ""
+            if buf:
+                tail = buf[-1].strip(":;,.")
+                if tail.isupper() and tail.lower() in _HEADING_MODIFIER_TOKENS:
+                    buf.pop()
+                    modifier = tail + " "
+            flush()
+            out.append(modifier + stripped)
+            continue
+
+        # Bullet markers start a new bullet line.
+        if tok and all(ch in _BULLET_CHARS for ch in tok):
+            flush()
+            buf.append("•")
+            continue
+        if tok[0] in _BULLET_CHARS:
+            flush()
+            buf.append("•")
+            rest = tok.lstrip(_BULLET_CHARS + " ")
+            if rest:
+                buf.append(rest)
+            continue
+
+        buf.append(tok)
+    flush()
+    return "\n".join(out)
 
 
 def _section_lines(text: str) -> dict[str, list[str]]:
+    """Split resume text into named sections.
+
+    Content before the first recognized heading lands in "header" (name +
+    contact lines) instead of polluting the summary. Headings match with or
+    without trailing colons, in any case, and with common modifier words.
+    """
     headings = {
-        "summary": r"summary|profile|objective",
-        "skills": r"skills|technical skills|core competencies|technologies",
-        "experience": r"experience|work experience|professional experience|employment",
-        "education": r"education|academic background",
-        "projects": r"projects|portfolio",
-        "certifications": r"certifications|licenses|credentials",
+        "summary": r"(?:professional\s+|career\s+|executive\s+)?(?:summary|profile|objective)",
+        "skills": r"(?:technical\s+|core\s+|key\s+|relevant\s+)?(?:skills|competencies|technologies|areas of expertise|expertise)",
+        "experience": r"(?:work\s+|professional\s+|relevant\s+|career\s+)?(?:experience|employment(?:\s+history)?|work history)",
+        "education": r"(?:education(?:al)?)(?:\s+background)?|academics?|academic background",
+        "projects": r"(?:selected\s+|personal\s+|academic\s+|key\s+)?projects?|portfolio",
+        "certifications": r"certifications?(?:\s*&?\s*licenses?)?|licenses?|credentials|certificates",
     }
     sections: dict[str, list[str]] = {key: [] for key in headings}
-    current = "summary"
+    sections["header"] = []
+    current = "header"
     for raw in text.splitlines():
         line = raw.strip(" -\t")
         if not line:
             continue
+        probe = line.strip(" :·|").strip()
         matched = None
         for key, pattern in headings.items():
-            if re.fullmatch(pattern, line, flags=re.I):
+            if re.fullmatch(pattern, probe, flags=re.I):
                 matched = key
                 break
         if matched:
@@ -245,6 +339,32 @@ def _section_lines(text: str) -> dict[str, list[str]]:
 def _first_match(pattern: str, text: str) -> str:
     match = re.search(pattern, text, flags=re.I)
     return match.group(0).strip() if match else ""
+
+
+def resume_json_looks_shattered(resume_json: dict) -> bool:
+    """Detect stored resume JSON built from word-per-line extractions.
+
+    Older uploads persisted shattered sections (each list item a single
+    word). Callers use this to re-derive from parsed_text with the fixed
+    pipeline instead of rendering broken documents.
+    """
+    if not isinstance(resume_json, dict):
+        return False
+    items: list[str] = []
+    for key in ("experience", "education", "projects", "certifications"):
+        value = resume_json.get(key)
+        if isinstance(value, list):
+            items.extend(str(v) for v in value)
+    sections = resume_json.get("sections")
+    if isinstance(sections, dict):
+        for value in sections.values():
+            if isinstance(value, list):
+                items.extend(str(v) for v in value)
+    items = [it for it in items if it.strip()]
+    if len(items) < 12:
+        return False
+    single_word = sum(1 for it in items if len(it.split()) <= 2 and len(it) <= 24)
+    return single_word / len(items) >= 0.6
 
 
 def resume_text_to_json(text: str, *, metadata: Optional[dict] = None) -> dict:
@@ -264,6 +384,10 @@ def resume_text_to_json(text: str, *, metadata: Optional[dict] = None) -> dict:
     phone = _first_match(r"(?:\+?1[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]?\d{4}", cleaned)
     email = _first_match(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", cleaned)
 
+    # Full summary paragraph (previously truncated to the first 4 lines,
+    # which showed just the candidate's name on shattered resumes).
+    summary = " ".join(sections.get("summary", []))[:1200]
+
     return {
         "schema_version": "placeup_resume_v1",
         "contact": {
@@ -271,7 +395,8 @@ def resume_text_to_json(text: str, *, metadata: Optional[dict] = None) -> dict:
             "phone": phone,
             "links": urls[:10],
         },
-        "summary": " ".join(sections.get("summary", [])[:4])[:1200],
+        "header": sections.get("header", [])[:6],
+        "summary": summary,
         "skills": sorted(set(skills)),
         "keywords": keywords,
         "sections": sections,

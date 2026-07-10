@@ -1,14 +1,16 @@
 "use client";
 
-import { useTheme } from "next-themes";
 import { Toaster as Sonner, ToasterProps } from "sonner";
+import { useTheme } from "../Layout";
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = "system" } = useTheme();
+  // Follow the app-wide dark/light toggle (Layout ThemeProvider) so toasts
+  // match the rest of the UI instead of tracking next-themes separately.
+  const { dark } = useTheme();
 
   return (
     <Sonner
-      theme={theme as ToasterProps["theme"]}
+      theme={(dark ? "dark" : "light") as ToasterProps["theme"]}
       className="toaster group"
       style={
         {

@@ -17,12 +17,12 @@ const AGREEMENT_VERSION = "2026-06-21";
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 // Clean, light SaaS palette (matches Home / SignIn).
 const T = {
-  bg: "#F8FAFC", surface: "#FFFFFF",
-  border: "#E2E8F0", text: "#0F172A",
-  t2: "#475569", t3: "#94A3B8",
-  grad: "linear-gradient(135deg, #2563EB, #0EA5E9)",
-  red: "#2563EB", input: "#F8FAFC",
-  panel: "#FFFFFF",
+  bg: "var(--pu-f8fafc-b)", surface: "var(--pu-ffffff-b)",
+  border: "var(--pu-e2e8f0-b)", text: "var(--pu-0f172a-t)",
+  t2: "var(--pu-475569-t)", t3: "var(--pu-94a3b8-t)",
+  grad: "linear-gradient(135deg, var(--pu-2563eb), var(--pu-0ea5e9))",
+  red: "var(--pu-2563eb)", input: "var(--pu-f8fafc-b)",
+  panel: "var(--pu-ffffff-b)",
 };
 
 const STEP_LABELS = ["Account", "Terms", "Profile", "Top 5 Positions", "Payment", "Verify", "Resume"];
@@ -164,11 +164,11 @@ function Dropdown({ label, value, onChange, options, required, placeholder = "Se
       </button>
       {open && (
         <div style={{ position: "absolute", top: 68, left: 0, right: 0, zIndex: 30, maxHeight: 240, overflowY: "auto",
-          borderRadius: 10, border: `1px solid ${T.border}`, background: T.panel, boxShadow: "0 12px 32px rgba(15,23,42,0.12)", padding: 6 }}>
+          borderRadius: 10, border: `1px solid ${T.border}`, background: T.panel, boxShadow: "0 12px 32px var(--pu-15-23-42-012)", padding: 6 }}>
           {options.map((o) => (
             <button key={o} type="button" onClick={() => { onChange(o); setOpen(false); }}
               style={{ width: "100%", textAlign: "left", padding: "9px 10px", borderRadius: 8, border: "none",
-                background: value === o ? "rgba(37,99,235,0.10)" : "transparent", color: T.text,
+                background: value === o ? "var(--pu-37-99-235-01)" : "transparent", color: T.text,
                 fontSize: 13, fontFamily: F.sans, cursor: "pointer" }}>
               {renderOption ? renderOption(o) : o}
             </button>
@@ -203,8 +203,8 @@ function CountryDropdown({ label, value, onChange, required }:
       </button>
       {open && (
         <div style={{ position: "absolute", top: 68, left: 0, right: 0, zIndex: 40, borderRadius: 10,
-          border: `1px solid ${T.border}`, background: T.panel, boxShadow: "0 12px 32px rgba(15,23,42,0.12)", padding: 6 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, height: 36, padding: "0 10px", borderRadius: 8, background: "#F1F5F9", border: `1px solid ${T.border}`, marginBottom: 6 }}>
+          border: `1px solid ${T.border}`, background: T.panel, boxShadow: "0 12px 32px var(--pu-15-23-42-012)", padding: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, height: 36, padding: "0 10px", borderRadius: 8, background: "var(--pu-f1f5f9-b)", border: `1px solid ${T.border}`, marginBottom: 6 }}>
             <Search size={14} color={T.t3} />
             <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search country"
               style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: T.text, fontSize: 13, fontFamily: F.sans }} />
@@ -213,7 +213,7 @@ function CountryDropdown({ label, value, onChange, required }:
             {list.map((c) => (
               <button key={c.code} type="button" onClick={() => { onChange(c.code); setOpen(false); setQ(""); }}
                 style={{ width: "100%", textAlign: "left", padding: "8px 10px", borderRadius: 8, border: "none",
-                  background: value === c.code ? "rgba(37,99,235,0.10)" : "transparent", color: T.text,
+                  background: value === c.code ? "var(--pu-37-99-235-01)" : "transparent", color: T.text,
                   fontSize: 13, fontFamily: F.sans, cursor: "pointer", display: "flex", gap: 8 }}>
                 <span>{c.flag}</span><span>{c.name}</span>
                 <span style={{ marginLeft: "auto", color: T.t3 }}>{c.dial}</span>
@@ -263,8 +263,8 @@ function PhoneInput({ countryCode, onCountry, number, onNumber }:
             background: T.input, color: T.text, fontSize: 13, fontFamily: F.sans, outline: "none", boxSizing: "border-box" }} />
         {open && (
           <div style={{ position: "absolute", top: 48, left: 0, width: 300, zIndex: 40, borderRadius: 10,
-            border: `1px solid ${T.border}`, background: T.panel, boxShadow: "0 12px 32px rgba(15,23,42,0.12)", padding: 6 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, height: 36, padding: "0 10px", borderRadius: 8, background: "#F1F5F9", border: `1px solid ${T.border}`, marginBottom: 6 }}>
+            border: `1px solid ${T.border}`, background: T.panel, boxShadow: "0 12px 32px var(--pu-15-23-42-012)", padding: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, height: 36, padding: "0 10px", borderRadius: 8, background: "var(--pu-f1f5f9-b)", border: `1px solid ${T.border}`, marginBottom: 6 }}>
               <Search size={14} color={T.t3} />
               <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search country or code"
                 style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: T.text, fontSize: 13, fontFamily: F.sans }} />
@@ -273,7 +273,7 @@ function PhoneInput({ countryCode, onCountry, number, onNumber }:
               {list.map((c) => (
                 <button key={c.code} type="button" onClick={() => { onCountry(c.code); setOpen(false); setQ(""); }}
                   style={{ width: "100%", textAlign: "left", padding: "8px 10px", borderRadius: 8, border: "none",
-                    background: countryCode === c.code ? "rgba(37,99,235,0.10)" : "transparent", color: T.text,
+                    background: countryCode === c.code ? "var(--pu-37-99-235-01)" : "transparent", color: T.text,
                     fontSize: 13, fontFamily: F.sans, cursor: "pointer", display: "flex", gap: 8 }}>
                   <span>{c.flag}</span><span style={{ flex: 1 }}>{c.name}</span>
                   <span style={{ color: T.t3 }}>{c.dial}</span>
@@ -299,7 +299,7 @@ function PasswordRules({ value }: { value: string }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 8 }}>
       {rules.map((r) => (
-        <div key={r.label} style={{ display: "flex", alignItems: "center", gap: 5, color: r.ok ? "#16A34A" : T.t3, fontSize: 11, fontFamily: F.sans }}>
+        <div key={r.label} style={{ display: "flex", alignItems: "center", gap: 5, color: r.ok ? "var(--pu-16a34a)" : T.t3, fontSize: 11, fontFamily: F.sans }}>
           <Check size={11} /> {r.label}
         </div>
       ))}
@@ -348,7 +348,7 @@ function RolePicker({
           <div style={{ fontSize: 13, color: T.text, fontFamily: F.sans, fontWeight: 700 }}>Choose your {MAX_TARGET_ROLES} target positions</div>
           <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, marginTop: 3 }}>Pick exactly {MAX_TARGET_ROLES} positions. These power your job matches and daily alerts.</div>
         </div>
-        <div style={{ fontSize: 12, color: full ? "#16A34A" : T.red, fontFamily: F.mono, fontWeight: 800 }}>
+        <div style={{ fontSize: 12, color: full ? "var(--pu-16a34a)" : T.red, fontFamily: F.mono, fontWeight: 800 }}>
           {selected.length}/{MAX_TARGET_ROLES}
         </div>
       </div>
@@ -361,7 +361,7 @@ function RolePicker({
           style={{
             width: "100%", minHeight: 48, padding: "8px 12px", borderRadius: 10,
             background: T.input, border: `1px solid ${open ? T.accent : T.border}`,
-            boxShadow: open ? "0 0 0 3px rgba(37,99,235,0.12)" : "none",
+            boxShadow: open ? "0 0 0 3px var(--pu-37-99-235-012)" : "none",
             display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
             cursor: "pointer", textAlign: "left",
           }}
@@ -378,7 +378,7 @@ function RolePicker({
           <div style={{
             position: "absolute", top: 54, left: 0, right: 0, zIndex: 40,
             borderRadius: 12, border: `1px solid ${T.border}`, background: T.surface,
-            boxShadow: "0 12px 30px rgba(15,23,42,0.12)", padding: 8,
+            boxShadow: "0 12px 30px var(--pu-15-23-42-012)", padding: 8,
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, height: 40, padding: "0 12px", borderRadius: 10, background: T.input, border: `1px solid ${T.border}`, marginBottom: 8 }}>
               <Search size={14} color={T.t3} />
@@ -395,18 +395,18 @@ function RolePicker({
                 return (
                   <button key={role} type="button" disabled={disabled} onClick={() => onToggle(role)}
                     title={disabled ? `You can only pick ${MAX_TARGET_ROLES} positions. Remove one to change your selection.` : undefined}
-                    style={{ minHeight: 38, padding: "8px 10px", borderRadius: 9, border: `1px solid ${active ? "rgba(22,163,74,0.35)" : "transparent"}`,
-                      background: active ? "rgba(34,197,94,0.10)" : "transparent", color: disabled ? T.t3 : T.text,
+                    style={{ minHeight: 38, padding: "8px 10px", borderRadius: 9, border: `1px solid ${active ? "var(--pu-22-163-74-035)" : "transparent"}`,
+                      background: active ? "var(--pu-34-197-94-01)" : "transparent", color: disabled ? T.t3 : T.text,
                       fontSize: 13, fontFamily: F.sans, cursor: disabled ? "not-allowed" : "pointer", textAlign: "left",
                       display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                     <span>{role}</span>
-                    {active && <Check size={13} color="#16A34A" />}
+                    {active && <Check size={13} color="var(--pu-16a34a)" />}
                   </button>
                 );
               })}
             </div>
             {full && (
-              <div style={{ padding: "8px 10px", marginTop: 6, fontSize: 11.5, color: "#16A34A", fontFamily: F.sans, background: "rgba(34,197,94,0.08)", borderRadius: 8 }}>
+              <div style={{ padding: "8px 10px", marginTop: 6, fontSize: 11.5, color: "var(--pu-16a34a)", fontFamily: F.sans, background: "var(--pu-34-197-94-008)", borderRadius: 8 }}>
                 All {MAX_TARGET_ROLES} positions selected. Remove one to swap.
               </div>
             )}
@@ -418,7 +418,7 @@ function RolePicker({
       {selected.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
           {selected.map((role) => (
-            <span key={role} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, padding: "5px 8px", borderRadius: 999, background: "rgba(37,99,235,0.08)", color: T.red, border: "1px solid rgba(37,99,235,0.22)", fontFamily: F.sans }}>
+            <span key={role} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, padding: "5px 8px", borderRadius: 999, background: "var(--pu-37-99-235-008)", color: T.red, border: "1px solid var(--pu-37-99-235-022)", fontFamily: F.sans }}>
               {role}
               <button type="button" onClick={() => onToggle(role)} style={{ background: "none", border: "none", color: T.red, cursor: "pointer", padding: 0, display: "flex" }}><X size={11} /></button>
             </span>
@@ -430,8 +430,8 @@ function RolePicker({
 }
 
 const PRIMARY_BTN: React.CSSProperties = {
-  flex: 2, padding: "12px", borderRadius: 12, border: "none", background: T.grad, color: "#fff",
-  fontSize: 13.5, fontFamily: F.sans, cursor: "pointer", fontWeight: 700, boxShadow: "0 8px 20px rgba(37,99,235,0.25)",
+  flex: 2, padding: "12px", borderRadius: 12, border: "none", background: T.grad, color: "var(--pu-ffffff-t)",
+  fontSize: 13.5, fontFamily: F.sans, cursor: "pointer", fontWeight: 700, boxShadow: "0 8px 20px var(--pu-37-99-235-025)",
 };
 const GHOST_BTN: React.CSSProperties = {
   flex: 1, padding: "12px", borderRadius: 12, border: `1px solid ${T.border}`, background: "transparent",
@@ -695,8 +695,8 @@ export default function SignUp() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", justifyContent: "center", alignItems: "center", padding: isMobile ? 14 : 24, background: `radial-gradient(900px 400px at 50% -5%, rgba(37,99,235,0.06), transparent 70%), ${T.bg}` }}>
-      <div style={{ width: "100%", maxWidth: 640, borderRadius: isMobile ? 18 : 24, background: "#FFFFFF", border: `1px solid ${T.border}`, padding: isMobile ? 18 : 32, boxShadow: "0 4px 12px rgba(15,23,42,0.06), 0 24px 56px rgba(15,23,42,0.10)" }}>
+    <div style={{ minHeight: "100vh", display: "flex", justifyContent: "center", alignItems: "center", padding: isMobile ? 14 : 24, background: `radial-gradient(900px 400px at 50% -5%, var(--pu-37-99-235-006), transparent 70%), ${T.bg}` }}>
+      <div style={{ width: "100%", maxWidth: 640, borderRadius: isMobile ? 18 : 24, background: "var(--pu-ffffff-b)", border: `1px solid ${T.border}`, padding: isMobile ? 18 : 32, boxShadow: "0 4px 12px var(--pu-15-23-42-006), 0 24px 56px var(--pu-15-23-42-01)" }}>
         <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", gap: isMobile ? 12 : 0, marginBottom: 20 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <BrandLogo variant="dark" height={44} />
@@ -710,7 +710,7 @@ export default function SignUp() {
 
         <div style={{ display: "flex", gap: 6, marginBottom: 22 }}>
           {STEP_LABELS.map((_, i) => (
-            <div key={i} style={{ flex: 1, height: 3, borderRadius: 2, background: i + 1 <= step ? T.grad : "#E2E8F0" }} />
+            <div key={i} style={{ flex: 1, height: 3, borderRadius: 2, background: i + 1 <= step ? T.grad : "var(--pu-e2e8f0-b)" }} />
           ))}
         </div>
 
@@ -756,7 +756,7 @@ export default function SignUp() {
               I do not agree
             </button>
             {disagreed && (
-              <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", color: "#DC2626", fontSize: 12, fontFamily: F.sans }}>
+              <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 8, background: "var(--pu-239-68-68-008)", border: "1px solid var(--pu-239-68-68-025)", color: "var(--pu-dc2626)", fontSize: 12, fontFamily: F.sans }}>
                 You can't create an account without accepting the Terms and Privacy Policy. You're welcome to review them and come back.
               </div>
             )}
@@ -823,16 +823,16 @@ export default function SignUp() {
                       minHeight: 190,
                       padding: 14,
                       borderRadius: 14,
-                      border: `1px solid ${active ? "rgba(37,99,235,0.48)" : T.border}`,
-                      background: active ? "rgba(37,99,235,0.08)" : T.input,
-                      boxShadow: active ? "0 10px 26px rgba(37,99,235,0.16)" : "none",
+                      border: `1px solid ${active ? "var(--pu-37-99-235-048)" : T.border}`,
+                      background: active ? "var(--pu-37-99-235-008)" : T.input,
+                      boxShadow: active ? "0 10px 26px var(--pu-37-99-235-016)" : "none",
                       textAlign: "left",
                       cursor: "pointer",
                     }}
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 8 }}>
                       <span style={{ fontSize: 14, fontWeight: 850, color: T.text, fontFamily: F.sans }}>{plan.name}</span>
-                      {active && <Check size={15} color="#16A34A" />}
+                      {active && <Check size={15} color="var(--pu-16a34a)" />}
                     </div>
                     <div style={{ fontSize: 24, fontWeight: 900, color: T.text, fontFamily: F.sans, lineHeight: 1 }}>
                       {price <= 0 ? "$0" : `$${price.toFixed(2)}`}
@@ -841,7 +841,7 @@ export default function SignUp() {
                     <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 12 }}>
                       {(plan.features || []).map((feature) => (
                         <span key={feature} style={{ display: "flex", gap: 6, fontSize: 11.5, color: T.t2, fontFamily: F.sans, lineHeight: 1.35 }}>
-                          <ShieldCheck size={12} color="#16A34A" style={{ flexShrink: 0, marginTop: 1 }} />
+                          <ShieldCheck size={12} color="var(--pu-16a34a)" style={{ flexShrink: 0, marginTop: 1 }} />
                           {feature}
                         </span>
                       ))}
@@ -890,12 +890,12 @@ export default function SignUp() {
             <div style={{ fontSize: 12, fontWeight: 500, color: T.t2, fontFamily: F.sans, marginBottom: 8 }}>
               Upload your resume (required, 1 file)
             </div>
-            <label style={{ display: "block", padding: 28, borderRadius: 12, border: `2px dashed ${resumeFile ? T.red : "rgba(37,99,235,0.35)"}`, background: T.input, textAlign: "center", cursor: "pointer" }}>
+            <label style={{ display: "block", padding: 28, borderRadius: 12, border: `2px dashed ${resumeFile ? T.red : "var(--pu-37-99-235-035)"}`, background: T.input, textAlign: "center", cursor: "pointer" }}>
               <Upload size={24} color={T.red} style={{ margin: "0 auto 10px" }} />
               {resumeFile ? (
                 <div>
                   <div style={{ fontSize: 13, color: T.text, fontFamily: F.sans, fontWeight: 600, marginBottom: 4 }}>
-                    <Check size={12} style={{ verticalAlign: "middle", marginRight: 6 }} color="#16A34A" />
+                    <Check size={12} style={{ verticalAlign: "middle", marginRight: 6 }} color="var(--pu-16a34a)" />
                     {resumeFile.name}
                   </div>
                   <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans }}>{Math.round(resumeFile.size / 1024)} KB</div>
@@ -921,7 +921,7 @@ export default function SignUp() {
         )}
 
         {error && (
-          <div style={{ marginTop: 16, padding: "10px 12px", borderRadius: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", color: "#DC2626", fontSize: 12, fontFamily: F.sans }}>
+          <div style={{ marginTop: 16, padding: "10px 12px", borderRadius: 8, background: "var(--pu-239-68-68-008)", border: "1px solid var(--pu-239-68-68-025)", color: "var(--pu-dc2626)", fontSize: 12, fontFamily: F.sans }}>
             {error}
           </div>
         )}

@@ -12,21 +12,21 @@ import * as api from "../../lib/api";
 // ─── Dark admin theme ────────────────────────────────────────────────────────
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 const T = {
-  bg: "#0B1220",
-  panel: "rgba(17,28,49,0.7)",
-  panel2: "rgba(15,30,55,0.5)",
-  border: "rgba(148,163,184,0.14)",
-  text: "#F1F5F9",
-  t2: "rgba(226,232,240,0.72)",
-  t3: "rgba(148,163,184,0.7)",
-  accent: "#3B82F6",
-  green: "#22C55E",
-  amber: "#F59E0B",
-  red: "#EF4444",
-  violet: "#8B5CF6",
-  cyan: "#06B6D4",
+  bg: "var(--pu-0b1220)",
+  panel: "var(--pu-17-28-49-07)",
+  panel2: "var(--pu-15-30-55-05)",
+  border: "var(--pu-148-163-184-014)",
+  text: "var(--pu-f1f5f9-t)",
+  t2: "var(--pu-226-232-240-072)",
+  t3: "var(--pu-148-163-184-07)",
+  accent: "var(--pu-3b82f6-t)",
+  green: "var(--pu-22c55e-t)",
+  amber: "var(--pu-f59e0b-t)",
+  red: "var(--pu-ef4444-t)",
+  violet: "var(--pu-8b5cf6)",
+  cyan: "var(--pu-06b6d4)",
 };
-const CHART_COLORS = [T.accent, T.violet, T.cyan, T.green, T.amber, "#EC4899", "#14B8A6", "#F97316"];
+const CHART_COLORS = [T.accent, T.violet, T.cyan, T.green, T.amber, "var(--pu-ec4899)", "var(--pu-14b8a6)", "var(--pu-f97316)"];
 
 function Panel({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
@@ -53,7 +53,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   return <div style={{ fontSize: 13, fontWeight: 700, color: T.text, fontFamily: F.sans, marginBottom: 12 }}>{children}</div>;
 }
 
-const tooltipStyle = { background: "#0F1B33", border: `1px solid ${T.border}`, borderRadius: 10, color: T.text, fontFamily: F.sans, fontSize: 12 };
+const tooltipStyle = { background: "var(--pu-0f1b33)", border: `1px solid ${T.border}`, borderRadius: 10, color: T.text, fontFamily: F.sans, fontSize: 12 };
 
 function fmtDate(iso?: string) {
   if (!iso) return "—";
@@ -83,7 +83,7 @@ function TrendArea({ data, color, label }: { data: api.DayCount[]; color: string
                 <stop offset="100%" stopColor={color} stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.1)" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--pu-148-163-184-01)" vertical={false} />
             <XAxis dataKey="date" tick={{ fill: T.t3, fontSize: 10 }} tickFormatter={(d) => String(d).slice(5)} minTickGap={24} axisLine={false} tickLine={false} />
             <YAxis tick={{ fill: T.t3, fontSize: 10 }} allowDecimals={false} axisLine={false} tickLine={false} width={34} />
             <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: T.t2 }} />
@@ -107,7 +107,7 @@ function BarBlock({ data, label }: { data: api.LabelCount[]; label: string }) {
             <BarChart data={data} layout="vertical" margin={{ top: 0, right: 12, left: 8, bottom: 0 }}>
               <XAxis type="number" hide allowDecimals={false} />
               <YAxis type="category" dataKey="label" tick={{ fill: T.t2, fontSize: 11 }} width={130} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(148,163,184,0.08)" }} />
+              <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "var(--pu-148-163-184-008)" }} />
               <Bar dataKey="count" radius={[0, 6, 6, 0]} barSize={16}>
                 {data.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
               </Bar>
@@ -162,8 +162,8 @@ export function AdminPage() {
       </div>
 
       {err && (
-        <Panel style={{ borderColor: "rgba(239,68,68,0.35)", background: "rgba(239,68,68,0.08)", marginBottom: 16, display: "flex", gap: 10, alignItems: "center" }}>
-          <AlertTriangle size={16} color={T.red} /> <span style={{ fontSize: 13, color: "#FCA5A5" }}>{err}</span>
+        <Panel style={{ borderColor: "var(--pu-239-68-68-035)", background: "var(--pu-239-68-68-008)", marginBottom: 16, display: "flex", gap: 10, alignItems: "center" }}>
+          <AlertTriangle size={16} color={T.red} /> <span style={{ fontSize: 13, color: "var(--pu-fca5a5-t)" }}>{err}</span>
         </Panel>
       )}
 
@@ -257,7 +257,7 @@ function UsersTab({ refreshKey }: { refreshKey: number }) {
             </thead>
             <tbody>
               {filtered.map((u, i) => (
-                <tr key={str(u.id) || i} onClick={() => setSelected(str(u.id))} style={{ cursor: "pointer", background: i % 2 ? "rgba(148,163,184,0.03)" : "transparent" }}>
+                <tr key={str(u.id) || i} onClick={() => setSelected(str(u.id))} style={{ cursor: "pointer", background: i % 2 ? "var(--pu-148-163-184-003)" : "transparent" }}>
                   <td style={{ padding: "9px 10px", color: T.text, fontWeight: 600, whiteSpace: "nowrap" }}>{str(u.first_name)} {str(u.last_name)}</td>
                   <td style={{ padding: "9px 10px", color: T.t2 }}>{str(u.email)}</td>
                   <td style={{ padding: "9px 10px", color: T.t2 }}>{str(u.plan) || "—"}</td>
@@ -296,8 +296,8 @@ function UserDrawer({ userId, onClose }: { userId: string; onClose: () => void }
   const doRevoke = async () => { try { const r = await api.adminRevokeSessions(userId); setMsg(`Revoked ${r.revoked} session(s).`); } catch (e) { setMsg((e as Error).message); } };
 
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(2,6,20,0.6)", zIndex: 70, display: "flex", justifyContent: "flex-end" }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: 460, maxWidth: "100vw", height: "100%", overflowY: "auto", background: "#0D1729", borderLeft: `1px solid ${T.border}`, padding: 22, boxSizing: "border-box" }}>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--pu-2-6-20-06)", zIndex: 70, display: "flex", justifyContent: "flex-end" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 460, maxWidth: "100vw", height: "100%", overflowY: "auto", background: "var(--pu-0d1729)", borderLeft: `1px solid ${T.border}`, padding: 22, boxSizing: "border-box" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <div style={{ fontSize: 16, fontWeight: 800, color: T.text }}>User details</div>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: T.t3 }}><X size={18} /></button>
@@ -319,7 +319,7 @@ function UserDrawer({ userId, onClose }: { userId: string; onClose: () => void }
               <div style={{ marginBottom: 16 }}>
                 <div style={{ fontSize: 12, color: T.t3, marginBottom: 6, fontWeight: 600 }}>Target positions</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {prefs.target_roles.map((r: string) => <span key={r} style={{ fontSize: 11, padding: "4px 8px", borderRadius: 999, background: `${T.accent}18`, color: "#93C5FD", border: `1px solid ${T.accent}33` }}>{r}</span>)}
+                  {prefs.target_roles.map((r: string) => <span key={r} style={{ fontSize: 11, padding: "4px 8px", borderRadius: 999, background: `${T.accent}18`, color: "var(--pu-93c5fd-t)", border: `1px solid ${T.accent}33` }}>{r}</span>)}
                 </div>
               </div>
             )}
@@ -341,10 +341,10 @@ function UserDrawer({ userId, onClose }: { userId: string; onClose: () => void }
                 ))}
             </div>
 
-            {msg && <div style={{ fontSize: 12.5, color: "#93C5FD", marginBottom: 10 }}>{msg}</div>}
+            {msg && <div style={{ fontSize: 12.5, color: "var(--pu-93c5fd-t)", marginBottom: 10 }}>{msg}</div>}
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={doReset} style={{ flex: 1, height: 40, borderRadius: 10, border: `1px solid ${T.border}`, background: T.panel, color: T.t2, fontSize: 12.5, fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: F.sans }}><KeyRound size={14} /> Reset password</button>
-              <button onClick={doRevoke} style={{ flex: 1, height: 40, borderRadius: 10, border: `1px solid rgba(239,68,68,0.35)`, background: "rgba(239,68,68,0.1)", color: "#FCA5A5", fontSize: 12.5, fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: F.sans }}><LogOut size={14} /> Revoke sessions</button>
+              <button onClick={doRevoke} style={{ flex: 1, height: 40, borderRadius: 10, border: `1px solid var(--pu-239-68-68-035)`, background: "var(--pu-239-68-68-01)", color: "var(--pu-fca5a5-t)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: F.sans }}><LogOut size={14} /> Revoke sessions</button>
             </div>
           </>
         )}
@@ -469,10 +469,10 @@ function FeedbackTab({ refreshKey }: { refreshKey: number }) {
           <div style={{ height: 200 }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={distData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.1)" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--pu-148-163-184-01)" vertical={false} />
                 <XAxis dataKey="label" tick={{ fill: T.t3, fontSize: 11 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: T.t3, fontSize: 10 }} allowDecimals={false} axisLine={false} tickLine={false} width={28} />
-                <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(148,163,184,0.08)" }} />
+                <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "var(--pu-148-163-184-008)" }} />
                 <Bar dataKey="count" radius={[6, 6, 0, 0]} barSize={34}>
                   {distData.map((_, i) => <Cell key={i} fill={[T.green, T.green, T.amber, T.red, T.red][i]} />)}
                 </Bar>
@@ -505,7 +505,7 @@ function FeedbackTab({ refreshKey }: { refreshKey: number }) {
               <div key={f.id} style={{ background: T.panel2, border: `1px solid ${T.border}`, borderRadius: 12, padding: 14 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
                   <span style={{ color: T.amber, fontSize: 13 }}>{"★".repeat(f.rating)}<span style={{ color: T.t3 }}>{"★".repeat(Math.max(0, 5 - f.rating))}</span></span>
-                  <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: `${T.accent}18`, color: "#93C5FD", border: `1px solid ${T.accent}33` }}>{f.category}</span>
+                  <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: `${T.accent}18`, color: "var(--pu-93c5fd-t)", border: `1px solid ${T.accent}33` }}>{f.category}</span>
                   <span style={{ fontSize: 11.5, color: T.t3 }}>{f.email || f.user_id}</span>
                   <span style={{ fontSize: 11.5, color: T.t3, marginLeft: "auto" }}>{fmtDateTime(f.created_at)}</span>
                 </div>

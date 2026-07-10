@@ -9,15 +9,15 @@ import { BrandLogo } from "../components/BrandLogo";
 const F = { sans: "'Plus Jakarta Sans', sans-serif" };
 // Clean, light SaaS palette (matches Home / SignUp).
 const T = {
-  bg: "#F8FAFC",
-  surface: "#FFFFFF",
-  border: "#E2E8F0",
-  text: "#0F172A",
-  t2: "#475569",
-  t3: "#94A3B8",
-  grad: "linear-gradient(135deg, #2563EB, #0EA5E9)",
-  accent: "#2563EB",
-  input: "#F8FAFC",
+  bg: "var(--pu-f8fafc-b)",
+  surface: "var(--pu-ffffff-b)",
+  border: "var(--pu-e2e8f0-b)",
+  text: "var(--pu-0f172a-t)",
+  t2: "var(--pu-475569-t)",
+  t3: "var(--pu-94a3b8-t)",
+  grad: "linear-gradient(135deg, var(--pu-2563eb), var(--pu-0ea5e9))",
+  accent: "var(--pu-2563eb)",
+  input: "var(--pu-f8fafc-b)",
 };
 
 function useViewportFlags() {
@@ -65,7 +65,7 @@ function StyledInput({
           }}
           onFocus={(e) => {
             e.target.style.borderColor = T.accent;
-            e.target.style.boxShadow = "0 0 0 3px rgba(37,99,235,0.12)";
+            e.target.style.boxShadow = "0 0 0 3px var(--pu-37-99-235-012)";
           }}
           onBlur={(e) => {
             e.target.style.borderColor = T.border;
@@ -151,28 +151,28 @@ export default function SignIn() {
       {!isMobile && (
         <div style={{
           position: "relative", overflow: "hidden",
-          background: "linear-gradient(160deg, #1E3A8A 0%, #2563EB 55%, #0EA5E9 100%)",
+          background: "linear-gradient(160deg, var(--pu-1e3a8a) 0%, var(--pu-2563eb) 55%, var(--pu-0ea5e9) 100%)",
           display: "flex", flexDirection: "column", justifyContent: "center", padding: 56,
         }}>
-          <div style={{ position: "absolute", top: "-15%", right: "-10%", width: 420, height: 420, borderRadius: "50%", background: "rgba(255,255,255,0.07)", filter: "blur(10px)" }} />
-          <div style={{ position: "absolute", bottom: "-20%", left: "-10%", width: 380, height: 380, borderRadius: "50%", background: "rgba(255,255,255,0.05)", filter: "blur(10px)" }} />
+          <div style={{ position: "absolute", top: "-15%", right: "-10%", width: 420, height: 420, borderRadius: "50%", background: "var(--pu-255-255-255-007)", filter: "blur(10px)" }} />
+          <div style={{ position: "absolute", bottom: "-20%", left: "-10%", width: 380, height: 380, borderRadius: "50%", background: "var(--pu-255-255-255-005)", filter: "blur(10px)" }} />
           <div style={{ position: "relative", zIndex: 1, maxWidth: 420 }}>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 10, marginBottom: 28 }}>
               <BrandLogo height={56} />
             </span>
-            <h2 style={{ fontFamily: F.sans, fontSize: 32, fontWeight: 800, color: "#fff", lineHeight: 1.2, letterSpacing: "-0.02em", marginBottom: 14 }}>
+            <h2 style={{ fontFamily: F.sans, fontSize: 32, fontWeight: 800, color: "var(--pu-ffffff-t)", lineHeight: 1.2, letterSpacing: "-0.02em", marginBottom: 14 }}>
               Your job search, focused on where you can actually get hired.
             </h2>
-            <p style={{ fontSize: 15.5, color: "rgba(255,255,255,0.85)", fontFamily: F.sans, lineHeight: 1.7, marginBottom: 32 }}>
+            <p style={{ fontSize: 15.5, color: "var(--pu-255-255-255-085)", fontFamily: F.sans, lineHeight: 1.7, marginBottom: 32 }}>
               Sign in to see your matches, ATS scores, and visa-friendly roles.
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               {VALUE_POINTS.map((point) => (
                 <div key={point.text} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <span style={{ width: 30, height: 30, borderRadius: 8, background: "rgba(255,255,255,0.14)", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <point.icon size={15} color="#fff" />
+                  <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--pu-255-255-255-014)", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <point.icon size={15} color="var(--pu-ffffff-t)" />
                   </span>
-                  <span style={{ fontSize: 14.5, color: "rgba(255,255,255,0.92)", fontFamily: F.sans, fontWeight: 500 }}>{point.text}</span>
+                  <span style={{ fontSize: 14.5, color: "var(--pu-255-255-255-092)", fontFamily: F.sans, fontWeight: 500 }}>{point.text}</span>
                 </div>
               ))}
             </div>
@@ -209,9 +209,9 @@ export default function SignIn() {
             </div>
             {error && (
               <div style={{
-                color: "#DC2626", fontSize: 13, marginBottom: 14, fontFamily: F.sans,
-                padding: "10px 12px", borderRadius: 8, background: "rgba(220,38,38,0.06)",
-                border: "1px solid rgba(220,38,38,0.2)",
+                color: "var(--pu-dc2626)", fontSize: 13, marginBottom: 14, fontFamily: F.sans,
+                padding: "10px 12px", borderRadius: 8, background: "var(--pu-220-38-38-006)",
+                border: "1px solid var(--pu-220-38-38-02)",
               }}>{error}</div>
             )}
             <motion.button
@@ -220,9 +220,9 @@ export default function SignIn() {
               disabled={loading}
               style={{
                 width: "100%", padding: "14px", borderRadius: 12, border: "none",
-                cursor: loading ? "wait" : "pointer", background: T.grad, color: "#fff",
+                cursor: loading ? "wait" : "pointer", background: T.grad, color: "var(--pu-ffffff-t)",
                 fontSize: 15.5, fontWeight: 700, fontFamily: F.sans,
-                boxShadow: "0 8px 20px rgba(37,99,235,0.25)",
+                boxShadow: "0 8px 20px var(--pu-37-99-235-025)",
                 opacity: loading ? 0.75 : 1,
               }}
             >
@@ -236,7 +236,7 @@ export default function SignIn() {
                 style={{
                   width: "100%", padding: "12px", marginTop: 10, borderRadius: 12,
                   border: `1px solid ${T.border}`, cursor: loading ? "wait" : "pointer",
-                  background: "#fff", color: T.text, fontSize: 13.5, fontWeight: 600, fontFamily: F.sans,
+                  background: "var(--pu-ffffff-b)", color: T.text, fontSize: 13.5, fontWeight: 600, fontFamily: F.sans,
                 }}
                 title={`${demo.email} / ${demo.password}`}
               >

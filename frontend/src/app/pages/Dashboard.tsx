@@ -11,6 +11,7 @@ import {
 import { useAuth } from "../context/AuthContext";
 import * as api from "../lib/api";
 import FeedbackWidget from "../components/FeedbackWidget";
+import { ThemeToggle } from "../components/Layout";
 import { ResumePage } from "../components/dashboard/ResumePage";
 import { JobsPage } from "../components/dashboard/JobsPage";
 import { AlertsPage } from "../components/dashboard/AlertsPage";
@@ -24,21 +25,21 @@ import { BrandLogo } from "../components/BrandLogo";
 
 // ─── Design tokens ───
 const T = {
-  bg:     "#0B1220",
-  surface: "#111E33",
-  glass:  "rgba(13,28,53,0.7)",
-  cardGlass: "rgba(15,30,55,0.45)",
-  border: "rgba(148,163,184,0.08)",
-  borderHover: "rgba(59,130,246,0.4)",
-  text:   "#F1F5F9",
-  t2:     "rgba(226,232,240,0.72)",
-  t3:     "rgba(148,163,184,0.4)",
-  grad:   "linear-gradient(135deg, #2563EB, #0EA5E9)",
-  red:    "#3B82F6",
-  burnt:  "#60A5FA",
-  dark:   "#1D4ED8",
-  shadow: "0 4px 20px rgba(1,17,38,0.3)",
-  shadowH: "0 20px 50px rgba(1,17,38,0.4), 0 0 0 1px rgba(59,130,246,0.3)",
+  bg:     "var(--pu-0b1220)",
+  surface: "var(--pu-111e33)",
+  glass:  "var(--pu-13-28-53-07)",
+  cardGlass: "var(--pu-15-30-55-045)",
+  border: "var(--pu-148-163-184-008)",
+  borderHover: "var(--pu-59-130-246-04)",
+  text:   "var(--pu-f1f5f9-t)",
+  t2:     "var(--pu-226-232-240-072)",
+  t3:     "var(--pu-148-163-184-04)",
+  grad:   "linear-gradient(135deg, var(--pu-2563eb), var(--pu-0ea5e9))",
+  red:    "var(--pu-3b82f6-t)",
+  burnt:  "var(--pu-60a5fa-t)",
+  dark:   "var(--pu-1d4ed8)",
+  shadow: "0 4px 20px var(--pu-1-17-38-03)",
+  shadowH: "0 20px 50px var(--pu-1-17-38-04), 0 0 0 1px var(--pu-59-130-246-03)",
 };
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 
@@ -124,7 +125,7 @@ function SpringCounter({ target, suffix = "", prefix = "" }: { target: number; s
 function ATSRing({ score }: { score: number }) {
   const safeScore = Math.max(0, Math.min(100, Number.isFinite(score) ? score : 0));
   const r = 52, circ = 2 * Math.PI * r, offset = circ * (1 - safeScore / 100);
-  const ringColor = safeScore >= 80 ? "#22c55e" : safeScore >= 60 ? "#f59e0b" : safeScore > 0 ? "#F1F5F9" : "rgba(148,163,184,0.75)";
+  const ringColor = safeScore >= 80 ? "var(--pu-22c55e-b)" : safeScore >= 60 ? "var(--pu-f59e0b-b)" : safeScore > 0 ? "var(--pu-f1f5f9-b)" : "var(--pu-148-163-184-075)";
   return (
     <div style={{ position: "relative", width: 120, height: 120, flexShrink: 0 }}>
       <svg viewBox="0 0 120 120" style={{ width: "100%", height: "100%", transform: "rotate(-90deg)" }}>
@@ -134,13 +135,13 @@ function ATSRing({ score }: { score: number }) {
           </linearGradient>
           <filter id="atsGlow"><feGaussianBlur stdDeviation="3" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
         </defs>
-        <circle cx="60" cy="60" r={r} fill="none" stroke="rgba(148,163,184,0.16)" strokeWidth="9" />
+        <circle cx="60" cy="60" r={r} fill="none" stroke="var(--pu-148-163-184-016)" strokeWidth="9" />
         <motion.circle cx="60" cy="60" r={r} fill="none" stroke={ringColor} strokeWidth="9" strokeLinecap="round"
           strokeDasharray={circ} initial={{ strokeDashoffset: circ }} animate={{ strokeDashoffset: offset }}
           transition={{ duration: 1.5, ease: "easeOut" }} filter="url(#atsGlow)" />
       </svg>
       <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ fontFamily: F.mono, fontSize: 28, fontWeight: 800, color: "#F1F5F9", lineHeight: 1, textShadow: "0 0 16px rgba(148,163,184,0.22)" }}>{safeScore || "--"}</span>
+        <span style={{ fontFamily: F.mono, fontSize: 28, fontWeight: 800, color: "var(--pu-f1f5f9-t)", lineHeight: 1, textShadow: "0 0 16px var(--pu-148-163-184-022)" }}>{safeScore || "--"}</span>
         <span style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: T.t2, fontFamily: F.sans, marginTop: 3 }}>ATS Score</span>
       </div>
     </div>
@@ -166,9 +167,9 @@ function GlowCard({ children, style = {}, hoverY = -6, onClick }: {
       }}
     >
       <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500"
-        style={{ background: "radial-gradient(ellipse at 50% -25%, rgba(59,130,246,0.16) 0%, transparent 65%)", zIndex: 0 }} />
+        style={{ background: "radial-gradient(ellipse at 50% -25%, var(--pu-59-130-246-016) 0%, transparent 65%)", zIndex: 0 }} />
       <div className="absolute top-0 left-0 right-0 h-px pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500"
-        style={{ background: "linear-gradient(to right, transparent, rgba(59,130,246,0.45), transparent)" }} />
+        style={{ background: "linear-gradient(to right, transparent, var(--pu-59-130-246-045), transparent)" }} />
       <div style={{ position: "relative", zIndex: 1 }}>{children}</div>
     </motion.div>
   );
@@ -316,7 +317,7 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: T.t3, fontFamily: F.sans }}>Resume ATS Score</div>
             {hasResume && (
-              <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 9999, background: "rgba(34,197,94,0.10)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.25)", fontFamily: F.sans, letterSpacing: "0.04em" }}>LOADED</span>
+              <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 9999, background: "var(--pu-34-197-94-01)", color: "var(--pu-22c55e-t)", border: "1px solid var(--pu-34-197-94-025)", fontFamily: F.sans, letterSpacing: "0.04em" }}>LOADED</span>
             )}
           </div>
           <div style={{ display: "flex", justifyContent: "center" }}><ATSRing score={resumeScore} /></div>
@@ -343,11 +344,11 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
         {/* Applications */}
         <GlowCard style={{ padding: 20 }} onClick={() => navigate("/dashboard/analytics")}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(37,99,235,0.1)", border: "1px solid rgba(37,99,235,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--pu-37-99-235-01)", border: "1px solid var(--pu-37-99-235-02)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <CheckCircle2 size={16} color={T.burnt} />
             </div>
             {totalApplications > 0 && (
-            <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#22c55e", fontFamily: F.sans, fontWeight: 600 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--pu-22c55e-t)", fontFamily: F.sans, fontWeight: 600 }}>
               <ArrowUpRight size={12} /> {totalApplications}
             </div>
             )}
@@ -368,11 +369,11 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
         {/* Resumes */}
         <GlowCard style={{ padding: 20 }}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(15,30,55,0.2)", border: "1px solid rgba(15,30,55,0.4)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--pu-15-30-55-02)", border: "1px solid var(--pu-15-30-55-04)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <FileCheck size={16} color={T.text} />
             </div>
             {hasResume && (
-              <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 9999, background: "rgba(59,130,246,0.12)", color: T.red, border: "1px solid rgba(59,130,246,0.25)", fontFamily: F.sans }}>Active</span>
+              <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 9999, background: "var(--pu-59-130-246-012)", color: T.red, border: "1px solid var(--pu-59-130-246-025)", fontFamily: F.sans }}>Active</span>
             )}
           </div>
           <div style={{ fontFamily: F.sans, fontSize: isMobile ? 30 : 38, fontWeight: 800, color: T.text, lineHeight: 1, marginBottom: 4 }}><SpringCounter target={totalResumes} /></div>
@@ -395,7 +396,7 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
         {featuredLoading && visibleJobs.length === 0 ? (
           <LoadingLogo label="Loading featured positions" />
         ) : !featuredLoading && visibleJobs.length === 0 ? (
-          <div style={{ padding: 34, borderRadius: 16, border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.03)", textAlign: "center" }}>
+          <div style={{ padding: 34, borderRadius: 16, border: `1px solid ${T.border}`, background: "var(--pu-148-163-184-003)", textAlign: "center" }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: T.text, fontFamily: F.sans, marginBottom: 6 }}>No matched positions yet</div>
             <div style={{ fontSize: 12.5, color: T.t2, fontFamily: F.sans, lineHeight: 1.6 }}>
               Make sure you have an active resume and at least 5 target roles selected. New matches appear here as they are scraped.
@@ -407,7 +408,7 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
             <motion.div key={job.id} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 + i * 0.08 }}>
               <GlowCard style={{ padding: 20 }} onClick={() => handleJobClick(job.id)}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: "50%", background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: F.sans, boxShadow: "0 0 12px rgba(59,130,246,0.3)" }}>
+                  <div style={{ width: 40, height: 40, borderRadius: "50%", background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "var(--pu-ffffff-t)", fontFamily: F.sans, boxShadow: "0 0 12px var(--pu-59-130-246-03)" }}>
                     {job.company[0]}
                   </div>
                   <span style={{ fontSize: 14, fontWeight: 800, color: job.match === null ? T.t3 : T.red, fontFamily: F.mono }}>
@@ -418,14 +419,14 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
                 <div style={{ fontSize: 12, color: T.t2, fontFamily: F.sans, marginBottom: 10 }}>{job.company}</div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
                   {job.visa.map((v) => (
-                    <span key={v} style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 4, background: "rgba(37,99,235,0.15)", color: T.burnt, border: "1px solid rgba(37,99,235,0.3)", fontFamily: F.sans }}>{v}</span>
+                    <span key={v} style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 4, background: "var(--pu-37-99-235-015)", color: T.burnt, border: "1px solid var(--pu-37-99-235-03)", fontFamily: F.sans }}>{v}</span>
                   ))}
                 </div>
                 <div style={{ display: "flex", gap: 8, fontSize: 11, color: T.t3, fontFamily: F.sans }}>
                   <span style={{ display: "flex", alignItems: "center", gap: 3 }}><MapPin size={10} />{job.location}</span>
                   {job.salary && <span style={{ display: "flex", alignItems: "center", gap: 3 }}><DollarSign size={10} />{job.salary}</span>}
                 </div>
-                <div style={{ height: 3, borderRadius: 2, background: "rgba(148,163,184,0.05)", marginTop: 12, overflow: "hidden" }}>
+                <div style={{ height: 3, borderRadius: 2, background: "var(--pu-148-163-184-005)", marginTop: 12, overflow: "hidden" }}>
                   <motion.div initial={{ width: 0 }} animate={{ width: `${job.match ?? 0}%` }} transition={{ duration: 1, ease: "easeOut", delay: 0.3 + i * 0.08 }}
                     style={{ height: "100%", borderRadius: 2, background: T.grad }} />
                 </div>
@@ -501,8 +502,8 @@ export default function Dashboard() {
     <div style={{ display: "flex", minHeight: "100vh", background: T.bg, position: "relative", fontFamily: F.sans, overflowX: "hidden" }}>
       {/* Ambient orbs */}
       <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 0, overflow: "hidden" }}>
-        <div style={{ position: "absolute", top: "-8%", left: "-4%", width: 500, height: 500, borderRadius: "50%", filter: "blur(120px)", background: "rgba(37,99,235,0.12)" }} />
-        <div style={{ position: "absolute", bottom: "5%", right: "-6%", width: 420, height: 420, borderRadius: "50%", filter: "blur(120px)", background: "rgba(59,130,246,0.09)" }} />
+        <div style={{ position: "absolute", top: "-8%", left: "-4%", width: 500, height: 500, borderRadius: "50%", filter: "blur(120px)", background: "var(--pu-37-99-235-012)" }} />
+        <div style={{ position: "absolute", bottom: "5%", right: "-6%", width: 420, height: 420, borderRadius: "50%", filter: "blur(120px)", background: "var(--pu-59-130-246-009)" }} />
       </div>
 
       {/* ── Desktop Sidebar: 76px gutter in layout; expands over content on hover ── */}
@@ -511,7 +512,7 @@ export default function Dashboard() {
         onMouseEnter={() => setSidebarHovered(true)}
         onMouseLeave={() => setSidebarHovered(false)}
         className="hidden lg:flex flex-col"
-        style={{ position: "fixed", top: 0, left: 0, height: "100vh", width: compactSidebar ? 76 : 256, borderRight: `1px solid ${T.border}`, background: compactSidebar ? "rgba(1,17,38,0.85)" : "rgba(1,17,38,0.97)", backdropFilter: "blur(24px)", zIndex: 40, overflow: "hidden", transition: "width 0.22s ease, background 0.22s ease", boxShadow: compactSidebar ? "none" : "16px 0 48px rgba(1,17,38,0.55)" }}>
+        style={{ position: "fixed", top: 0, left: 0, height: "100vh", width: compactSidebar ? 76 : 256, borderRight: `1px solid ${T.border}`, background: compactSidebar ? "var(--pu-1-17-38-085)" : "var(--pu-1-17-38-097)", backdropFilter: "blur(24px)", zIndex: 40, overflow: "hidden", transition: "width 0.22s ease, background 0.22s ease", boxShadow: compactSidebar ? "none" : "16px 0 48px var(--pu-1-17-38-055)" }}>
         {/* Logo */}
         <div style={{ padding: compactSidebar ? "0 16px" : "0 24px", height: 64, display: "flex", alignItems: "center", justifyContent: compactSidebar ? "center" : "flex-start", borderBottom: `1px solid ${T.border}` }}>
           <Link to="/" title="PlaceUp Career" style={{ display: "flex", alignItems: "center", textDecoration: "none" }}>
@@ -537,7 +538,7 @@ export default function Dashboard() {
                 borderRadius: 10,
                 textDecoration: "none",
                 cursor: "pointer",
-                background: isActive ? "rgba(59,130,246,0.09)" : "transparent",
+                background: isActive ? "var(--pu-59-130-246-009)" : "transparent",
                 color: isActive ? T.red : T.t2,
                 fontSize: 13,
                 fontFamily: F.sans,
@@ -545,7 +546,7 @@ export default function Dashboard() {
                 textAlign: "left",
                 position: "relative",
                 transition: "all 0.2s",
-                boxShadow: isActive ? "0 0 0 1px rgba(59,130,246,0.2)" : "none",
+                boxShadow: isActive ? "0 0 0 1px var(--pu-59-130-246-02)" : "none",
               })}
             >
               {({ isActive }) => (
@@ -563,11 +564,11 @@ export default function Dashboard() {
         {!compactSidebar && <div style={{ padding: "10px 14px", borderTop: `1px solid ${T.border}`, borderBottom: `1px solid ${T.border}` }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: T.t3, fontFamily: F.sans }}>Saved Jobs</span>
-            <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 9999, background: "rgba(59,130,246,0.12)", color: T.red, border: "1px solid rgba(59,130,246,0.25)", fontFamily: F.sans }}>5/5</span>
+            <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 9999, background: "var(--pu-59-130-246-012)", color: T.red, border: "1px solid var(--pu-59-130-246-025)", fontFamily: F.sans }}>5/5</span>
           </div>
           <div style={{ display: "flex", gap: 5 }}>
             {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: i <= 5 ? T.grad : "rgba(148,163,184,0.08)" }} />
+              <div key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: i <= 5 ? T.grad : "var(--pu-148-163-184-008)" }} />
             ))}
           </div>
         </div>}
@@ -577,8 +578,8 @@ export default function Dashboard() {
           <motion.button whileTap={{ scale: 0.97 }} onClick={() => navigate("/dashboard/profile")}
             title={displayName}
             style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: compactSidebar ? "center" : "flex-start", gap: compactSidebar ? 0 : 10, padding: compactSidebar ? "10px 0" : "10px 12px", borderRadius: 10, border: "none", cursor: "pointer", background: "transparent", textAlign: "left", transition: "background 0.2s" }}
-            className="hover:bg-[rgba(148,163,184,0.03)]">
-            <div style={{ width: 34, height: 34, borderRadius: "50%", background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 12, fontWeight: 700, fontFamily: F.sans, boxShadow: "0 2px 8px rgba(59,130,246,0.35)", flexShrink: 0 }}>
+            className="hover:bg-[var(--pu-148-163-184-003)]">
+            <div style={{ width: 34, height: 34, borderRadius: "50%", background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--pu-ffffff-t)", fontSize: 12, fontWeight: 700, fontFamily: F.sans, boxShadow: "0 2px 8px var(--pu-59-130-246-035)", flexShrink: 0 }}>
               {displayAvatar}
             </div>
             {!compactSidebar && <div style={{ flex: 1, minWidth: 0 }}>
@@ -595,17 +596,17 @@ export default function Dashboard() {
         {sidebarOpen && (
           <div className={compactSidebar ? "fixed inset-0" : "lg:hidden fixed inset-0"} style={{ zIndex: 50 }}>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              onClick={() => setSidebarOpen(false)} style={{ position: "absolute", inset: 0, background: "rgba(1,17,38,0.85)", backdropFilter: "blur(4px)" }} />
+              onClick={() => setSidebarOpen(false)} style={{ position: "absolute", inset: 0, background: "var(--pu-1-17-38-085)", backdropFilter: "blur(4px)" }} />
             <motion.aside initial={{ x: -280 }} animate={{ x: 0 }} exit={{ x: -280 }}
               transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 256, background: "rgba(1,17,38,0.98)", backdropFilter: "blur(24px)", borderRight: `1px solid ${T.border}`, padding: "24px 10px" }}>
+              style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 256, background: "var(--pu-1-17-38-098)", backdropFilter: "blur(24px)", borderRight: `1px solid ${T.border}`, padding: "24px 10px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", padding: "0 12px", marginBottom: 20 }}>
                 <BrandLogo height={36} />
-                <button onClick={() => setSidebarOpen(false)} style={{ background: "rgba(148,163,184,0.05)", border: "none", cursor: "pointer", color: T.text, padding: 6, borderRadius: 6 }}><X size={16} /></button>
+                <button onClick={() => setSidebarOpen(false)} style={{ background: "var(--pu-148-163-184-005)", border: "none", cursor: "pointer", color: T.text, padding: 6, borderRadius: 6 }}><X size={16} /></button>
               </div>
               {navItems.map((item) => (
                 <button key={item.label} onClick={() => { navigate(item.to!); setSidebarOpen(false); }}
-                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, height: 40, padding: "0 12px", borderRadius: 10, border: "none", cursor: "pointer", marginBottom: 2, background: isNavItemActive(item.to!) ? "rgba(59,130,246,0.09)" : "transparent", color: isNavItemActive(item.to!) ? T.red : T.t2, fontSize: 13, fontFamily: F.sans, textAlign: "left" }}>
+                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, height: 40, padding: "0 12px", borderRadius: 10, border: "none", cursor: "pointer", marginBottom: 2, background: isNavItemActive(item.to!) ? "var(--pu-59-130-246-009)" : "transparent", color: isNavItemActive(item.to!) ? T.red : T.t2, fontSize: 13, fontFamily: F.sans, textAlign: "left" }}>
                   <item.icon size={16} />{item.label}
                 </button>
               ))}
@@ -617,13 +618,13 @@ export default function Dashboard() {
       {/* ── Main Content ── */}
       <main style={{ flex: 1, minWidth: 0, overflow: "auto", position: "relative", zIndex: 1 }}>
         {/* Topbar */}
-        <div style={{ position: "sticky", top: 0, zIndex: 40, height: 64, background: "rgba(1,17,38,0.85)", backdropFilter: "blur(24px)", borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", padding: isMobile ? "0 12px" : "0 24px", gap: 10 }}>
+        <div style={{ position: "sticky", top: 0, zIndex: 40, height: 64, background: "var(--pu-1-17-38-085)", backdropFilter: "blur(24px)", borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", padding: isMobile ? "0 12px" : "0 24px", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <button
               className={compactSidebar ? "" : "lg:hidden"}
               aria-label="Open navigation"
               onClick={() => setSidebarOpen(true)}
-              style={{ background: "rgba(148,163,184,0.05)", border: "none", cursor: "pointer", color: T.text, padding: 8, borderRadius: 8 }}
+              style={{ background: "var(--pu-148-163-184-005)", border: "none", cursor: "pointer", color: T.text, padding: 8, borderRadius: 8 }}
             >
               <Menu size={18} />
             </button>
@@ -633,13 +634,15 @@ export default function Dashboard() {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 6 : 8 }}>
+            {/* Dark / light mode */}
+            <ThemeToggle size={38} />
             {/* Notifications */}
             <div style={{ position: "relative" }}>
               <motion.button whileTap={{ scale: 0.92 }} onClick={() => { setNotifOpen(!notifOpen); setUserMenuOpen(false); }}
-                style={{ width: 38, height: 38, borderRadius: 10, border: `1px solid ${notifOpen ? "rgba(59,130,246,0.35)" : T.border}`, background: notifOpen ? "rgba(59,130,246,0.08)" : "rgba(148,163,184,0.04)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: T.t2, position: "relative" }}>
+                style={{ width: 38, height: 38, borderRadius: 10, border: `1px solid ${notifOpen ? "var(--pu-59-130-246-035)" : T.border}`, background: notifOpen ? "var(--pu-59-130-246-008)" : "var(--pu-148-163-184-004)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: T.t2, position: "relative" }}>
                 <Bell size={16} />
                 {bellCount > 0 && (
-                  <div style={{ position: "absolute", top: -5, right: -5, minWidth: 17, height: 17, padding: "0 4px", borderRadius: 9999, background: T.red, color: "#fff", fontSize: 10, fontWeight: 800, fontFamily: F.sans, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: `0 0 6px ${T.red}`, lineHeight: 1 }}>
+                  <div style={{ position: "absolute", top: -5, right: -5, minWidth: 17, height: 17, padding: "0 4px", borderRadius: 9999, background: T.red, color: "var(--pu-ffffff-t)", fontSize: 10, fontWeight: 800, fontFamily: F.sans, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: `0 0 6px ${T.red}`, lineHeight: 1 }}>
                     {bellCount > 99 ? "99+" : bellCount}
                   </div>
                 )}
@@ -647,13 +650,13 @@ export default function Dashboard() {
               <AnimatePresence>
                 {notifOpen && (
                   <motion.div initial={{ opacity: 0, y: 6, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 6, scale: 0.97 }} transition={{ duration: 0.16 }}
-                    style={{ position: "absolute", right: isMobile ? -52 : 0, top: "calc(100% + 8px)", width: isMobile ? "calc(100vw - 24px)" : 320, maxWidth: 320, borderRadius: 16, background: "rgba(8,14,32,0.97)", backdropFilter: "blur(24px)", border: `1px solid ${T.border}`, boxShadow: "0 20px 40px rgba(1,17,38,0.5)", overflow: "hidden" }}>
+                    style={{ position: "absolute", right: isMobile ? -52 : 0, top: "calc(100% + 8px)", width: isMobile ? "calc(100vw - 24px)" : 320, maxWidth: 320, borderRadius: 16, background: "var(--pu-8-14-32-097)", backdropFilter: "blur(24px)", border: `1px solid ${T.border}`, boxShadow: "0 20px 40px var(--pu-1-17-38-05)", overflow: "hidden" }}>
                     <div style={{ padding: "14px 20px", borderBottom: `1px solid ${T.border}`, display: "flex", justifyContent: "space-between" }}>
                       <span style={{ fontFamily: F.sans, fontSize: 14, fontWeight: 700, color: T.text }}>Notifications</span>
-                      <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 9999, background: "rgba(59,130,246,0.15)", color: T.red, fontFamily: F.sans }}>{bellCount} new</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 9999, background: "var(--pu-59-130-246-015)", color: T.red, fontFamily: F.sans }}>{bellCount} new</span>
                     </div>
                     {newTargetRoles > 0 && (
-                      <div style={{ padding: "12px 20px", borderBottom: `1px solid ${T.border}`, background: "rgba(59,130,246,0.06)" }}>
+                      <div style={{ padding: "12px 20px", borderBottom: `1px solid ${T.border}`, background: "var(--pu-59-130-246-006)" }}>
                         <div style={{ fontSize: 12.5, fontWeight: 700, color: T.text, fontFamily: F.sans, marginBottom: 6 }}>
                           {newTargetRoles} new {newTargetRoles === 1 ? "job matches" : "jobs match"} your target roles (24h)
                         </div>
@@ -664,13 +667,13 @@ export default function Dashboard() {
                           </div>
                         ))}
                         <button onClick={() => { navigate("/dashboard/jobs"); setNotifOpen(false); }}
-                          style={{ marginTop: 8, width: "100%", padding: "7px", borderRadius: 8, cursor: "pointer", background: "rgba(59,130,246,0.12)", border: "1px solid rgba(59,130,246,0.25)", color: T.red, fontSize: 11.5, fontWeight: 700, fontFamily: F.sans }}>
+                          style={{ marginTop: 8, width: "100%", padding: "7px", borderRadius: 8, cursor: "pointer", background: "var(--pu-59-130-246-012)", border: "1px solid var(--pu-59-130-246-025)", color: T.red, fontSize: 11.5, fontWeight: 700, fontFamily: F.sans }}>
                           View new positions
                         </button>
                       </div>
                     )}
                     {notifications.map((n) => (
-                      <div key={n.id} style={{ padding: "12px 20px", borderBottom: `1px solid ${T.border}`, background: n.unread ? "rgba(59,130,246,0.04)" : "transparent", display: "flex", gap: 10, alignItems: "flex-start" }}>
+                      <div key={n.id} style={{ padding: "12px 20px", borderBottom: `1px solid ${T.border}`, background: n.unread ? "var(--pu-59-130-246-004)" : "transparent", display: "flex", gap: 10, alignItems: "flex-start" }}>
                         {n.unread && <div style={{ width: 6, height: 6, borderRadius: "50%", background: T.red, flexShrink: 0, marginTop: 5, boxShadow: `0 0 4px ${T.red}` }} />}
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 12, color: T.t2, fontFamily: F.sans, lineHeight: 1.5 }}>{n.text}</div>
@@ -679,7 +682,7 @@ export default function Dashboard() {
                       </div>
                     ))}
                     <div style={{ padding: "12px 20px" }}>
-                      <button onClick={() => { navigate("/dashboard/alerts"); setNotifOpen(false); }} style={{ width: "100%", padding: "9px", borderRadius: 10, cursor: "pointer", background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.2)", color: T.red, fontSize: 12, fontWeight: 600, fontFamily: F.sans }}>
+                      <button onClick={() => { navigate("/dashboard/alerts"); setNotifOpen(false); }} style={{ width: "100%", padding: "9px", borderRadius: 10, cursor: "pointer", background: "var(--pu-59-130-246-008)", border: "1px solid var(--pu-59-130-246-02)", color: T.red, fontSize: 12, fontWeight: 600, fontFamily: F.sans }}>
                         View All Alerts
                       </button>
                     </div>
@@ -691,25 +694,25 @@ export default function Dashboard() {
             {/* User menu */}
             <div style={{ position: "relative" }}>
               <motion.button whileTap={{ scale: 0.95 }} onClick={() => { setUserMenuOpen(!userMenuOpen); setNotifOpen(false); }}
-                style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 8px 5px 5px", borderRadius: 10, border: `1px solid ${T.border}`, background: "rgba(148,163,184,0.03)", cursor: "pointer" }}>
-                <div style={{ width: 28, height: 28, borderRadius: "50%", background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, fontFamily: F.sans }}>{displayAvatar}</div>
+                style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 8px 5px 5px", borderRadius: 10, border: `1px solid ${T.border}`, background: "var(--pu-148-163-184-003)", cursor: "pointer" }}>
+                <div style={{ width: 28, height: 28, borderRadius: "50%", background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--pu-ffffff-t)", fontSize: 11, fontWeight: 700, fontFamily: F.sans }}>{displayAvatar}</div>
                 <ChevronDown size={13} color={T.t3} />
               </motion.button>
               <AnimatePresence>
                 {userMenuOpen && (
                   <motion.div initial={{ opacity: 0, y: 6, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 6, scale: 0.97 }} transition={{ duration: 0.16 }}
-                    style={{ position: "absolute", right: 0, top: "calc(100% + 8px)", width: 190, borderRadius: 14, padding: 6, background: "rgba(8,14,32,0.97)", backdropFilter: "blur(24px)", border: `1px solid ${T.border}`, boxShadow: "0 16px 36px rgba(1,17,38,0.5)" }}>
+                    style={{ position: "absolute", right: 0, top: "calc(100% + 8px)", width: 190, borderRadius: 14, padding: 6, background: "var(--pu-8-14-32-097)", backdropFilter: "blur(24px)", border: `1px solid ${T.border}`, boxShadow: "0 16px 36px var(--pu-1-17-38-05)" }}>
                     {[{ icon: User, label: "My Profile", action: () => { navigate("/dashboard/profile"); setUserMenuOpen(false); } }, { icon: Settings, label: "Settings", action: () => { navigate("/dashboard/settings"); setUserMenuOpen(false); } }].map((item) => (
                       <button key={item.label} onClick={item.action}
                         style={{ width: "100%", display: "flex", alignItems: "center", gap: 9, padding: "9px 12px", borderRadius: 8, border: "none", cursor: "pointer", background: "transparent", color: T.t2, fontSize: 13, fontFamily: F.sans, textAlign: "left", transition: "background 0.15s" }}
-                        className="hover:bg-[rgba(148,163,184,0.05)]">
+                        className="hover:bg-[var(--pu-148-163-184-005)]">
                         <item.icon size={14} /> {item.label}
                       </button>
                     ))}
                     <div style={{ height: 1, background: T.border, margin: "4px 0" }} />
                     <button onClick={() => { signOut(); navigate("/signin"); }}
-                      style={{ width: "100%", display: "flex", alignItems: "center", gap: 9, padding: "9px 12px", borderRadius: 8, border: "none", cursor: "pointer", background: "transparent", color: "#ef4444", fontSize: 13, fontFamily: F.sans, textAlign: "left", transition: "background 0.15s" }}
-                      className="hover:bg-[rgba(239,68,68,0.06)]">
+                      style={{ width: "100%", display: "flex", alignItems: "center", gap: 9, padding: "9px 12px", borderRadius: 8, border: "none", cursor: "pointer", background: "transparent", color: "var(--pu-ef4444-t)", fontSize: 13, fontFamily: F.sans, textAlign: "left", transition: "background 0.15s" }}
+                      className="hover:bg-[var(--pu-239-68-68-006)]">
                       <LogOut size={14} /> Logout
                     </button>
                   </motion.div>

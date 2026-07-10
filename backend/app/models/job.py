@@ -57,6 +57,25 @@ class JobSource(str, Enum):
     RIPPLING = "rippling"
     BAMBOOHR = "bamboohr"
     WORKABLE = "workable"
+    # Extended ATS coverage (public career-site endpoints, no auth).
+    # Owned by app/services/careers_ats.py.
+    ICIMS = "icims"
+    JOBVITE = "jobvite"
+    BREEZYHR = "breezyhr"
+    ORACLE_RECRUITING = "oracle_recruiting"
+    PAYLOCITY = "paylocity"
+    UKG = "ukg"                          # UltiPro / UKG Pro Recruiting
+    ZOHO_RECRUIT = "zoho_recruit"
+    ADP = "adp"                          # ADP Workforce Now career center
+    DOVER = "dover"
+    GEM = "gem"
+    SUCCESSFACTORS = "successfactors"    # SAP SuccessFactors Career Site Builder
+    PINPOINT = "pinpoint"
+    POLYMER = "polymer"
+    PHENOM = "phenom"
+    DAYFORCE = "dayforce"
+    JOIN_COM = "join"
+    HIREOLOGY = "hireology"
     # Aggregated H1B sponsor pipeline (multi-ATS, all curated H1B sponsors)
     H1B_SPONSOR = "h1b_sponsor"
     # Tier-1 ATS aggregate (Greenhouse/Lever/Ashby/SmartRecruiters/Workable/Recruitee)
