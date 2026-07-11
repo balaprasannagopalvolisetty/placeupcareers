@@ -93,6 +93,10 @@ try:
 except ValueError:
     PUBLIC_BATCH_OFFSET = None
 COVERAGE_FLOOR_ENABLED = os.getenv("SCRAPER_COVERAGE_FLOOR_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+# Official/sponsor ATS boards have their own placeup-board-discovery-sweep
+# schedule. Repeating that multi-hour universe walk here delayed the fresh
+# JobSpy batches until the next scheduler tick, so it is opt-in only.
+BOARD_PASS_ENABLED = os.getenv("SCRAPER_BOARD_PASS_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _encoded_terms(terms: list[str]) -> str:
@@ -212,16 +216,21 @@ async def _run_batched() -> int:
     except Exception as exc:
         failures += 1
         logger.warning("6h official API/ATS connector pass failed; continuing with board/public sources: %s", exc)
-    board_code = await run(_base_args(
-        queries=_encoded_terms(linkedin_style_roles),
-        locations=country_locations,
-        max_per_source=200,
-        sources=FREE_OPEN_BOARD_SOURCES,
-        schedule_type="6h-boards",
-    ))
-    if board_code:
-        failures += 1
-        logger.warning("6h scraper board pass failed with code %s", board_code)
+    if BOARD_PASS_ENABLED:
+        board_code = await run(_base_args(
+            queries=_encoded_terms(linkedin_style_roles),
+            locations=country_locations,
+            max_per_source=200,
+            sources=FREE_OPEN_BOARD_SOURCES,
+            schedule_type="6h-boards",
+        ))
+        if board_code:
+            failures += 1
+            logger.warning("6h scraper board pass failed with code %s", board_code)
+    else:
+        logger.info(
+            "6h scraper duplicate board pass skipped; placeup-board-discovery-sweep owns official board coverage"
+        )
 
     public_sources = _configured_public_sources()
     if not public_sources:
