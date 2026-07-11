@@ -211,6 +211,10 @@ async def _run_batched() -> int:
             queries=terms,
             countries=countries,
             sources=os.getenv("API_CONNECTOR_SOURCES", DIRECT_ATS_CONNECTOR_SOURCES),
+            # Public batches publish master_jobs after the first completion.
+            # Deferring here avoids two consecutive full-table rebuilds before
+            # the time-sensitive role/country searches even begin.
+            sync_master=False,
         )
         logger.info("6h official API/ATS connectors loaded %s jobs", api_connector_count)
     except Exception as exc:

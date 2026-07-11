@@ -106,6 +106,7 @@ async def run_api_connectors_to_postgres(
     queries: list[str],
     countries: list[str] | None = None,
     sources: str = "adzuna~greenhouse",
+    sync_master: bool = True,
 ) -> int:
     client = PostgresClient()
     loaded_total = 0
@@ -122,13 +123,13 @@ async def run_api_connectors_to_postgres(
             loaded = load_normalized_jobs(db, normalized)
             loaded_total += loaded
             loaded_batches += 1
-            if rebuild_every and loaded_batches % rebuild_every == 0:
+            if sync_master and rebuild_every and loaded_batches % rebuild_every == 0:
                 rebuild_master_jobs(db=db)
             db.commit()
         logger.info("api_source persisted source=%s loaded=%s total=%s", label, loaded, loaded_total)
 
     await fetch_all(queries=queries, countries=countries, sources=sources, on_batch=persist_batch)
-    if loaded_total:
+    if sync_master and loaded_total:
         with client.session() as db:
             rebuild_master_jobs(db=db)
             db.commit()
