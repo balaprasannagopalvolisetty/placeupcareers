@@ -147,7 +147,7 @@ export function AnalyticsPage() {
             </div>
             <div style={{ textAlign: "right" }}>
               <div style={{ fontFamily: F.mono, fontSize: 22, fontWeight: 800, color: T.red, lineHeight: 1 }}>{(market.total_active || 0).toLocaleString()}</div>
-              <div style={{ fontSize: 10.5, color: T.t3, fontFamily: F.sans }}>active positions</div>
+              <div style={{ fontSize: 10.5, color: T.t3, fontFamily: F.sans }}>{market.targeted ? "target-role positions" : "active positions"}</div>
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: isTablet ? "1fr" : "1.5fr 1fr", gap: 16 }}>

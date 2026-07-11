@@ -52,7 +52,10 @@ NOISY_KEYWORDS = STOP_WORDS | {
     "work closely", "work experience", "working knowledge",
     "clearance level", "date posted", "full time", "shift day",
     "minimum clearance", "potential remote", "schedule full",
-    "inbound", "er",
+    "inbound", "er", "and/or", "web based", "web-based",
+    "customer service", "customer support", "customers support",
+    "customer services", "client service", "client support",
+    "salesforce crm", "database sql",
 }
 
 # Technical skills dictionary for enhanced extraction

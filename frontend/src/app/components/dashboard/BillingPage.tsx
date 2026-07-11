@@ -23,7 +23,7 @@ const plans = [
     name: "Pro",
     price: "$24.99",
     featured: true,
-    features: ["Everything in Basic", "Recruiter contacts", "Application tracking", "Priority job alerts"],
+    features: ["Everything in Basic", "Recruiter contacts", "Application tracking", "Priority job matches"],
   },
   {
     id: "elite",

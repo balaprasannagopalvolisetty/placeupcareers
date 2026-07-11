@@ -101,6 +101,8 @@ _ALIASES = {
     "allen bradley": "allen-bradley", "att&ck": "mitre att&ck",
     "transfer switches": "transfer switch", "hmis": "hmi", "plcs": "plc",
     "firewalls": "firewall", "controls systems": "controls",
+    "salesforce crm": "salesforce", "database sql": "sql",
+    "customers support": "customer support", "web based": "web-based",
 }
 
 # Multi-word skills worth matching as a unit.
@@ -146,6 +148,14 @@ _NOISE_TERMS = {
     "diversity", "inclusion", "belonging", "culture", "mission", "vision",
     "join", "joining", "career", "careers", "growth", "grow", "impact",
     "colleagues", "employees", "workplace", "flexible", "flexibility",
+    "and/or", "web based", "web-based", "customer service", "customer support",
+    "customers support", "customer services", "client service", "client support",
+    "salesforce crm", "database sql",
+}
+
+_DISPLAY_NOISE_TERMS = {
+    "and/or", "web based", "web-based", "customer service", "customer support",
+    "customers support", "customer services", "client service", "client support",
 }
 
 _KNOCKOUT_PATTERNS = (
@@ -229,6 +239,18 @@ def _category_of(term: str) -> str:
     return "Technical Skills"
 
 
+def _is_actionable_keyword(term: str) -> bool:
+    """True when a term is worth showing as an ATS keyword to a candidate."""
+    t = _normalize(term)
+    if not t or t in _NOISE_TERMS or t in _DISPLAY_NOISE_TERMS:
+        return False
+    if "/" in t and t not in {"ci/cd", "tcp/ip", "icd-10"}:
+        return False
+    if _category_of(t) == "Soft Skills":
+        return False
+    return True
+
+
 def categorize_keywords(keywords: list[str]) -> dict[str, list[str]]:
     buckets: dict[str, list[str]] = {
         "Technical Skills": [], "Tools & Platforms": [], "Methodologies": [],
@@ -238,7 +260,7 @@ def categorize_keywords(keywords: list[str]) -> dict[str, list[str]]:
     for kw in keywords:
         k = (kw or "").strip()
         n = _normalize(k)
-        if not k or n in seen:
+        if not k or n in seen or not _is_actionable_keyword(n):
             continue
         seen.add(n)
         buckets[_category_of(k)].append(k)
@@ -320,6 +342,8 @@ def _mine_requirement_phrases(text: str) -> set[str]:
             phrase = " ".join(words)
             if len(phrase) < 3 or phrase in _NOISE_TERMS or phrase in _ACRONYM_STOP:
                 continue
+            if "/" in phrase or phrase in _DISPLAY_NOISE_TERMS:
+                continue
             if all(w in _NOISE_TERMS or len(w) < 3 for w in words):
                 continue
             out.add(_normalize(phrase))
@@ -346,7 +370,7 @@ def _extract_terms(text: str) -> set[str]:
     # workforce management, HR...") — covers postings outside the dictionaries.
     terms |= _mine_requirement_phrases(text)
     # Drop generic filler and trivially short tokens.
-    return {t for t in terms if t and t not in _NOISE_TERMS and len(t) >= 2}
+    return {t for t in terms if t and t not in _NOISE_TERMS and len(t) >= 2 and _is_actionable_keyword(t)}
 
 
 def _jd_importance(jd_text: str, terms: set[str]) -> dict[str, str]:
@@ -693,8 +717,8 @@ def analyze(resume_text: str, job_description: str, *, job_title: str = "", comp
     jd = "\n".join(p for p in [job_title, job_description] if p)
     resume_low = clean_text(resume_text).lower()
 
-    jd_terms = _extract_terms(jd)
-    resume_terms = _extract_terms(resume_text)
+    jd_terms = {t for t in _extract_terms(jd) if _is_actionable_keyword(t)}
+    resume_terms = {t for t in _extract_terms(resume_text) if _is_actionable_keyword(t)}
     matched = sorted(jd_terms & resume_terms)
     missing = sorted(jd_terms - resume_terms)
 

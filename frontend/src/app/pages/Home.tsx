@@ -230,7 +230,7 @@ const steps = [
   },
   {
     icon: Target, step: "04", title: "Apply where you can win",
-    desc: "Apply directly at the source with confidence, track every application, and get daily alerts for new top matches.",
+    desc: "Apply directly at the source with confidence, track every application, and review fresh top matches every day.",
   },
 ];
 
@@ -286,7 +286,7 @@ const features = [
   { icon: Target, title: "Resume Match Scoring", desc: "See how your active resume scores against any posting before you apply, with a keyword-by-keyword breakdown of what is strong and what is missing." },
   { icon: Users, title: "Direct Company Links", desc: "We trace each posting back to the company's official careers page, so you apply at the source, where recruiters actually look first." },
   { icon: BarChart3, title: "Application Tracker", desc: "Applied, saved, and skipped roles in one dashboard, with dates and statuses, so you never duplicate effort or lose track of a follow-up." },
-  { icon: Bell, title: "Smart Daily Alerts", desc: "Your top matches delivered every morning, pre-filtered by visa status, role, and location. No noise, just jobs worth your time." },
+  { icon: Bell, title: "Smart Daily Matches", desc: "Your top matches refreshed every day, pre-filtered by visa status, role, and location. No noise, just jobs worth your time." },
   { icon: Mic, title: "Interview & Career Coaching", desc: "Elite members get one-on-one mock interviews, AI resume rewrites, and salary negotiation support from experienced US recruiters." },
 ];
 
@@ -342,7 +342,7 @@ function PricingSection() {
         if (!active) return;
         setPlans([
           { id: "basic", name: "Basic", price: 9.99, interval: "m", features: ["Job matching", "Resume ATS score", "Saved jobs"] },
-          { id: "pro", name: "Pro", price: 24.99, interval: "m", features: ["Everything in Basic", "Recruiter contacts", "Application tracking", "Priority job alerts"] },
+          { id: "pro", name: "Pro", price: 24.99, interval: "m", features: ["Everything in Basic", "Recruiter contacts", "Application tracking", "Priority job matches"] },
           { id: "elite", name: "Elite", price: 149.99, interval: "m", features: ["Everything in Pro", "Premium enrichment", "Visa sponsor insights", "Concierge support", "Dedicated employee applies for you to 25-30 filtered positions daily"] },
         ]);
       });
@@ -351,7 +351,7 @@ function PricingSection() {
 
   const displayPlans = plans.length ? plans : [
     { id: "basic", name: "Basic", price: 9.99, interval: "m", features: ["Job matching", "Resume ATS score", "Saved jobs"] },
-    { id: "pro", name: "Pro", price: 24.99, interval: "m", features: ["Everything in Basic", "Recruiter contacts", "Application tracking", "Priority job alerts"] },
+    { id: "pro", name: "Pro", price: 24.99, interval: "m", features: ["Everything in Basic", "Recruiter contacts", "Application tracking", "Priority job matches"] },
     { id: "elite", name: "Elite", price: 149.99, interval: "m", features: ["Everything in Pro", "Premium enrichment", "Visa sponsor insights", "Concierge support", "Dedicated employee applies for you to 25-30 filtered positions daily"] },
   ] as api.PaymentPlan[];
 

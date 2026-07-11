@@ -14,7 +14,6 @@ import FeedbackWidget from "../components/FeedbackWidget";
 import { ThemeToggle } from "../components/Layout";
 import { ResumePage } from "../components/dashboard/ResumePage";
 import { JobsPage } from "../components/dashboard/JobsPage";
-import { AlertsPage } from "../components/dashboard/AlertsPage";
 import { AnalyticsPage } from "../components/dashboard/AnalyticsPage";
 import { SettingsPage } from "../components/dashboard/SettingsPage";
 import { UserProfilePage } from "../components/dashboard/UserProfilePage";
@@ -105,7 +104,6 @@ const NAV_ITEMS = [
   { icon: FileText, label: "Resumes", to: "/dashboard/resumes" },
   { icon: Briefcase,label: "Jobs", to: "/dashboard/jobs" },
   { icon: Wand2,   label: "Tailor", to: "/dashboard/tailor" },
-  { icon: Bell,     label: "Alerts", to: "/dashboard/alerts" },
   { icon: BarChart3,label: "Analytics", to: "/dashboard/analytics" },
   { icon: Settings, label: "Settings", to: "/dashboard/settings" },
 ];
@@ -196,6 +194,8 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
   const [totalApplications, setTotalApplications] = useState(0);
   const [applications, setApplications] = useState<api.UserApplicationRow[]>([]);
   const [totalResumes, setTotalResumes] = useState(0);
+  const [market, setMarket] = useState<api.MarketAnalytics | null>(null);
+  const [marketLoading, setMarketLoading] = useState(true);
   // Distinguishes "still loading" from "genuinely has no resume". Without this
   // the cards flashed "0 / Upload a resume" on every slow fetch even for users
   // who DO have a resume, which looked broken.
@@ -244,6 +244,22 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
       .catch(() => {
         // Network/timeout: keep any cached snapshot rather than blanking.
         if (active) setFeaturedLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
+
+  // Fast, targeted market count for the user's saved roles/country. This is
+  // intentionally separate from the heavier Jobs list so Overview can render
+  // quickly even while match scores are being refreshed in the background.
+  useEffect(() => {
+    let active = true;
+    setMarketLoading(true);
+    withTimeout(api.getMarketAnalytics(), 1800, null)
+      .then((data) => {
+        if (active) setMarket(data);
+      })
+      .finally(() => {
+        if (active) setMarketLoading(false);
       });
     return () => { active = false; };
   }, []);
@@ -311,7 +327,7 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
       </motion.div>
 
       {/* Summary row */}
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : isTablet ? "repeat(2, minmax(0, 1fr))" : "repeat(3, 1fr)", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : isTablet ? "repeat(2, minmax(0, 1fr))" : "repeat(4, 1fr)", gap: 14 }}>
         {/* ATS Score */}
         <GlowCard style={{ padding: 20, gridColumn: "span 1" }} onClick={() => navigate("/dashboard/resumes")}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
@@ -363,6 +379,25 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
                 {app.title || "Applied role"}
               </div>
             ))}
+          </div>
+        </GlowCard>
+
+        {/* Live market */}
+        <GlowCard style={{ padding: 20 }} onClick={() => navigate("/dashboard/jobs")}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--pu-59-130-246-012)", border: "1px solid var(--pu-59-130-246-025)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <TrendingUp size={16} color={T.red} />
+            </div>
+            {market?.target_country && (
+              <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 9999, background: "var(--pu-59-130-246-012)", color: T.red, border: "1px solid var(--pu-59-130-246-025)", fontFamily: F.sans }}>{market.target_country}</span>
+            )}
+          </div>
+          <div style={{ fontFamily: F.sans, fontSize: isMobile ? 30 : 38, fontWeight: 800, color: T.text, lineHeight: 1, marginBottom: 4 }}>
+            {marketLoading && !market ? "--" : <SpringCounter target={Number(market?.total_active || 0)} />}
+          </div>
+          <div style={{ fontSize: 13, color: T.t2, fontFamily: F.sans }}>Live job market</div>
+          <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, marginTop: 2, lineHeight: 1.45 }}>
+            {market?.targeted ? "Open positions for your target roles" : "All active open positions"}
           </div>
         </GlowCard>
 
@@ -682,8 +717,8 @@ export default function Dashboard() {
                       </div>
                     ))}
                     <div style={{ padding: "12px 20px" }}>
-                      <button onClick={() => { navigate("/dashboard/alerts"); setNotifOpen(false); }} style={{ width: "100%", padding: "9px", borderRadius: 10, cursor: "pointer", background: "var(--pu-59-130-246-008)", border: "1px solid var(--pu-59-130-246-02)", color: T.red, fontSize: 12, fontWeight: 600, fontFamily: F.sans }}>
-                        View All Alerts
+                      <button onClick={() => { navigate("/dashboard/jobs"); setNotifOpen(false); }} style={{ width: "100%", padding: "9px", borderRadius: 10, cursor: "pointer", background: "var(--pu-59-130-246-008)", border: "1px solid var(--pu-59-130-246-02)", color: T.red, fontSize: 12, fontWeight: 600, fontFamily: F.sans }}>
+                        View matched jobs
                       </button>
                     </div>
                   </motion.div>

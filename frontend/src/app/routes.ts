@@ -1,4 +1,4 @@
-import { createBrowserRouter } from "react-router";
+import { createBrowserRouter, Navigate } from "react-router";
 import { createElement, lazy, Suspense, type ComponentType } from "react";
 import Layout from "./components/Layout";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -28,9 +28,6 @@ const JobsRoute = lazy(() =>
 );
 const JobDetailRoute = lazy(() =>
   import("./components/dashboard/JobRoutes").then((m) => ({ default: m.JobDetailRoute }))
-);
-const AlertsPage = lazy(() =>
-  import("./components/dashboard/AlertsPage").then((m) => ({ default: m.AlertsPage }))
 );
 const TailorResumePage = lazy(() =>
   import("./components/dashboard/TailorResumePage").then((m) => ({ default: m.TailorResumePage }))
@@ -74,6 +71,7 @@ const VerifyEmailPage = lazy(() =>
 );
 
 const RouteLoader = () => createElement(LoadingLogo, { label: "Loading PlaceUp" });
+const DashboardJobsRedirect = () => createElement(Navigate, { to: "/dashboard/jobs", replace: true });
 
 // Wrap each route component in our ErrorBoundary + Suspense so a
 // runtime error inside e.g. JobsRoute can't blank the dashboard, and
@@ -116,7 +114,7 @@ export const router = createBrowserRouter([
           { path: "jobs", Component: authedGuarded(JobsRoute) },
           { path: "jobs/:jobId", Component: authedGuarded(JobDetailRoute) },
           { path: "tailor", Component: authedGuarded(TailorResumePage) },
-          { path: "alerts", Component: authedGuarded(AlertsPage) },
+          { path: "alerts", Component: authedGuarded(DashboardJobsRedirect) },
           { path: "applications", Component: authedGuarded(ApplicationsPage) },
           { path: "analytics", Component: authedGuarded(AnalyticsPage) },
           { path: "settings", Component: authedGuarded(SettingsPage) },

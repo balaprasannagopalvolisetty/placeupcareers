@@ -346,7 +346,7 @@ function RolePicker({
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 8 }}>
         <div>
           <div style={{ fontSize: 13, color: T.text, fontFamily: F.sans, fontWeight: 700 }}>Choose your {MAX_TARGET_ROLES} target positions</div>
-          <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, marginTop: 3 }}>Pick exactly {MAX_TARGET_ROLES} positions. These power your job matches and daily alerts.</div>
+          <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, marginTop: 3 }}>Pick exactly {MAX_TARGET_ROLES} positions. These power your job matches and daily recommendations.</div>
         </div>
         <div style={{ fontSize: 12, color: full ? "var(--pu-16a34a)" : T.red, fontFamily: F.mono, fontWeight: 800 }}>
           {selected.length}/{MAX_TARGET_ROLES}
@@ -521,7 +521,7 @@ export default function SignUp() {
         if (!active) return;
         setPlans([
           { id: "basic", name: "Basic", price: 9.99, interval: "m", features: ["Job matching", "Resume ATS score", "Saved jobs"] },
-          { id: "pro", name: "Pro", price: 24.99, interval: "m", features: ["Everything in Basic", "Recruiter contacts", "Application tracking", "Priority job alerts"] },
+          { id: "pro", name: "Pro", price: 24.99, interval: "m", features: ["Everything in Basic", "Recruiter contacts", "Application tracking", "Priority job matches"] },
           { id: "elite", name: "Elite", price: 149.99, interval: "m", features: ["Everything in Pro", "Premium enrichment", "Visa sponsor insights", "Concierge support", "Dedicated employee applies for you to 25-30 filtered positions daily"] },
         ]);
       });
@@ -809,7 +809,7 @@ export default function SignUp() {
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))", gap: 10 }}>
               {(plans.length ? plans : [
                 { id: "basic", name: "Basic", price: 9.99, interval: "m", features: ["Job matching", "Resume ATS score", "Saved jobs"] },
-                { id: "pro", name: "Pro", price: 24.99, interval: "m", features: ["Everything in Basic", "Recruiter contacts", "Application tracking", "Priority job alerts"] },
+                { id: "pro", name: "Pro", price: 24.99, interval: "m", features: ["Everything in Basic", "Recruiter contacts", "Application tracking", "Priority job matches"] },
                 { id: "elite", name: "Elite", price: 149.99, interval: "m", features: ["Everything in Pro", "Premium enrichment", "Visa sponsor insights", "Concierge support", "Dedicated employee applies for you to 25-30 filtered positions daily"] },
               ] as api.PaymentPlan[]).map((plan) => {
                 const active = selectedPlan === plan.id;

@@ -29,7 +29,7 @@ if ($FrontendUrl) {
 # DB_POOL_SIZE/DB_MAX_OVERFLOW=2: background jobs get a tiny connection
 # budget so a running scrape can NEVER starve the user-facing API of
 # database connections (the API keeps the default 5+10 per instance).
-$ScraperEnv = "APP_ENV=production,DATABASE_BACKEND=postgres,DB_POOL_SIZE=3,DB_MAX_OVERFLOW=3,SCRAPE_INTERVAL_HOURS=6,SCRAPEGRAPH_ENABLED=false,SCRAPEGRAPH_DISCOVERY_ENABLED=false,SCRAPEGRAPH_DISCOVERY_MAX_URLS=220,SCRAPEGRAPH_DISCOVERY_CONCURRENCY=3,SCRAPLING_DISCOVERY_MAX_TARGETS=1400,SCRAPLING_H1B_EXCEL_COMPANY_LIMIT=1000,SCRAPLING_DISCOVERY_CONCURRENCY=2,SCRAPE_MAX_CONCURRENCY=4,SCRAPER_PUBLIC_SOURCES=linkedin~indeed~glassdoor~ziprecruiter~google~usajobs~dice,SCRAPER_ROLE_BATCH_SIZE=4,SCRAPER_PUBLIC_BATCH_CONCURRENCY=3,SCRAPER_PUBLIC_MAX_BATCHES_PER_RUN=0,SCRAPER_RUN_BUDGET_SECONDS=0,SCRAPER_PROVIDER_BLOCK_COOLDOWN_SECONDS=1800,SCRAPER_PROVIDER_EMPTY_CIRCUIT_THRESHOLD=4,SCRAPER_PURGE_EXCEPT_TODAY=false,SCRAPER_COVERAGE_FLOOR_ENABLED=false,API_CONNECTOR_SOURCES=greenhouse~lever~ashby~smartrecruiters~career_site_feed~remoteok~remotive~jobicy,CAREER_SITE_FEED_LIMIT=1200,SCRAPE_GLASSDOOR_JOBSPY_ENABLED=true,SCRAPE_ZIPRECRUITER_JOBSPY_ENABLED=true,SCRAPER_JD_HYDRATE_MAX_JOBS=1500,SCRAPER_JD_HYDRATE_CONCURRENCY=8,SCRAPER_JD_HYDRATE_TIMEOUT_SECONDS=28,LINKEDIN_REQUESTS_PER_MINUTE=2,LINKEDIN_THIN_DESCRIPTION_CHARS=1200,LINKEDIN_ENRICH_MAX_JOBS_PER_RUN=0,LINKEDIN_ENRICH_CONCURRENCY=1,SCRAPER_CANONICAL_ROLE_BATCH_SIZE=3"
+$ScraperEnv = "APP_ENV=production,DATABASE_BACKEND=postgres,DB_POOL_SIZE=3,DB_MAX_OVERFLOW=3,SCRAPE_INTERVAL_HOURS=6,SCRAPEGRAPH_ENABLED=false,SCRAPEGRAPH_DISCOVERY_ENABLED=false,SCRAPEGRAPH_DISCOVERY_MAX_URLS=220,SCRAPEGRAPH_DISCOVERY_CONCURRENCY=3,SCRAPLING_DISCOVERY_MAX_TARGETS=1800,SCRAPLING_H1B_EXCEL_COMPANY_LIMIT=1400,SCRAPLING_DISCOVERY_CONCURRENCY=2,SCRAPE_MAX_CONCURRENCY=4,SCRAPER_PUBLIC_SOURCES=linkedin~indeed~glassdoor~ziprecruiter~google~usajobs~dice,SCRAPER_ROLE_BATCH_SIZE=4,SCRAPER_PUBLIC_BATCH_CONCURRENCY=3,SCRAPER_PUBLIC_MAX_BATCHES_PER_RUN=0,SCRAPER_RUN_BUDGET_SECONDS=0,SCRAPER_PROVIDER_BLOCK_COOLDOWN_SECONDS=1800,SCRAPER_PROVIDER_EMPTY_CIRCUIT_THRESHOLD=4,SCRAPER_PURGE_EXCEPT_TODAY=false,SCRAPER_COVERAGE_FLOOR_ENABLED=true,API_CONNECTOR_SOURCES=greenhouse~lever~ashby~smartrecruiters~career_site_feed~remoteok~remotive~jobicy,CAREER_SITE_FEED_LIMIT=2000,SCRAPE_GLASSDOOR_JOBSPY_ENABLED=true,SCRAPE_ZIPRECRUITER_JOBSPY_ENABLED=true,SCRAPER_JD_HYDRATE_MAX_JOBS=2500,SCRAPER_JD_HYDRATE_CONCURRENCY=8,SCRAPER_JD_HYDRATE_TIMEOUT_SECONDS=28,LINKEDIN_REQUESTS_PER_MINUTE=2,LINKEDIN_THIN_DESCRIPTION_CHARS=1200,LINKEDIN_ENRICH_MAX_JOBS_PER_RUN=0,LINKEDIN_ENRICH_CONCURRENCY=1,SCRAPER_CANONICAL_ROLE_BATCH_SIZE=3"
 $ApiSecrets = "DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,USAJOBS_API_KEY=USAJOBS_API_KEY:latest,USAJOBS_EMAIL=USAJOBS_EMAIL:latest,HUNTER_API_KEY=HUNTER_API_KEY:latest"
 $ScraperSecrets = "DATABASE_URL=DATABASE_URL:latest,USAJOBS_API_KEY=USAJOBS_API_KEY:latest,USAJOBS_EMAIL=USAJOBS_EMAIL:latest,HUNTER_API_KEY=HUNTER_API_KEY:latest"
 $ExternalSecrets = "DATABASE_URL=DATABASE_URL:latest,USAJOBS_API_KEY=USAJOBS_API_KEY:latest,USAJOBS_EMAIL=USAJOBS_EMAIL:latest"
@@ -286,7 +286,7 @@ gcloud.cmd run jobs deploy placeup-board-discovery-sweep `
   --region $Region `
   --service-account "placeup-etl-sa@$ProjectId.iam.gserviceaccount.com" `
   --command python `
-  --args="-m,app.workers.board_discovery_sweep,--limit,600,--concurrency,1" `
+  --args="-m,app.workers.board_discovery_sweep,--limit,800,--concurrency,1" `
   --set-cloudsql-instances "$ProjectId`:$Region`:$DbInstance" `
   --set-env-vars "APP_ENV=production,DATABASE_BACKEND=postgres,DB_POOL_SIZE=2,DB_MAX_OVERFLOW=2" `
   --set-secrets "DATABASE_URL=DATABASE_URL:latest" `
@@ -444,8 +444,8 @@ gcloud.cmd run jobs add-iam-policy-binding placeup-job-description-repair `
   --member "serviceAccount:placeup-etl-sa@$ProjectId.iam.gserviceaccount.com" `
   --role roles/run.invoker
 
-# Board discovery sweep: every 6 hours, up to 600 sponsor companies per run
-# (~2,400/day). Checkpointed in board_sweep_state, so it cycles through the
+# Board discovery sweep: every 6 hours, up to 800 sponsor companies per run
+# (~3,200/day). Checkpointed in board_sweep_state, so it cycles through the
 # full registry and re-visits each company every 30 days.
 $BoardSweepScheduleUri = "https://$Region-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/$ProjectId/jobs/placeup-board-discovery-sweep:run"
 $previousErrorAction = $ErrorActionPreference

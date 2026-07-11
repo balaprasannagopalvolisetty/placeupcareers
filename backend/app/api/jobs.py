@@ -827,6 +827,21 @@ def _in_datetime_window(value: Any, since: Optional[datetime], before: Optional[
     return True
 
 
+def _job_effective_datetime(job: dict) -> Optional[datetime]:
+    """Best timestamp for user-facing recency filters and ranking.
+
+    Many direct ATS feeds do not expose posted_at. Treat first_seen_at/last_seen_at
+    as the live-market timestamp fallback so Today/Last 8h filters do not show
+    "0 jobs" just because a provider omitted the original posting date.
+    """
+    return _coerce_datetime(
+        job.get("posted_at")
+        or job.get("first_seen_at")
+        or job.get("scraped_at")
+        or job.get("last_seen_at")
+    )
+
+
 def _first_party_rank(job: dict) -> int:
     """0 = direct ATS/career-page posting (Greenhouse, Workday, iCIMS, ...),
     1 = aggregator (LinkedIn, Indeed, Dice, ...).
@@ -1134,6 +1149,9 @@ _KEYWORD_BLACKLIST: frozenset[str] = frozenset({
     "class", "people", "person", "field", "fields", "area", "areas", "level",
     "levels", "scale", "across", "office", "remote", "hybrid", "onsite",
     "full", "part", "time", "type", "based",
+    "and/or", "web based", "web-based", "customer service", "customer support",
+    "customers support", "customer services", "client service", "client support",
+    "salesforce crm", "database sql",
 })
 
 
@@ -1152,10 +1170,26 @@ def _is_real_skill(token: str) -> bool:
     t = (token or "").strip().lower()
     if not t:
         return False
-    if " " in t or "-" in t or "+" in t or "#" in t or "." in t or "/" in t:
-        return True  # multi-word / techy tokens
     if t in _KEYWORD_BLACKLIST:
         return False
+    if "/" in t and not re.search(r"\b(?:ci/cd|tcp/ip|icd-10)\b", t):
+        return False
+    if " " in t:
+        if t in {
+            "risk management", "risk assessment", "technical support", "active directory",
+            "group policy", "incident response", "vulnerability management",
+            "penetration testing", "cloud security", "network security",
+            "project management", "program management", "data analysis",
+            "business analysis", "quality assurance", "process improvement",
+        }:
+            return True
+        parts = re.findall(r"[a-z0-9+#.]+", t)
+        if not parts or any(part in _KEYWORD_BLACKLIST for part in parts):
+            return False
+        # Keep concrete compound skills, not relationship/filler phrases.
+        return any(part in {"sql", "crm", "aws", "azure", "gcp", "linux", "windows", "salesforce", "servicenow", "jira", "python", "java", "risk"} for part in parts)
+    if "-" in t or "+" in t or "#" in t or "." in t:
+        return True  # techy tokens
     if len(t) < 3:
         return False
     # Drop pure-noise English words by length+vowel heuristic — long words
@@ -1625,7 +1659,7 @@ async def list_jobs(
             if filters.get("visa_program") and filters["visa_program"] not in (visa_payload.get("visa_programs") or []):
                 continue
             if (post_filter_since or post_filter_before) and not _in_datetime_window(
-                j.get("posted_at"),
+                _job_effective_datetime(j),
                 post_filter_since,
                 post_filter_before,
             ):
@@ -1766,7 +1800,7 @@ async def list_jobs(
             # same day, then exact time. Pure second-level recency let
             # high-volume aggregator scrapes bury the direct ATS postings.
             def _recency_key(row: dict) -> tuple:
-                eff = _coerce_datetime(row.get("posted_at") or row.get("first_seen_at") or row.get("scraped_at") or row.get("last_seen_at"))
+                eff = _job_effective_datetime(row)
                 day_ordinal = eff.date().toordinal() if eff else 0
                 return (-day_ordinal, _first_party_rank(row), -(eff.timestamp() if eff else 0.0), str(row.get("id") or ""))
             decorated.sort(key=_recency_key)
@@ -1780,8 +1814,18 @@ async def list_jobs(
         # Reporting the 50k heuristic in that case rendered page buttons that
         # all pointed at empty/duplicate slices — pagination now only offers
         # pages that really exist.
-        if len(jobs) < fetch_limit:
+        if post_filter_since or post_filter_before:
             total = len(decorated)
+            total_pages = max(1, math.ceil(total / page_size)) if total else 1
+        elif len(jobs) < fetch_limit:
+            total = len(decorated)
+            total_pages = max(1, math.ceil(total / page_size)) if total else 1
+        elif len(decorated) < page_size:
+            # Post-fetch filters (direct-source policy, country/visa/ex-career
+            # gates, JD-quality gate) removed the whole first pool. Do not
+            # advertise a 50k estimated inventory when this filter state has no
+            # renderable rows in the fetched candidate set.
+            total = offset + len(decorated)
             total_pages = max(1, math.ceil(total / page_size)) if total else 1
         elif not taxonomy_filter_active and not exact_count_active:
             # Broad-view ceiling: the pool query stops growing at 2500 rows,
@@ -1837,9 +1881,7 @@ async def list_jobs(
                         _set_insufficient_jd_score(j)
                 if sort == "recent":
                     def _rescored_recent_key(row: dict) -> tuple:
-                        effective = _coerce_datetime(
-                            row.get("posted_at") or row.get("first_seen_at") or row.get("scraped_at") or row.get("last_seen_at")
-                        )
+                        effective = _job_effective_datetime(row)
                         return (
                             -(effective.timestamp() if effective else 0.0),
                             -int(row.get("match_score") or 0),

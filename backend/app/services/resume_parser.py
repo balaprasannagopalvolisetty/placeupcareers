@@ -12,6 +12,7 @@ from zipfile import ZipFile, is_zipfile
 
 logger = logging.getLogger(__name__)
 
+RESUME_SCHEMA_VERSION = "placeup_resume_v2"
 MAX_PDF_PAGES = 8
 # We extract TEXT ONLY here — PyPDF2 never renders or executes the PDF — and the
 # original file is NOT stored or re-served. So benign-but-common markers that
@@ -633,7 +634,7 @@ def resume_text_to_json(text: str, *, metadata: Optional[dict] = None) -> dict:
     experience_lines = _experience_lines_from_entries(experience_details, sections.get("experience", []))
 
     return {
-        "schema_version": "placeup_resume_v1",
+        "schema_version": RESUME_SCHEMA_VERSION,
         "contact": {
             "email": email,
             "phone": phone,

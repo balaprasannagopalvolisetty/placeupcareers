@@ -1903,11 +1903,12 @@ async def get_parsed_active_resume(user_id: str = Depends(current_user_id)):
         # uploaded before parsed_json existed) OR shattered (uploaded before
         # the word-per-line PDF repair — each section item was a single word,
         # which rendered a broken one-word-per-line document).
-        from app.services.resume_parser import resume_json_looks_shattered
+        from app.services.resume_parser import RESUME_SCHEMA_VERSION, resume_json_looks_shattered
         needs_derive = (
             not (resume_json.get("sections") or resume_json.get("experience") or resume_json.get("summary"))
             or resume_json_looks_shattered(resume_json)
             or not resume_json.get("experience_details")
+            or resume_json.get("schema_version") != RESUME_SCHEMA_VERSION
         )
         if needs_derive:
             try:

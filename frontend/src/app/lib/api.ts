@@ -1029,6 +1029,9 @@ export interface MarketAnalytics {
   added_series: { date: string; count: number }[];
   by_country: MarketBreakdownItem[];
   by_source: MarketBreakdownItem[];
+  targeted?: boolean;
+  target_roles?: string[];
+  target_country?: string | null;
 }
 export async function getMarketAnalytics() { return request<MarketAnalytics>("/api/analytics/market"); }
 

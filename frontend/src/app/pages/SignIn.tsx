@@ -86,7 +86,7 @@ const VALUE_POINTS = [
   { icon: Target, text: "Every job scored against your resume in real time" },
   { icon: ShieldCheck, text: "Visa sponsorship signals on every listing" },
   { icon: Globe, text: "Fresh roles from 30+ countries, refreshed every 6 hours" },
-  { icon: Check, text: "Application tracking and smart daily alerts" },
+  { icon: Check, text: "Application tracking and smart daily matches" },
 ];
 
 export default function SignIn() {
@@ -189,7 +189,7 @@ export default function SignIn() {
           <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
             <h2 style={{ fontFamily: F.sans, fontSize: 26, fontWeight: 800, color: T.text, marginBottom: 6, textAlign: "center", letterSpacing: "-0.02em" }}>Welcome back</h2>
             <p style={{ fontSize: 14, color: T.t2, fontFamily: F.sans, textAlign: "center", marginBottom: 28 }}>
-              Sign in to access your job matches, alerts, and analytics.
+              Sign in to access your job matches, tracking, and analytics.
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 16 }}>
               <StyledInput label="Email or phone" type="text" value={identifier} onChange={setIdentifier} onEnter={handleSubmit} autoComplete="username" />
