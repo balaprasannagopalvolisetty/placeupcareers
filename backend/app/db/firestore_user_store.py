@@ -7,16 +7,43 @@ the Cloud Run container filesystem.
 
 from __future__ import annotations
 
+import time
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Callable, Optional, TypeVar
 
+from google.api_core import exceptions as gcloud_exceptions
 from google.cloud import firestore
 
 from app.config import settings
 
 
 _db = None
+
+_T = TypeVar("_T")
+
+# Transient Firestore failures that are safe to retry. Without this, a
+# momentary quota blip ("Rate exceeded." / RESOURCE_EXHAUSTED) during the
+# sign-in lookup surfaced directly to the user as a failed login.
+_TRANSIENT_FIRESTORE_ERRORS = (
+    gcloud_exceptions.ResourceExhausted,
+    gcloud_exceptions.ServiceUnavailable,
+    gcloud_exceptions.DeadlineExceeded,
+    gcloud_exceptions.Aborted,
+    gcloud_exceptions.InternalServerError,
+)
+
+
+def _with_retries(fn: Callable[[], _T], *, attempts: int = 3, base_delay: float = 0.35) -> _T:
+    """Run a Firestore read with small exponential backoff on transient errors."""
+    for attempt in range(attempts):
+        try:
+            return fn()
+        except _TRANSIENT_FIRESTORE_ERRORS:
+            if attempt >= attempts - 1:
+                raise
+            time.sleep(base_delay * (2 ** attempt))
+    raise RuntimeError("unreachable")
 
 
 def _client():
@@ -111,16 +138,19 @@ def get_user_by_id(user_id: str) -> Optional[dict]:
 
 
 def get_user_by_email(email: str) -> Optional[dict]:
-    rows = (
-        _client()
-        .collection("users")
-        .where("email", "==", email.lower())
-        .limit(1)
-        .stream()
-    )
-    for snap in rows:
-        return _clean(snap.to_dict() | {"id": snap.id})
-    return None
+    def _lookup() -> Optional[dict]:
+        rows = (
+            _client()
+            .collection("users")
+            .where("email", "==", email.lower())
+            .limit(1)
+            .stream()
+        )
+        for snap in rows:
+            return _clean(snap.to_dict() | {"id": snap.id})
+        return None
+
+    return _with_retries(_lookup)
 
 
 def _phone_digits(value: str | None) -> str:
@@ -133,15 +163,21 @@ def get_user_by_phone(phone: str) -> Optional[dict]:
     if not raw_phone:
         return None
 
-    rows = (
-        _client()
-        .collection("users")
-        .where("phone", "==", raw_phone)
-        .limit(1)
-        .stream()
-    )
-    for snap in rows:
-        return _clean(snap.to_dict() | {"id": snap.id})
+    def _lookup() -> Optional[dict]:
+        rows = (
+            _client()
+            .collection("users")
+            .where("phone", "==", raw_phone)
+            .limit(1)
+            .stream()
+        )
+        for snap in rows:
+            return _clean(snap.to_dict() | {"id": snap.id})
+        return None
+
+    exact = _with_retries(_lookup)
+    if exact:
+        return exact
 
     wanted = _phone_digits(raw_phone)
     if not wanted:

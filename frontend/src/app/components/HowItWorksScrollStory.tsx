@@ -111,7 +111,7 @@ function BackgroundLayers({ step }: { step: number }) {
             transition={{ duration: 0.55 }}
             style={{
               fontSize: "clamp(160px, 28vw, 360px)", fontWeight: 800,
-              color: step >= 4 ? "var(--pu-22c55e-b)" : T.red,
+              color: step >= 4 ? "var(--pu-22c55e-t)" : T.red,
               fontFamily: F.sans, lineHeight: 1, userSelect: "none",
             }}
           >
@@ -407,7 +407,7 @@ function AnimatedJobCard({ job, p1, p2, index }: {
               background: job.visa === "H-1B" ? "var(--pu-34-197-94-009)" : "var(--pu-59-130-246-009)",
               border: `1px solid ${job.visa === "H-1B" ? "var(--pu-34-197-94-028)" : "var(--pu-59-130-246-028)"}`,
               fontSize: 8, fontWeight: 600, fontFamily: F.sans,
-              color: job.visa === "H-1B" ? "var(--pu-22c55e-b)" : "var(--pu-60a5fa-b)",
+              color: job.visa === "H-1B" ? "var(--pu-22c55e-t)" : "var(--pu-60a5fa-t)",
             }}>{job.visa}</div>
             {job.tags.slice(0, 2).map((t) => (
               <div key={t} style={{ padding: "1px 5px", borderRadius: 3, background: "var(--pu-242-238-179-004)", border: `1px solid ${T.border}`, fontSize: 8, color: T.t3, fontFamily: F.sans }}>{t}</div>

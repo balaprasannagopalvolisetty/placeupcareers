@@ -88,7 +88,7 @@ export function PrivacyGuard() {
             display: flex;
             align-items: center;
             justify-content: center;
-            color: var(--pu-111827-b);
+            color: var(--pu-111827-t);
             font-family: Inter, sans-serif;
             font-size: 24px;
             font-weight: 700;

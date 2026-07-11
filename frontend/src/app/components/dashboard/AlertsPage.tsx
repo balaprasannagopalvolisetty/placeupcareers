@@ -226,7 +226,7 @@ export function AlertsPage() {
               <Link key={r.role} to={`/dashboard/jobs?role=${encodeURIComponent(r.role)}`}
                 style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 10, background: "var(--pu-59-130-246-008)", border: "1px solid var(--pu-59-130-246-02)", textDecoration: "none" }}>
                 <span style={{ fontSize: 12.5, fontWeight: 600, color: T.text, fontFamily: F.sans }}>{r.role}</span>
-                <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 9999, background: r.new_24h > 0 ? T.grad : "var(--pu-148-163-184-008)", color: r.new_24h > 0 ? "var(--pu-ffffff-b)" : T.t3, fontFamily: F.sans }}>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 9999, background: r.new_24h > 0 ? T.grad : "var(--pu-148-163-184-008)", color: r.new_24h > 0 ? "var(--pu-ffffff-t)" : T.t3, fontFamily: F.sans }}>
                   +{r.new_24h} today
                 </span>
                 <span style={{ fontSize: 11, color: T.t3, fontFamily: F.sans }}>{r.new_7d} this week</span>

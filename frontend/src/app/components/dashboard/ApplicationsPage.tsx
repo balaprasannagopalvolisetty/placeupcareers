@@ -253,7 +253,7 @@ export function ApplicationsPage() {
                 height: 32, padding: "0 12px", borderRadius: 9999,
                 border: `1px solid ${filter === p.value ? "transparent" : T.border}`,
                 background: filter === p.value ? T.grad : "transparent",
-                color: filter === p.value ? "var(--pu-ffffff-b)" : T.t2,
+                color: filter === p.value ? "var(--pu-ffffff-t)" : T.t2,
                 fontSize: 12, cursor: "pointer", fontFamily: F.sans,
                 fontWeight: filter === p.value ? 600 : 400,
               }}>{p.label}</button>

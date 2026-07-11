@@ -401,7 +401,7 @@ function PricingSection() {
                 <Link to="/signup" style={{
                   display: "inline-flex", alignItems: "center", justifyContent: "center", width: "100%",
                   height: 44, borderRadius: 12, textDecoration: "none", fontSize: 14, fontWeight: 800,
-                  fontFamily: F.sans, background: highlighted ? T.grad : "var(--pu-ffffff-b)", color: highlighted ? "var(--pu-ffffff-b)" : T.text,
+                  fontFamily: F.sans, background: highlighted ? T.grad : "var(--pu-ffffff-b)", color: highlighted ? "var(--pu-ffffff-t)" : T.text,
                   border: highlighted ? "none" : `1px solid ${T.border}`,
                 }}>
                   Select {plan.name}

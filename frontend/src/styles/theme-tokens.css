@@ -5,6 +5,7 @@
 
 :root,
 html[data-theme="dark"] {
+  --pu-111827-t: #F1F5F9;
   --pu-07111f: #07111F;
   --pu-0-0-0-025: rgba(0,0,0,0.25);
   --pu-0-0-0-028: rgba(0,0,0,0.28);
@@ -280,6 +281,7 @@ html[data-theme="dark"] {
 }
 
 html[data-theme="light"] {
+  --pu-111827-t: #111827;
   --pu-07111f: #F6F8FC;
   --pu-0-0-0-025: rgba(15,23,42,0.087);
   --pu-0-0-0-028: rgba(15,23,42,0.098);

@@ -95,7 +95,7 @@ export function RoleRequestPanel() {
       )}
 
       {msg && (
-        <div style={{ marginTop: 12, fontSize: 12, fontFamily: F, color: msg.kind === "ok" ? "var(--pu-22c55e-b)" : "var(--pu-f87171-b)" }}>{msg.text}</div>
+        <div style={{ marginTop: 12, fontSize: 12, fontFamily: F, color: msg.kind === "ok" ? "var(--pu-22c55e-t)" : "var(--pu-f87171-t)" }}>{msg.text}</div>
       )}
 
       {requests.length > 0 && (

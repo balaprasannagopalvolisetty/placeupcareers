@@ -96,8 +96,9 @@ export function Navbar() {
           </Link>
         </div>
 
-        {/* Mobile: theme toggle + hamburger */}
-        <div className="md:hidden" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        {/* Mobile: theme toggle + hamburger. Layout via Tailwind classes only —
+            an inline display would override the responsive `md:hidden`. */}
+        <div className="flex md:hidden items-center gap-2.5">
           <ThemeToggle size={30} />
           <button onClick={() => setOpen(!open)} style={{ background: "none", border: "none", cursor: "pointer", color: N.text }}>
             {open ? <X size={22} /> : <Menu size={22} />}
@@ -109,6 +110,7 @@ export function Navbar() {
       <AnimatePresence>
         {open && (
           <motion.div
+            className="flex md:hidden"
             initial={{ opacity: 0, x: "100%" }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: "100%" }}
@@ -116,7 +118,7 @@ export function Navbar() {
             style={{
               position: "fixed", top: 64, right: 0, bottom: 0, width: "100%",
               background: "var(--pu-255-255-255-098)", backdropFilter: "blur(14px)",
-              padding: "24px", display: "flex", flexDirection: "column", gap: 4,
+              padding: "24px", flexDirection: "column", gap: 4,
               zIndex: 99,
             }}
           >

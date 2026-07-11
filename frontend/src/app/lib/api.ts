@@ -62,24 +62,38 @@ function buildHeaders(headers: Record<string, string> = {}, body?: BodyInit | nu
   return result;
 }
 
+/** Map raw upstream/edge errors (Google's bare "Rate exceeded.", proxy 5xx
+ *  bodies, quota messages) to human messages instead of leaking them. */
+function friendlyHttpError(status: number, raw: string): string | null {
+  const lowered = (raw || "").toLowerCase();
+  if (status === 429 || lowered.includes("rate exceeded") || lowered.includes("resource_exhausted") || lowered.includes("quota exceeded")) {
+    return "Our servers are briefly busy. Please wait a few seconds and try again.";
+  }
+  if (status === 502 || status === 503 || status === 504) {
+    return "The service is temporarily unavailable. Please try again in a moment.";
+  }
+  return null;
+}
+
 async function parseResponse<T>(response: Response): Promise<T> {
   const text = await response.text();
   if (!text) {
-    if (!response.ok) throw new Error(response.statusText || "Unknown error");
+    if (!response.ok) throw new Error(friendlyHttpError(response.status, "") || response.statusText || "Unknown error");
     return {} as T;
   }
   let data: unknown;
   try {
     data = JSON.parse(text);
   } catch {
-    if (!response.ok) throw new Error(text || response.statusText || "Request failed");
+    if (!response.ok) throw new Error(friendlyHttpError(response.status, text) || text || response.statusText || "Request failed");
     return text as unknown as T;
   }
   if (!response.ok) {
-    const message =
-      (data && typeof data === "object" && "detail" in (data as Record<string, unknown>)
+    const detail =
+      data && typeof data === "object" && "detail" in (data as Record<string, unknown>)
         ? String((data as Record<string, unknown>).detail)
-        : null) || response.statusText || "Request failed";
+        : "";
+    const message = friendlyHttpError(response.status, detail) || detail || response.statusText || "Request failed";
     throw new Error(message);
   }
   return data as T;

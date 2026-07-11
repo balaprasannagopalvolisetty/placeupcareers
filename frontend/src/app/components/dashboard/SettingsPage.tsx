@@ -15,7 +15,7 @@ const T = {
   grad: "linear-gradient(135deg, var(--pu-2563eb), var(--pu-0ea5e9))", red: "var(--pu-3b82f6-t)",
   input: "var(--pu-148-163-184-005)",
 };
-const SELECT_DARK_STYLE: CSSProperties = { background: "var(--pu-1d4ed8)", color: "var(--pu-f1f5f9-t)" };
+const SELECT_DARK_STYLE: CSSProperties = { background: "var(--pu-1d4ed8)", color: "var(--pu-ffffff-t)" };
 const HIDDEN_ROLE_PATTERN = /\b(volunteer|intern|open source contributor|community tech educator|growth hacker)\b/i;
 const isVisibleRole = (role: string) => Boolean(role.trim()) && !HIDDEN_ROLE_PATTERN.test(role);
 const COUNTRY_OPTIONS = COUNTRIES.map((country) => country.code);

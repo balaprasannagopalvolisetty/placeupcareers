@@ -259,7 +259,7 @@ export function VisaTrackerPage() {
                       </div>
                     </td>
                     <td style={{ padding: "11px 14px", whiteSpace: "nowrap" }}>
-                      <span style={{ fontSize: 9, padding: "3px 7px", borderRadius: 3, background: status === "Active" ? "var(--pu-34-197-94-01)" : "var(--pu-148-163-184-006)", color: status === "Active" ? "var(--pu-22c55e-b)" : T.t2, border: `1px solid ${status === "Active" ? "var(--pu-34-197-94-025)" : T.border}`, fontFamily: F.sans, fontWeight: 700 }}>{status}</span>
+                      <span style={{ fontSize: 9, padding: "3px 7px", borderRadius: 3, background: status === "Active" ? "var(--pu-34-197-94-01)" : "var(--pu-148-163-184-006)", color: status === "Active" ? "var(--pu-22c55e-t)" : T.t2, border: `1px solid ${status === "Active" ? "var(--pu-34-197-94-025)" : T.border}`, fontFamily: F.sans, fontWeight: 700 }}>{status}</span>
                     </td>
                   </motion.tr>
                 );
@@ -277,7 +277,7 @@ export function VisaTrackerPage() {
                 Previous
               </button>
               <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
-                style={{ padding: "6px 12px", borderRadius: 6, border: "none", background: page >= totalPages ? "var(--pu-148-163-184-005)" : T.grad, color: page >= totalPages ? T.t3 : "var(--pu-ffffff-b)", fontSize: 11, cursor: page >= totalPages ? "not-allowed" : "pointer", fontFamily: F.sans, fontWeight: 600 }}>
+                style={{ padding: "6px 12px", borderRadius: 6, border: "none", background: page >= totalPages ? "var(--pu-148-163-184-005)" : T.grad, color: page >= totalPages ? T.t3 : "var(--pu-ffffff-t)", fontSize: 11, cursor: page >= totalPages ? "not-allowed" : "pointer", fontFamily: F.sans, fontWeight: 600 }}>
                 Next
               </button>
             </div>

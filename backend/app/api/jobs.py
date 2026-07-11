@@ -224,15 +224,9 @@ def _get_stale_jobs_response(key: str) -> "dict | None":
 # set is an intermediary and qualifies for company-page resolution. Inverted
 # (vs. listing portals) so country job boards in registry-less countries
 # (EURES, MyCareersFuture, France Travail, Jobbank CA, ...) are covered too.
-_FIRST_PARTY_SOURCES = {
-    "greenhouse", "lever", "ashby", "smartrecruiters", "workday", "recruitee",
-    "personio", "teamtailor", "jazzhr", "rippling", "bamboohr", "workable",
-    "h1b_sponsor", "tier1_ats",
-    # Extended direct-ATS coverage (app/services/careers_ats.py)
-    "icims", "jobvite", "breezyhr", "oracle_recruiting", "paylocity", "ukg",
-    "zoho_recruit", "adp", "dover", "gem", "successfactors", "pinpoint",
-    "polymer", "phenom", "dayforce", "join", "hireology",
-}
+from app.scrape_constants import FIRST_PARTY_ATS_SOURCES
+
+_FIRST_PARTY_SOURCES = set(FIRST_PARTY_ATS_SOURCES)
 _company_link_recent: dict[str, datetime] = {}
 
 # 5-minute cache of exact inventory counts for personalized/role feeds.
@@ -832,8 +826,21 @@ def _in_datetime_window(value: Any, since: Optional[datetime], before: Optional[
     return True
 
 
+def _first_party_rank(job: dict) -> int:
+    """0 = direct ATS/career-page posting (Greenhouse, Workday, iCIMS, ...),
+    1 = aggregator (LinkedIn, Indeed, Dice, ...).
+
+    First-party postings carry the real JD and canonical apply link, so
+    within the same relevance tier + date bucket they outrank aggregator
+    copies. This is what surfaces the ATS-pipeline jobs the platform
+    collects instead of letting high-volume aggregator scrapes bury them."""
+    source = str(job.get("source_name") or job.get("source") or "").strip().lower()
+    return 0 if source in _FIRST_PARTY_SOURCES else 1
+
+
 def _projection_sort_key(job: dict, tz_offset_minutes: int = 0) -> tuple:
-    """Frontend projection: target roles, newest buckets, then high ATS."""
+    """Frontend projection: target roles, newest buckets, first-party
+    sources, then high ATS."""
     now = datetime.now(timezone.utc)
     today = (now + timedelta(minutes=-tz_offset_minutes)).date()
     effective_at = job.get("posted_at") or job.get("first_seen_at") or job.get("scraped_at") or job.get("last_seen_at")
@@ -863,7 +870,7 @@ def _projection_sort_key(job: dict, tz_offset_minutes: int = 0) -> tuple:
     preference_bucket = int(tier) if tier is not None else (0 if job.get("preference_match") else 1)
     # Final id tiebreaker keeps ordering identical across requests even when
     # bucket/score/timestamps tie — required for stable pagination.
-    return (preference_bucket, date_bucket, -score, -effective_ts, -posted_ts, str(job.get("id") or ""))
+    return (preference_bucket, date_bucket, _first_party_rank(job), -score, -effective_ts, -posted_ts, str(job.get("id") or ""))
 
 
 def _job_matches_preferences(job: dict, preferred_roles: list[str], preferred_locations: list[str]) -> bool:
@@ -1731,11 +1738,14 @@ async def list_jobs(
             decorated.sort(key=_entry_score)
 
         if sort == "recent":
-            # Pure recency ordering (newest postings first, id tiebreak) —
-            # powers the "Recently posted" sort option in the UI.
+            # Day-bucketed recency: newest posting DAY first, first-party
+            # ATS/career-page sources before aggregator copies within the
+            # same day, then exact time. Pure second-level recency let
+            # high-volume aggregator scrapes bury the direct ATS postings.
             def _recency_key(row: dict) -> tuple:
                 eff = _coerce_datetime(row.get("posted_at") or row.get("first_seen_at") or row.get("scraped_at") or row.get("last_seen_at"))
-                return (-(eff.timestamp() if eff else 0.0), str(row.get("id") or ""))
+                day_ordinal = eff.date().toordinal() if eff else 0
+                return (-day_ordinal, _first_party_rank(row), -(eff.timestamp() if eff else 0.0), str(row.get("id") or ""))
             decorated.sort(key=_recency_key)
         elif sort == "match":
             decorated.sort(key=lambda row: _projection_sort_key(row, tz_offset_minutes=tz_offset))

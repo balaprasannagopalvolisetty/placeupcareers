@@ -135,8 +135,30 @@ class PostgresClient:
                 # Postgres returns tied rows in ARBITRARY order per query —
                 # without this, page 2 could fetch a reshuffled pool whose
                 # slice repeats page 1 ("same jobs on every page").
-                stmt = stmt.order_by(MasterJob.last_seen_at.desc(), MasterJob.id).limit(fetch_limit).offset(offset)
-                rows = db.execute(stmt).mappings().all()
+                ordered = stmt.order_by(MasterJob.last_seen_at.desc(), MasterJob.id).limit(fetch_limit).offset(offset)
+                rows = list(db.execute(ordered).mappings().all())
+
+                # Guaranteed first-party representation: high-volume aggregator
+                # scrapes (LinkedIn/Indeed/Dice) refresh last_seen_at constantly
+                # and can fill the ENTIRE recency-ordered pool, so direct
+                # ATS/career-page postings never even reached the API-level
+                # ranking. Top up the pool with the freshest first-party rows
+                # under the same filters; the feed ranking then orders them
+                # ahead of aggregator copies.
+                if not filters.get("source") and offset == 0:
+                    from app.scrape_constants import FIRST_PARTY_ATS_SOURCES
+                    fp_stmt = self._apply_master_job_filters(
+                        select(*stmt.selected_columns), filters
+                    ).where(
+                        MasterJob.source_name.in_(sorted(FIRST_PARTY_ATS_SOURCES))
+                    ).order_by(
+                        MasterJob.last_seen_at.desc(), MasterJob.id
+                    ).limit(min(600, fetch_limit))
+                    seen_ids = {row["id"] for row in rows}
+                    for row in db.execute(fp_stmt).mappings().all():
+                        if row["id"] not in seen_ids:
+                            rows.append(row)
+                            seen_ids.add(row["id"])
                 return self._filter_target_jobs([self._master_job_mapping_to_dict(row) for row in rows])[:limit]
         with self.session() as db:
             description_expr = (

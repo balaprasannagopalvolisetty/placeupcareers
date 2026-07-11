@@ -696,7 +696,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
                 <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: T.t3, fontFamily: F.sans, marginBottom: 10 }}>Missing</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
                   {visibleMissing.length ? visibleMissing.map(({ kw, impact }) => (
-                    <span key={kw} style={{ fontSize: 11.5, padding: "5px 10px", borderRadius: 8, background: "var(--pu-148-163-184-005)", color: T.t2, border: `1px solid ${T.border}`, fontFamily: F.sans }}>{kw}<span style={{ marginLeft: 5, fontSize: 9.5, color: impact === "High" ? "var(--pu-ef4444-b)" : T.t3 }}>{impact}</span></span>
+                    <span key={kw} style={{ fontSize: 11.5, padding: "5px 10px", borderRadius: 8, background: "var(--pu-148-163-184-005)", color: T.t2, border: `1px solid ${T.border}`, fontFamily: F.sans }}>{kw}<span style={{ marginLeft: 5, fontSize: 9.5, color: impact === "High" ? "var(--pu-ef4444-t)" : T.t3 }}>{impact}</span></span>
                   )) : <span style={{ fontSize: 12, color: T.t3, fontFamily: F.sans }}>No gaps detected.</span>}
                 </div>
               </div>
@@ -746,7 +746,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     {atsAnalysis.red_flags.slice(0, 5).map((f, idx) => (
                       <div key={idx} style={{ border: `1px solid ${T.border}`, borderRadius: 12, background: "var(--pu-1-17-38-03)", padding: 12 }}>
-                        <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase", color: f.impact === "High" ? "var(--pu-ef4444-b)" : T.t3, fontFamily: F.sans, marginBottom: 6 }}>{f.category}{f.impact ? ` · ${f.impact}` : ""}</div>
+                        <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase", color: f.impact === "High" ? "var(--pu-ef4444-t)" : T.t3, fontFamily: F.sans, marginBottom: 6 }}>{f.category}{f.impact ? ` · ${f.impact}` : ""}</div>
                         <div style={{ fontSize: 12, color: T.t3, fontFamily: F.sans, lineHeight: 1.5, marginBottom: 6, textDecoration: "line-through", textDecorationColor: "var(--pu-239-68-68-05)" }}>{f.original}</div>
                         <div style={{ fontSize: 12, color: T.text, fontFamily: F.sans, lineHeight: 1.5, display: "flex", gap: 6 }}><span style={{ color: "var(--pu-6ee7b7-t)", flexShrink: 0 }}>→</span>{f.suggestion}</div>
                       </div>
@@ -763,7 +763,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
                         {recruiterScores.map(([key, value]) => (
                           <div key={key} style={{ borderRadius: 10, background: "var(--pu-148-163-184-004)", border: `1px solid ${T.border}`, padding: 10 }}>
                             <div style={{ fontSize: 10.5, color: T.t3, fontFamily: F.sans, marginBottom: 4 }}>{scoreLabels[key] || key}</div>
-                            <div style={{ fontSize: 18, fontWeight: 850, color: value >= 75 ? "var(--pu-6ee7b7-b)" : value >= 55 ? "var(--pu-60a5fa-b)" : "var(--pu-ef4444-b)", fontFamily: F.mono }}>{value}/100</div>
+                            <div style={{ fontSize: 18, fontWeight: 850, color: value >= 75 ? "var(--pu-6ee7b7-t)" : value >= 55 ? "var(--pu-60a5fa-t)" : "var(--pu-ef4444-t)", fontFamily: F.mono }}>{value}/100</div>
                           </div>
                         ))}
                       </div>
@@ -775,7 +775,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
                       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                         {(atsAnalysis.knockout_risks || []).slice(0, 5).map((risk) => (
                           <div key={`${risk.label}-${risk.jd_signal}`} style={{ fontSize: 11.5, color: T.t2, fontFamily: F.sans, lineHeight: 1.45 }}>
-                            <span style={{ color: risk.resume_evidence ? "var(--pu-6ee7b7-b)" : risk.impact === "High" ? "var(--pu-ef4444-b)" : "var(--pu-60a5fa-b)", fontWeight: 800 }}>{risk.label}</span>
+                            <span style={{ color: risk.resume_evidence ? "var(--pu-6ee7b7-t)" : risk.impact === "High" ? "var(--pu-ef4444-t)" : "var(--pu-60a5fa-t)", fontWeight: 800 }}>{risk.label}</span>
                             <span style={{ color: T.t3 }}> · {risk.resume_evidence ? "evidence found" : "needs review"}</span>
                             <div style={{ color: T.t3 }}>{risk.guidance}</div>
                           </div>

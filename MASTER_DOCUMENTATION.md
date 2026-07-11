@@ -182,6 +182,23 @@ every component to 0-100, calibrate TF-IDF similarity, and cross-check that
 Resume Tailor (2026-07-10): unlocked by default. `TAILOR_FEATURE_ENABLED=false`
 in the service env re-locks it without a deploy.
 
+Feed ranking (2026-07-10): first-party ATS/career-page sources
+(`app/scrape_constants.FIRST_PARTY_ATS_SOURCES`) rank ahead of aggregator
+copies (LinkedIn/Indeed/Dice) inside every relevance tier + date bucket, and
+the DB pool query tops up with the freshest first-party rows so aggregator
+volume can never push direct postings out of the 2500-row pool
+(`app/db/postgres.py get_jobs`). "Recent" sort is day-bucketed with
+first-party priority within the day.
+
+Job dates render in the user's targeted-country convention (country filter
+first, else first saved target location) — `COUNTRY_LOCALES` in
+`frontend/src/app/components/dashboard/JobsPage.tsx`.
+
+Sign-in resilience (2026-07-10): Firestore user lookups retry transient
+errors (RESOURCE_EXHAUSTED "Rate exceeded.", unavailable, deadline) with
+backoff, and the frontend API client maps raw 429/5xx upstream bodies to
+friendly messages instead of leaking them.
+
 Important files:
 
 - `backend/app/etl/jobs_scraper_6h.py`

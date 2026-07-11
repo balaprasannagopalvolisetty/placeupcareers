@@ -173,6 +173,37 @@ function cleanPreview(value: unknown): string {
     .trim();
 }
 
+/* ── Locale-aware dates ────────────────────────────────────────────────
+   Dates render in the convention of the user's targeted country (their
+   active country filter, else their first target location, else the
+   browser default). E.g. US → 07/10/2026, DE → 10.07.2026. */
+const COUNTRY_LOCALES: Record<string, string> = {
+  US: "en-US", CA: "en-CA", GB: "en-GB", IE: "en-IE", AU: "en-AU", NZ: "en-NZ",
+  IN: "en-IN", SG: "en-SG", HK: "en-HK", DE: "de-DE", AT: "de-AT", CH: "de-CH",
+  NL: "nl-NL", BE: "nl-BE", FR: "fr-FR", LU: "fr-LU", ES: "es-ES", PT: "pt-PT",
+  IT: "it-IT", SE: "sv-SE", DK: "da-DK", NO: "nb-NO", FI: "fi-FI", PL: "pl-PL",
+  EE: "et-EE", CZ: "cs-CZ", QA: "ar-QA", SA: "ar-SA", AE: "ar-AE", JP: "ja-JP",
+  KR: "ko-KR", TW: "zh-TW",
+};
+
+let activeDateLocale: string | undefined;
+
+function setActiveDateLocale(countryCode: string | undefined | null) {
+  activeDateLocale = (countryCode && COUNTRY_LOCALES[countryCode.toUpperCase()]) || undefined;
+}
+
+function resolveCountryFromLocations(locations: string[], countries: CountryOption[]): string | undefined {
+  for (const loc of locations) {
+    const needle = String(loc || "").trim().toLowerCase();
+    if (!needle) continue;
+    const hit = countries.find(
+      (c) => c.code.toLowerCase() === needle || c.name.toLowerCase() === needle || needle.includes(c.name.toLowerCase()),
+    );
+    if (hit) return hit.code;
+  }
+  return undefined;
+}
+
 function formatPosted(value: unknown): string {
   if (!value) return "Recently";
   const raw = String(value);
@@ -185,7 +216,7 @@ function formatPosted(value: unknown): string {
   if (days === 0) return "Today";
   if (days === 1) return "Yesterday";
   if (days < 30) return `${days} days ago`;
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return date.toLocaleDateString(activeDateLocale, { month: "short", day: "numeric", year: "numeric" });
 }
 
 function jobPostedRaw(job: api.JobPost): unknown {
@@ -247,9 +278,9 @@ function publishDateLabel(job: api.JobPost): string {
   if (!raw) return "Publish date —";
   const date = new Date(String(raw));
   if (Number.isNaN(date.getTime())) return `Publish date ${String(raw).slice(0, 18)}`;
-  const dd = String(date.getDate()).padStart(2, "0");
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  return `Publish date ${dd}-${mm}-${date.getFullYear()}`;
+  // Numeric date in the user's targeted-country convention (en-US →
+  // MM/DD/YYYY, de-DE → DD.MM.YYYY, en-GB → DD/MM/YYYY, ...).
+  return `Publish date ${date.toLocaleDateString(activeDateLocale, { day: "2-digit", month: "2-digit", year: "numeric" })}`;
 }
 
 function getVisaRecord(job: api.JobPost): Record<string, unknown> {
@@ -324,7 +355,7 @@ function paginationButtonStyle(active = false, disabled = false): CSSProperties 
     borderRadius: 8,
     border: `1px solid ${active ? "var(--pu-59-130-246-046)" : J.line}`,
     background: active ? "var(--pu-59-130-246-018)" : "var(--pu-148-163-184-005)",
-    color: disabled ? J.t3 : active ? "var(--pu-f1f5f9-b)" : J.t2,
+    color: disabled ? J.t3 : active ? "var(--pu-f1f5f9-t)" : J.t2,
     fontSize: 12,
     fontWeight: 850,
     fontFamily: F.sans,
@@ -548,6 +579,16 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       }));
     } catch { /* storage disabled */ }
   }, [searchRaw, locationRaw, countryFilter, visaProgramFilter, timeFilter, maxYears, visaOnly, sortBy, activeCategory, activeRole]);
+
+  // Dates follow the user's targeted country: the active country filter
+  // wins, else the first saved target location that maps to a country.
+  useEffect(() => {
+    const fromFilter = countryFilter && countryFilter !== "all" ? countryFilter : undefined;
+    const fromPrefs = userPrefs
+      ? resolveCountryFromLocations(userPrefs.target_locations || [], targetCountries)
+      : undefined;
+    setActiveDateLocale(fromFilter || fromPrefs);
+  }, [countryFilter, userPrefs, targetCountries]);
 
   const [savedVersion, setSavedVersion] = useState(0);
   const [appliedVersion, setAppliedVersion] = useState(0);
@@ -1143,7 +1184,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             {[...visibleVisaPrograms].sort((a, b) => routeLabel(a).localeCompare(routeLabel(b))).map((program) => <option style={SELECT_DARK_STYLE} key={`${program.country_code}-${program.code}`} value={program.code}>{countryFlag(program.country_code)} {program.country_code} - {program.name}</option>)}
           </select>
           <button onClick={() => { setVisaOnly(!visaOnly); setPage(1); }}
-            style={{ ...controlStyle(), border: `1px solid ${visaOnly ? "var(--pu-34-197-94-032)" : J.line}`, background: visaOnly ? J.greenBg : J.card, color: visaOnly ? "var(--pu-86efac-b)" : J.t2, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+            style={{ ...controlStyle(), border: `1px solid ${visaOnly ? "var(--pu-34-197-94-032)" : J.line}`, background: visaOnly ? J.greenBg : J.card, color: visaOnly ? "var(--pu-86efac-t)" : J.t2, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
             <Filter size={12} /> Visa-friendly
           </button>
           <select
@@ -1473,7 +1514,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                           display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 750,
                           padding: "4px 8px", borderRadius: 999, fontFamily: F.sans,
                           background: isTargetRole ? "var(--pu-59-130-246-016)" : J.blueBg,
-                          color: isTargetRole ? "var(--pu-60a5fa-b)" : J.blue,
+                          color: isTargetRole ? "var(--pu-60a5fa-t)" : J.blue,
                           border: isTargetRole ? "1px solid var(--pu-59-130-246-04)" : "1px solid transparent",
                           boxShadow: isTargetRole ? "0 0 10px var(--pu-59-130-246-018)" : "none",
                         }}>
@@ -1504,7 +1545,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                       background: tailorQueueIds.has(id)
                         ? "var(--pu-34-197-94-01)"
                         : "linear-gradient(135deg, var(--pu-242-163-65-022), var(--pu-59-130-246-018))",
-                      color: tailorQueueIds.has(id) ? "var(--pu-86efac-b)" : "var(--pu-f1f5f9-b)",
+                      color: tailorQueueIds.has(id) ? "var(--pu-86efac-t)" : "var(--pu-f1f5f9-t)",
                       fontSize: 12,
                       fontWeight: 900,
                       cursor: tailorQueueIds.has(id) || tailorUsage.used >= tailorUsage.limit ? "not-allowed" : "pointer",
@@ -1520,7 +1561,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                   >
                     <Wand2 size={14} />
                     {tailorQueueIds.has(id) ? "Added to Tailor Queue" : tailorBusyId === id ? "Adding to Tailor Queue..." : "Tailor Resume"}
-                    <span style={{ color: tailorQueueIds.has(id) ? "var(--pu-86efac-b)" : "var(--pu-148-163-184-068)", fontSize: 10, fontWeight: 800 }}>
+                    <span style={{ color: tailorQueueIds.has(id) ? "var(--pu-86efac-t)" : "var(--pu-148-163-184-068)", fontSize: 10, fontWeight: 800 }}>
                       {tailorUsage.used}/{tailorUsage.limit} today
                     </span>
                   </button>
@@ -1547,7 +1588,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                         const cur = trackedJobs[id];
                         const nextStatus = cur === "applied" ? "interview" : "applied";
                         await persistApplication(job, nextStatus);
-                      }} style={{ height: 28, padding: "0 9px", borderRadius: 7, border: `1px solid ${trackedJobs[id] === "interview" ? "var(--pu-59-130-246-035)" : trackedJobs[id] === "applied" ? "var(--pu-34-197-94-035)" : J.line}`, background: trackedJobs[id] === "interview" ? "var(--pu-59-130-246-01)" : trackedJobs[id] === "applied" ? "var(--pu-34-197-94-01)" : "var(--pu-148-163-184-005)", color: trackedJobs[id] === "interview" ? "var(--pu-93c5fd-b)" : trackedJobs[id] === "applied" ? "var(--pu-86efac-b)" : J.t2, fontSize: 10, fontWeight: 800, cursor: "pointer", fontFamily: F.sans, whiteSpace: "nowrap" }} title={trackedJobs[id] === "interview" ? "Interview stage" : trackedJobs[id] === "applied" ? "Applied - click to move to Interview" : "Track application status"}>
+                      }} style={{ height: 28, padding: "0 9px", borderRadius: 7, border: `1px solid ${trackedJobs[id] === "interview" ? "var(--pu-59-130-246-035)" : trackedJobs[id] === "applied" ? "var(--pu-34-197-94-035)" : J.line}`, background: trackedJobs[id] === "interview" ? "var(--pu-59-130-246-01)" : trackedJobs[id] === "applied" ? "var(--pu-34-197-94-01)" : "var(--pu-148-163-184-005)", color: trackedJobs[id] === "interview" ? "var(--pu-93c5fd-t)" : trackedJobs[id] === "applied" ? "var(--pu-86efac-t)" : J.t2, fontSize: 10, fontWeight: 800, cursor: "pointer", fontFamily: F.sans, whiteSpace: "nowrap" }} title={trackedJobs[id] === "interview" ? "Interview stage" : trackedJobs[id] === "applied" ? "Applied - click to move to Interview" : "Track application status"}>
                         {trackedJobs[id] === "interview" ? "Interview" : trackedJobs[id] === "applied" ? "Applied" : "Track"}
                       </button>
                       <button
