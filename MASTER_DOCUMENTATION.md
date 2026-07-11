@@ -199,6 +199,21 @@ errors (RESOURCE_EXHAUSTED "Rate exceeded.", unavailable, deadline) with
 backoff, and the frontend API client maps raw 429/5xx upstream bodies to
 friendly messages instead of leaking them.
 
+Direct-source policy (2026-07-10 pm): the Jobs feed serves ATS/company-page
+postings only; aggregator copies (`scrape_constants.AGGREGATOR_SOURCES`:
+LinkedIn/Indeed/Dice/...) backfill only when the direct pool can't fill a
+page. `JOBS_FEED_INCLUDE_AGGREGATORS=true` restores blending. Ranking is
+relevance-first (Jobright-style): target-role tier, then match score +
+freshness bonus + first-party bonus (`_projection_sort_key`).
+
+Keyword extraction (2026-07-10 pm): `text_processing.BUSINESS_SKILLS` adds a
+cross-domain lexicon (HR/finance/ops/health/sales/design); `ats_analysis`
+now blacklists application-process noise (cv/apply/click), drops
+company-internal acronyms defined in-document ("... Centre (OSC)"), and
+mines "experience in X, Y, Z" requirement phrases so non-tech JDs extract
+their real asks. Resume experience entries carry title/company/dates plus a
+computed `duration_label` ("1 yr 7 mos"), with Title↔Company order fixed.
+
 Important files:
 
 - `backend/app/etl/jobs_scraper_6h.py`

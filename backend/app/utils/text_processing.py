@@ -352,22 +352,81 @@ def _skill_pattern(skill: str) -> str:
     return prefix + escaped + suffix
 
 
-def extract_skills_from_text(text: str) -> list[str]:
-    """Extract recognized technical skills from text.
+# Cross-domain professional skills BEYOND software engineering, so keyword
+# extraction works for business, operations, finance, HR, healthcare, sales,
+# marketing, design, legal, and admin roles — not just tech postings.
+BUSINESS_SKILLS = frozenset({
+    # HR / workforce / payroll
+    "workforce management", "time and attendance", "payroll", "payroll processing",
+    "hris", "workday", "peoplesoft", "kronos", "ukg", "bamboohr", "successfactors",
+    "onboarding", "offboarding", "recruiting", "talent acquisition", "sourcing",
+    "benefits administration", "employee relations", "performance management",
+    "compensation", "hr compliance", "scheduling", "rostering", "leave management",
+    # finance / accounting
+    "accounts payable", "accounts receivable", "general ledger", "reconciliation",
+    "bookkeeping", "financial reporting", "financial analysis", "budgeting",
+    "forecasting", "variance analysis", "month-end close", "quickbooks", "netsuite",
+    "xero", "sage", "invoicing", "billing", "expense management", "tax preparation",
+    "auditing", "audit", "internal audit", "sox", "ifrs", "gaap", "underwriting",
+    "financial modeling", "cost analysis", "procurement", "purchasing",
+    # operations / admin / support
+    "ticketing systems", "service desk", "help desk", "case management",
+    "sla management", "escalation management", "order management", "data entry",
+    "records management", "inventory management", "supply chain", "logistics",
+    "warehouse management", "fleet management", "dispatch", "quality assurance",
+    "quality control", "lean", "kaizen", "process improvement",
+    "continuous improvement", "standard operating procedures", "vendor management",
+    "contract management", "contracts", "facilities management", "office management",
+    # compliance / legal / risk
+    "compliance", "regulatory compliance", "risk management", "risk assessment",
+    "kyc", "aml", "gdpr", "hipaa", "pci dss", "iso 27001", "iso 9001", "soc 2",
+    "due diligence", "legal research", "contract review", "paralegal",
+    "policy development", "governance",
+    # customer / sales / marketing
+    "customer service", "customer support", "customer success", "call center",
+    "crm", "hubspot", "zendesk", "freshdesk", "account management",
+    "lead generation", "business development", "sales operations", "cold calling",
+    "b2b sales", "b2c sales", "upselling", "client relations", "retention",
+    "seo", "sem", "google analytics", "google ads", "content marketing",
+    "email marketing", "social media marketing", "copywriting", "brand management",
+    "market research", "campaign management", "marketing automation",
+    # healthcare
+    "patient care", "electronic health records", "ehr", "emr", "epic", "cerner",
+    "medical billing", "medical coding", "icd-10", "cpt", "hl7", "clinical documentation",
+    "phlebotomy", "triage", "care coordination", "telehealth",
+    # design / product
+    "wireframing", "prototyping", "user research", "usability testing",
+    "adobe photoshop", "illustrator", "indesign", "after effects", "premiere pro",
+    "canva", "sketch", "design systems", "information architecture",
+    # office / general tools
+    "microsoft office", "microsoft word", "microsoft outlook", "powerpoint",
+    "visio", "google workspace", "ms project", "monday.com", "asana", "trello",
+    "notion", "slack", "sap", "erp", "oracle ebs", "ms dynamics", "salesforce crm",
+    # analysis / reporting
+    "business analysis", "requirements gathering", "stakeholder engagement",
+    "stakeholder management", "gap analysis", "process mapping", "kpi reporting",
+    "data visualization", "pivot tables", "vlookup", "macros", "vba",
+})
 
-    Matches against the TECH_SKILLS dictionary using exact
-    and fuzzy matching. Handles multi-word skills.
+
+def extract_skills_from_text(text: str) -> list[str]:
+    """Extract recognized skills from text.
+
+    Matches against the TECH_SKILLS dictionary AND the cross-domain
+    BUSINESS_SKILLS lexicon using exact and boundary-aware matching, so
+    non-software roles (finance, HR, ops, healthcare, sales, ...) extract
+    real keywords instead of almost nothing.
 
     Args:
         text: Input text to scan for skills
 
     Returns:
-        List of matched technical skills
+        List of matched skills
     """
     text_lower = text.lower()
     found_skills = []
 
-    for skill in TECH_SKILLS:
+    for skill in set(TECH_SKILLS) | set(BUSINESS_SKILLS):
         if skill in NOISY_KEYWORDS:
             continue
         if len(skill) <= 2 and skill.isalpha() and not re.search(rf"(?<![A-Za-z]){re.escape(skill.upper())}(?![A-Za-z])", text):

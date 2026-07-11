@@ -399,6 +399,74 @@ def _first_match(pattern: str, text: str) -> str:
     return match.group(0).strip() if match else ""
 
 
+# ── Structured experience parsing ────────────────────────────────────────────
+#
+# Splits the experience section into individual positions with title, company,
+# dates, and computed duration — previously all positions were rendered as one
+# undifferentiated blob and Past Companies had no titles or durations.
+
+_MONTHS = "jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec"
+_DATE_TOKEN = rf"(?:(?:{_MONTHS})[a-z]*\.?\s+\d{{4}}|\d{{1,2}}/\d{{4}}|\d{{4}})"
+_DATE_RANGE = re.compile(
+    rf"({_DATE_TOKEN})\s*(?:[-–—~]|to|until)\s*({_DATE_TOKEN}|present|current|now|ongoing)",
+    re.I,
+)
+_TITLE_WORDS = re.compile(
+    r"\b(engineer|developer|analyst|manager|consultant|intern|architect|designer|"
+    r"scientist|administrator|specialist|lead|director|officer|coordinator|"
+    r"technician|associate|assistant|accountant|auditor|recruiter|representative|"
+    r"support|advisor|supervisor|head|founder|owner|president|nurse|therapist)\b",
+    re.I,
+)
+_MONTH_INDEX = {m: i + 1 for i, m in enumerate(
+    ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"])}
+
+
+def _parse_date_token(token: str) -> Optional[tuple[int, int]]:
+    """'(month, year)' from 'Jan 2024' / '01/2024' / '2024'; None if unparseable."""
+    tok = (token or "").strip().lower().rstrip(".")
+    if tok in {"present", "current", "now", "ongoing"}:
+        from datetime import datetime as _dt
+        now = _dt.utcnow()
+        return (now.month, now.year)
+    m = re.match(rf"({_MONTHS})[a-z]*\.?\s+(\d{{4}})", tok)
+    if m:
+        return (_MONTH_INDEX.get(m.group(1)[:3], 1), int(m.group(2)))
+    m = re.match(r"(\d{1,2})/(\d{4})", tok)
+    if m:
+        return (max(1, min(12, int(m.group(1)))), int(m.group(2)))
+    m = re.match(r"(\d{4})$", tok)
+    if m:
+        return (1, int(m.group(1)))
+    return None
+
+
+def _duration_label(start: Optional[tuple[int, int]], end: Optional[tuple[int, int]]) -> str:
+    if not start or not end:
+        return ""
+    months = (end[1] - start[1]) * 12 + (end[0] - start[0]) + 1
+    if months <= 0:
+        return ""
+    years, rem = divmod(months, 12)
+    parts = []
+    if years:
+        parts.append(f"{years} yr" + ("s" if years > 1 else ""))
+    if rem:
+        parts.append(f"{rem} mo" + ("s" if rem > 1 else ""))
+    return " ".join(parts)
+
+
+def _duration_label_from_dates(dates: str) -> str:
+    """Human duration ("1 yr 9 mos") computed from a date-range string."""
+    m = re.match(
+        rf"\s*({_DATE_TOKEN})\s*(?:[-–—~]|to|until)\s*({_DATE_TOKEN}|present|current|now|ongoing)",
+        str(dates or ""), re.I,
+    )
+    if not m:
+        return ""
+    return _duration_label(_parse_date_token(m.group(1)), _parse_date_token(m.group(2)))
+
+
 _MONTH = r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t)?(?:ember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
 _DATE_RANGE_TEXT_RE = re.compile(
     rf"(?:{_MONTH}\s+)?(?:19|20)\d{{2}}\s*(?:-|–|—|to)\s*(?:(?:{_MONTH}\s+)?(?:19|20)\d{{2}}|present|current|now)",
@@ -459,7 +527,7 @@ def _experience_entries(lines: list[str]) -> list[dict]:
         dates = re.sub(r"\s+", " ", match.group("dates")).strip()
         next_start = matches[idx + 1].start() if idx + 1 < len(matches) else len(blob)
         body = blob[match.end():next_start].strip()
-        parts = [p.strip(" -–—") for p in re.split(r"\s*\|\s*", header) if p.strip()]
+        parts = [p.strip(" -–—") for p in re.split(r"\s*\|\s*|\s*[·•]\s*|\s+[—–]\s+", header) if p.strip(" -–—")]
         title = parts[0] if parts else header
         company = parts[1] if len(parts) > 1 else ""
         location = " | ".join(parts[2:]) if len(parts) > 2 else ""
@@ -467,12 +535,19 @@ def _experience_entries(lines: list[str]) -> list[dict]:
             title_bits = [p.strip() for p in title.split(" - ", 1)]
             title = title_bits[0]
             company = title_bits[1] if len(title_bits) > 1 else ""
+        # Resumes use both "Title — Company" and "Company — Title". If the
+        # second segment reads like a job title and the first doesn't, swap so
+        # Past Companies shows real employers with real titles.
+        if company and _TITLE_WORDS.search(company) and not _TITLE_WORDS.search(title):
+            title, company = company, title
         bullets = _split_experience_bullets(body)
         entries.append({
             "title": title[:120],
             "company": company[:120],
             "location": location[:120],
+            "dates": dates,
             "duration": dates,
+            "duration_label": _duration_label_from_dates(dates),
             "bullets": bullets,
         })
     return entries[:10]

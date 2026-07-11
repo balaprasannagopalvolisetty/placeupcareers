@@ -136,6 +136,16 @@ _NOISE_TERMS = {
     "company", "organization", "operations", "operational", "engineer", "engineering",
     "development", "developer", "design", "designing", "implementation", "management",
     "analysis", "results", "result", "best practices", "day", "year", "years",
+    # Application-process / posting boilerplate — these are instructions to
+    # applicants, not skills ("upload your CV", "click Apply", benefits blurbs).
+    # They previously leaked in as High-impact keywords ("cv", "apply").
+    "cv", "resume", "cover letter", "apply", "click", "upload", "submit",
+    "application", "applications", "interview", "onsite", "on-site", "hybrid",
+    "remote", "salary", "benefits", "wellbeing", "well-being", "perks", "bonus",
+    "holidays", "vacation", "pto", "insurance", "pension", "superannuation",
+    "diversity", "inclusion", "belonging", "culture", "mission", "vision",
+    "join", "joining", "career", "careers", "growth", "grow", "impact",
+    "colleagues", "employees", "workplace", "flexible", "flexibility",
 }
 
 _KNOCKOUT_PATTERNS = (
@@ -242,19 +252,77 @@ def _term_present(term: str, low_padded: str) -> bool:
     return re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", low_padded) is not None
 
 
+def _locally_defined_acronyms(text: str) -> set[str]:
+    """Acronyms DEFINED inside the document — "Operational Support Centre (OSC)".
+
+    These are almost always company-internal org/team names, not transferable
+    skills; treating them as High-impact keywords ("osc") made the analysis
+    look broken. They are excluded unless they're in the known skill lexicon.
+    """
+    defined: set[str] = set()
+    for m in re.finditer(r"(?:[A-Z][a-zA-Z&]+\s+){1,5}\(\s*([A-Z][A-Za-z0-9&]{1,7})\s*\)", text or ""):
+        defined.add(m.group(1).lower())
+    return defined
+
+
 def _acronyms(text: str) -> set[str]:
     """Real skill acronyms (PLC, HMI, ATS, SIEM, EDR, GPO, RBAC, CI/CD…)."""
     out: set[str] = set()
+    internal = _locally_defined_acronyms(text)
     for m in re.findall(r"\b[A-Z][A-Za-z0-9]{1,5}(?:/[A-Za-z0-9]{1,5})?\b", text or ""):
         a = m.strip()
         low = a.lower()
         if low in _ACRONYM_STOP or a.isdigit() or low in _NOISE_TERMS:
+            continue
+        # Company-internal acronyms (defined in-document) are not skills.
+        if low in internal and low not in _HARD_SKILLS:
             continue
         # Must contain at least one uppercase letter beyond the first to be an
         # acronym (filters ordinary Capitalised words like "Power", "Remote").
         if not re.search(r"[A-Z0-9].*[A-Z0-9]", a) and "/" not in a:
             continue
         out.add(low)
+    return out
+
+
+# "experience in payroll, workforce management, HR and customer service" —
+# the JD literally lists its skill expectations; mine those phrases even when
+# they're not in any dictionary. This is what lifts extraction accuracy for
+# non-tech postings.
+_REQ_PHRASE_LEAD = re.compile(
+    r"\b(?:experience|experienced|proficien(?:t|cy)|confiden(?:t|ce)|background|"
+    r"knowledge|familiar(?:ity)?|skilled|expertise|competen(?:t|cy|cies)|degree)\s+"
+    r"(?:in|with|of|using|across)\s+([^.;:!?\n]{3,160})",
+    re.I,
+)
+_PHRASE_SPLIT = re.compile(r",|/|\band\b|\bor\b|\bincluding\b|\bsuch as\b|\bparticularly\b|\bespecially\b|\(|\)", re.I)
+_PHRASE_STOP_EDGE = {
+    "a", "an", "the", "similar", "related", "relevant", "equivalent", "other",
+    "various", "strong", "excellent", "good", "solid", "proven", "demonstrated",
+    "hands-on", "hands", "on", "prior", "previous", "administrative", "environment",
+    "environments", "field", "area", "areas", "domain", "setting", "settings",
+}
+
+
+def _mine_requirement_phrases(text: str) -> set[str]:
+    """Extract skill phrases the JD explicitly asks for, dictionary or not."""
+    out: set[str] = set()
+    for m in _REQ_PHRASE_LEAD.finditer(text or ""):
+        for chunk in _PHRASE_SPLIT.split(m.group(1)):
+            words = [w for w in re.findall(r"[a-z0-9][a-z0-9+.#&'-]*", chunk.lower()) if w]
+            # Trim generic edge words ("a similar administrative environment").
+            while words and words[0] in _PHRASE_STOP_EDGE:
+                words.pop(0)
+            while words and words[-1] in _PHRASE_STOP_EDGE:
+                words.pop()
+            if not 1 <= len(words) <= 4:
+                continue
+            phrase = " ".join(words)
+            if len(phrase) < 3 or phrase in _NOISE_TERMS or phrase in _ACRONYM_STOP:
+                continue
+            if all(w in _NOISE_TERMS or len(w) < 3 for w in words):
+                continue
+            out.add(_normalize(phrase))
     return out
 
 
@@ -274,6 +342,9 @@ def _extract_terms(text: str) -> set[str]:
             terms.add(n)
     for ac in _acronyms(text):
         terms.add(_normalize(ac))
+    # Phrases the document explicitly asks for ("experience in payroll,
+    # workforce management, HR...") — covers postings outside the dictionaries.
+    terms |= _mine_requirement_phrases(text)
     # Drop generic filler and trivially short tokens.
     return {t for t in terms if t and t not in _NOISE_TERMS and len(t) >= 2}
 
@@ -282,7 +353,14 @@ def _jd_importance(jd_text: str, terms: set[str]) -> dict[str, str]:
     """Rank each JD term High/Medium/Low by frequency + requirement-section hits."""
     low = clean_text(jd_text).lower()
     req_zone = ""
-    m = re.search(r"(requirements?|qualifications?|must have|what you'll need|what you will have|required|what they need)(.*)", low, re.S)
+    m = re.search(
+        r"(requirements?|qualifications?|must have|what you'll need|what you will have|"
+        r"required|what they need|great fit if you have|who you are|about you|"
+        r"what we're looking for|what we are looking for|ideal candidate|"
+        r"you could be|key skills|essential skills|you'll make a positive impact|"
+        r"skills and experience|to be successful)(.*)",
+        low, re.S,
+    )
     if m:
         req_zone = m.group(2)[:2500]
     out: dict[str, str] = {}

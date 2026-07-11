@@ -1132,109 +1132,120 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
               ))}
             </div>
           </div>
-          <select
-            value={activeRole || ""}
-            onChange={(e) => { setActiveRole(e.target.value || null); setActiveCategory(null); setPage(1); }}
-            style={controlStyle({ minWidth: isMobile ? "100%" : 220, fontSize: 13 })}
-          >
-            <option style={SELECT_DARK_STYLE} value="">{savedRoleMode ? `All ${targetRoleCount} saved roles` : "All roles"}</option>
-            {[...allRoles].sort((a, b) => a.localeCompare(b)).map((role) => <option style={SELECT_DARK_STYLE} key={role} value={role}>{role}</option>)}
-          </select>
-          {targetRoleCount > 0 && (
-            <button
-              onClick={() => { setPersonalized((value) => !value); setPage(1); }}
-              style={{
-                ...controlStyle(),
-                border: `1px solid ${savedRoleMode ? "var(--pu-59-130-246-032)" : J.line}`,
-                background: savedRoleMode ? J.blueBg : J.card,
-                color: savedRoleMode ? J.blue : J.t2,
-                cursor: "pointer",
-                fontWeight: 800,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 7,
-              }}
-              title={savedRoleMode ? "Showing jobs matched to your saved target roles" : "Showing all active roles"}
+          {/* ── Row 1 · WHAT: role + search — the primary questions ── */}
+          <div style={{ flexBasis: "100%", display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
+            <select
+              value={activeRole || ""}
+              onChange={(e) => { setActiveRole(e.target.value || null); setActiveCategory(null); setPage(1); }}
+              style={controlStyle({ minWidth: isMobile ? "100%" : 210, fontSize: 13 })}
             >
-              <Sparkles size={13} />
-              {savedRoleMode ? `Saved roles (${targetRoleCount})` : "All roles"}
-            </button>
-          )}
-          <div style={controlStyle({ display: "flex", alignItems: "center", gap: 8, flex: "1 1 240px", minWidth: isMobile ? "100%" : 200 })}>
-            <Search size={13} color={J.t3} />
-            <input value={searchRaw} onChange={(e) => setSearchRaw(e.target.value)} placeholder="Search title, company, JD..."
-              style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: J.text, fontSize: 13, fontFamily: F.sans }} />
+              <option style={SELECT_DARK_STYLE} value="">{savedRoleMode ? `All ${targetRoleCount} saved roles` : "All roles"}</option>
+              {[...allRoles].sort((a, b) => a.localeCompare(b)).map((role) => <option style={SELECT_DARK_STYLE} key={role} value={role}>{role}</option>)}
+            </select>
+            {targetRoleCount > 0 && (
+              <button
+                onClick={() => { setPersonalized((value) => !value); setPage(1); }}
+                style={{
+                  ...controlStyle(),
+                  border: `1px solid ${savedRoleMode ? "var(--pu-59-130-246-032)" : J.line}`,
+                  background: savedRoleMode ? J.blueBg : J.card,
+                  color: savedRoleMode ? J.blue : J.t2,
+                  cursor: "pointer",
+                  fontWeight: 800,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 7,
+                }}
+                title={savedRoleMode ? "Showing jobs matched to your saved target roles" : "Showing all active roles"}
+              >
+                <Sparkles size={13} />
+                {savedRoleMode ? `Saved roles (${targetRoleCount})` : "All roles"}
+              </button>
+            )}
+            <div style={controlStyle({ display: "flex", alignItems: "center", gap: 8, flex: "1 1 240px", minWidth: isMobile ? "100%" : 200 })}>
+              <Search size={13} color={J.t3} />
+              <input value={searchRaw} onChange={(e) => setSearchRaw(e.target.value)} placeholder="Search title, company, JD..."
+                style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: J.text, fontSize: 13, fontFamily: F.sans }} />
+            </div>
+            <input value={locationRaw} onChange={(e) => setLocationRaw(e.target.value)} placeholder="Location"
+              style={controlStyle({ width: isMobile ? "100%" : 140, flex: isMobile ? "1 1 100%" : "0 0 auto", fontSize: 13 })} />
           </div>
-          <input value={locationRaw} onChange={(e) => setLocationRaw(e.target.value)} placeholder="Location"
-            style={controlStyle({ width: isMobile ? "100%" : 140, flex: isMobile ? "1 1 100%" : "0 0 auto", fontSize: 13 })} />
-          <select
-            value={countryFilter}
-            onChange={(e) => { setCountryFilter(e.target.value); setVisaProgramFilter(""); setPage(1); }}
-            style={controlStyle({ width: isMobile ? "100%" : 180 })}
-          >
-            <option style={SELECT_DARK_STYLE} value="">Country: All countries</option>
-            {[...targetCountries].sort((a, b) => a.name.localeCompare(b.name)).map((country) => <option style={SELECT_DARK_STYLE} key={country.code} value={country.code}>{countryFlag(country.code)} {country.code} - {country.name}</option>)}
-          </select>
-          <select
-            value={visaProgramFilter}
-            onChange={(e) => { setVisaProgramFilter(e.target.value); setPage(1); }}
-            style={controlStyle({ width: isMobile ? "100%" : 230 })}
-          >
-            <option style={SELECT_DARK_STYLE} value="">Visa-friendly: All routes</option>
-            {[...visibleVisaPrograms].sort((a, b) => routeLabel(a).localeCompare(routeLabel(b))).map((program) => <option style={SELECT_DARK_STYLE} key={`${program.country_code}-${program.code}`} value={program.code}>{countryFlag(program.country_code)} {program.country_code} - {program.name}</option>)}
-          </select>
-          <button onClick={() => { setVisaOnly(!visaOnly); setPage(1); }}
-            style={{ ...controlStyle(), border: `1px solid ${visaOnly ? "var(--pu-34-197-94-032)" : J.line}`, background: visaOnly ? J.greenBg : J.card, color: visaOnly ? "var(--pu-86efac-t)" : J.t2, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
-            <Filter size={12} /> Visa-friendly
-          </button>
-          <select
-            value={timeFilter}
-            onChange={(e) => { setTimeFilter(e.target.value); setPage(1); }}
-            style={controlStyle({ width: isMobile ? "100%" : 136 })}
-          >
-            {TIME_OPTIONS.map((chip) => <option style={SELECT_DARK_STYLE} key={chip.label} value={chip.value}>{chip.label}</option>)}
-          </select>
-          <select
-            value={maxYears}
-            onChange={(e) => { setMaxYears(Number(e.target.value)); setPage(1); }}
-            style={controlStyle({ width: isMobile ? "100%" : 154 })}
-            title="Maximum required experience"
-          >
-            <option style={SELECT_DARK_STYLE} value={2}>Experience: 0-2 yrs</option>
-            <option style={SELECT_DARK_STYLE} value={5}>Experience: 0-5 yrs</option>
-            <option style={SELECT_DARK_STYLE} value={10}>Experience: 0-10 yrs</option>
-            <option style={SELECT_DARK_STYLE} value={50}>Experience: Any</option>
-          </select>
-          <select
-            value={sortBy}
-            onChange={(e) => { setSortBy(e.target.value as "match" | "recent"); setPage(1); }}
-            style={controlStyle({ width: isMobile ? "100%" : 168 })}
-            title="Sort results"
-          >
-            <option style={SELECT_DARK_STYLE} value="match">Sort: Recent + ATS</option>
-            <option style={SELECT_DARK_STYLE} value="recent">Sort: Recently posted</option>
-          </select>
-          <button
-            onClick={() => {
-              setReloadKey((value) => value + 1);
-              api.getJobPipelineStatus().then((status) => setPipelineStatus(status)).catch(() => {});
-            }}
-            style={{ ...controlStyle(), cursor: "pointer", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}
-          >
-            <RefreshCw size={13} />
-            Refresh
-          </button>
-          {hasServerFilters && (
-            <button
-              onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setCountryFilter(""); setVisaProgramFilter(""); setVisaOnly(false); setTimeFilter(""); setMaxYears(10); setActiveCategory(null); setActiveRole(null); setPersonalized(true); setPage(1); }}
-              style={{ ...controlStyle(), cursor: "pointer", fontWeight: 800, color: J.t2, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
-              title="Reset all filters"
+
+          {/* ── Row 2 · WHERE + HOW: refine group with caption ── */}
+          <div style={{ flexBasis: "100%", display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center", paddingTop: 10, borderTop: `1px solid ${J.line}` }}>
+            <span style={{ fontSize: 10, fontWeight: 850, letterSpacing: "0.12em", textTransform: "uppercase", color: J.t3, fontFamily: F.sans, marginRight: 2 }}>
+              Refine
+            </span>
+            <select
+              value={countryFilter}
+              onChange={(e) => { setCountryFilter(e.target.value); setVisaProgramFilter(""); setPage(1); }}
+              style={controlStyle({ width: isMobile ? "100%" : 180 })}
             >
-              <X size={13} />
-              Clear filters
+              <option style={SELECT_DARK_STYLE} value="">Country: All countries</option>
+              {[...targetCountries].sort((a, b) => a.name.localeCompare(b.name)).map((country) => <option style={SELECT_DARK_STYLE} key={country.code} value={country.code}>{countryFlag(country.code)} {country.code} - {country.name}</option>)}
+            </select>
+            <select
+              value={visaProgramFilter}
+              onChange={(e) => { setVisaProgramFilter(e.target.value); setPage(1); }}
+              style={controlStyle({ width: isMobile ? "100%" : 220 })}
+            >
+              <option style={SELECT_DARK_STYLE} value="">Visa-friendly: All routes</option>
+              {[...visibleVisaPrograms].sort((a, b) => routeLabel(a).localeCompare(routeLabel(b))).map((program) => <option style={SELECT_DARK_STYLE} key={`${program.country_code}-${program.code}`} value={program.code}>{countryFlag(program.country_code)} {program.country_code} - {program.name}</option>)}
+            </select>
+            <button onClick={() => { setVisaOnly(!visaOnly); setPage(1); }}
+              style={{ ...controlStyle(), border: `1px solid ${visaOnly ? "var(--pu-34-197-94-032)" : J.line}`, background: visaOnly ? J.greenBg : J.card, color: visaOnly ? "var(--pu-86efac-t)" : J.t2, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+              <Filter size={12} /> Visa-friendly
             </button>
-          )}
+            <select
+              value={timeFilter}
+              onChange={(e) => { setTimeFilter(e.target.value); setPage(1); }}
+              style={controlStyle({ width: isMobile ? "100%" : 132 })}
+            >
+              {TIME_OPTIONS.map((chip) => <option style={SELECT_DARK_STYLE} key={chip.label} value={chip.value}>{chip.label}</option>)}
+            </select>
+            <select
+              value={maxYears}
+              onChange={(e) => { setMaxYears(Number(e.target.value)); setPage(1); }}
+              style={controlStyle({ width: isMobile ? "100%" : 150 })}
+              title="Maximum required experience"
+            >
+              <option style={SELECT_DARK_STYLE} value={2}>Experience: 0-2 yrs</option>
+              <option style={SELECT_DARK_STYLE} value={5}>Experience: 0-5 yrs</option>
+              <option style={SELECT_DARK_STYLE} value={10}>Experience: 0-10 yrs</option>
+              <option style={SELECT_DARK_STYLE} value={50}>Experience: Any</option>
+            </select>
+            <select
+              value={sortBy}
+              onChange={(e) => { setSortBy(e.target.value as "match" | "recent"); setPage(1); }}
+              style={controlStyle({ width: isMobile ? "100%" : 160 })}
+              title="Sort results"
+            >
+              <option style={SELECT_DARK_STYLE} value="match">Sort: Best match</option>
+              <option style={SELECT_DARK_STYLE} value="recent">Sort: Newest</option>
+            </select>
+            <span style={{ flex: 1 }} />
+            <button
+              onClick={() => {
+                setReloadKey((value) => value + 1);
+                api.getJobPipelineStatus().then((status) => setPipelineStatus(status)).catch(() => {});
+              }}
+              style={{ ...controlStyle(), cursor: "pointer", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}
+            >
+              <RefreshCw size={13} />
+              Refresh
+            </button>
+            {hasServerFilters && (
+              <button
+                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setCountryFilter(""); setVisaProgramFilter(""); setVisaOnly(false); setTimeFilter(""); setMaxYears(10); setActiveCategory(null); setActiveRole(null); setPersonalized(true); setPage(1); }}
+                style={{ ...controlStyle(), cursor: "pointer", fontWeight: 800, color: J.t2, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+                title="Reset all filters"
+              >
+                <X size={13} />
+                Clear filters
+              </button>
+            )}
+          </div>
           <div style={{ flexBasis: "100%", color: J.t2, fontSize: 11, fontFamily: F.sans }}>
             {filtered.length.toLocaleString()} visible
             {matchingPositionsCount ? ` / ${matchingPositionsCount.toLocaleString()} ${savedRoleMode || hasServerFilters ? "matching" : "open"}` : ""}

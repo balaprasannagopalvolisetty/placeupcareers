@@ -12,6 +12,14 @@ DEFAULT_SCRAPE_SEARCH_TERMS: tuple[str, ...] = tuple(all_search_terms())
 # Sources that serve first-party employer data (direct ATS boards + curated
 # company-career pipelines). Shared by the DB pool query (guaranteed pool
 # representation) and the API feed ranking (first-party before aggregator).
+# High-volume job-search aggregators. The feed's direct-source policy
+# excludes these whenever ATS/company-page postings can fill the page —
+# aggregator copies carry truncated JDs and non-canonical apply links.
+AGGREGATOR_SOURCES: frozenset[str] = frozenset({
+    "linkedin", "indeed", "glassdoor", "ziprecruiter", "google", "dice",
+    "monster", "jooble", "rapidapi",
+})
+
 FIRST_PARTY_ATS_SOURCES: frozenset[str] = frozenset({
     "greenhouse", "lever", "ashby", "smartrecruiters", "workday", "recruitee",
     "personio", "teamtailor", "jazzhr", "rippling", "bamboohr", "workable",

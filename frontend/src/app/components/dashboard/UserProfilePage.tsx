@@ -269,7 +269,7 @@ export function UserProfilePage() {
                   <div style={{ fontSize: 12.5, fontWeight: 800, color: T.text, fontFamily: F.sans, lineHeight: 1.35 }}>{item.title || "Role"}</div>
                   <div style={{ fontSize: 11.5, color: T.t2, fontFamily: F.sans, lineHeight: 1.45, marginTop: 2 }}>{item.company || "Company"}</div>
                   <div style={{ fontSize: 10.5, color: T.t3, fontFamily: F.sans, lineHeight: 1.45, marginTop: 2 }}>
-                    {[item.duration, item.location].filter(Boolean).join(" · ")}
+                    {[item.duration || item.dates, item.duration_label, item.location].filter(Boolean).join(" · ")}
                   </div>
                 </div>
               ))}

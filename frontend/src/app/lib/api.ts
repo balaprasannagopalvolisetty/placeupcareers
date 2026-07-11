@@ -1144,7 +1144,11 @@ export interface ParsedResumeJson {
 export interface ParsedExperience {
   company?: string;
   title?: string;
+  /** Raw date range from the resume ("Jan 2024 – Present"). */
   duration?: string;
+  dates?: string;
+  /** Computed length ("1 yr 7 mos"). */
+  duration_label?: string;
   location?: string;
   bullets?: string[];
 }

@@ -5,6 +5,7 @@ Endpoints for listing, filtering, and scraping job postings.
 
 import logging
 import math
+import os
 import re
 import html
 import copy
@@ -839,38 +840,45 @@ def _first_party_rank(job: dict) -> int:
 
 
 def _projection_sort_key(job: dict, tz_offset_minutes: int = 0) -> tuple:
-    """Frontend projection: target roles, newest buckets, first-party
-    sources, then high ATS."""
+    """Relevance-first projection (Jobright-style ranking).
+
+    Order: target-role tier, then a composite relevance score
+    (match score + freshness bonus + first-party bonus), newest as
+    tiebreak. The previous date-bucket-first ordering let any fresh
+    low-match posting outrank yesterday's 95% match — relevance now
+    leads and freshness contributes as a weighted signal instead.
+    """
     now = datetime.now(timezone.utc)
-    today = (now + timedelta(minutes=-tz_offset_minutes)).date()
     effective_at = job.get("posted_at") or job.get("first_seen_at") or job.get("scraped_at") or job.get("last_seen_at")
-    effective_day = _local_date(effective_at, tz_offset_minutes=tz_offset_minutes)
     effective = _coerce_datetime(effective_at)
     age = (now - effective) if effective else None
-    if age is not None and timedelta(0) <= age <= timedelta(hours=DEFAULT_RECENT_JOB_HOURS):
-        date_bucket = 0
-    elif effective_day == today:
-        date_bucket = 1
-    elif effective_day == today - timedelta(days=1):
-        date_bucket = 2
-    elif age is not None and age <= timedelta(days=7):
-        date_bucket = 3
-    elif age is not None and age <= timedelta(days=30):
-        date_bucket = 4
+    if age is not None and age < timedelta(0):
+        age = timedelta(0)
+    if age is None:
+        freshness = 0
+    elif age <= timedelta(hours=24):
+        freshness = 14
+    elif age <= timedelta(days=3):
+        freshness = 10
+    elif age <= timedelta(days=7):
+        freshness = 6
+    elif age <= timedelta(days=14):
+        freshness = 3
+    elif age <= timedelta(days=30):
+        freshness = 1
     else:
-        date_bucket = 5
+        freshness = 0
     score = int(job.get("match_score") or 0)
+    composite = score + freshness + (6 if _first_party_rank(job) == 0 else 0)
     effective_ts = effective.timestamp() if effective else 0
-    posted = _coerce_datetime(job.get("posted_at"))
-    posted_ts = posted.timestamp() if posted else effective_ts
     # Three-tier relevance projection (target roles → related roles → rest).
     # Falls back to the legacy binary preference bucket for callers that do
     # not decorate jobs with relevance_tier.
     tier = job.get("relevance_tier")
     preference_bucket = int(tier) if tier is not None else (0 if job.get("preference_match") else 1)
     # Final id tiebreaker keeps ordering identical across requests even when
-    # bucket/score/timestamps tie — required for stable pagination.
-    return (preference_bucket, date_bucket, _first_party_rank(job), -score, -effective_ts, -posted_ts, str(job.get("id") or ""))
+    # score/timestamps tie — required for stable pagination.
+    return (preference_bucket, -composite, -effective_ts, str(job.get("id") or ""))
 
 
 def _job_matches_preferences(job: dict, preferred_roles: list[str], preferred_locations: list[str]) -> bool:
@@ -1634,6 +1642,21 @@ async def list_jobs(
             j["taxonomy_category"] = cat
             j["role"] = rname
             decorated.append(j)
+
+        # Direct-source policy: the feed serves ATS/company-page postings.
+        # Aggregator copies (LinkedIn/Indeed/Dice/...) only backfill when the
+        # direct pool can't fill a page, so users apply at the source instead
+        # of through re-scraped listings. JOBS_FEED_INCLUDE_AGGREGATORS=true
+        # restores blended results without a deploy.
+        if not filters.get("source") and os.getenv("JOBS_FEED_INCLUDE_AGGREGATORS", "").strip().lower() not in {"1", "true", "yes", "on"}:
+            from app.scrape_constants import AGGREGATOR_SOURCES
+            direct_rows = [
+                j for j in decorated
+                if str(j.get("source_name") or "").strip().lower() not in AGGREGATOR_SOURCES
+            ]
+            if len(direct_rows) >= page_size:
+                decorated = direct_rows
+
         if personalized and preferred_roles and not role and not category and not free_text_search_active:
             decorated = [
                 j for j in decorated

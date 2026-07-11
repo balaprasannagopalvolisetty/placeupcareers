@@ -614,7 +614,9 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
 
         {/* Header card */}
         <div style={{ background: "var(--pu-8-18-38-055)", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 18, padding: isMobile ? 18 : 24 }}>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) 230px", gap: 20, alignItems: "start" }}>
+          {/* minmax(320px,...) keeps the title/actions column from crushing to a
+              sliver at intermediate viewport widths (single-word-per-line bug). */}
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(320px, 1fr) 230px", gap: 20, alignItems: "start" }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
                 <div style={{ width: 38, height: 38, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "var(--pu-ffffff-t)", fontSize: 16, fontFamily: F.sans, background: `linear-gradient(135deg, ${T.red}, var(--pu-0b1220))` }}>
