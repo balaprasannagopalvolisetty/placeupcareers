@@ -52,6 +52,7 @@ NOISY_KEYWORDS = STOP_WORDS | {
     "work closely", "work experience", "working knowledge",
     "clearance level", "date posted", "full time", "shift day",
     "minimum clearance", "potential remote", "schedule full",
+    "inbound", "er",
 }
 
 # Technical skills dictionary for enhanced extraction
@@ -84,6 +85,13 @@ TECH_SKILLS = {
     "servicenow", "technical support", "desktop support", "help desk",
     "service desk", "ticketing", "troubleshooting", "vpn", "windows",
     "macos", "linux administration", "networking", "tcp/ip",
+    "comptia security+", "security+", "cysa+", "network+", "pentest+",
+    "microsoft sc-900", "sc-900", "microsoft entra id", "entra id",
+    "conditional access", "microsoft defender", "defender for endpoint",
+    "sentinelone", "mitre att&ck", "cis controls", "group policy",
+    "metasploit", "nmap", "nessus", "openvas", "cve", "cvss",
+    "spf", "dkim", "dmarc", "tryhackme", "hack the box", "hackerone",
+    "bugcrowd", "vlan", "vlans", "dns", "dhcp", "edr", "xdr",
     "financial modeling", "forecasting", "budgeting", "audit", "gaap",
     "risk management", "aml", "kyc", "compliance", "regulatory affairs",
     "clinical research", "clinical trials", "gcp clinical", "biostatistics",
@@ -104,6 +112,7 @@ TECH_SKILLS.update({
     # Healthcare / nursing
     "registered nurse", "rn", "bsn", "msn", "lpn", "cna", "np", "acls", "bls",
     "pals", "icu", "er", "med-surg", "telemetry", "patient care",
+    "emergency room",
     "patient assessment", "medication administration", "iv therapy",
     "wound care", "triage", "phlebotomy", "ehr", "emr", "epic", "cerner",
     "meditech", "hipaa", "case management", "care coordination", "charting",
@@ -359,6 +368,10 @@ def extract_skills_from_text(text: str) -> list[str]:
     found_skills = []
 
     for skill in TECH_SKILLS:
+        if skill in NOISY_KEYWORDS:
+            continue
+        if len(skill) <= 2 and skill.isalpha() and not re.search(rf"(?<![A-Za-z]){re.escape(skill.upper())}(?![A-Za-z])", text):
+            continue
         if " " in skill:
             if skill in text_lower:
                 found_skills.append(skill)

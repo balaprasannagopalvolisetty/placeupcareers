@@ -100,6 +100,23 @@ function keywordCategory(kw: string): string {
   return "Other";
 }
 
+function normalizeHref(value?: string) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^mailto:/i.test(raw) || /^https?:\/\//i.test(raw)) return raw;
+  if (/^(www\.|linkedin\.com\/|github\.com\/)/i.test(raw)) return `https://${raw}`;
+  return raw;
+}
+
+function linkLabel(value: string) {
+  try {
+    const url = new URL(normalizeHref(value));
+    return url.hostname.replace(/^www\./, "") + url.pathname.replace(/\/$/, "");
+  } catch {
+    return value.replace(/^https?:\/\//, "");
+  }
+}
+
 function answer(value?: boolean) {
   if (value === true) return "Yes";
   if (value === false) return "No";
@@ -150,6 +167,8 @@ export function UserProfilePage() {
   const targetRoles = parsed?.target_roles || [];
   const pastCompanies = parsed?.past_companies || [];
   const rj = parsed?.resume_json;
+  const experienceDetails = (parsed?.experience_details || rj?.experience_details || []).filter((item) => item.company || item.title);
+  const resumeLinks = (rj?.contact?.links || []).map((link) => String(link).trim()).filter(Boolean);
   const applicationRows = [
     ["Current country", profile.country || "—"],
     ["Authorized to work", answer(profile.authorized_to_work)],
@@ -161,11 +180,21 @@ export function UserProfilePage() {
     ["Veteran status", profile.veteran_status || "—"],
   ];
 
-  const links: { icon: typeof Linkedin; href?: string; label: string }[] = [
-    { icon: Linkedin, href: profile?.linkedin_url || undefined, label: "LinkedIn" },
-    { icon: Github, href: profile?.github_url || undefined, label: "GitHub" },
-    { icon: Globe, href: profile?.portfolio_url || undefined, label: "Portfolio" },
-  ];
+  const linkMap = new Map<string, { icon: typeof Linkedin; href?: string; label: string }>();
+  const addLink = (icon: typeof Linkedin, href: string | undefined, label: string) => {
+    const clean = normalizeHref(href);
+    if (!clean) return;
+    linkMap.set(clean.toLowerCase(), { icon, href: clean, label });
+  };
+  addLink(Linkedin, profile?.linkedin_url || undefined, "LinkedIn");
+  addLink(Github, profile?.github_url || undefined, "GitHub");
+  addLink(Globe, profile?.portfolio_url || undefined, "Portfolio");
+  resumeLinks.forEach((href) => {
+    const clean = normalizeHref(href);
+    const icon = /github/i.test(clean) ? Github : /linkedin/i.test(clean) ? Linkedin : Globe;
+    addLink(icon, clean, linkLabel(clean));
+  });
+  const links = Array.from(linkMap.values());
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(280px, 1fr) 2fr", gap: 20 }}>
@@ -217,7 +246,7 @@ export function UserProfilePage() {
           </div>
         </div>
 
-        {/* Career snapshot: target roles + past companies */}
+        {/* Career snapshot: target roles + past experience */}
         <div style={card}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
             <Target size={15} color={T.red} />
@@ -231,14 +260,28 @@ export function UserProfilePage() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
             <Building2 size={15} color={T.red} />
-            <span style={{ fontFamily: F.sans, fontSize: 14, fontWeight: 600, color: T.text }}>Past Companies</span>
+            <span style={{ fontFamily: F.sans, fontSize: 14, fontWeight: 600, color: T.text }}>Past Experience</span>
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {pastCompanies.length === 0 && <span style={{ fontSize: 12, color: T.t3, fontFamily: F.sans }}>Companies are detected from your active resume's experience section.</span>}
-            {pastCompanies.map((c) => (
-              <span key={c} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 8, background: "var(--pu-148-163-184-005)", color: T.t2, border: `1px solid ${T.border}`, fontFamily: F.sans }}>{c}</span>
-            ))}
-          </div>
+          {experienceDetails.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {experienceDetails.slice(0, 5).map((item, idx) => (
+                <div key={`${item.company}-${item.title}-${idx}`} style={{ border: `1px solid ${T.border}`, borderRadius: 12, padding: 11, background: "var(--pu-148-163-184-004)" }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 800, color: T.text, fontFamily: F.sans, lineHeight: 1.35 }}>{item.title || "Role"}</div>
+                  <div style={{ fontSize: 11.5, color: T.t2, fontFamily: F.sans, lineHeight: 1.45, marginTop: 2 }}>{item.company || "Company"}</div>
+                  <div style={{ fontSize: 10.5, color: T.t3, fontFamily: F.sans, lineHeight: 1.45, marginTop: 2 }}>
+                    {[item.duration, item.location].filter(Boolean).join(" · ")}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {pastCompanies.length === 0 && <span style={{ fontSize: 12, color: T.t3, fontFamily: F.sans }}>Companies are detected from your active resume's experience section.</span>}
+              {pastCompanies.map((c) => (
+                <span key={c} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 8, background: "var(--pu-148-163-184-005)", color: T.t2, border: `1px solid ${T.border}`, fontFamily: F.sans }}>{c}</span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Application profile */}

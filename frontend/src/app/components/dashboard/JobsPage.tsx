@@ -375,18 +375,6 @@ function paginationPages(current: number, totalPages: number, maxButtons: number
   return Array.from({ length: Math.min(count, safeTotal) }, (_, index) => start + index);
 }
 
-function clearChipButtonStyle(): CSSProperties {
-  return {
-    background: "none",
-    border: "none",
-    cursor: "pointer",
-    color: J.blue,
-    padding: 0,
-    display: "inline-flex",
-    alignItems: "center",
-  };
-}
-
 function resolveJobUrl(job: api.JobPost): string {
   const j: any = job;
   const candidates = [j.job_url, j.source_url, j.job_url_direct, j.apply_url, j.url, j.company_url, j.external_url];
@@ -1126,8 +1114,24 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          style={{ background: J.card, border: `1px solid ${J.line}`, borderRadius: 16, padding: isMobile ? "12px" : "14px 16px", display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap", rowGap: 10, boxShadow: J.shadow, backdropFilter: "blur(24px)" }}
+          style={{ background: "linear-gradient(135deg, var(--pu-1-17-38-07), var(--pu-8-18-38-052))", border: `1px solid ${J.line}`, borderRadius: 16, padding: isMobile ? "12px" : "14px 16px", display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap", rowGap: 10, boxShadow: J.shadow, backdropFilter: "blur(24px)" }}
         >
+          <div style={{ flexBasis: "100%", display: "flex", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", gap: 10, flexDirection: isMobile ? "column" : "row" }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 850, color: J.text, fontFamily: F.sans, lineHeight: 1.25 }}>Search & filters</div>
+              <div style={{ marginTop: 3, color: J.t2, fontSize: 11, fontFamily: F.sans, lineHeight: 1.4 }}>
+                {filtered.length.toLocaleString()} visible
+                {matchingPositionsCount ? ` / ${matchingPositionsCount.toLocaleString()} ${savedRoleMode || hasServerFilters ? "matching" : "open"}` : ""}
+                {savedRoleMode ? ` - personalized from ${targetRoleCount} saved roles` : ""}
+                {pipelineStatus?.last_scraped_at ? ` - refreshed ${formatPosted(pipelineStatus.last_scraped_at)}` : ""}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: isMobile ? "flex-start" : "flex-end" }}>
+              {filterSummaryParts.map((part) => (
+                <span key={part} style={activeFilterChipStyle()}>{part}</span>
+              ))}
+            </div>
+          </div>
           <select
             value={activeRole || ""}
             onChange={(e) => { setActiveRole(e.target.value || null); setActiveCategory(null); setPage(1); }}
@@ -1164,9 +1168,6 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
           </div>
           <input value={locationRaw} onChange={(e) => setLocationRaw(e.target.value)} placeholder="Location"
             style={controlStyle({ width: isMobile ? "100%" : 140, flex: isMobile ? "1 1 100%" : "0 0 auto", fontSize: 13 })} />
-          {/* Row break: primary search controls above, refine dropdowns below — keeps the bar tidy instead of one dense wrapping row. */}
-          <div style={{ flexBasis: "100%", height: 0, margin: 0 }} aria-hidden />
-          <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", color: J.t3, fontFamily: F.sans, alignSelf: "center", marginRight: 2 }}>Refine</span>
           <select
             value={countryFilter}
             onChange={(e) => { setCountryFilter(e.target.value); setVisaProgramFilter(""); setPage(1); }}
@@ -1323,60 +1324,6 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
               >
                 Upload Resume
               </button>
-            )}
-          </div>
-        )}
-
-        {/* Active filters strip */}
-        {(activeRole || activeCategory || search || location || countryFilter || visaProgramFilter || visaOnly || timeFilter) && (
-          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-            <span style={{ fontSize: 11, color: J.t2, fontFamily: F.sans, fontWeight: 750 }}>{filterSummaryParts.join("  ")}</span>
-            {activeCategory && (
-              <span style={activeFilterChipStyle()}>
-                Category: {activeCategory}
-              </span>
-            )}
-            {activeRole && (
-              <span style={activeFilterChipStyle()}>
-                Role: {activeRole}
-                <button onClick={() => { setActiveRole(null); setPage(1); }} style={clearChipButtonStyle()}><X size={10} /></button>
-              </span>
-            )}
-            {search && (
-              <span style={activeFilterChipStyle()}>
-                Search: {search}
-                <button onClick={() => { setSearchRaw(""); setSearch(""); setPage(1); }} style={clearChipButtonStyle()}><X size={10} /></button>
-              </span>
-            )}
-            {location && (
-              <span style={activeFilterChipStyle()}>
-                Location: {location}
-                <button onClick={() => { setLocationRaw(""); setLocation(""); setPage(1); }} style={clearChipButtonStyle()}><X size={10} /></button>
-              </span>
-            )}
-            {visaOnly && (
-              <span style={{ ...activeFilterChipStyle(), background: J.greenBg, color: "var(--pu-86efac-t)", border: "1px solid var(--pu-34-197-94-03)" }}>
-                Visa-friendly
-                <button onClick={() => { setVisaOnly(false); setPage(1); }} style={{ ...clearChipButtonStyle(), color: "var(--pu-86efac-t)" }}><X size={10} /></button>
-              </span>
-            )}
-            {countryFilter && (
-              <span style={activeFilterChipStyle()}>
-                Country: {countryFlag(countryFilter)} {countryFilter}
-                <button onClick={() => { setCountryFilter(""); setVisaProgramFilter(""); setPage(1); }} style={clearChipButtonStyle()}><X size={10} /></button>
-              </span>
-            )}
-            {visaProgramFilter && (
-              <span style={activeFilterChipStyle()}>
-                Visa: {visibleVisaPrograms.find((program) => program.code === visaProgramFilter)?.name || visaProgramFilter}
-                <button onClick={() => { setVisaProgramFilter(""); setPage(1); }} style={clearChipButtonStyle()}><X size={10} /></button>
-              </span>
-            )}
-            {timeFilter && (
-              <span style={activeFilterChipStyle()}>
-                Time: {TIME_OPTIONS.find((chip) => chip.value === timeFilter)?.label || timeFilter}
-                <button onClick={() => { setTimeFilter(""); setPage(1); }} style={clearChipButtonStyle()}><X size={10} /></button>
-              </span>
             )}
           </div>
         )}

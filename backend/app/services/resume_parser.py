@@ -7,6 +7,7 @@ import io
 import logging
 import re
 from typing import Optional
+from urllib.parse import urlparse
 from zipfile import ZipFile, is_zipfile
 
 logger = logging.getLogger(__name__)
@@ -32,7 +33,6 @@ DOCX_BLOCKED_PARTS = (
     "embeddings/",
 )
 DOCX_BLOCKED_REL_MARKERS = (
-    b'TargetMode="External"',
     b"oleObject",
     b"activeXControl",
 )
@@ -92,11 +92,13 @@ async def _parse_pdf(content: bytes) -> dict:
         if len(reader.pages) > MAX_PDF_PAGES:
             raise ValueError(f"Resume PDF is too long. Please upload {MAX_PDF_PAGES} pages or fewer.")
         pages = []
+        links = []
 
         for page in reader.pages:
             text = page.extract_text()
             if text:
                 pages.append(text.strip())
+            links.extend(_pdf_page_links(page))
 
         full_text = "\n\n".join(pages)
         full_text = _clean_resume_text(full_text)
@@ -106,6 +108,7 @@ async def _parse_pdf(content: bytes) -> dict:
             "word_count": len(full_text.split()),
             "page_count": len(reader.pages),
             "format": "pdf",
+            "links": sorted(set(links))[:20],
         }
 
     except ImportError:
@@ -149,6 +152,8 @@ async def _parse_docx(content: bytes) -> dict:
                 if row_text:
                     paragraphs.append(row_text)
 
+        links = _docx_links(content)
+
         full_text = "\n".join(paragraphs)
         full_text = _clean_resume_text(full_text)
 
@@ -157,6 +162,7 @@ async def _parse_docx(content: bytes) -> dict:
             "word_count": len(full_text.split()),
             "page_count": max(1, len(full_text) // 3000),  # Estimate
             "format": "docx",
+            "links": sorted(set(links))[:20],
         }
 
     except ImportError:
@@ -168,7 +174,11 @@ async def _parse_docx(content: bytes) -> dict:
 
 
 def _scan_docx_for_active_content(content: bytes) -> None:
-    """Reject DOCX packages with macros, embedded objects, or external links."""
+    """Reject DOCX packages with macros or embedded active objects.
+
+    Ordinary resume hyperlinks are allowed: we parse their target strings but
+    never fetch or execute them.
+    """
     try:
         with ZipFile(io.BytesIO(content)) as zf:
             names = zf.namelist()
@@ -187,6 +197,54 @@ def _scan_docx_for_active_content(content: bytes) -> None:
         raise
     except Exception as exc:
         raise ValueError(f"DOCX security scan failed: {exc}")
+
+
+def _pdf_page_links(page) -> list[str]:
+    links: list[str] = []
+    try:
+        annotations = page.get("/Annots") or []
+        for annot_ref in annotations:
+            annot = annot_ref.get_object()
+            action = annot.get("/A") or {}
+            uri = action.get("/URI")
+            clean = _clean_link(str(uri or ""))
+            if clean:
+                links.append(clean)
+    except Exception:
+        return links
+    return links
+
+
+def _docx_links(content: bytes) -> list[str]:
+    links: list[str] = []
+    try:
+        with ZipFile(io.BytesIO(content)) as zf:
+            for name in zf.namelist():
+                if not name.lower().endswith(".rels"):
+                    continue
+                data = zf.read(name).decode("utf-8", "ignore")
+                for target in re.findall(r'Target="([^"]+)"', data):
+                    clean = _clean_link(target)
+                    if clean:
+                        links.append(clean)
+    except Exception:
+        return links
+    return links
+
+
+def _clean_link(value: str) -> str:
+    text = str(value or "").strip().strip(".,;:)]}>\"'")
+    if not text:
+        return ""
+    if text.startswith("mailto:"):
+        return text
+    if re.match(r"^(?:https?://|www\.|(?:linkedin|github)\.com/)", text, re.I):
+        if not re.match(r"^https?://", text, re.I):
+            text = "https://" + text
+        parsed = urlparse(text)
+        if parsed.scheme in {"http", "https"} and parsed.netloc:
+            return text
+    return ""
 
 
 def _clean_resume_text(text: str) -> str:
@@ -341,6 +399,106 @@ def _first_match(pattern: str, text: str) -> str:
     return match.group(0).strip() if match else ""
 
 
+_MONTH = r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t)?(?:ember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
+_DATE_RANGE_TEXT_RE = re.compile(
+    rf"(?:{_MONTH}\s+)?(?:19|20)\d{{2}}\s*(?:-|–|—|to)\s*(?:(?:{_MONTH}\s+)?(?:19|20)\d{{2}}|present|current|now)",
+    re.I,
+)
+_JOB_HEADER_RE = re.compile(
+    rf"(?:(?<=^)|(?<=[.!?])\s+)(?P<header>[A-Z][^•\n]{{8,190}}?)\s+(?P<dates>{_DATE_RANGE_TEXT_RE.pattern})",
+    re.I,
+)
+
+
+def _extract_links_from_text(text: str) -> list[str]:
+    raw_links = re.findall(
+        r"https?://[^\s)>\]]+|www\.[^\s)>\]]+|(?:linkedin|github)\.com/[^\s)>\]]+|mailto:[^\s)>\]]+",
+        text or "",
+        flags=re.I,
+    )
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_links:
+        link = _clean_link(raw)
+        key = link.lower()
+        if link and key not in seen:
+            seen.add(key)
+            out.append(link)
+    return out[:20]
+
+
+def _split_experience_bullets(text: str) -> list[str]:
+    normalized = re.sub(r"\s+", " ", text or "").strip()
+    normalized = re.sub(r"\s*[•●▪‣◦∙·]\s*", "\n", normalized)
+    parts = []
+    for chunk in normalized.splitlines():
+        chunk = chunk.strip(" -–—•·\t")
+        if len(chunk) >= 12:
+            parts.append(chunk)
+    return parts[:8]
+
+
+def _experience_entries(lines: list[str]) -> list[dict]:
+    """Split resume experience into company/title/date records.
+
+    PDF extraction often merges adjacent roles into one line. We identify role
+    headers by their date ranges, then take the text between headers as bullets.
+    """
+    blob = " ".join(str(line or "").strip() for line in lines if str(line or "").strip())
+    blob = re.sub(r"\s+", " ", blob).strip()
+    # Some PDF/export paths split years into two tokens ("Jan 20 25"). Repair
+    # that before identifying role headers, otherwise later jobs get merged
+    # into the previous role's bullet text.
+    blob = re.sub(r"\b(19|20)\s+(\d{2})\b", r"\1\2", blob)
+    if not blob:
+        return []
+    matches = list(_JOB_HEADER_RE.finditer(blob))
+    entries: list[dict] = []
+    for idx, match in enumerate(matches):
+        header = re.sub(r"\s+", " ", match.group("header")).strip(" -–—|")
+        dates = re.sub(r"\s+", " ", match.group("dates")).strip()
+        next_start = matches[idx + 1].start() if idx + 1 < len(matches) else len(blob)
+        body = blob[match.end():next_start].strip()
+        parts = [p.strip(" -–—") for p in re.split(r"\s*\|\s*", header) if p.strip()]
+        title = parts[0] if parts else header
+        company = parts[1] if len(parts) > 1 else ""
+        location = " | ".join(parts[2:]) if len(parts) > 2 else ""
+        if not company and " - " in title:
+            title_bits = [p.strip() for p in title.split(" - ", 1)]
+            title = title_bits[0]
+            company = title_bits[1] if len(title_bits) > 1 else ""
+        bullets = _split_experience_bullets(body)
+        entries.append({
+            "title": title[:120],
+            "company": company[:120],
+            "location": location[:120],
+            "duration": dates,
+            "bullets": bullets,
+        })
+    return entries[:10]
+
+
+def _experience_lines_from_entries(entries: list[dict], fallback: list[str]) -> list[str]:
+    if not entries:
+        return fallback[:30]
+    lines: list[str] = []
+    for entry in entries:
+        header = " | ".join(
+            part for part in (
+                entry.get("title"),
+                entry.get("company"),
+                entry.get("location"),
+                entry.get("duration"),
+            )
+            if part
+        )
+        if header:
+            lines.append(header)
+        for bullet in entry.get("bullets") or []:
+            lines.append(f"• {bullet}")
+    return lines[:50]
+
+
 def resume_json_looks_shattered(resume_json: dict) -> bool:
     """Detect stored resume JSON built from word-per-line extractions.
 
@@ -380,13 +538,24 @@ def resume_text_to_json(text: str, *, metadata: Optional[dict] = None) -> dict:
         skills = []
         keywords = []
 
-    urls = sorted(set(re.findall(r"https?://[^\s)>\]]+|(?:linkedin|github)\.com/[^\s)>\]]+", cleaned, flags=re.I)))
+    metadata = metadata or {}
+    metadata_links = [str(link).strip() for link in (metadata.get("links") or []) if str(link).strip()]
+    urls: list[str] = []
+    seen_links: set[str] = set()
+    for link in [*metadata_links, *_extract_links_from_text(cleaned)]:
+        clean = _clean_link(link)
+        key = clean.lower()
+        if clean and key not in seen_links:
+            seen_links.add(key)
+            urls.append(clean)
     phone = _first_match(r"(?:\+?1[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]?\d{4}", cleaned)
     email = _first_match(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", cleaned)
 
     # Full summary paragraph (previously truncated to the first 4 lines,
     # which showed just the candidate's name on shattered resumes).
     summary = " ".join(sections.get("summary", []))[:1200]
+    experience_details = _experience_entries(sections.get("experience", []))
+    experience_lines = _experience_lines_from_entries(experience_details, sections.get("experience", []))
 
     return {
         "schema_version": "placeup_resume_v1",
@@ -400,9 +569,10 @@ def resume_text_to_json(text: str, *, metadata: Optional[dict] = None) -> dict:
         "skills": sorted(set(skills)),
         "keywords": keywords,
         "sections": sections,
-        "experience": sections.get("experience", [])[:30],
+        "experience": experience_lines,
+        "experience_details": experience_details,
         "education": sections.get("education", [])[:20],
         "projects": sections.get("projects", [])[:20],
         "certifications": sections.get("certifications", [])[:20],
-        "metadata": metadata or {},
+        "metadata": metadata,
     }

@@ -199,6 +199,31 @@ def _extract_past_companies(experience_lines: list[str]) -> list[str]:
     return companies
 
 
+def _extract_experience_details(resume_json: dict) -> list[dict]:
+    raw = resume_json.get("experience_details") if isinstance(resume_json, dict) else None
+    out: list[dict] = []
+    if isinstance(raw, list):
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            company = str(item.get("company") or "").strip()
+            title = str(item.get("title") or "").strip()
+            duration = str(item.get("duration") or item.get("dates") or "").strip()
+            location = str(item.get("location") or "").strip()
+            bullets = [str(v).strip() for v in (item.get("bullets") or []) if str(v).strip()]
+            if company or title:
+                out.append({
+                    "company": company,
+                    "title": title,
+                    "duration": duration,
+                    "location": location,
+                    "bullets": bullets[:5],
+                })
+            if len(out) >= 8:
+                break
+    return out
+
+
 def _build_resume_quick_wins(text: str, skills: list[str], keywords: list[str], target_roles: list[str]) -> list[dict]:
     lower_text = text.lower()
     lower_skills = {s.lower() for s in skills}
@@ -1745,6 +1770,7 @@ async def upload_user_resume(
                 "format": parsed.get("format"),
                 "word_count": parsed.get("word_count"),
                 "page_count": parsed.get("page_count"),
+                "links": parsed.get("links") or [],
                 "score": score,
             },
         )
@@ -1881,6 +1907,7 @@ async def get_parsed_active_resume(user_id: str = Depends(current_user_id)):
         needs_derive = (
             not (resume_json.get("sections") or resume_json.get("experience") or resume_json.get("summary"))
             or resume_json_looks_shattered(resume_json)
+            or not resume_json.get("experience_details")
         )
         if needs_derive:
             try:
@@ -1910,6 +1937,11 @@ async def get_parsed_active_resume(user_id: str = Depends(current_user_id)):
     prefs = user_store.get_preferences(user_id)
     target_roles = prefs.get("target_roles") or []
     suggestions = _build_resume_quick_wins(text, skills, keywords, target_roles)
+    experience_details = _extract_experience_details(resume_json)
+    past_companies = [
+        item["company"] for item in experience_details
+        if item.get("company")
+    ] or _extract_past_companies(resume_json.get("experience") or [])
 
     return {
         "has_resume": True,
@@ -1920,5 +1952,6 @@ async def get_parsed_active_resume(user_id: str = Depends(current_user_id)):
         "resume_json": resume_json,
         "quick_wins": suggestions,
         "target_roles": target_roles,
-        "past_companies": _extract_past_companies(resume_json.get("experience") or []),
+        "past_companies": past_companies,
+        "experience_details": experience_details,
     }

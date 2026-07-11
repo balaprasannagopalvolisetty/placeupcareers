@@ -1134,10 +1134,19 @@ export interface ParsedResumeJson {
   keywords?: string[];
   sections?: Record<string, string[]>;
   experience?: string[];
+  experience_details?: ParsedExperience[];
   education?: string[];
   projects?: string[];
   certifications?: string[];
   metadata?: Record<string, unknown>;
+}
+
+export interface ParsedExperience {
+  company?: string;
+  title?: string;
+  duration?: string;
+  location?: string;
+  bullets?: string[];
 }
 
 export interface ParsedResume {
@@ -1149,6 +1158,7 @@ export interface ParsedResume {
   quick_wins?: { kw: string; tip: string; impact: string }[];
   target_roles?: string[];
   past_companies?: string[];
+  experience_details?: ParsedExperience[];
   resume_json?: ParsedResumeJson;
   error?: string;
 }

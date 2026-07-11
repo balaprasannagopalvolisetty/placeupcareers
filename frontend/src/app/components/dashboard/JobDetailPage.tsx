@@ -605,7 +605,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
   ].filter((card) => card.items.length);
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: isTablet ? "1fr" : "1.8fr 1fr", gap: isMobile ? 14 : 20 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 14 : 20, width: "100%", minWidth: 0, maxWidth: 1180, margin: "0 auto" }}>
       {/* MAIN */}
       <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
         <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", color: T.t2, fontSize: 13, fontFamily: F.sans, width: "fit-content" }}>
@@ -841,8 +841,8 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
         </div>
       </div>
 
-      {/* SIDEBAR */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Context panels */}
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(280px, 1fr))", gap: 14, alignItems: "stretch" }}>
         <div style={{ background: "var(--pu-8-18-38-055)", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 18, padding: 20 }}>
           <h4 style={{ fontFamily: F.sans, fontSize: 13, fontWeight: 800, color: T.text, marginBottom: 14 }}>Posting snapshot</h4>
           {[
