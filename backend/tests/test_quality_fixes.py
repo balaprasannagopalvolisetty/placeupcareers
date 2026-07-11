@@ -16,6 +16,8 @@ from app.services.employer_normalizer import (
 from app.services.staffing_filter import classify_staffing, apply_staffing_flag
 from app.services.jd_quality_gate import assess_jd, strip_boilerplate
 from app.services.resume_parser import RESUME_SCHEMA_VERSION, resume_text_to_json
+from app.services.job_filters import is_target_experience, parse_years
+from app.workers.job_liveness_checker import classify_job_page
 from app.api.jobs import _projection_sort_key
 from app.db.postgres import PostgresClient
 from app.db.schema import MasterJob
@@ -149,6 +151,48 @@ Master of Science in Cybersecurity
         "AI-Powered Malware Analysis Scanner Tools: Python, FastAPI, Docker",
         "• Built a file-triage tool for suspicious payloads.",
     ]
+
+
+def test_resume_skills_are_preserved_and_activities_do_not_leak_into_projects():
+    resume = """
+TECHNICAL SKILLS
+Security Operations: SIEM (Splunk), incident response, EDR (Microsoft Defender, SentinelOne)
+Identity & Access Management: Microsoft Entra ID (Azure AD), MFA, Conditional Access, RBAC
+PROJECTS
+AI-Powered Vulnerability Detection Framework Tools: FastAPI, React, PostgreSQL
+- Built a vulnerability scanning platform. SECURITY RESEARCH & COMMUNITY
+- Active hands-on security practice across TryHackMe and Hack The Box.
+EDUCATION
+Master of Science in Cybersecurity
+"""
+
+    parsed = resume_text_to_json(resume)
+
+    lowered_skills = {skill.lower() for skill in parsed["skills"]}
+    assert {"splunk", "sentinelone", "conditional access", "microsoft entra id"} <= lowered_skills
+    assert all("tryhackme" not in line.lower() for line in parsed["projects"])
+    assert any("tryhackme" in line.lower() for line in parsed["activities"])
+
+
+def test_tight_experience_filter_rejects_any_explicit_higher_requirement():
+    description = "Requires 2+ years with Python and 8+ years of security operations experience."
+
+    assert parse_years(description)[0] == 8
+    assert not is_target_experience(
+        "Security Analyst",
+        years_min=2,
+        years_max=None,
+        max_years=2,
+        description=description,
+    )
+
+
+def test_job_liveness_classifier_only_closes_high_confidence_pages():
+    assert classify_job_page(404, "") == "closed"
+    assert classify_job_page(200, "This job is no longer available.") == "closed"
+    assert classify_job_page(403, "Access denied") == "unknown"
+    assert classify_job_page(429, "Too many requests") == "unknown"
+    assert classify_job_page(200, "Apply for this Security Analyst position") == "active"
 
 
 def test_match_sort_never_lifts_a_lower_score_for_freshness():

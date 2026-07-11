@@ -81,6 +81,13 @@ Upsert-SchedulerJob `
   -Schedule "30 3 * * *" `
   -Uri "$JobRunBase/placeup-stale-jobs-sweeper:run"
 
+# Verify a rotating batch of active apply URLs after each scraper cycle.
+# The worker only deletes high-confidence closures; 403/429/timeouts remain.
+Upsert-SchedulerJob `
+  -Name "placeup-job-liveness-checker-6h" `
+  -Schedule "45 */6 * * *" `
+  -Uri "$JobRunBase/placeup-job-liveness-checker:run"
+
 # Daily FinalScout multi-key enrichment. Runs at 04:00 local — well
 # after stale-jobs sweeper, before the morning ops digest at 06:00, so
 # the new emails it discovers land in the operations Sheet the same day.

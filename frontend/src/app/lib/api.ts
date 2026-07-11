@@ -311,6 +311,8 @@ export interface JobPost {
     english_friendly?: boolean;
   } | string;
   posted_at?: string;
+  first_seen_at?: string;
+  last_seen_at?: string;
   posted?: string;
   status?: string;
   description?: string;
@@ -1140,6 +1142,7 @@ export interface ParsedResumeJson {
   experience_details?: ParsedExperience[];
   education?: string[];
   projects?: string[];
+  activities?: string[];
   certifications?: string[];
   metadata?: Record<string, unknown>;
 }

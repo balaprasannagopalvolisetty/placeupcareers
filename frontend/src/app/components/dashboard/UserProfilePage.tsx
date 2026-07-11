@@ -33,6 +33,8 @@ function PaperLine({ text }: { text: string }) {
   const clean = text.replace(/^[•●▪‣◦∙·]\s*/, "");
   // Role/company/date lines ("Security Analyst — Acme · Jan 2024 – Present")
   const isRoleLine = !isBullet && /\b(19|20)\d{2}\b|\bpresent\b|\bcurrent\b/i.test(text) && text.length < 120;
+  const isProjectHeader = !isBullet && /\b(?:tools?|technologies?|tech\s+stack)\s*:/i.test(text) && text.length < 220;
+  const isHeadingLine = isRoleLine || isProjectHeader;
   if (isBullet) {
     return (
       <div style={{ display: "flex", gap: 8, margin: "3px 0", paddingLeft: 2 }}>
@@ -43,13 +45,13 @@ function PaperLine({ text }: { text: string }) {
   }
   return (
     <p style={{
-      margin: isRoleLine ? "10px 0 2px" : "4px 0",
-      fontSize: isRoleLine ? 12.8 : 12.5,
+      margin: isHeadingLine ? "10px 0 2px" : "4px 0",
+      fontSize: isHeadingLine ? 12.8 : 12.5,
       lineHeight: 1.65,
-      color: isRoleLine ? PAPER.ink : PAPER.body,
-      fontWeight: isRoleLine ? 700 : 400,
+      color: isHeadingLine ? PAPER.ink : PAPER.body,
+      fontWeight: isHeadingLine ? 700 : 400,
       fontFamily: F.sans,
-      textAlign: isRoleLine ? "left" : "justify",
+      textAlign: isHeadingLine ? "left" : "justify",
     }}>{clean}</p>
   );
 }
@@ -380,6 +382,7 @@ export function UserProfilePage() {
               <PaperSection title="Skills" lines={rj.sections?.skills} />
               <PaperSection title="Experience" lines={rj.experience} />
               <PaperSection title="Projects" lines={rj.projects} />
+              <PaperSection title="Activities" lines={rj.activities} />
               <PaperSection title="Education" lines={rj.education} />
               <PaperSection title="Certifications" lines={rj.certifications} />
             </div>

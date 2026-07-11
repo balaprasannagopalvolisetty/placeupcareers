@@ -12,7 +12,7 @@ from zipfile import ZipFile, is_zipfile
 
 logger = logging.getLogger(__name__)
 
-RESUME_SCHEMA_VERSION = "placeup_resume_v3"
+RESUME_SCHEMA_VERSION = "placeup_resume_v4"
 MAX_PDF_PAGES = 8
 # We extract TEXT ONLY here — PyPDF2 never renders or executes the PDF — and the
 # original file is NOT stored or re-served. So benign-but-common markers that
@@ -285,6 +285,7 @@ _SECTION_HEADING_TOKENS = frozenset({
     "experience", "employment",
     "education", "academics",
     "projects", "portfolio",
+    "activities", "community", "volunteering",
     "certifications", "licenses", "credentials",
     "achievements", "awards", "publications",
 })
@@ -333,6 +334,11 @@ def _reconstruct_shattered_text(text: str) -> str:
         # modifier so "TECHNICAL SKILLS" / "WORK EXPERIENCE" stay intact).
         if bare in _SECTION_HEADING_TOKENS and stripped.isupper() and len(stripped) >= 5:
             modifier = ""
+            if bare == "community" and len(buf) >= 3:
+                prefix = [part.strip(":;,.&").lower() for part in buf[-3:]]
+                if prefix[:2] == ["security", "research"] and not prefix[2]:
+                    del buf[-3:]
+                    modifier = "SECURITY RESEARCH & "
             if buf:
                 tail = buf[-1].strip(":;,.")
                 if tail.isupper() and tail.lower() in _HEADING_MODIFIER_TOKENS:
@@ -373,6 +379,7 @@ def _section_lines(text: str) -> dict[str, list[str]]:
         "experience": r"(?:work\s+|professional\s+|relevant\s+|career\s+)?(?:experience|employment(?:\s+history)?|work history)",
         "education": r"(?:education(?:al)?)(?:\s+background)?|academics?|academic background",
         "projects": r"(?:selected\s+|personal\s+|academic\s+|key\s+)?projects?|portfolio",
+        "activities": r"(?:security\s+research\s*&\s*community|activities|community|volunteer(?:ing)?|extracurriculars?)",
         "certifications": r"certifications?(?:\s*&?\s*licenses?)?|licenses?|credentials|certificates",
     }
     sections: dict[str, list[str]] = {key: [] for key in headings}
@@ -381,6 +388,15 @@ def _section_lines(text: str) -> dict[str, list[str]]:
     for raw in text.splitlines():
         line = raw.strip(" -\t")
         if not line:
+            continue
+        embedded_activity = re.match(
+            r"^(.*?)(SECURITY\s+RESEARCH\s*&\s*COMMUNITY)\s*$",
+            line,
+            flags=re.I,
+        )
+        if embedded_activity and embedded_activity.group(1).strip():
+            sections.setdefault(current, []).append(embedded_activity.group(1).strip())
+            current = "activities"
             continue
         probe = line.strip(" :·|").strip()
         matched = None
@@ -427,6 +443,52 @@ def _normalize_project_lines(lines: list[str]) -> list[str]:
                 part = part.lstrip(_BULLET_CHARS + " ")
             normalized.append(part)
     return normalized[:30]
+
+
+def _explicit_skill_terms(lines: list[str]) -> list[str]:
+    """Extract the concrete terms written in the resume's Skills section.
+
+    The global skill dictionary is useful for normalization, but it cannot
+    know every certification, product, framework, or newly named tool. The
+    Profile page should therefore preserve the candidate's explicit skill
+    inventory instead of silently dropping terms that are not in that
+    dictionary yet.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def add(value: str) -> None:
+        clean = re.sub(r"\s+", " ", str(value or "")).strip(" -\t:;,." + _BULLET_CHARS)
+        if not clean or len(clean) < 2 or len(clean) > 80:
+            return
+        key = clean.lower()
+        if key not in seen:
+            seen.add(key)
+            out.append(clean)
+
+    for raw in lines:
+        line = re.sub(r"\s+", " ", str(raw or "")).strip()
+        if not line:
+            continue
+        body = line.strip(" -\t" + _BULLET_CHARS)
+        if ":" in body:
+            label, body = body.split(":", 1)
+            add(label)
+
+        parenthetical: list[str] = []
+        for match in re.finditer(r"\(([^)]{2,160})\)", body):
+            parenthetical.extend(re.split(r"\s*,\s*|\s*;\s*|\s+/\s+", match.group(1)))
+        body = re.sub(r"\(([^)]{2,160})\)", "", body)
+        for part in [*re.split(r"\s*,\s*|\s*;\s*|\s+\|\s+", body), *parenthetical]:
+            # Slash-separated platform lists should become individual chips,
+            # while established terms such as CI/CD remain intact.
+            if "/" in part and part.strip().lower() not in {"ci/cd", "tcp/ip"}:
+                pieces = [p for p in re.split(r"\s*/\s*", part) if p]
+            else:
+                pieces = [part]
+            for piece in pieces:
+                add(piece)
+    return out[:160]
 
 
 def _first_match(pattern: str, text: str) -> str:
@@ -642,8 +704,9 @@ def resume_text_to_json(text: str, *, metadata: Optional[dict] = None) -> dict:
     try:
         from app.utils.text_processing import extract_relevant_keywords, extract_skills_from_text
 
-        skills = extract_skills_from_text(cleaned)
-        keywords = extract_relevant_keywords(cleaned, top_n=60)
+        explicit_skills = _explicit_skill_terms(sections.get("skills", []))
+        skills = list(dict.fromkeys([*explicit_skills, *extract_skills_from_text(cleaned)]))
+        keywords = list(dict.fromkeys([*explicit_skills, *extract_relevant_keywords(cleaned, top_n=80)]))
     except Exception:
         skills = []
         keywords = []
@@ -686,6 +749,7 @@ def resume_text_to_json(text: str, *, metadata: Optional[dict] = None) -> dict:
         "experience_details": experience_details,
         "education": sections.get("education", [])[:20],
         "projects": project_lines[:20],
+        "activities": sections.get("activities", [])[:20],
         "certifications": sections.get("certifications", [])[:20],
         "metadata": metadata,
     }

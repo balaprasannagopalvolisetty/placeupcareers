@@ -25,7 +25,12 @@ _YEARS_PATTERNS = (
 
 
 def parse_years(text: str) -> Tuple[Optional[int], Optional[int]]:
-    """Extract the most-permissive years range declared by a JD."""
+    """Extract the strictest experience floor declared by a JD.
+
+    A posting that says both "2+ years with Python" and "8+ years of
+    security experience" still requires eight years overall. Keeping the
+    smallest number made the 0-2 filter admit clearly senior roles.
+    """
     if not text:
         return (None, None)
     best_min: Optional[int] = None
@@ -35,13 +40,13 @@ def parse_years(text: str) -> Tuple[Optional[int], Optional[int]]:
             groups = [g for g in m.groups() if g is not None]
             if len(groups) == 2:
                 lo, hi = int(groups[0]), int(groups[1])
-                if best_min is None or lo < best_min:
+                if best_min is None or lo > best_min:
                     best_min = lo
                 if best_max is None or hi > best_max:
                     best_max = hi
             elif len(groups) == 1:
                 lo = int(groups[0])
-                if best_min is None or lo < best_min:
+                if best_min is None or lo > best_min:
                     best_min = lo
     return (best_min, best_max)
 
@@ -54,6 +59,8 @@ HIGH_LEVEL_TITLE_PATTERNS = (
 
 SENIOR_TITLE_PATTERNS = (
     re.compile(r"\b(senior|sr\.?|lead)\b", re.I),
+    re.compile(r"\b(?:level|lvl)\s*(?:iii|iv|v|3|4|5)\b", re.I),
+    re.compile(r"\bexpert\b", re.I),
 )
 
 
@@ -112,13 +119,15 @@ def is_target_experience(
     if max_years >= 50:
         return years_min is None or years_min <= max_years
 
-    # Fall back to text-parsed years when metadata is missing.
-    if years_min is None and years_max is None and description:
+    # Always reconcile metadata with the JD. Scraped metadata is often based
+    # on the first number found and can say 2 even when a later requirement
+    # explicitly says 8+ years.
+    if description:
         parsed_min, parsed_max = parse_years(description)
         if parsed_min is not None:
-            years_min = parsed_min
+            years_min = max(years_min, parsed_min) if years_min is not None else parsed_min
         if parsed_max is not None:
-            years_max = parsed_max
+            years_max = max(years_max, parsed_max) if years_max is not None else parsed_max
 
     if years_min is not None and years_min > max_years:
         return False

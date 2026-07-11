@@ -317,14 +317,31 @@ gcloud.cmd run jobs deploy placeup-stale-jobs-sweeper `
   --region $Region `
   --service-account "placeup-etl-sa@$ProjectId.iam.gserviceaccount.com" `
   --command python `
-  --args="-m,app.workers.stale_jobs_sweeper,--retention-days,30" `
+  --args="-m,app.workers.stale_jobs_sweeper,--retention-days,60" `
   --set-cloudsql-instances "$ProjectId`:$Region`:$DbInstance" `
-  --set-env-vars "APP_ENV=production,DATABASE_BACKEND=postgres,DB_POOL_SIZE=2,DB_MAX_OVERFLOW=2,JOB_RETENTION_DAYS=30" `
+  --set-env-vars "APP_ENV=production,DATABASE_BACKEND=postgres,DB_POOL_SIZE=2,DB_MAX_OVERFLOW=2,JOB_RETENTION_DAYS=60" `
   --set-secrets "DATABASE_URL=DATABASE_URL:latest" `
   --memory 512Mi `
   --cpu 1 `
   --max-retries 1 `
   --task-timeout 600
+
+# Active-link verifier - removes only confirmed closures (404/410 or an
+# explicit closed/expired message). Blocks and provider rate limits are kept
+# as unknown so a temporary anti-bot response can never delete valid jobs.
+gcloud.cmd run jobs deploy placeup-job-liveness-checker `
+  --image $Image `
+  --region $Region `
+  --service-account "placeup-etl-sa@$ProjectId.iam.gserviceaccount.com" `
+  --command python `
+  --args="-m,app.workers.job_liveness_checker,--limit,1500,--concurrency,24" `
+  --set-cloudsql-instances "$ProjectId`:$Region`:$DbInstance" `
+  --set-env-vars "APP_ENV=production,DATABASE_BACKEND=postgres,DB_POOL_SIZE=2,DB_MAX_OVERFLOW=2" `
+  --set-secrets "DATABASE_URL=DATABASE_URL:latest" `
+  --memory 1Gi `
+  --cpu 1 `
+  --max-retries 1 `
+  --task-timeout 1800
 
 $DigestScheduleUri = "https://$Region-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/$ProjectId/jobs/placeup-daily-match-digest:run"
 $DigestScheduleJob = gcloud.cmd scheduler jobs describe placeup-daily-match-digest-9am `

@@ -220,14 +220,17 @@ function formatPosted(value: unknown): string {
 }
 
 function jobPostedRaw(job: api.JobPost): unknown {
-  // posted_at is preferred; fall back to scraped_at / last_seen_at so a date
-  // always renders instead of "unavailable" for rows missing posted_at.
-  return job.posted_at || job.posted || (job as any).scraped_at || (job as any).last_seen_at;
+  // last_seen_at is a verification timestamp, not a publication date. Calling
+  // it "Posted today" made old jobs look new whenever the scraper revisited
+  // them. Use the real posting date, or the date PlaceUp first discovered it.
+  return job.posted_at || job.posted || job.first_seen_at;
 }
 
 function jobDateLabel(job: api.JobPost): string {
   const raw = jobPostedRaw(job);
-  return raw ? `Posted ${formatPosted(raw)}` : "Posted recently";
+  if (!raw) return "Publish date unavailable";
+  const prefix = (job.posted_at || job.posted) ? "Posted" : "Added";
+  return `${prefix} ${formatPosted(raw)}`;
 }
 
 function compactNumber(value: number): string {
@@ -280,7 +283,8 @@ function publishDateLabel(job: api.JobPost): string {
   if (Number.isNaN(date.getTime())) return `Publish date ${String(raw).slice(0, 18)}`;
   // Numeric date in the user's targeted-country convention (en-US →
   // MM/DD/YYYY, de-DE → DD.MM.YYYY, en-GB → DD/MM/YYYY, ...).
-  return `Publish date ${date.toLocaleDateString(activeDateLocale, { day: "2-digit", month: "2-digit", year: "numeric" })}`;
+  const prefix = (job.posted_at || job.posted) ? "Publish date" : "First collected";
+  return `${prefix} ${date.toLocaleDateString(activeDateLocale, { day: "2-digit", month: "2-digit", year: "numeric" })}`;
 }
 
 function getVisaRecord(job: api.JobPost): Record<string, unknown> {

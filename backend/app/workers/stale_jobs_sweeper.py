@@ -58,13 +58,13 @@ UPDATE master_jobs
 COUNT_RETENTION_JOBS_SQL = """
 SELECT count(*)
   FROM jobs
- WHERE last_seen_at < NOW() - (:retention_days || ' days')::interval
+ WHERE COALESCE(first_seen_at, last_seen_at) < NOW() - (:retention_days || ' days')::interval
 """
 
 COUNT_RETENTION_MASTER_SQL = """
 SELECT count(*)
   FROM master_jobs
- WHERE last_seen_at < NOW() - (:retention_days || ' days')::interval
+ WHERE COALESCE(first_seen_at, last_seen_at) < NOW() - (:retention_days || ' days')::interval
 """
 
 DELETE_RETENTION_CONTACT_LINKS_SQL = """
@@ -73,18 +73,18 @@ UPDATE contacts
  WHERE related_job_id IN (
        SELECT id
          FROM jobs
-        WHERE last_seen_at < NOW() - (:retention_days || ' days')::interval
+        WHERE COALESCE(first_seen_at, last_seen_at) < NOW() - (:retention_days || ' days')::interval
  )
 """
 
 DELETE_RETENTION_JOBS_SQL = """
 DELETE FROM jobs
- WHERE last_seen_at < NOW() - (:retention_days || ' days')::interval
+ WHERE COALESCE(first_seen_at, last_seen_at) < NOW() - (:retention_days || ' days')::interval
 """
 
 DELETE_RETENTION_MASTER_SQL = """
 DELETE FROM master_jobs
- WHERE last_seen_at < NOW() - (:retention_days || ' days')::interval
+ WHERE COALESCE(first_seen_at, last_seen_at) < NOW() - (:retention_days || ' days')::interval
 """
 
 COUNT_RETENTION_SILVER_SQL = """
@@ -166,7 +166,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--retention-days", type=int,
-        default=getattr(settings, "job_retention_days", 30),
+        default=getattr(settings, "job_retention_days", 60),
         help="Hard-delete job rows older than this many days.",
     )
     parser.add_argument("--dry-run", action="store_true", help="Count without updating.")

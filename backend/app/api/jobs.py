@@ -2017,13 +2017,45 @@ async def list_jobs(
             light_filters.setdefault("status", status or "active")
             light_filters["skip_target_prefilter"] = True
             light_filters["seen_since"] = visible_cutoff
-            light_jobs = await db.get_jobs(filters=light_filters, limit=page_size, offset=0)
+            light_jobs = await db.get_jobs(
+                filters=light_filters,
+                limit=min(max(page_size * 10, 400), 800),
+                offset=0,
+            )
             light_posts: list = []
-            for job_data in light_jobs[:page_size]:
+            from app.services.job_filters import is_target_experience
+            for job_data in light_jobs:
+                meta = job_data.get("extra_metadata") or {}
+                if not isinstance(meta, dict):
+                    meta = {}
+                if not is_target_experience(
+                    job_data.get("title") or "",
+                    meta.get("years_min"),
+                    meta.get("years_max"),
+                    max_years=max_years,
+                    description=job_data.get("description") or "",
+                ):
+                    continue
+                if personalized and preferred_roles and not _job_matches_role_terms(
+                    job_data, preferred_roles, preferred_role_terms
+                ):
+                    continue
+                effective = _job_effective_datetime(job_data)
+                if not effective or effective < visible_cutoff:
+                    continue
+                if (post_filter_since or post_filter_before) and not _in_datetime_window(
+                    effective, post_filter_since, post_filter_before
+                ):
+                    continue
+                job_data = dict(job_data)
+                job_data["match_score"] = _baseline_ats_score(job_data)
+                job_data["score_type"] = "baseline_ats"
                 try:
                     light_posts.append(JobPost(**job_data).model_dump(mode="json"))
                 except Exception:
                     light_posts.append(dict(job_data))
+                if len(light_posts) >= page_size:
+                    break
             return {
                 "jobs": light_posts,
                 "total": len(light_posts),
