@@ -33,7 +33,7 @@ from app.utils.terminal_table import render_table
 logger = logging.getLogger(__name__)
 
 DIRECT_ATS_CONNECTOR_SOURCES = (
-    "greenhouse~lever~ashby~smartrecruiters~career_site_feed~remoteok~remotive~jobicy"
+    "career_site_feed~remoteok~remotive~jobicy"
 )
 
 # Public/API passes must cover every taxonomy role, not just USAJobs. Keep the
@@ -43,7 +43,7 @@ FREE_OPEN_PUBLIC_SOURCES = os.getenv(
     "linkedin~indeed~glassdoor~ziprecruiter~google~usajobs~dice",
 )
 FREE_OPEN_BOARD_SOURCES = (
-    "h1b_sponsor~tier1_ats~remoteok~remotive~arbeitnow~jobicy~weworkremotely~"
+    "tier1_ats~arbeitnow~weworkremotely~"
     "jobtech~eures~uk_findajob~nhs_jobs~jobbank_ca~ba_jobsuche~france_travail~"
     "mycareersfuture~tyomarkkinatori~nav_arbeidsplassen~monster~jooble~"
     "scrapling_discovery"

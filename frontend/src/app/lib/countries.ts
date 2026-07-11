@@ -405,5 +405,9 @@ const VISA_OPTIONS_BY_COUNTRY: Record<string, string[]> = {
 
 export function visaOptionsForCountry(code: string | undefined | null): string[] {
   if (!code) return VISA_OPTIONS_BY_COUNTRY.US;
-  return VISA_OPTIONS_BY_COUNTRY[code] ?? GENERIC_VISA;
+  const country = COUNTRY_BY_CODE[code];
+  const configured = VISA_OPTIONS_BY_COUNTRY[code];
+  if (configured) return configured;
+  const citizen = country ? `${country.name} Citizen` : "Citizen";
+  return [citizen, ...GENERIC_VISA.filter((option) => option !== "Citizen")];
 }

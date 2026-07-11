@@ -12,7 +12,7 @@ from zipfile import ZipFile, is_zipfile
 
 logger = logging.getLogger(__name__)
 
-RESUME_SCHEMA_VERSION = "placeup_resume_v2"
+RESUME_SCHEMA_VERSION = "placeup_resume_v3"
 MAX_PDF_PAGES = 8
 # We extract TEXT ONLY here — PyPDF2 never renders or executes the PDF — and the
 # original file is NOT stored or re-served. So benign-but-common markers that
@@ -395,6 +395,40 @@ def _section_lines(text: str) -> dict[str, list[str]]:
     return {key: value[:40] for key, value in sections.items() if value}
 
 
+_PROJECT_HEADER_BOUNDARY_RE = re.compile(
+    r"(?<=[.!?])\s+(?="
+    r"(?:[A-Z][A-Za-z0-9+/#.&'-]*[\s-]+){1,14}"
+    r"(?:Framework|Scanner|Platform|Application|System|Tool|Dashboard|Engine|API|Website|App)"
+    r"(?:\s*\[[^\]]+\])?\s+(?:Tools?|Technologies?|Tech\s+Stack)\s*:"
+    r")"
+)
+
+
+def _normalize_project_lines(lines: list[str]) -> list[str]:
+    """Split project headers that PDF extraction glued to a prior bullet.
+
+    Shattered PDFs preserve bullet markers but not every visual line break. A
+    common result is ``... guidance. AI-Powered Malware Scanner Tools: ...``
+    inside one bullet, which makes the Profile preview merge two projects.
+    Project headers are much more reliable when they include a Tools/
+    Technologies/Tech Stack label, so split only on that high-confidence form.
+    """
+    normalized: list[str] = []
+    for raw in lines:
+        line = re.sub(r"\s+", " ", str(raw or "")).strip()
+        if not line:
+            continue
+        parts = [part.strip() for part in _PROJECT_HEADER_BOUNDARY_RE.split(line) if part.strip()]
+        for index, part in enumerate(parts):
+            # The first fragment keeps its original bullet marker. A later
+            # fragment is a newly detected project header and must render as a
+            # sibling heading, not another bullet under the previous project.
+            if index > 0:
+                part = part.lstrip(_BULLET_CHARS + " ")
+            normalized.append(part)
+    return normalized[:30]
+
+
 def _first_match(pattern: str, text: str) -> str:
     match = re.search(pattern, text, flags=re.I)
     return match.group(0).strip() if match else ""
@@ -632,6 +666,9 @@ def resume_text_to_json(text: str, *, metadata: Optional[dict] = None) -> dict:
     summary = " ".join(sections.get("summary", []))[:1200]
     experience_details = _experience_entries(sections.get("experience", []))
     experience_lines = _experience_lines_from_entries(experience_details, sections.get("experience", []))
+    project_lines = _normalize_project_lines(sections.get("projects", []))
+    if project_lines:
+        sections["projects"] = project_lines
 
     return {
         "schema_version": RESUME_SCHEMA_VERSION,
@@ -648,7 +685,7 @@ def resume_text_to_json(text: str, *, metadata: Optional[dict] = None) -> dict:
         "experience": experience_lines,
         "experience_details": experience_details,
         "education": sections.get("education", [])[:20],
-        "projects": sections.get("projects", [])[:20],
+        "projects": project_lines[:20],
         "certifications": sections.get("certifications", [])[:20],
         "metadata": metadata,
     }

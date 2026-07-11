@@ -32,7 +32,13 @@ from app.services.job_description_details import (
     is_html_fetch_allowed,
     is_thin_description,
 )
-from app.services.global_visa_rules import COUNTRY_RULES, country_options, normalize_country_code, visa_program_options
+from app.services.global_visa_rules import (
+    COUNTRY_RULES,
+    country_options,
+    normalize_country_code,
+    resolve_country,
+    visa_program_options,
+)
 from app.utils.job_quality import (
     has_usable_job_description,
     is_probably_fake_or_scam_job,
@@ -857,11 +863,9 @@ def _first_party_rank(job: dict) -> int:
 def _projection_sort_key(job: dict, tz_offset_minutes: int = 0) -> tuple:
     """Relevance-first projection (Jobright-style ranking).
 
-    Order: target-role tier, then a composite relevance score
-    (match score + freshness bonus + first-party bonus), newest as
-    tiebreak. The previous date-bucket-first ordering let any fresh
-    low-match posting outrank yesterday's 95% match — relevance now
-    leads and freshness contributes as a weighted signal instead.
+    Order: target-role tier, exact match score descending, direct source,
+    then freshness/newest. A lower match can never outrank a higher match
+    inside the same role tier.
     """
     now = datetime.now(timezone.utc)
     effective_at = job.get("posted_at") or job.get("first_seen_at") or job.get("scraped_at") or job.get("last_seen_at")
@@ -884,7 +888,6 @@ def _projection_sort_key(job: dict, tz_offset_minutes: int = 0) -> tuple:
     else:
         freshness = 0
     score = int(job.get("match_score") or 0)
-    composite = score + freshness + (6 if _first_party_rank(job) == 0 else 0)
     effective_ts = effective.timestamp() if effective else 0
     # Three-tier relevance projection (target roles → related roles → rest).
     # Falls back to the legacy binary preference bucket for callers that do
@@ -893,7 +896,18 @@ def _projection_sort_key(job: dict, tz_offset_minutes: int = 0) -> tuple:
     preference_bucket = int(tier) if tier is not None else (0 if job.get("preference_match") else 1)
     # Final id tiebreaker keeps ordering identical across requests even when
     # score/timestamps tie — required for stable pagination.
-    return (preference_bucket, -composite, -effective_ts, str(job.get("id") or ""))
+    # Match means match: never let a freshness/source bonus lift a lower score
+    # above a higher score. Relevance tier remains first so target roles stay
+    # ahead of merely related roles; source quality and recency only break
+    # equal-score ties.
+    return (
+        preference_bucket,
+        -score,
+        _first_party_rank(job),
+        -freshness,
+        -effective_ts,
+        str(job.get("id") or ""),
+    )
 
 
 def _job_matches_preferences(job: dict, preferred_roles: list[str], preferred_locations: list[str]) -> bool:
@@ -1403,7 +1417,8 @@ async def list_jobs(
         filters["search"] = search
     if location:
         filters["location"] = location
-    if country:
+    all_countries_requested = bool(country and country.strip().lower() in {"all", "*", "any"})
+    if country and not all_countries_requested:
         normalized_country = normalize_country_code(country)
         if not normalized_country:
             raise HTTPException(status_code=400, detail="Unsupported country filter")
@@ -1444,6 +1459,15 @@ async def list_jobs(
     taxonomy_filter_active = bool(category or role)
     title_terms = _taxonomy_terms(category, role)
     preferred_roles, preferred_locations = _preference_terms(user_id) if personalized else ([], [])
+    # Default personalized feeds to the user's destination country. Passing
+    # country=all is an explicit escape hatch used by the UI's All countries
+    # option, so users can broaden the search without disabling role matching.
+    if personalized and not filters.get("country") and not all_countries_requested:
+        for preferred_location in preferred_locations:
+            preferred_country = resolve_country(preferred_location)
+            if normalize_country_code(preferred_country):
+                filters["country"] = preferred_country
+                break
     preferred_role_terms = _terms_for_role_names(preferred_roles) if preferred_roles else []
     _selected_roles = set(preferred_roles)
     _tier_role_terms = [t.lower() for t in preferred_role_terms if len(str(t).strip()) >= 3]
@@ -1541,7 +1565,13 @@ async def list_jobs(
                 f"{k}={filters.get(k)}" for k in ("country", "visa_program", "visa_only", "location", "status")
             )
             _cached = _title_count_cache.get(_count_key)
-            if _cached and _time.monotonic() - _cached[0] < 300:
+            if personalized:
+                # Exact COUNT over 30-80 wildcard role aliases was consuming
+                # the full statement timeout before the page query even ran.
+                # The bounded candidate fetch below tightens this estimate as
+                # soon as it reaches the end of the actual result set.
+                total = _cached[1] if _cached and _time.monotonic() - _cached[0] < 300 else 50000
+            elif _cached and _time.monotonic() - _cached[0] < 300:
                 total = _cached[1]
             else:
                 total = await _safe_count(filters, fallback=_cached[1] if _cached else 50000)
@@ -1755,7 +1785,11 @@ async def list_jobs(
 
         # Rank broad pools with deterministic baseline signals, then compute
         # exact resume-vs-JD scores only for the visible page below.
-        deep_pool = len(decorated) > max(page_size * 3, 120)
+        # Personalized target-role/country feeds must be globally rankable by
+        # the user's resume score. Score that bounded candidate pool now; broad
+        # anonymous/all-country pools retain the cheaper two-stage baseline.
+        exact_personalized_pool = bool(resume_text and personalized and preferred_roles)
+        deep_pool = len(decorated) > max(page_size * 3, 120) and not exact_personalized_pool
         for job_data in decorated:
             if deep_pool:
                 job_data["match_score"] = _baseline_ats_score(job_data)
@@ -1966,10 +2000,11 @@ async def list_jobs(
         try:
             light_filters = {
                 k: v for k, v in filters.items()
-                if k not in {"coverage_scan", "title_terms"}
+                if k not in {"coverage_scan", "title_terms", "effective_since", "effective_before"}
             }
             light_filters.setdefault("status", status or "active")
-            light_filters["effective_since"] = visible_cutoff
+            light_filters["skip_target_prefilter"] = True
+            light_filters["seen_since"] = visible_cutoff
             light_jobs = await db.get_jobs(filters=light_filters, limit=page_size, offset=0)
             light_posts: list = []
             for job_data in light_jobs[:page_size]:

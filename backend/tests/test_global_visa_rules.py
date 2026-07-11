@@ -6,6 +6,8 @@ from app.services.global_visa_rules import (
     normalize_country_code,
 )
 from app.etl.jobs_scraper_6h import PUBLIC_MAX_BATCHES_PER_RUN, _selected_target_countries, _target_locations
+from app.models.job import JobSource
+from app.services.job_scraper import _jobspy_indeed_country, _source_supports_location
 
 
 def test_india_is_target_country_with_city_aliases():
@@ -49,3 +51,17 @@ def test_country_scraper_can_isolate_one_country(monkeypatch):
 
     assert _selected_target_countries() == ["DE"]
     assert _target_locations() == "Germany"
+
+
+def test_jobspy_uses_the_requested_international_indeed_market():
+    assert _jobspy_indeed_country("Germany") == "Germany"
+    assert _jobspy_indeed_country("United Kingdom") == "UK"
+    assert _jobspy_indeed_country("India") == "India"
+
+
+def test_usa_only_sources_are_not_called_for_other_countries():
+    assert _source_supports_location(JobSource.USAJOBS, "United States")
+    assert not _source_supports_location(JobSource.USAJOBS, "Germany")
+    assert not _source_supports_location(JobSource.DICE, "India")
+    assert not _source_supports_location(JobSource.ZIPRECRUITER, "France")
+    assert _source_supports_location(JobSource.ZIPRECRUITER, "Canada")

@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import Optional
 
-from sqlalchemy import create_engine, func, inspect, or_, select, text
+from sqlalchemy import and_, create_engine, func, inspect, or_, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -946,7 +946,10 @@ class PostgresClient:
 
     def _apply_master_job_filters(self, stmt, filters: dict | None):
         filters = filters or {}
-        if not filters.get("skip_target_prefilter"):
+        # An exact country is already narrower than the 32-country scope. The
+        # old query applied both predicates, producing a huge redundant OR that
+        # made PostgreSQL abandon useful status/recency indexes.
+        if not filters.get("skip_target_prefilter") and not filters.get("country"):
             stmt = self._target_country_prefilter(stmt)
         if filters.get("category"):
             stmt = stmt.where(MasterJob.extra_metadata.op("->>")("category") == filters["category"])
@@ -957,12 +960,19 @@ class PostgresClient:
         if filters.get("location"):
             stmt = stmt.where(MasterJob.location.ilike(f"%{filters['location']}%"))
         if filters.get("country"):
-            stmt = stmt.where(func.upper(MasterJob.country) == str(filters["country"]).upper())
-        effective_job_date = func.coalesce(MasterJob.posted_at, MasterJob.last_seen_at)
+            stmt = stmt.where(MasterJob.country == str(filters["country"]).upper())
         if filters.get("effective_since"):
-            stmt = stmt.where(effective_job_date >= filters["effective_since"])
+            cutoff = filters["effective_since"]
+            stmt = stmt.where(or_(
+                MasterJob.posted_at >= cutoff,
+                and_(MasterJob.posted_at.is_(None), MasterJob.last_seen_at >= cutoff),
+            ))
         if filters.get("effective_before"):
-            stmt = stmt.where(effective_job_date < filters["effective_before"])
+            cutoff = filters["effective_before"]
+            stmt = stmt.where(or_(
+                MasterJob.posted_at < cutoff,
+                and_(MasterJob.posted_at.is_(None), MasterJob.last_seen_at < cutoff),
+            ))
         if filters.get("seen_since"):
             stmt = stmt.where(MasterJob.last_seen_at >= filters["seen_since"])
         if filters.get("seen_before"):

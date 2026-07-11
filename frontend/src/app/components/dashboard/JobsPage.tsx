@@ -541,6 +541,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   // Persist + restore the filter setup across navigation (opening a job and
   // coming back used to reset every filter — #3a). Restored once on mount.
   const filtersRestored = useRef(false);
+  const countryFilterInitialized = useRef(false);
   useEffect(() => {
     if (filtersRestored.current) return;
     filtersRestored.current = true;
@@ -549,7 +550,15 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
     if (f && Object.keys(f).length) {
       if (f.searchRaw) { setSearchRaw(f.searchRaw); setSearch(f.searchRaw); }
       if (f.locationRaw) { setLocationRaw(f.locationRaw); setLocation(f.locationRaw); }
-      if (f.countryFilter) setCountryFilter(f.countryFilter);
+      if (Object.prototype.hasOwnProperty.call(f, "countryFilter")) {
+        // Empty was the legacy "all countries" value. Let preferences replace
+        // that legacy default once; the new explicit override persists as
+        // the unambiguous string "all".
+        if (f.countryFilter) {
+          setCountryFilter(f.countryFilter);
+          countryFilterInitialized.current = true;
+        }
+      }
       if (f.visaProgramFilter) setVisaProgramFilter(f.visaProgramFilter);
       if (f.timeFilter) setTimeFilter(f.timeFilter);
       if (typeof f.maxYears === "number") setMaxYears(f.maxYears);
@@ -577,6 +586,19 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       : undefined;
     setActiveDateLocale(fromFilter || fromPrefs);
   }, [countryFilter, userPrefs, targetCountries]);
+
+  const defaultTargetCountry = useMemo(
+    () => userPrefs ? resolveCountryFromLocations(userPrefs.target_locations || [], targetCountries) : undefined,
+    [userPrefs, targetCountries],
+  );
+
+  // First visit defaults to the user's saved destination country. An explicit
+  // All countries selection is persisted as "all" and is never overwritten.
+  useEffect(() => {
+    if (countryFilterInitialized.current || !userPrefs || targetCountries.length === 0) return;
+    setCountryFilter(defaultTargetCountry || "all");
+    countryFilterInitialized.current = true;
+  }, [defaultTargetCountry, userPrefs, targetCountries]);
 
   const [savedVersion, setSavedVersion] = useState(0);
   const [appliedVersion, setAppliedVersion] = useState(0);
@@ -616,7 +638,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const [taxonomyMeta, setTaxonomyMeta] = useState<TaxonomyMeta | null>(null);
   const jobsRequestId = useRef(0);
   const hasServerFilters = Boolean(
-    activeCategory || activeRole || search || location || countryFilter || visaProgramFilter || visaOnly || timeFilter ||
+    activeCategory || activeRole || search || location || (countryFilter && countryFilter !== "all") || visaProgramFilter || visaOnly || timeFilter ||
     (personalized && (userPrefs?.target_roles?.length || 0) > 0)
   );
 
@@ -880,7 +902,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
     [taxonomy],
   );
   const visibleVisaPrograms = useMemo(
-    () => visaPrograms.filter((program) => !countryFilter || program.country_code === countryFilter),
+    () => visaPrograms.filter((program) => !countryFilter || countryFilter === "all" || program.country_code === countryFilter),
     [visaPrograms, countryFilter],
   );
   const priorityCountries = useMemo(
@@ -929,7 +951,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const filterSummaryParts = [
     pageCountLabel,
     visaOnly ? "Visa-friendly" : "",
-    countryFilter ? `Country: ${countryFlag(countryFilter)} ${countryFilter}` : "",
+    countryFilter && countryFilter !== "all" ? `Country: ${countryFlag(countryFilter)} ${countryFilter}` : "",
     timeFilter ? `Time: ${timeFilterLabel}` : "",
     activeRole ? `Role: ${activeRole}` : "",
     activeCategory ? `Category: ${activeCategory}` : "",
@@ -1079,7 +1101,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                   <button
                     key={country.code}
                     title={country.name || country.code}
-                    onClick={() => { setCountryFilter(country.code === countryFilter ? "" : country.code); setVisaProgramFilter(""); setPage(1); }}
+                    onClick={() => { setCountryFilter(country.code === countryFilter ? "all" : country.code); setVisaProgramFilter(""); setPage(1); }}
                     style={{ ...filterPillStyle(countryFilter === country.code), display: "inline-flex", alignItems: "center", gap: 6 }}
                   >
                     <FlagIcon code={country.code} size={13} /> {country.code}
@@ -1182,7 +1204,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
               onChange={(e) => { setCountryFilter(e.target.value); setVisaProgramFilter(""); setPage(1); }}
               style={controlStyle({ width: isMobile ? "100%" : 180 })}
             >
-              <option style={SELECT_DARK_STYLE} value="">Country: All countries</option>
+              <option style={SELECT_DARK_STYLE} value="all">Country: All countries</option>
               {[...targetCountries].sort((a, b) => a.name.localeCompare(b.name)).map((country) => <option style={SELECT_DARK_STYLE} key={country.code} value={country.code}>{countryFlag(country.code)} {country.code} - {country.name}</option>)}
             </select>
             <select
@@ -1237,7 +1259,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             </button>
             {hasServerFilters && (
               <button
-                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setCountryFilter(""); setVisaProgramFilter(""); setVisaOnly(false); setTimeFilter(""); setMaxYears(10); setActiveCategory(null); setActiveRole(null); setPersonalized(true); setPage(1); }}
+                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setCountryFilter(defaultTargetCountry || "all"); setVisaProgramFilter(""); setVisaOnly(false); setTimeFilter(""); setMaxYears(10); setActiveCategory(null); setActiveRole(null); setPersonalized(true); setPage(1); }}
                 style={{ ...controlStyle(), cursor: "pointer", fontWeight: 800, color: J.t2, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
                 title="Reset all filters"
               >
@@ -1371,7 +1393,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
               <div style={{ fontSize: 14, fontWeight: 850, color: J.text, marginBottom: 6 }}>No jobs match the current filters.</div>
               <div style={{ fontSize: 12, color: J.t2, marginBottom: 12 }}>Try clearing the search, location, or time filter.</div>
               <button
-                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setCountryFilter(""); setVisaProgramFilter(""); setVisaOnly(false); setTimeFilter(""); setActiveCategory(null); setActiveRole(null); setPersonalized(true); setPage(1); }}
+                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setCountryFilter(defaultTargetCountry || "all"); setVisaProgramFilter(""); setVisaOnly(false); setTimeFilter(""); setActiveCategory(null); setActiveRole(null); setPersonalized(true); setPage(1); }}
                 style={{ padding: "8px 14px", borderRadius: 8, border: `1px solid ${J.line}`, background: "var(--pu-148-163-184-005)", color: J.blue, fontSize: 12, fontWeight: 800, fontFamily: F.sans, cursor: "pointer" }}
               >Reset filters</button>
             </div>

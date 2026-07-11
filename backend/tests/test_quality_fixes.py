@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import pytest
+from sqlalchemy import select
+from sqlalchemy.dialects import postgresql
 
 from app.utils.glued_words import deglue_text, looks_glued
 from app.utils.job_quality import job_description_text
@@ -11,6 +15,10 @@ from app.services.employer_normalizer import (
 )
 from app.services.staffing_filter import classify_staffing, apply_staffing_flag
 from app.services.jd_quality_gate import assess_jd, strip_boilerplate
+from app.services.resume_parser import RESUME_SCHEMA_VERSION, resume_text_to_json
+from app.api.jobs import _projection_sort_key
+from app.db.postgres import PostgresClient
+from app.db.schema import MasterJob
 
 
 # ---------------------------------------------------------------- A3: de-glue
@@ -118,3 +126,62 @@ def test_strip_boilerplate_removes_marketing():
     out = strip_boilerplate(jd)
     assert "Requirements: Python" in out
     assert "equal opportunity" not in out
+
+
+def test_resume_projects_split_when_pdf_glues_next_header_to_bullet():
+    resume = """
+PROJECTS
+AI-Powered Vulnerability Detection Framework Tools: FastAPI, React, PostgreSQL
+• Built a vulnerability scanning platform.
+• Surfaced remediation guidance. AI-Powered Malware Analysis Scanner Tools: Python, FastAPI, Docker
+• Built a file-triage tool for suspicious payloads.
+EDUCATION
+Master of Science in Cybersecurity
+"""
+
+    parsed = resume_text_to_json(resume)
+
+    assert parsed["schema_version"] == RESUME_SCHEMA_VERSION
+    assert parsed["projects"] == [
+        "AI-Powered Vulnerability Detection Framework Tools: FastAPI, React, PostgreSQL",
+        "• Built a vulnerability scanning platform.",
+        "• Surfaced remediation guidance.",
+        "AI-Powered Malware Analysis Scanner Tools: Python, FastAPI, Docker",
+        "• Built a file-triage tool for suspicious payloads.",
+    ]
+
+
+def test_match_sort_never_lifts_a_lower_score_for_freshness():
+    older_high_match = {
+        "id": "high",
+        "match_score": 91,
+        "relevance_tier": 0,
+        "posted_at": "2026-07-01T12:00:00+00:00",
+        "source_name": "linkedin",
+    }
+    fresh_lower_match = {
+        "id": "lower",
+        "match_score": 84,
+        "relevance_tier": 0,
+        "posted_at": "2026-07-11T12:00:00+00:00",
+        "source_name": "greenhouse",
+    }
+
+    ranked = sorted([fresh_lower_match, older_high_match], key=_projection_sort_key)
+    assert [job["id"] for job in ranked] == ["high", "lower"]
+
+
+def test_exact_country_query_avoids_redundant_scope_and_coalesce_scan():
+    client = PostgresClient.__new__(PostgresClient)
+    stmt = client._apply_master_job_filters(select(MasterJob.id), {
+        "status": "active",
+        "country": "IN",
+        "effective_since": datetime(2026, 7, 1, tzinfo=timezone.utc),
+        "title_terms": ["security analyst", "systems engineer"],
+    })
+    sql = str(stmt.compile(dialect=postgresql.dialect())).lower()
+
+    assert "upper(master_jobs.country)" not in sql
+    assert "coalesce(master_jobs.posted_at" not in sql
+    assert "master_jobs.country =" in sql
+    assert "master_jobs.last_seen_at" in sql

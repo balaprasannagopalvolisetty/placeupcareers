@@ -108,11 +108,19 @@ def is_thin_description(description: str | None, *, min_chars: int = 1200, min_w
     return len(text) < min_chars or len(text.split()) < min_words
 
 
-async def fetch_full_job_description(url: str, *, timeout: float = 25.0, expand_links: bool = True) -> JobDescriptionDetails | None:
+async def fetch_full_job_description(
+    url: str,
+    *,
+    timeout: float = 25.0,
+    expand_links: bool = True,
+    client: httpx.AsyncClient | None = None,
+) -> JobDescriptionDetails | None:
     if not url or not is_html_fetch_allowed(url):
         return None
 
     async def _fetch() -> JobDescriptionDetails | None:
+        if client is not None:
+            return await _fetch_full_job_description(client, url, expand_links=expand_links)
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(timeout, connect=min(8.0, timeout), read=timeout, write=8.0, pool=8.0),
             follow_redirects=True,

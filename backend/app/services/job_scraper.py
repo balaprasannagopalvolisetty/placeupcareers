@@ -31,11 +31,13 @@ from app.services.careers_ats import scrape_greenhouse_board
 from app.services.dice_scraper import scrape_dice
 from app.services.h1b_sponsor_pipeline import scrape_h1b_sponsor_boards
 from app.services.job_description_details import (
+    DEFAULT_HEADERS,
     clean_description_text,
     fetch_full_job_description,
     is_html_fetch_allowed,
     is_thin_description,
 )
+from app.services.global_visa_rules import resolve_country
 from app.services.scrapling_job_discovery import (
     build_scrapling_targets,
     scrape_scrapling_targets,
@@ -208,7 +210,7 @@ async def scrape_jobspy(
         offset = 0
         pages = 0
 
-        indeed_country = "canada" if "canada" in (location or "").lower() else "USA"
+        indeed_country = _jobspy_indeed_country(location)
         scrape_kwargs = dict(
             site_name=site_names,
             search_term=search_term,
@@ -323,6 +325,34 @@ def _rapidapi_location_filter(location: str) -> str:
     if normalized in {"north america", "north_america", "us canada", "usa canada"}:
         return '"United States" OR "Canada"'
     return f'"{location or "United States"}"'
+
+
+_INDEED_COUNTRY_BY_CODE = {
+    "US": "USA", "GB": "UK", "AE": "United Arab Emirates",
+    "CA": "Canada", "IE": "Ireland", "DE": "Germany", "NL": "Netherlands",
+    "AU": "Australia", "NZ": "New Zealand", "SG": "Singapore", "JP": "Japan",
+    "PT": "Portugal", "FR": "France", "ES": "Spain", "SE": "Sweden",
+    "DK": "Denmark", "NO": "Norway", "CH": "Switzerland", "FI": "Finland",
+    "BE": "Belgium", "AT": "Austria", "PL": "Poland", "EE": "Estonia",
+    "QA": "Qatar", "SA": "Saudi Arabia", "IT": "Italy", "LU": "Luxembourg",
+    "KR": "South Korea", "TW": "Taiwan", "HK": "Hong Kong",
+    "CZ": "Czech Republic", "IN": "India",
+}
+
+
+def _jobspy_indeed_country(location: str) -> str:
+    """Return JobSpy's Indeed market for every supported destination."""
+    return _INDEED_COUNTRY_BY_CODE.get(resolve_country(location) or "", "USA")
+
+
+def _source_supports_location(src: JobSource, location: str) -> bool:
+    """Avoid expensive country/source combinations that cannot return jobs."""
+    country = resolve_country(location)
+    if src in {JobSource.USAJOBS, JobSource.DICE}:
+        return country == "US"
+    if src == JobSource.ZIPRECRUITER:
+        return country in {"US", "CA"}
+    return True
 
 
 def _jobspy_location_for_source(src: JobSource, location: str) -> str:
@@ -727,6 +757,8 @@ async def run_scrape_cycle(
                 JobSource.GOOGLE: "google",
             }
             for src in request.sources:
+                if not _source_supports_location(src, location):
+                    continue
                 site_name = site_map.get(src)
                 if site_name:
                     if src == JobSource.GOOGLE and google_allowed_terms and search_term.lower() not in google_allowed_terms:
@@ -753,13 +785,14 @@ async def run_scrape_cycle(
 
             # USAJobs
             if JobSource.USAJOBS in request.sources:
-                tasks.append(("usajobs", scrape_usajobs(
-                    search_term=search_term,
-                    location=location,
-                    results_per_page=request.results_per_source,
-                )))
-                sources_used.append("usajobs")
-                source_attempts["usajobs"] = source_attempts.get("usajobs", 0) + 1
+                if _source_supports_location(JobSource.USAJOBS, location):
+                    tasks.append(("usajobs", scrape_usajobs(
+                        search_term=search_term,
+                        location=location,
+                        results_per_page=request.results_per_source,
+                    )))
+                    sources_used.append("usajobs")
+                    source_attempts["usajobs"] = source_attempts.get("usajobs", 0) + 1
 
             # LinkedIn RapidAPI
             if JobSource.RAPIDAPI in request.sources:
@@ -773,7 +806,7 @@ async def run_scrape_cycle(
 
             # Dice — tech-focused, per query × location
             if JobSource.DICE in request.sources:
-                if (location or "").strip().lower() in {"united states", "usa", "us"}:
+                if _source_supports_location(JobSource.DICE, location):
                     tasks.append(("dice", scrape_dice(
                         search_term=search_term,
                         location=location,
@@ -1120,7 +1153,7 @@ async def _hydrate_thin_job_descriptions(jobs: list[JobPost]) -> None:
     # hydrate far more thin postings before persistence instead of leaving
     # most of the cycle with partial descriptions. Still env-overridable.
     max_jobs = _env_int("SCRAPER_JD_HYDRATE_MAX_JOBS", 900)
-    concurrency = max(1, _env_int("SCRAPER_JD_HYDRATE_CONCURRENCY", 10))
+    concurrency = max(1, _env_int("SCRAPER_JD_HYDRATE_CONCURRENCY", 16))
     timeout = max(8.0, _env_float("SCRAPER_JD_HYDRATE_TIMEOUT_SECONDS", 22.0))
     if max_jobs <= 0:
         return
@@ -1178,7 +1211,12 @@ async def _hydrate_thin_job_descriptions(jobs: list[JobPost]) -> None:
         attempted_urls = candidate_urls.get(job.id, [])
         for url in attempted_urls:
             async with semaphore:
-                details = await fetch_full_job_description(url, timeout=timeout, expand_links=True)
+                details = await fetch_full_job_description(
+                    url,
+                    timeout=timeout,
+                    expand_links=True,
+                    client=description_client,
+                )
             if details:
                 replacement = clean_description_text(details.description)
                 if len(replacement) > len(current) + 300:
@@ -1197,7 +1235,18 @@ async def _hydrate_thin_job_descriptions(jobs: list[JobPost]) -> None:
         job.extra_metadata = extras
         return True
 
-    results = await asyncio.gather(*[_hydrate_one(job) for job in candidates], return_exceptions=True)
+    limits = httpx.Limits(
+        max_connections=max(concurrency * 2, 20),
+        max_keepalive_connections=max(concurrency, 10),
+        keepalive_expiry=30.0,
+    )
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(timeout, connect=min(8.0, timeout), read=timeout, write=8.0, pool=8.0),
+        follow_redirects=True,
+        headers=DEFAULT_HEADERS,
+        limits=limits,
+    ) as description_client:
+        results = await asyncio.gather(*[_hydrate_one(job) for job in candidates], return_exceptions=True)
     hydrated = sum(1 for result in results if result is True)
     logger.info(
         "JD hydration: upgraded %s/%s thin direct-page descriptions (cap=%s concurrency=%s)",

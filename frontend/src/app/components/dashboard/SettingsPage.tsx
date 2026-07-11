@@ -4,7 +4,7 @@ import { motion } from "motion/react";
 import { Save, AlertTriangle, MailCheck, KeyRound, Trash2 } from "lucide-react";
 import * as api from "../../lib/api";
 import { clearStoredToken } from "../../lib/api";
-import { COUNTRIES } from "../../lib/countries";
+import { COUNTRIES, visaOptionsForCountry } from "../../lib/countries";
 import { BillingPage } from "./BillingPage";
 import { LoadingLogo } from "../LoadingLogo";
 
@@ -224,7 +224,7 @@ export function SettingsPage() {
 
       <Section title="Career Preferences">
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
-          <SelectField label="Current Visa Status" value={profile.visa_status || ""} options={api.VISA_STATUS_OPTIONS} onChange={(v) => update("visa_status", v)} />
+          <SelectField label="Current Visa Status" value={profile.visa_status || ""} options={visaOptionsForCountry(profile.country)} onChange={(v) => update("visa_status", v)} />
           <SelectField label="Years of Experience" value={profile.experience_years || ""} options={api.YEARS_OPTIONS} onChange={(v) => update("experience_years", v)} />
           {profile.visa_status === "Other" && (
             <Field label="Describe Visa / Work Authorization" value={profile.visa_status_other || ""} onChange={(v) => update("visa_status_other", v)} />
