@@ -1616,6 +1616,18 @@ async def list_jobs(
             # renders after filtering, then bound to a safe ceiling.
             fetch_limit = min(max(offset + page_size * 8, 360), 2500)
             fetch_offset = 0
+        # Do not push a large OR of wildcard title aliases into PostgreSQL for
+        # personalized feeds. On the 450K-row production inventory that plan
+        # can consume the entire statement timeout before returning one row.
+        # Pull a bounded, newest-first country pool using the last_seen index,
+        # then apply the same precise role matching below in Python.
+        db_filters = dict(filters)
+        if title_terms_active and personalized:
+            db_filters.pop("title_terms", None)
+            effective_cutoff = db_filters.pop("effective_since", None)
+            if effective_cutoff is not None:
+                db_filters["seen_since"] = effective_cutoff
+
         source_balanced_fetch = (
             not filters.get("source")
             and hasattr(db, "get_jobs_source_balanced")
@@ -1634,7 +1646,7 @@ async def list_jobs(
                 per_source=90,
             )
         else:
-            jobs = await db.get_jobs(filters=filters, limit=fetch_limit, offset=fetch_offset)
+            jobs = await db.get_jobs(filters=db_filters, limit=fetch_limit, offset=fetch_offset)
         total_pages = math.ceil(total / page_size) if total > 0 else 1
 
         # Tag each job with taxonomy category + role under sibling fields so we
