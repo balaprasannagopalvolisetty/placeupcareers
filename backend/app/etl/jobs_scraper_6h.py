@@ -77,19 +77,21 @@ try:
 except ValueError:
     COVERAGE_AUDIT_FLOOR = 70
 try:
-    # Zero disables the application-level deadline. Cloud Run still enforces
-    # its platform maximum, while the advisory lock below prevents overlap.
-    RUN_BUDGET_SECONDS = max(0, int(os.getenv("SCRAPER_RUN_BUDGET_SECONDS", "0")))
+    # Finish well before the next six-hour trigger. An unbounded run used to
+    # spend 6-12 hours walking every role/country/provider combination and
+    # withheld fresh rows from master_jobs until the very end.
+    RUN_BUDGET_SECONDS = max(0, int(os.getenv("SCRAPER_RUN_BUDGET_SECONDS", "12600")))
 except ValueError:
     RUN_BUDGET_SECONDS = 0
 try:
-    PUBLIC_MAX_BATCHES_PER_RUN = max(0, int(os.getenv("SCRAPER_PUBLIC_MAX_BATCHES_PER_RUN", "0")))
+    PUBLIC_MAX_BATCHES_PER_RUN = max(0, int(os.getenv("SCRAPER_PUBLIC_MAX_BATCHES_PER_RUN", "12")))
 except ValueError:
     PUBLIC_MAX_BATCHES_PER_RUN = 0
+_PUBLIC_BATCH_OFFSET_RAW = os.getenv("SCRAPER_PUBLIC_BATCH_OFFSET", "").strip()
 try:
-    PUBLIC_BATCH_OFFSET = max(0, int(os.getenv("SCRAPER_PUBLIC_BATCH_OFFSET", "0")))
+    PUBLIC_BATCH_OFFSET = max(0, int(_PUBLIC_BATCH_OFFSET_RAW)) if _PUBLIC_BATCH_OFFSET_RAW else None
 except ValueError:
-    PUBLIC_BATCH_OFFSET = 0
+    PUBLIC_BATCH_OFFSET = None
 COVERAGE_FLOOR_ENABLED = os.getenv("SCRAPER_COVERAGE_FLOOR_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 
@@ -177,8 +179,15 @@ async def _run_batched() -> int:
     country_locations = _target_locations()
     role_country_pairs = len(roles) * len(countries)
     public_role_batches = [roles[i:i + BATCH_SIZE] for i in range(0, len(roles), BATCH_SIZE)]
-    if public_role_batches and PUBLIC_BATCH_OFFSET:
-        offset = PUBLIC_BATCH_OFFSET % len(public_role_batches)
+    if public_role_batches:
+        # Without an explicit override, rotate the slice every six-hour slot
+        # so a bounded run still covers the complete taxonomy over time.
+        stride = PUBLIC_MAX_BATCHES_PER_RUN or 1
+        offset = (
+            PUBLIC_BATCH_OFFSET
+            if PUBLIC_BATCH_OFFSET is not None
+            else (int(time.time()) // (6 * 3600)) * stride
+        ) % len(public_role_batches)
         public_role_batches = [*public_role_batches[offset:], *public_role_batches[:offset]]
     if PUBLIC_MAX_BATCHES_PER_RUN:
         public_role_batches = public_role_batches[:PUBLIC_MAX_BATCHES_PER_RUN]
@@ -252,8 +261,19 @@ async def _run_batched() -> int:
     )
     batch_concurrency = max(1, PUBLIC_BATCH_CONCURRENCY or 1)
     batch_semaphore = asyncio.Semaphore(batch_concurrency)
+    master_sync_lock = asyncio.Lock()
+    completed_public_batches = 0
+    last_published_batch_count = 0
+
+    def _rebuild_master_sync() -> None:
+        client = PostgresClient()
+        with client.session() as db:
+            from app.etl.master_jobs import rebuild_master_jobs
+            rebuild_master_jobs(db=db)
+            db.commit()
 
     async def _run_public_batch_guarded(index: int, batch: list[str]) -> int:
+        nonlocal completed_public_batches, last_published_batch_count
         async with batch_semaphore:
             if not budget_available(min_remaining=900):
                 logger.warning(
@@ -263,13 +283,26 @@ async def _run_batched() -> int:
                     budget_remaining(),
                 )
                 return 0
-            return await _run_public_batch(
+            code = await _run_public_batch(
                 index,
                 len(public_role_batches),
                 batch,
                 phase="roles",
                 batch_size=60,
             )
+        if not code:
+            completed_public_batches += 1
+            should_publish = completed_public_batches == 1 or completed_public_batches % 3 == 0
+            if should_publish:
+                async with master_sync_lock:
+                    if completed_public_batches > last_published_batch_count:
+                        await asyncio.to_thread(_rebuild_master_sync)
+                        last_published_batch_count = completed_public_batches
+                        logger.info(
+                            "6h scraper incrementally published master_jobs after %s completed public batches",
+                            completed_public_batches,
+                        )
+        return code
 
     public_results = await asyncio.gather(*[
         _run_public_batch_guarded(index, batch)
@@ -279,11 +312,7 @@ async def _run_batched() -> int:
 
     if public_results:
         try:
-            client = PostgresClient()
-            with client.session() as db:
-                from app.etl.master_jobs import rebuild_master_jobs
-                rebuild_master_jobs(db=db)
-                db.commit()
+            await asyncio.to_thread(_rebuild_master_sync)
             logger.info("6h scraper master jobs sync complete after public role batches")
         except Exception as exc:
             failures += 1
@@ -429,8 +458,11 @@ def main() -> int:
     )
     try:
         client = PostgresClient()
-        with client.session() as db:
-            locked = bool(db.execute(
+        # Advisory locks are session-scoped. AUTOCOMMIT prevents the lock
+        # holder from also keeping an hours-old idle transaction/snapshot,
+        # which previously blocked online indexes and maintenance work.
+        with client.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+            locked = bool(connection.execute(
                 text("SELECT pg_try_advisory_lock(:lock_key)"),
                 {"lock_key": ADVISORY_LOCK_KEY},
             ).scalar())
@@ -441,7 +473,7 @@ def main() -> int:
                 result = asyncio.run(_run_batched())
             finally:
                 try:
-                    db.execute(
+                    connection.execute(
                         text("SELECT pg_advisory_unlock(:lock_key)"),
                         {"lock_key": ADVISORY_LOCK_KEY},
                     )

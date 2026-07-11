@@ -38,12 +38,12 @@ def test_india_country_and_visa_options_are_exposed():
     assert "employment_visa" in result["visa_programs"]
 
 
-def test_scraper_targets_all_configured_countries_by_default():
+def test_scraper_targets_all_countries_with_a_bounded_rotating_role_slice():
     locations = _target_locations().split("~")
 
     assert len(TARGET_COUNTRIES) >= 30
     assert len(locations) == len(TARGET_COUNTRIES)
-    assert PUBLIC_MAX_BATCHES_PER_RUN == 0
+    assert 1 <= PUBLIC_MAX_BATCHES_PER_RUN <= 16
 
 
 def test_country_scraper_can_isolate_one_country(monkeypatch):
