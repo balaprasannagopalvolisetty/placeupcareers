@@ -541,6 +541,9 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const [visaOnly, setVisaOnly] = useState(false);
   const [personalized, setPersonalized] = useState(true);
   const [sortBy, setSortBy] = useState<"match" | "recent">("match");
+  // Minimal-by-default filters: the Refine row stays collapsed behind a
+  // "Filters" toggle until the user opens it (or has refinements active).
+  const [refineOpen, setRefineOpen] = useState(false);
 
   // Persist + restore the filter setup across navigation (opening a job and
   // coming back used to reset every filter — #3a). Restored once on mount.
@@ -1196,9 +1199,37 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             </div>
             <input value={locationRaw} onChange={(e) => setLocationRaw(e.target.value)} placeholder="Location"
               style={controlStyle({ width: isMobile ? "100%" : 140, flex: isMobile ? "1 1 100%" : "0 0 auto", fontSize: 13 })} />
+            {(() => {
+              const refineCount =
+                (countryFilter ? 1 : 0) + (visaProgramFilter ? 1 : 0) + (visaOnly ? 1 : 0) +
+                (timeFilter ? 1 : 0) + (maxYears !== 10 ? 1 : 0) + (sortBy !== "match" ? 1 : 0);
+              const open = refineOpen || refineCount > 0;
+              return (
+                <button
+                  onClick={() => setRefineOpen((v) => !v)}
+                  style={{
+                    ...controlStyle(),
+                    border: `1px solid ${open ? "var(--pu-59-130-246-032)" : J.line}`,
+                    background: open ? J.blueBg : J.card,
+                    color: open ? J.blue : J.t2,
+                    cursor: "pointer", fontWeight: 800,
+                    display: "flex", alignItems: "center", gap: 6,
+                  }}
+                  title={open ? "Hide refinement filters" : "Show refinement filters"}
+                >
+                  <Filter size={12} /> Filters
+                  {refineCount > 0 && (
+                    <span style={{ minWidth: 16, height: 16, borderRadius: 999, background: J.blue, color: "var(--pu-ffffff-t)", fontSize: 9.5, fontWeight: 900, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }}>
+                      {refineCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })()}
           </div>
 
-          {/* ── Row 2 · WHERE + HOW: refine group with caption ── */}
+          {/* ── Row 2 · WHERE + HOW: refine group, collapsed by default ── */}
+          {(refineOpen || countryFilter || visaProgramFilter || visaOnly || timeFilter || maxYears !== 10 || sortBy !== "match") && (
           <div style={{ flexBasis: "100%", display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center", paddingTop: 10, borderTop: `1px solid ${J.line}` }}>
             <span style={{ fontSize: 10, fontWeight: 850, letterSpacing: "0.12em", textTransform: "uppercase", color: J.t3, fontFamily: F.sans, marginRight: 2 }}>
               Refine
@@ -1272,6 +1303,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
               </button>
             )}
           </div>
+          )}
           <div style={{ flexBasis: "100%", color: J.t2, fontSize: 11, fontFamily: F.sans }}>
             {filtered.length.toLocaleString()} visible
             {matchingPositionsCount ? ` / ${matchingPositionsCount.toLocaleString()} ${savedRoleMode || hasServerFilters ? "matching" : "open"}` : ""}

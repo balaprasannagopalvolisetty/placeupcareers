@@ -10,7 +10,8 @@ needed to switch:
 
   Resend:   RESEND_API_KEY
   SendGrid: SENDGRID_API_KEY
-  SMTP:     SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, SMTP_STARTTLS=true
+  SMTP:     SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD,
+            SMTP_STARTTLS=true (or SMTP_SSL=true for implicit TLS/port 465)
 
 Behaviour:
 - Returns True on a confirmed send, raises EmailDeliveryError on misconfig or
@@ -129,6 +130,7 @@ def _send_smtp(sender: str, to: str, subject: str, html: str, text: str) -> bool
     username = os.getenv("SMTP_USERNAME")
     password = os.getenv("SMTP_PASSWORD")
     use_starttls = os.getenv("SMTP_STARTTLS", "true").lower() != "false"
+    use_ssl = os.getenv("SMTP_SSL", "false").lower() in {"1", "true", "yes", "on"}
 
     msg = EmailMessage()
     msg["From"] = sender
@@ -137,8 +139,9 @@ def _send_smtp(sender: str, to: str, subject: str, html: str, text: str) -> bool
     msg.set_content(text)
     msg.add_alternative(html, subtype="html")
 
-    with smtplib.SMTP(host, port, timeout=20) as server:
-        if use_starttls:
+    smtp_client = smtplib.SMTP_SSL if use_ssl else smtplib.SMTP
+    with smtp_client(host, port, timeout=20) as server:
+        if use_starttls and not use_ssl:
             server.starttls()
         if username and password:
             server.login(username, password)

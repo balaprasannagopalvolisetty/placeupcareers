@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import html as html_lib
 import logging
 import os
 import re
@@ -460,6 +461,30 @@ def _log_role_country_coverage(*, floor: int) -> None:
         logger.info("6h role-country coverage audit passed: all %s cells >= %s active jobs", len(counts), floor)
 
 
+def _alert_ops(subject: str, body: str) -> None:
+    """Email the ops inbox about scraper failures.
+
+    Configured via SCRAPER_ALERT_EMAIL (default operations@placeupcareer.com);
+    set SCRAPER_ALERT_EMAIL="" to disable. Never raises — an alerting failure
+    must not break the run that is trying to report a failure.
+    """
+    recipient = os.getenv("SCRAPER_ALERT_EMAIL", "operations@placeupcareer.com").strip()
+    if not recipient:
+        return
+    try:
+        from app.services.email import send_email
+        sent = send_email(
+            recipient,
+            f"[PlaceUp scraper] {subject}",
+            html=f"<pre style='font-family:monospace'>{html_lib.escape(body)}</pre>",
+            text=body,
+        )
+        if not sent:
+            logger.warning("Scraper alert email to %s was not sent (SMTP not configured?)", recipient)
+    except Exception as alert_exc:  # noqa: BLE001
+        logger.warning("Scraper alert email failed: %s", alert_exc)
+
+
 def main() -> int:
     """Run the 6h scrape and ALWAYS exit 0.
 
@@ -507,12 +532,24 @@ def main() -> int:
                 "Exiting 0 so the every-6h schedule is never marked failed; see warnings above.",
                 result,
             )
+            _alert_ops(
+                "Run completed with failed passes",
+                f"The scheduled scrape finished with internal code={result}.\n"
+                "Some source passes failed — job data may be partially stale.\n"
+                "Check Cloud Logging for the placeup-job-scraper-6h execution.",
+            )
         return 0
     except Exception as exc:  # noqa: BLE001 - deliberately catch-all
         logger.exception(
             "6h scraper top-level failure (likely DB connect/lock at startup). "
             "Exiting 0 to keep the 6h schedule healthy; investigate via Cloud Logging: %s",
             exc,
+        )
+        _alert_ops(
+            "Run FAILED at startup",
+            f"The scheduled scrape crashed before completing:\n\n{exc}\n\n"
+            "No new jobs were collected in this run. "
+            "Check Cloud Logging for the placeup-job-scraper-6h execution.",
         )
         return 0
 

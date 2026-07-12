@@ -206,6 +206,25 @@ page. `JOBS_FEED_INCLUDE_AGGREGATORS=true` restores blending. Ranking is
 relevance-first (Jobright-style): target-role tier, then match score +
 freshness bonus + first-party bonus (`_projection_sort_key`).
 
+Scraper schedule + alerting (2026-07-11): the job scraper runs twice daily
+at 11:00 and 20:00 America/New_York (`deploy/schedule_jobs.ps1` —
+placeup-job-scraper-am/-pm; retire the old placeup-job-scraper-6h trigger).
+Failures and partial runs email SCRAPER_ALERT_EMAIL (default
+operations@placeupcareer.com) via `_alert_ops` in
+`app/etl/jobs_scraper_6h.py`. Requires SMTP settings on the Cloud Run job.
+
+ATS coverage additions (2026-07-11): Freshteam, Jobylon, Comeet, Homerun,
+CATS (catsone), and an Eightfold alias (same /api/apply/v2/jobs pattern as
+Phenom) — 36 dispatch keys in careers_ats.ATS_DISPATCH, wired into
+first-party sources, slug probes, and tier1 providers.
+
+Job Detail scores (2026-07-11): the top card's Match % rates ROLE fit; the
+"Resume readiness" card (formerly "ATS score breakdown") rates how well the
+resume document presents that fit (bullets/metrics/formatting). Labeled +
+explained in UI so the two numbers don't read as a contradiction. Jobs
+filters are minimal by default — the Refine row collapses behind a
+"Filters" toggle with an active-count badge.
+
 Keyword extraction (2026-07-10 pm): `text_processing.BUSINESS_SKILLS` adds a
 cross-domain lexicon (HR/finance/ops/health/sales/design); `ats_analysis`
 now blacklists application-process noise (cv/apply/click), drops

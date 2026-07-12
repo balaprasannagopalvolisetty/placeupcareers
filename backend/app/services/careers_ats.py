@@ -1978,6 +1978,170 @@ async def scrape_hireology_board(board_token: str, *, max_jobs: int = 2000) -> l
     return jobs
 
 
+# ─── Freshteam (Freshworks) ──────────────────────────────────────────────────
+
+async def scrape_freshteam_board(board_token: str, *, max_jobs: int = 2000) -> list[JobPost]:
+    """Public widget feed: https://{token}.freshteam.com/hire/widgets/jobs.json"""
+    token = board_token.strip()
+    if not token:
+        return []
+    try:
+        payload = await _http_json(f"https://{token}.freshteam.com/hire/widgets/jobs.json")
+    except Exception as exc:
+        logger.warning("Freshteam %r: %s", token, exc)
+        return []
+    items = payload.get("jobs") if isinstance(payload, dict) else payload
+    if not isinstance(items, list):
+        return []
+    jobs: list[JobPost] = []
+    for item in items[:max_jobs]:
+        try:
+            title = _safe_str(item.get("title"))
+            if not title:
+                continue
+            branch = item.get("branch") or {}
+            loc_parts = [_safe_str(branch.get("city")), _safe_str(branch.get("state")), _safe_str(branch.get("country_code"))]
+            jobs.append(_simple_jobpost(
+                ats="freshteam", source=JobSource.FRESHTEAM, board_token=token,
+                title=title,
+                job_url=_safe_str(item.get("url")) or f"https://{token}.freshteam.com/jobs/{_safe_str(item.get('id'))}",
+                location=", ".join(p for p in loc_parts if p),
+                description=_strip_html(item.get("description")),
+                source_job_id=_safe_str(item.get("id")),
+                posted_at=_parse_dt(item.get("created_at")),
+                job_type=_safe_str(item.get("job_type")),
+                extra={"department": _safe_str((item.get("department") or {}).get("name") if isinstance(item.get("department"), dict) else item.get("department")), "remote": item.get("remote")},
+            ))
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Freshteam: skip row: %s", exc)
+    logger.info("Freshteam %r: normalized %s jobs", token, len(jobs))
+    return jobs
+
+
+# ─── Jobylon ─────────────────────────────────────────────────────────────────
+
+async def scrape_jobylon_board(board_token: str, *, max_jobs: int = 2000) -> list[JobPost]:
+    """Public JSON feed: https://feed.jobylon.com/feeds/{token}/?format=json"""
+    token = board_token.strip()
+    if not token:
+        return []
+    try:
+        payload = await _http_json(f"https://feed.jobylon.com/feeds/{token}/", params={"format": "json"})
+    except Exception as exc:
+        logger.warning("Jobylon %r: %s", token, exc)
+        return []
+    items = payload if isinstance(payload, list) else (payload.get("jobs") if isinstance(payload, dict) else None)
+    if not isinstance(items, list):
+        return []
+    jobs: list[JobPost] = []
+    for item in items[:max_jobs]:
+        try:
+            title = _safe_str(item.get("title"))
+            if not title:
+                continue
+            locs = item.get("locations") or []
+            loc = ""
+            if isinstance(locs, list) and locs:
+                first = (locs[0] or {}).get("location") or {}
+                loc = _safe_str(first.get("text") or first.get("city"))
+            company = _safe_str((item.get("company") or {}).get("name") if isinstance(item.get("company"), dict) else "")
+            job = _simple_jobpost(
+                ats="jobylon", source=JobSource.JOBYLON, board_token=token,
+                title=title,
+                job_url=_safe_str(item.get("urls", {}).get("ad") if isinstance(item.get("urls"), dict) else item.get("url")),
+                location=loc,
+                description=_strip_html(item.get("descr") or item.get("description")),
+                source_job_id=_safe_str(item.get("id")),
+                posted_at=_parse_dt(item.get("from_date") or item.get("created_at")),
+                job_type=_safe_str(item.get("employment_type")),
+            )
+            if company:
+                job.company = company
+            jobs.append(job)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Jobylon: skip row: %s", exc)
+    logger.info("Jobylon %r: normalized %s jobs", token, len(jobs))
+    return jobs
+
+
+# ─── Comeet ──────────────────────────────────────────────────────────────────
+
+async def scrape_comeet_board(board_token: str, *, max_jobs: int = 2000) -> list[JobPost]:
+    """Comeet hosted careers pages (www.comeet.com/jobs/{token}) — anchors."""
+    token = board_token.strip()
+    if not token:
+        return []
+    try:
+        page = await _http_text(f"https://www.comeet.com/jobs/{token}")
+    except Exception as exc:
+        logger.warning("Comeet %r: %s", token, exc)
+        return []
+    jobs: list[JobPost] = []
+    pairs = _anchor_jobs(
+        page,
+        rf"(?:https://www\.comeet\.com)?/jobs/{_re.escape(token)}/[A-Za-z0-9._-]+",
+        base_url="https://www.comeet.com",
+    )
+    for url, title in pairs[:max_jobs]:
+        jobs.append(_simple_jobpost(
+            ats="comeet", source=JobSource.COMEET, board_token=token,
+            title=title, job_url=url, source_job_id=url.rsplit("/", 1)[-1],
+        ))
+    logger.info("Comeet %r: normalized %s jobs", token, len(jobs))
+    return jobs
+
+
+# ─── Homerun ─────────────────────────────────────────────────────────────────
+
+async def scrape_homerun_board(board_token: str, *, max_jobs: int = 2000) -> list[JobPost]:
+    """Homerun hosted career sites ({token}.homerun.co) — anchor extraction."""
+    token = board_token.strip()
+    if not token:
+        return []
+    base = f"https://{token}.homerun.co"
+    try:
+        page = await _http_text(base)
+    except Exception as exc:
+        logger.warning("Homerun %r: %s", token, exc)
+        return []
+    jobs: list[JobPost] = []
+    pairs = _anchor_jobs(page, rf"(?:{_re.escape(base)})?/[a-z0-9-]{{6,}}(?:/[a-z]{{2}})?", base_url=base)
+    for url, title in pairs[:max_jobs]:
+        slug = url.rstrip("/").rsplit("/", 1)[-1]
+        if slug in {"privacy", "terms", "about", "contact", "jobs"}:
+            continue
+        jobs.append(_simple_jobpost(
+            ats="homerun", source=JobSource.HOMERUN, board_token=token,
+            title=title, job_url=url, source_job_id=slug,
+        ))
+    logger.info("Homerun %r: normalized %s jobs", token, len(jobs))
+    return jobs
+
+
+# ─── CATS (catsone) ──────────────────────────────────────────────────────────
+
+async def scrape_catsone_board(board_token: str, *, max_jobs: int = 2000) -> list[JobPost]:
+    """CATS hosted career portals ({token}.catsone.com/careers) — anchors."""
+    token = board_token.strip()
+    if not token:
+        return []
+    base = f"https://{token}.catsone.com"
+    try:
+        page = await _http_text(f"{base}/careers")
+    except Exception as exc:
+        logger.warning("CATS %r: %s", token, exc)
+        return []
+    jobs: list[JobPost] = []
+    pairs = _anchor_jobs(page, rf"(?:{_re.escape(base)})?/careers/[^\"']+", base_url=base)
+    for url, title in pairs[:max_jobs]:
+        jobs.append(_simple_jobpost(
+            ats="catsone", source=JobSource.CATSONE, board_token=token,
+            title=title, job_url=url, source_job_id=url.rstrip("/").rsplit("/", 1)[-1],
+        ))
+    logger.info("CATS %r: normalized %s jobs", token, len(jobs))
+    return jobs
+
+
 # ─── Multi-ATS dispatcher ────────────────────────────────────────────────────
 
 ATS_DISPATCH = {
@@ -2010,9 +2174,17 @@ ATS_DISPATCH = {
     "successfactors": scrape_successfactors_board,
     "sap_successfactors": scrape_successfactors_board,
     "phenom": scrape_phenom_board,
+    "eightfold": scrape_phenom_board,  # same /api/apply/v2/jobs pattern
     "dayforce": scrape_dayforce_board,
     "join": scrape_join_board,
     "hireology": scrape_hireology_board,
+    # 2026-07-11 additions
+    "freshteam": scrape_freshteam_board,
+    "jobylon": scrape_jobylon_board,
+    "comeet": scrape_comeet_board,
+    "homerun": scrape_homerun_board,
+    "catsone": scrape_catsone_board,
+    "cats": scrape_catsone_board,
 }
 
 

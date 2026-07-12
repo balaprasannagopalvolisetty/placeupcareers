@@ -720,13 +720,25 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
           return (
             <div style={{ background: "var(--pu-8-18-38-055)", backdropFilter: "blur(20px)", border: `1px solid ${T.border}`, borderRadius: 18, padding: isMobile ? 18 : 24 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
-                <div>
-                  <h3 style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 800, color: T.text, margin: "0 0 4px" }}>ATS score breakdown</h3>
-                  <div style={{ fontFamily: F.sans, fontSize: 12, color: T.t3 }}>{atsAnalysis.recommendation} · {atsAnalysis.coverage_pct ?? 0}% keyword coverage · {atsAnalysis.semantic_similarity ?? 0}% semantic</div>
+                <div style={{ minWidth: 0 }}>
+                  <h3 style={{ fontFamily: F.sans, fontSize: 15, fontWeight: 800, color: T.text, margin: "0 0 4px" }}>Resume readiness for this posting</h3>
+                  {/* Two different measures, labeled so they don't read as a
+                      contradiction: Match % (top card) = how well the ROLE fits
+                      your background. This score = how well your resume DOCUMENT
+                      presents that fit to an ATS (bullets, metrics, formatting).
+                      A strong-match role with weak bullets scores high match /
+                      low readiness — that's expected, not a bug. */}
+                  <div style={{ fontFamily: F.sans, fontSize: 12, color: T.t3 }}>
+                    {(atsAnalysis.score ?? 0) >= 80 ? "ATS-ready" : (atsAnalysis.score ?? 0) >= 60 ? "Needs polish" : "Needs work"}
+                    {" · "}{atsAnalysis.coverage_pct ?? 0}% keyword coverage · {atsAnalysis.semantic_similarity ?? 0}% semantic
+                  </div>
+                  <div style={{ fontFamily: F.sans, fontSize: 11, color: T.t3, marginTop: 4, lineHeight: 1.5 }}>
+                    Match % above rates the role fit; this score rates how well your resume document presents it (bullet quality, metrics, formatting).
+                  </div>
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div style={{ fontFamily: F.mono, fontSize: 26, fontWeight: 800, color: T.red, lineHeight: 1 }}>{atsAnalysis.score ?? 0}<span style={{ fontSize: 14, color: T.t3 }}>/100</span></div>
-                  <div style={{ fontSize: 10, color: T.t3, fontFamily: F.sans }}>ATS score</div>
+                  <div style={{ fontSize: 10, color: T.t3, fontFamily: F.sans }}>Resume readiness</div>
                 </div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>

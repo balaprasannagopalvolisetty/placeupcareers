@@ -64,6 +64,11 @@ PROBE_ATS = (
     "zoho_recruit",
     "dayforce",
     "hireology",
+    "freshteam",
+    "jobylon",
+    "comeet",
+    "homerun",
+    "catsone",
 )
 
 # Common careers paths to probe on the corporate domain, in order.

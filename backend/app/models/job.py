@@ -76,6 +76,12 @@ class JobSource(str, Enum):
     DAYFORCE = "dayforce"
     JOIN_COM = "join"
     HIREOLOGY = "hireology"
+    FRESHTEAM = "freshteam"
+    JOBYLON = "jobylon"
+    COMEET = "comeet"
+    HOMERUN = "homerun"
+    CATSONE = "catsone"
+    EIGHTFOLD = "eightfold"
     # Aggregated H1B sponsor pipeline (multi-ATS, all curated H1B sponsors)
     H1B_SPONSOR = "h1b_sponsor"
     # Tier-1 ATS aggregate (Greenhouse/Lever/Ashby/SmartRecruiters/Workable/Recruitee)

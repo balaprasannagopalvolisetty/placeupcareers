@@ -60,12 +60,18 @@ if ($OpenRouterSecret) {
 
 # Hosted payment links intentionally not bound while FREE_ACCESS_ENABLED=true.
 
-# Email provider secrets - REQUIRED for OTP/MFA emails, signup verification,
-# and password reset. Bound automatically whenever the secret exists so a
-# redeploy can never strip email capability from the API.
-foreach ($EmailSecretName in @("RESEND_API_KEY", "SENDGRID_API_KEY", "SMTP_PASSWORD")) {
+# Email provider configuration is kept in Secret Manager, including host and
+# sender metadata, so credentials never enter source control and a later job
+# deploy cannot wipe manually-added scraper alert settings. Bind the same
+# provider configuration to both the API and scraper.
+foreach ($EmailSecretName in @(
+  "RESEND_API_KEY", "SENDGRID_API_KEY", "EMAIL_PROVIDER", "EMAIL_FROM",
+  "SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_PASSWORD",
+  "SMTP_STARTTLS", "SMTP_SSL", "SCRAPER_ALERT_EMAIL"
+)) {
   if (Test-SecretExists $EmailSecretName) {
     $ApiSecrets = "$ApiSecrets,$EmailSecretName=$EmailSecretName`:latest"
+    $ScraperSecrets = "$ScraperSecrets,$EmailSecretName=$EmailSecretName`:latest"
   }
 }
 

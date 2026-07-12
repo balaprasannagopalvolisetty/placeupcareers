@@ -14,8 +14,10 @@ function Upsert-SchedulerJob {
   param(
     [string]$Name,
     [string]$Schedule,
-    [string]$Uri
+    [string]$Uri,
+    [string]$Tz = ""
   )
+  if (-not $Tz) { $Tz = $TimeZone }
 
   $previousErrorAction = $ErrorActionPreference
   $ErrorActionPreference = "Continue"
@@ -30,7 +32,7 @@ function Upsert-SchedulerJob {
     gcloud.cmd scheduler jobs update http $Name `
       --location $Region `
       --schedule $Schedule `
-      --time-zone $TimeZone `
+      --time-zone $Tz `
       --uri $Uri `
       --http-method POST `
       --oauth-service-account-email $SchedulerSa
@@ -38,17 +40,31 @@ function Upsert-SchedulerJob {
     gcloud.cmd scheduler jobs create http $Name `
       --location $Region `
       --schedule $Schedule `
-      --time-zone $TimeZone `
+      --time-zone $Tz `
       --uri $Uri `
       --http-method POST `
       --oauth-service-account-email $SchedulerSa
   }
 }
 
+# Job scraper — twice daily at 11:00 and 20:00 US Eastern (ops request
+# 2026-07-11). Two scheduler jobs trigger the same Cloud Run job; the
+# in-code advisory lock prevents overlap, and the scraper emails
+# operations@placeupcareer.com on failures (SCRAPER_ALERT_EMAIL env).
 Upsert-SchedulerJob `
-  -Name "placeup-job-scraper-6h" `
-  -Schedule "0 */6 * * *" `
+  -Name "placeup-job-scraper-am" `
+  -Schedule "0 11 * * *" `
+  -Tz "America/New_York" `
   -Uri "$JobRunBase/placeup-job-scraper-6h:run"
+
+Upsert-SchedulerJob `
+  -Name "placeup-job-scraper-pm" `
+  -Schedule "0 20 * * *" `
+  -Tz "America/New_York" `
+  -Uri "$JobRunBase/placeup-job-scraper-6h:run"
+
+# Retire the old every-6-hours trigger after the two ET jobs exist:
+#   gcloud scheduler jobs delete placeup-job-scraper-6h --location us-east1
 
 # NOTE: the separate placeup-external-api-12h job was removed. RapidAPI is
 # intentionally disabled; the 6-hour job uses public and direct ATS sources.

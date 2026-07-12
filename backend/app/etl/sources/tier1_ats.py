@@ -79,9 +79,15 @@ TIER1_ATS_PROVIDERS: frozenset[str] = frozenset({
     "gem",
     "successfactors",
     "phenom",
+    "eightfold",
     "dayforce",
     "join",
     "hireology",
+    "freshteam",
+    "jobylon",
+    "comeet",
+    "homerun",
+    "catsone",
 })
 
 
