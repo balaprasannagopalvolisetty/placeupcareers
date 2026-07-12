@@ -60,6 +60,13 @@ try:
     PUBLIC_BATCH_CONCURRENCY = max(0, int(os.getenv("SCRAPER_PUBLIC_BATCH_CONCURRENCY", "2")))
 except ValueError:
     PUBLIC_BATCH_CONCURRENCY = 0
+try:
+    # Role slices rotate between six-hour runs. Anything below 24 hours can
+    # leave a gap before the same role is searched again, so 24h is the
+    # minimum supported freshness window for complete daily coverage.
+    JOBSPY_RECENCY_HOURS = max(24, int(os.getenv("SCRAPER_RECENCY_HOURS", "24")))
+except ValueError:
+    JOBSPY_RECENCY_HOURS = 24
 PURGE_EXCEPT_TODAY = os.getenv("SCRAPER_PURGE_EXCEPT_TODAY", "false").strip().lower() not in {"0", "false", "no", "off"}
 PURGE_TIMEZONE = os.getenv("SCRAPER_PURGE_TIMEZONE", "America/Chicago").strip() or "America/Chicago"
 # Rolling retention is OPT-IN. Default 0 == never delete anything (matches the
@@ -153,7 +160,7 @@ def _base_args(**overrides) -> argparse.Namespace:
         "max_per_source": 60,
         "max_per_sponsor": 400,
         "h1b_sponsor_concurrency": 10,
-        "jobspy_hours_old": 8,
+        "jobspy_hours_old": JOBSPY_RECENCY_HOURS,
         "jobspy_page_size": 50,
         "jobspy_max_pages": 25,
         "tiers": "T1~T2",

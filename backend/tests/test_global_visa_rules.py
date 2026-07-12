@@ -5,7 +5,13 @@ from app.services.global_visa_rules import (
     in_target_country,
     normalize_country_code,
 )
-from app.etl.jobs_scraper_6h import PUBLIC_MAX_BATCHES_PER_RUN, _selected_target_countries, _target_locations
+from app.etl.jobs_scraper_6h import (
+    JOBSPY_RECENCY_HOURS,
+    PUBLIC_MAX_BATCHES_PER_RUN,
+    _base_args,
+    _selected_target_countries,
+    _target_locations,
+)
 from app.models.job import JobSource
 from app.services.job_scraper import _jobspy_indeed_country, _source_supports_location
 
@@ -40,10 +46,17 @@ def test_india_country_and_visa_options_are_exposed():
 
 def test_scraper_targets_all_countries_with_a_bounded_rotating_role_slice():
     locations = _target_locations().split("~")
+    expected_countries = {
+        "AE", "AT", "AU", "BE", "CA", "CH", "CZ", "DE", "DK", "EE", "ES",
+        "FI", "FR", "GB", "HK", "IE", "IN", "IT", "JP", "KR", "LU", "NL",
+        "NO", "NZ", "PL", "PT", "QA", "SA", "SE", "SG", "TW", "US",
+    }
 
-    assert len(TARGET_COUNTRIES) >= 30
+    assert set(TARGET_COUNTRIES) == expected_countries
     assert len(locations) == len(TARGET_COUNTRIES)
     assert 1 <= PUBLIC_MAX_BATCHES_PER_RUN <= 16
+    assert JOBSPY_RECENCY_HOURS == 24
+    assert _base_args().jobspy_hours_old == 24
 
 
 def test_country_scraper_can_isolate_one_country(monkeypatch):
