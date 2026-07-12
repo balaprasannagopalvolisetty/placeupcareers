@@ -33,7 +33,7 @@ const J = {
 };
 
 const TIME_OPTIONS = [
-  { label: "All active", value: "" },
+  { label: "Recent (24h)", value: "" },
   { label: "Last 8h", value: "8h" },
   { label: "Today", value: "today" },
   { label: "Yesterday", value: "yesterday" },

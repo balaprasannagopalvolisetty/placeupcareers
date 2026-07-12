@@ -48,7 +48,7 @@ from app.utils.terminal_table import render_table
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
-DEFAULT_VISIBLE_MAX_AGE_DAYS = 14
+DEFAULT_VISIBLE_MAX_AGE_HOURS = 24
 DEFAULT_RECENT_JOB_HOURS = 8
 _detail_repair_recent: dict[str, datetime] = {}
 _match_score_cache: dict[str, tuple[datetime, int]] = {}
@@ -778,9 +778,10 @@ def _visible_jobs_cutoff() -> datetime:
     """Default frontend isolation boundary.
 
     Older jobs remain in Postgres/master_jobs for audit/history, but normal
-    frontend projections should not show positions posted more than 15 days ago.
+    frontend projections show only positions posted/first collected in the
+    rolling last 24 hours.
     """
-    return datetime.now(timezone.utc) - timedelta(days=DEFAULT_VISIBLE_MAX_AGE_DAYS)
+    return datetime.now(timezone.utc) - timedelta(hours=DEFAULT_VISIBLE_MAX_AGE_HOURS)
 
 
 def _recent_jobs_cutoff() -> datetime:

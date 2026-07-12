@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import select
@@ -237,6 +237,17 @@ def test_effective_job_date_uses_first_collected_when_ats_omits_posted_date():
     }
 
     assert _job_effective_datetime(job) == datetime(2026, 7, 12, 12, 0, tzinfo=timezone.utc)
+
+
+def test_default_jobs_visibility_is_a_rolling_24_hours():
+    from app.api.jobs import _visible_jobs_cutoff
+
+    before = datetime.now(timezone.utc)
+    cutoff = _visible_jobs_cutoff()
+    after = datetime.now(timezone.utc)
+
+    assert before - timedelta(hours=24, seconds=1) <= cutoff
+    assert cutoff <= after - timedelta(hours=23, minutes=59, seconds=59)
 
 
 def test_exact_country_query_avoids_redundant_scope_and_coalesce_scan():
