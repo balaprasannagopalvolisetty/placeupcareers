@@ -11,6 +11,16 @@ from app.db.postgres import PostgresClient
 
 logger = logging.getLogger("placeup.etl.master_jobs")
 
+# Every worker eventually publishes into the same master_jobs rows. A
+# non-blocking transaction lock prevents two full-table publishers from
+# interleaving their ON CONFLICT updates. Skipping is safe: source rows have
+# already committed and the next incremental/scheduled publication includes
+# them. Non-blocking acquisition is important because some callers arrive
+# here after writing source rows in their current transaction; waiting while
+# holding those locks can itself form a deadlock cycle.
+MASTER_REBUILD_LOCK_KEY = 6412226682827
+MASTER_REBUILD_LOCK_SQL = "SELECT pg_try_advisory_xact_lock(:lock_key)"
+
 
 MASTER_SYNC_SQL = """
 WITH source_rows AS (
@@ -115,6 +125,7 @@ SELECT
 FROM ranked
 JOIN source_groups sg USING (canonical_key)
 WHERE rn = 1
+ORDER BY canonical_key
 ON CONFLICT (canonical_key) DO UPDATE SET
     title = EXCLUDED.title,
     company = EXCLUDED.company,
@@ -143,25 +154,36 @@ ON CONFLICT (canonical_key) DO UPDATE SET
 """
 
 
+def _rebuild_in_session(db: Session) -> int:
+    acquired = bool(
+        db.execute(
+            text(MASTER_REBUILD_LOCK_SQL),
+            {"lock_key": MASTER_REBUILD_LOCK_KEY},
+        ).scalar()
+    )
+    if not acquired:
+        logger.warning(
+            "Master jobs sync skipped: another publisher currently owns lock %s",
+            MASTER_REBUILD_LOCK_KEY,
+        )
+        return 0
+
+    result = db.execute(text(MASTER_SYNC_SQL))
+    count = int(result.rowcount or 0)
+    logger.info("Master jobs sync complete: %s rows upserted", count)
+    return count
+
+
 def rebuild_master_jobs(client: PostgresClient | Session | None = None, *, db: Session | None = None) -> int:
     if db is not None:
-        result = db.execute(text(MASTER_SYNC_SQL))
-        count = int(result.rowcount or 0)
-        logger.info("Master jobs sync complete: %s rows upserted", count)
-        return count
+        return _rebuild_in_session(db)
 
     if isinstance(client, Session):
-        result = client.execute(text(MASTER_SYNC_SQL))
-        count = int(result.rowcount or 0)
-        logger.info("Master jobs sync complete: %s rows upserted", count)
-        return count
+        return _rebuild_in_session(client)
 
     client = client or PostgresClient()
     with client.session() as db:
-        result = db.execute(text(MASTER_SYNC_SQL))
-        count = int(result.rowcount or 0)
-    logger.info("Master jobs sync complete: %s rows upserted", count)
-    return count
+        return _rebuild_in_session(db)
 
 
 def main() -> int:

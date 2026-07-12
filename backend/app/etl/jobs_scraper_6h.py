@@ -547,8 +547,9 @@ def main() -> int:
         )
         _alert_ops(
             "Run FAILED at startup",
-            f"The scheduled scrape crashed before completing:\n\n{exc}\n\n"
-            "No new jobs were collected in this run. "
+            f"The scheduled scrape stopped before every pass completed:\n\n{exc}\n\n"
+            "Jobs committed before this failure remain safely collected, but the "
+            "latest master_jobs publication may be partial. "
             "Check Cloud Logging for the placeup-job-scraper-6h execution.",
         )
         return 0
