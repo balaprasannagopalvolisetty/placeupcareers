@@ -1008,7 +1008,10 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
     }
   };
 
-  const paginationControls = total > pageSize ? (
+  // Keep the page footer visible even when filters yield one page. Besides
+  // making the current page/total explicit, this avoids the list appearing
+  // abruptly cut off when Prev/Next are simply unavailable.
+  const paginationControls = total > 0 ? (
     <div
       style={{
         marginTop: 8,

@@ -1456,6 +1456,13 @@ async def list_jobs(
         # active jobs, then let explicit Today/Yesterday/Week/Month filters
         # apply exact posted-date windows above.
         filters["effective_since"] = visible_cutoff
+    # Always enforce the frontend visibility boundary against the honest job
+    # timestamp after fetching. The indexed DB prefilter uses last_seen_at for
+    # speed, but last_seen_at only means "verified again"; it must never make a
+    # January posting appear current in July. _job_effective_datetime prefers
+    # posted_at and falls back to first_seen only when an ATS omitted its date.
+    visibility_since = post_filter_since or visible_cutoff
+    visibility_before = post_filter_before
     taxonomy_filter_active = bool(category or role)
     title_terms = _taxonomy_terms(category, role)
     preferred_roles, preferred_locations = _preference_terms(user_id) if personalized else ([], [])
@@ -1604,7 +1611,12 @@ async def list_jobs(
             # inventory. Descriptions are truncated in the pool query so this
             # stays fast; the visible page is re-scored against full text
             # afterwards.
-            fetch_limit = min(max(offset + page_size * 8, 800), 4000)
+            # Personalized roles are filtered in Python after an indexed
+            # newest-first country query. A first-page pool of only 800 rows
+            # routinely found four stale matches and missed current roles
+            # deeper in a 400k-row inventory. Pull the bounded 4k pool once;
+            # descriptions remain truncated and only matches are scored.
+            fetch_limit = 4000 if personalized else min(max(offset + page_size * 8, 800), 4000)
             fetch_offset = 0
         elif post_filter_since or post_filter_before:
             fetch_limit = min(max(offset + page_size * 8, 500), 2500)
@@ -1700,10 +1712,10 @@ async def list_jobs(
                 continue
             if filters.get("visa_program") and filters["visa_program"] not in (visa_payload.get("visa_programs") or []):
                 continue
-            if (post_filter_since or post_filter_before) and not _in_datetime_window(
+            if not _in_datetime_window(
                 _job_effective_datetime(j),
-                post_filter_since,
-                post_filter_before,
+                visibility_since,
+                visibility_before,
             ):
                 continue
             if is_probably_fake_or_scam_job(
@@ -1860,7 +1872,7 @@ async def list_jobs(
         # Reporting the 50k heuristic in that case rendered page buttons that
         # all pointed at empty/duplicate slices — pagination now only offers
         # pages that really exist.
-        if post_filter_since or post_filter_before:
+        if visibility_since or visibility_before:
             total = len(decorated)
             total_pages = max(1, math.ceil(total / page_size)) if total else 1
         elif len(jobs) < fetch_limit:

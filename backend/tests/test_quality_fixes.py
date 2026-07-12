@@ -215,6 +215,30 @@ def test_match_sort_never_lifts_a_lower_score_for_freshness():
     assert [job["id"] for job in ranked] == ["high", "lower"]
 
 
+def test_effective_job_date_does_not_make_old_post_current_when_reverified():
+    from app.api.jobs import _job_effective_datetime
+
+    job = {
+        "posted_at": "2026-01-12T12:00:00+00:00",
+        "first_seen_at": "2026-01-12T12:00:00+00:00",
+        "last_seen_at": "2026-07-12T12:00:00+00:00",
+    }
+
+    assert _job_effective_datetime(job) == datetime(2026, 1, 12, 12, 0, tzinfo=timezone.utc)
+
+
+def test_effective_job_date_uses_first_collected_when_ats_omits_posted_date():
+    from app.api.jobs import _job_effective_datetime
+
+    job = {
+        "posted_at": None,
+        "first_seen_at": "2026-07-12T12:00:00+00:00",
+        "last_seen_at": "2026-07-12T13:00:00+00:00",
+    }
+
+    assert _job_effective_datetime(job) == datetime(2026, 7, 12, 12, 0, tzinfo=timezone.utc)
+
+
 def test_exact_country_query_avoids_redundant_scope_and_coalesce_scan():
     client = PostgresClient.__new__(PostgresClient)
     stmt = client._apply_master_job_filters(select(MasterJob.id), {
