@@ -279,6 +279,22 @@ def test_exact_country_query_avoids_redundant_scope_and_coalesce_scan():
     assert "master_jobs.last_seen_at" in sql
 
 
+def test_honest_freshness_filter_uses_first_seen_only_when_posted_date_is_missing():
+    client = PostgresClient.__new__(PostgresClient)
+    cutoff = datetime(2026, 7, 12, tzinfo=timezone.utc)
+    stmt = client._apply_master_job_filters(select(MasterJob.id), {
+        "status": "active",
+        "seen_since": cutoff,
+        "honest_since": cutoff,
+    })
+    sql = str(stmt.compile(dialect=postgresql.dialect())).lower()
+
+    assert "master_jobs.posted_at >=" in sql
+    assert "master_jobs.posted_at is null" in sql
+    assert "master_jobs.first_seen_at >=" in sql
+    assert "coalesce(master_jobs.posted_at" not in sql
+
+
 def test_frontend_complete_jd_filter_is_enforced_in_sql_and_loads_full_text():
     client = PostgresClient.__new__(PostgresClient)
     filters = {"status": "active", "complete_jd_only": True, "full_description": True}

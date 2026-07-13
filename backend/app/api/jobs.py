@@ -1457,6 +1457,14 @@ async def list_jobs(
         filters["seen_since"] = visible_cutoff
         post_filter_since = max(fresh_since, visible_cutoff)
         post_filter_before = fresh_before
+        # Apply the same honest posting-date rule in PostgreSQL before LIMIT.
+        # Without this predicate the first page was drawn from recently
+        # re-verified old jobs; valid new postings deeper in that pool were
+        # never considered. ATSes that omit posted_at may fall back only to
+        # first_seen_at, never last_seen_at.
+        filters["honest_since"] = post_filter_since
+        if post_filter_before is not None:
+            filters["honest_before"] = post_filter_before
     else:
         # The UI default is "All active", so do not silently force the local
         # "today" window here. Keep the database scan bounded to recently

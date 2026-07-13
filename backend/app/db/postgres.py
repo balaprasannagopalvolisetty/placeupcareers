@@ -934,6 +934,18 @@ class PostgresClient:
             stmt = stmt.where(Job.last_seen_at >= filters["seen_since"])
         if filters.get("seen_before"):
             stmt = stmt.where(Job.last_seen_at < filters["seen_before"])
+        if filters.get("honest_since"):
+            cutoff = filters["honest_since"]
+            stmt = stmt.where(or_(
+                Job.posted_at >= cutoff,
+                and_(Job.posted_at.is_(None), Job.first_seen_at >= cutoff),
+            ))
+        if filters.get("honest_before"):
+            cutoff = filters["honest_before"]
+            stmt = stmt.where(or_(
+                Job.posted_at < cutoff,
+                and_(Job.posted_at.is_(None), Job.first_seen_at < cutoff),
+            ))
         if filters.get("first_seen_since"):
             stmt = stmt.where(Job.first_seen_at >= filters["first_seen_since"])
         if filters.get("posted_since"):
@@ -1035,6 +1047,18 @@ class PostgresClient:
             stmt = stmt.where(MasterJob.last_seen_at >= filters["seen_since"])
         if filters.get("seen_before"):
             stmt = stmt.where(MasterJob.last_seen_at < filters["seen_before"])
+        if filters.get("honest_since"):
+            cutoff = filters["honest_since"]
+            stmt = stmt.where(or_(
+                MasterJob.posted_at >= cutoff,
+                and_(MasterJob.posted_at.is_(None), MasterJob.first_seen_at >= cutoff),
+            ))
+        if filters.get("honest_before"):
+            cutoff = filters["honest_before"]
+            stmt = stmt.where(or_(
+                MasterJob.posted_at < cutoff,
+                and_(MasterJob.posted_at.is_(None), MasterJob.first_seen_at < cutoff),
+            ))
         if filters.get("first_seen_since"):
             stmt = stmt.where(MasterJob.first_seen_at >= filters["first_seen_since"])
         if filters.get("posted_since"):
