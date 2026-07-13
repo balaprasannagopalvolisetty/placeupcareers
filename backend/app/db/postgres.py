@@ -906,7 +906,17 @@ class PostgresClient:
         if filters.get("complete_jd_only"):
             stmt = stmt.where(
                 func.length(func.trim(func.coalesce(Job.description, ""))) >= COMPLETE_JD_MIN_CHARS,
-                Job.extra_metadata.op("->>")("jd_complete") == "true",
+                or_(
+                    Job.extra_metadata.op("->>")("jd_complete") == "true",
+                    # Legacy rows predate the jd_complete metadata flag. Use
+                    # conservative content evidence so a metadata migration
+                    # can never blank the Jobs page: a substantial JD either
+                    # has enough body text or exposes a normal detail section.
+                    func.length(func.trim(func.coalesce(Job.description, ""))) >= 1800,
+                    Job.description.op("~*")(
+                        r"(responsibilit|qualifications?|requirements?|what you(?:'|’)ll do|about the role)"
+                    ),
+                ),
             )
         if filters.get("location"):
             stmt = stmt.where(Job.location.ilike(f"%{filters['location']}%"))
@@ -991,7 +1001,13 @@ class PostgresClient:
         if filters.get("complete_jd_only"):
             stmt = stmt.where(
                 func.length(func.trim(func.coalesce(MasterJob.description, ""))) >= COMPLETE_JD_MIN_CHARS,
-                MasterJob.extra_metadata.op("->>")("jd_complete") == "true",
+                or_(
+                    MasterJob.extra_metadata.op("->>")("jd_complete") == "true",
+                    func.length(func.trim(func.coalesce(MasterJob.description, ""))) >= 1800,
+                    MasterJob.description.op("~*")(
+                        r"(responsibilit|qualifications?|requirements?|what you(?:'|’)ll do|about the role)"
+                    ),
+                ),
             )
         if filters.get("location"):
             stmt = stmt.where(MasterJob.location.ilike(f"%{filters['location']}%"))
