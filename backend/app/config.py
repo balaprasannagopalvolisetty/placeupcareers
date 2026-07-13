@@ -219,6 +219,30 @@ class Settings(BaseSettings):
                     "application-level zero-trust gate.",
     )
 
+    # --- Automated application system (apply orchestration) ---
+    apply_feature_enabled: bool = Field(
+        default=True,
+        description="Master switch for the automated application subsystem "
+                    "(Apply orchestration, tailoring, tracker). Off = endpoints "
+                    "reject with 503 without a redeploy.",
+    )
+    apply_queue_backend: str = Field(
+        default="local",
+        description="'cloudtasks' = per-ATS Cloud Tasks queues (production); "
+                    "'local' = in-process asyncio fallback for dev/tests.",
+    )
+    apply_queue_region: str = Field(default="us-east1")
+    apply_worker_url: str = Field(
+        default="",
+        description="Base URL of the Cloud Run service/job that handles queued "
+                    "submissions (Cloud Tasks HTTP push target).",
+    )
+    inbox_domain: str = Field(
+        default="mail.placeupcareer.com",
+        description="Dedicated-inbox subdomain. Each user gets "
+                    "first.last@<inbox_domain> via AWS SES inbound.",
+    )
+
     # --- Database / Firebase / GCP ---
     database_backend: str = Field(default="postgres")
     database_url: str = Field(

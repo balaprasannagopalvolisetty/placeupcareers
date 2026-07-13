@@ -1,6 +1,6 @@
 # PlaceUp Career Master Documentation
 
-Last updated: 2026-07-10
+Last updated: 2026-07-12
 
 This is the single source of truth for PlaceUp Career. Keep this file current
 and avoid adding scattered markdown files unless the team explicitly decides to
@@ -25,6 +25,12 @@ Core user flows:
 - Application support uses the saved profile to prepare tailored resumes, cover
   letters, application packets, and status tracking. Submission automation must
   stay behind explicit user authorization and platform-compliance controls.
+- The Automated Application System (see that section) prepares and — after a
+  mandatory human review — submits applications through legitimate ATS APIs
+  where they exist and server-side headless-browser automation only where they
+  don't. Every application passes a non-optional review-before-submit gate, and
+  the system never solves CAPTCHAs or bypasses security controls; it hands off
+  to the user instead.
 
 ## Infrastructure
 

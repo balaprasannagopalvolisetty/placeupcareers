@@ -304,7 +304,14 @@ class PostgresClient:
             or filters.get("full_description")
         )
 
-    async def get_job(self, job_id: str) -> Optional[dict]:
+    def get_job_sync(self, job_id: str) -> Optional[dict]:
+        """Synchronous single-job lookup for orchestration/store callers.
+
+        The apply subsystem uses a synchronous Firestore store interface while
+        already running inside an async FastAPI request. Calling the async
+        get_job method from there is not possible without nesting event loops,
+        so both entry points share this implementation.
+        """
         if self._master_jobs_available():
             with self.session() as db:
                 row = db.execute(select(MasterJob).where(MasterJob.id == job_id)).scalar_one_or_none()
@@ -319,6 +326,9 @@ class PostgresClient:
                 return None
             job, company = row
             return self._job_to_dict(job, company)
+
+    async def get_job(self, job_id: str) -> Optional[dict]:
+        return self.get_job_sync(job_id)
 
     async def upsert_job(self, job_id: str, job_data: dict) -> None:
         await self.upsert_jobs_batch([job_data | {"id": job_id}])

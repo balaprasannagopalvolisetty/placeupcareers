@@ -847,6 +847,131 @@ export async function getTailorQueue() {
   return request<TailorQueueResponse>("/api/user/tailor-queue");
 }
 
+// ───────────────────────────────────────────────────────────────────
+// Automated application system (apply orchestration).
+// Backend: app/api/apply.py. Every submission passes through the
+// review-before-submit gate — approveApplication requires confirm:true.
+// ───────────────────────────────────────────────────────────────────
+
+export type ApplyTier = "A" | "B" | "C";
+export type ApplyStatus =
+  | "preparing" | "needs_review" | "queued" | "in_flight" | "needs_you"
+  | "applied" | "failed" | "skipped" | "ghosted" | "interviewing"
+  | "rejected" | "offer";
+
+export interface ApplicationRecord {
+  id: string;
+  uid: string;
+  job_id: string;
+  title: string;
+  company: string;
+  location: string;
+  job_url: string;
+  ats_type: string;
+  tier: ApplyTier;
+  status: ApplyStatus;
+  submission_method: "api" | "browser" | "manual";
+  match_score: number;
+  ats_score: number;
+  tailored_resume_url?: string | null;
+  tailored_cover_letter_url?: string | null;
+  prepared_payload?: Record<string, unknown>;
+  confirmation_screenshot_url?: string | null;
+  needs_you_reason?: string | null;
+  error?: string | null;
+  notes?: string;
+  history?: { at: string; kind: string; detail?: string; status?: string }[];
+  created_at?: string;
+  updated_at?: string;
+  submitted_at?: string | null;
+}
+
+export interface InboxMessageRow {
+  id: string;
+  uid: string;
+  app_id?: string | null;
+  from_addr: string;
+  subject: string;
+  received_at: string;
+  parsed_text: string;
+  extracted_otp?: string | null;
+  classification: "confirmation" | "status" | "otp" | "other";
+}
+
+function announceApplyChange(detail?: unknown) {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("placeup:application-changed", { detail }));
+  }
+}
+
+export async function startApplication(payload: {
+  job_id: string;
+  resume_id?: string;
+  generate_cover_letter?: boolean;
+  notes?: string;
+}) {
+  const result = await request<ApplicationRecord>(
+    "/api/apply",
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+  announceApplyChange(result);
+  return result;
+}
+
+export async function listApplications() {
+  return request<ApplicationRecord[]>("/api/apply");
+}
+
+export async function getApplication(appId: string) {
+  return request<ApplicationRecord>(`/api/apply/${encodeURIComponent(appId)}`);
+}
+
+/** The human approval gate. `confirm` must be true or the server rejects it. */
+export async function approveApplication(
+  appId: string,
+  decision: { confirm: boolean; answers?: Record<string, string>; edited_resume_url?: string; edited_cover_letter_url?: string },
+) {
+  const result = await request<ApplicationRecord>(
+    `/api/apply/${encodeURIComponent(appId)}/approve`,
+    { method: "POST", body: JSON.stringify(decision) },
+  );
+  announceApplyChange(result);
+  return result;
+}
+
+export async function cancelApplication(appId: string) {
+  const result = await request<ApplicationRecord>(
+    `/api/apply/${encodeURIComponent(appId)}/cancel`,
+    { method: "POST" },
+  );
+  announceApplyChange(result);
+  return result;
+}
+
+export async function setApplicationStatus(appId: string, status: ApplyStatus) {
+  const result = await request<ApplicationRecord>(
+    `/api/apply/${encodeURIComponent(appId)}/status`,
+    { method: "PATCH", body: JSON.stringify({ status }) },
+  );
+  announceApplyChange(result);
+  return result;
+}
+
+export async function getApplicationProfile() {
+  return request<Record<string, unknown>>("/api/apply/profile");
+}
+
+export async function saveApplicationProfile(payload: Record<string, unknown>) {
+  return request<Record<string, unknown>>(
+    "/api/apply/profile",
+    { method: "PUT", body: JSON.stringify(payload) },
+  );
+}
+
+export async function getApplyInbox() {
+  return request<InboxMessageRow[]>("/api/apply/inbox");
+}
+
 export async function addTailorQueueItem(payload: Omit<TailorQueueItem, "id" | "created_at" | "updated_at" | "status">) {
   const result = await request<{ item: TailorQueueItem; used_today: number; daily_limit: number; remaining_today: number }>(
     "/api/user/tailor-queue",

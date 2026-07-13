@@ -2,6 +2,7 @@ import { useState, useEffect, type ReactNode } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ArrowLeft, MapPin, DollarSign, ExternalLink, Bookmark, Share2, Check, X, ShieldCheck, Sparkles, Briefcase } from "lucide-react";
 import * as api from "../../lib/api";
+import { ReviewBeforeSubmit } from "./ReviewBeforeSubmit";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 const T = {
@@ -306,6 +307,9 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
   const [heardBack, setHeardBack] = useState<"unknown" | "yes" | "no">("unknown");
   const [positionOpen, setPositionOpen] = useState<"unknown" | "yes" | "no">("unknown");
   const [salaryOffered, setSalaryOffered] = useState("");
+  const [preparingApplication, setPreparingApplication] = useState(false);
+  const [reviewApplication, setReviewApplication] = useState<api.ApplicationRecord | null>(null);
+  const [applicationMessage, setApplicationMessage] = useState<string | null>(null);
   const [resumeVersion, setResumeVersion] = useState(
     () => typeof window !== "undefined" ? localStorage.getItem("placeup_resume_version") || "" : ""
   );
@@ -447,6 +451,28 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
       // Some embedded webviews block window.open entirely — proceed anyway.
     }
     setShowApplyModal(true);
+  };
+
+  const prepareWithPlaceUp = async () => {
+    setPreparingApplication(true);
+    setApplicationMessage(null);
+    try {
+      const prepared = await api.startApplication({
+        job_id: String(jobId),
+        generate_cover_letter: true,
+      });
+      if (prepared.status === "needs_review") {
+        setReviewApplication(prepared);
+      } else if (prepared.status === "needs_you") {
+        setApplicationMessage("This ATS needs your direct participation. Open the company application to continue; PlaceUp will never bypass CAPTCHA, OTP, or bot checks.");
+      } else {
+        setApplicationMessage(`Application preparation status: ${prepared.status.replaceAll("_", " ")}.`);
+      }
+    } catch (err: any) {
+      setApplicationMessage(err?.message || "Could not prepare this application.");
+    } finally {
+      setPreparingApplication(false);
+    }
   };
 
   const recordApplication = async (status: "applied" | "not_applied", reason = "") => {
@@ -645,8 +671,12 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
               </div>
 
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button type="button" onClick={prepareWithPlaceUp} disabled={preparingApplication}
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "11px 22px", borderRadius: 10, border: "none", background: T.grad, color: "var(--pu-ffffff-t)", fontSize: 13, fontWeight: 800, fontFamily: F.sans, cursor: preparingApplication ? "wait" : "pointer", opacity: preparingApplication ? 0.7 : 1 }}>
+                  <Sparkles size={14} /> {preparingApplication ? "Preparing..." : "Prepare with PlaceUp"}
+                </button>
                 <button type="button" onClick={openCompanyApply} title={currentJob.jobUrl ? currentJob.jobUrl : "Open a Google search for this role"}
-                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "11px 22px", borderRadius: 10, border: "none", background: T.grad, color: "var(--pu-ffffff-t)", fontSize: 13, fontWeight: 800, fontFamily: F.sans, cursor: "pointer" }}>
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "11px 18px", borderRadius: 10, border: `1px solid ${T.border}`, background: "var(--pu-148-163-184-003)", color: T.t2, fontSize: 13, fontWeight: 700, fontFamily: F.sans, cursor: "pointer" }}>
                   <ExternalLink size={14} /> {applyLabel}
                 </button>
                 <button type="button" onClick={toggleSave}
@@ -658,6 +688,11 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
                   <Share2 size={14} /> {copied ? "Copied!" : "Share"}
                 </button>
               </div>
+              {applicationMessage && (
+                <div style={{ marginTop: 10, maxWidth: 720, padding: "10px 12px", borderRadius: 10, border: `1px solid ${T.border}`, background: "var(--pu-59-130-246-008)", color: T.t2, fontSize: 12, lineHeight: 1.5, fontFamily: F.sans }}>
+                  {applicationMessage}
+                </div>
+              )}
             </div>
 
             {/* Match panel */}
@@ -1034,6 +1069,19 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
           </motion.div>
         )}
       </AnimatePresence>
+      {reviewApplication && (
+        <ReviewBeforeSubmit
+          application={reviewApplication}
+          onClose={() => setReviewApplication(null)}
+          onApproved={(updated) => {
+            setApplicationMessage(
+              updated.status === "needs_you"
+                ? "Approved. This ATS now needs your participation to finish safely."
+                : `Application ${updated.status.replaceAll("_", " ")}.`,
+            );
+          }}
+        />
+      )}
     </div>
   );
 }

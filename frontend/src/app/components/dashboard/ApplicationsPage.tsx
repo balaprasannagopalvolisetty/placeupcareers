@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import { motion } from "motion/react";
 import { Briefcase, ExternalLink, Search, RefreshCw, CheckCircle2, XCircle, Clock } from "lucide-react";
 import * as api from "../../lib/api";
+import { ReviewBeforeSubmit } from "./ReviewBeforeSubmit";
 
 const F = { sans: "'Plus Jakarta Sans', sans-serif", mono: "'JetBrains Mono', monospace" };
 const T = {
@@ -53,14 +54,17 @@ export function ApplicationsPage() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [reloadKey, setReloadKey] = useState(0);
+  const [automated, setAutomated] = useState<api.ApplicationRecord[]>([]);
+  const [reviewing, setReviewing] = useState<api.ApplicationRecord | null>(null);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
     setError(null);
-    api.getUserApplications()
-      .then((data) => {
+    Promise.allSettled([api.getUserApplications(), api.listApplications()])
+      .then(([trackedResult, automatedResult]) => {
         if (!active) return;
+        const data = trackedResult.status === "fulfilled" ? trackedResult.value : [];
         // Sort newest-first; backends may return either created_at or updated_at.
         const sorted = [...(Array.isArray(data) ? data : [])].sort((a, b) => {
           const ta = new Date(a.updated_at || a.created_at || 0).getTime();
@@ -68,6 +72,14 @@ export function ApplicationsPage() {
           return tb - ta;
         });
         setRows(sorted);
+        if (automatedResult.status === "fulfilled") {
+          setAutomated([...(automatedResult.value || [])].sort((a, b) =>
+            new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime()
+          ));
+        }
+        if (trackedResult.status === "rejected" && automatedResult.status === "rejected") {
+          setError("Could not load your applications.");
+        }
       })
       .catch((err) => {
         if (!active) return;
@@ -165,6 +177,27 @@ export function ApplicationsPage() {
           <RefreshCw size={12} /> Refresh
         </button>
       </div>
+
+      {automated.length > 0 && (
+        <div style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 14, padding: 14 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: T.text, fontFamily: F.sans, marginBottom: 10 }}>PlaceUp-assisted applications</div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {automated.slice(0, 8).map((app) => (
+              <div key={app.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center", padding: "10px 12px", borderRadius: 10, border: `1px solid ${T.border}`, background: "var(--pu-148-163-184-003)" }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ color: T.text, fontSize: 13, fontWeight: 700, fontFamily: F.sans, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{app.title || "Application"}</div>
+                  <div style={{ color: T.t3, fontSize: 11, fontFamily: F.sans, marginTop: 2 }}>{app.company || "Unknown company"} · Tier {app.tier} · {app.status.replaceAll("_", " ")}</div>
+                </div>
+                {app.status === "needs_review" ? (
+                  <button onClick={() => setReviewing(app)} style={{ padding: "7px 11px", borderRadius: 8, border: "none", background: T.grad, color: "white", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Review</button>
+                ) : app.job_url ? (
+                  <a href={app.job_url} target="_blank" rel="noopener noreferrer" style={{ color: T.t2, fontSize: 11, textDecoration: "none" }}>Open <ExternalLink size={10} /></a>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Stat strip */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
@@ -339,6 +372,13 @@ export function ApplicationsPage() {
           );
         })}
       </div>
+      {reviewing && (
+        <ReviewBeforeSubmit
+          application={reviewing}
+          onClose={() => setReviewing(null)}
+          onApproved={(updated) => setAutomated((items) => items.map((item) => item.id === updated.id ? updated : item))}
+        />
+      )}
     </div>
   );
 }
