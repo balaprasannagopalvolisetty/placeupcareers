@@ -2543,7 +2543,13 @@ async def get_top_matches(
     user_id: Optional[str] = Depends(fast_optional_user_id),
 ):
     """Return the strongest jobs for the user's active resume/preferences."""
-    filters: dict[str, Any] = {}
+    filters: dict[str, Any] = {
+        "status": "active",
+        "complete_jd_only": True,
+        # Top Matches scores and returns the JD, so never use the 900-character
+        # candidate-pool projection used by the normal list ranking path.
+        "full_description": True,
+    }
     if location:
         filters["location"] = location
     if visa_only:
@@ -2594,6 +2600,8 @@ async def get_top_matches(
     def _rank_pool(pool: list, *, apply_window: bool) -> list[dict]:
         rows: list[dict] = []
         for job in pool:
+            if not has_complete_job_description(job.get("description") or ""):
+                continue
             meta = job.get("extra_metadata") or {}
             if not isinstance(meta, dict):
                 meta = {}
@@ -2674,4 +2682,9 @@ async def get_job(job_id: str, db=Depends(get_db)):
     job = await db.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    if not has_complete_job_description(job.get("description") or ""):
+        raise HTTPException(
+            status_code=409,
+            detail="This job description is still being completed from the employer source.",
+        )
     return job

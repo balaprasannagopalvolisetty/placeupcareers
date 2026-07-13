@@ -264,3 +264,13 @@ def test_exact_country_query_avoids_redundant_scope_and_coalesce_scan():
     assert "coalesce(master_jobs.posted_at" not in sql
     assert "master_jobs.country =" in sql
     assert "master_jobs.last_seen_at" in sql
+
+
+def test_frontend_complete_jd_filter_is_enforced_in_sql_and_loads_full_text():
+    client = PostgresClient.__new__(PostgresClient)
+    filters = {"status": "active", "complete_jd_only": True, "full_description": True}
+    stmt = client._apply_master_job_filters(select(MasterJob.id), filters)
+    sql = str(stmt.compile(dialect=postgresql.dialect())).lower()
+
+    assert "length(trim(coalesce(master_jobs.description" in sql
+    assert client._needs_full_description(filters) is True

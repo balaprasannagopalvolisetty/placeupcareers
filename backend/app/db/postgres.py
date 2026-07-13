@@ -298,7 +298,11 @@ class PostgresClient:
         the visible page is re-scored against full descriptions separately.
         """
         filters = filters or {}
-        return bool(filters.get("coverage_scan") or filters.get("search"))
+        return bool(
+            filters.get("coverage_scan")
+            or filters.get("search")
+            or filters.get("full_description")
+        )
 
     async def get_job(self, job_id: str) -> Optional[dict]:
         if self._master_jobs_available():
