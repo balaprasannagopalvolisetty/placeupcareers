@@ -288,6 +288,6 @@ def test_frontend_complete_jd_filter_is_enforced_in_sql_and_loads_full_text():
 
     assert "length(trim(coalesce(master_jobs.description" in sql
     assert "jd_complete" in compiled.params.values()
-    assert "~*" in sql
+    assert "master_jobs.description ilike" in sql
     assert 1800 in compiled.params.values()
     assert client._needs_full_description(filters) is True

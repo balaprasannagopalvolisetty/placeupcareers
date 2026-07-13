@@ -913,9 +913,12 @@ class PostgresClient:
                     # can never blank the Jobs page: a substantial JD either
                     # has enough body text or exposes a normal detail section.
                     func.length(func.trim(func.coalesce(Job.description, ""))) >= 1800,
-                    Job.description.op("~*")(
-                        r"(responsibilit|qualifications?|requirements?|what you(?:'|’)ll do|about the role)"
-                    ),
+                    Job.description.ilike("%responsibilit%"),
+                    Job.description.ilike("%qualification%"),
+                    Job.description.ilike("%requirement%"),
+                    Job.description.ilike("%what you'll do%"),
+                    Job.description.ilike("%what you’ll do%"),
+                    Job.description.ilike("%about the role%"),
                 ),
             )
         if filters.get("location"):
@@ -1004,9 +1007,12 @@ class PostgresClient:
                 or_(
                     MasterJob.extra_metadata.op("->>")("jd_complete") == "true",
                     func.length(func.trim(func.coalesce(MasterJob.description, ""))) >= 1800,
-                    MasterJob.description.op("~*")(
-                        r"(responsibilit|qualifications?|requirements?|what you(?:'|’)ll do|about the role)"
-                    ),
+                    MasterJob.description.ilike("%responsibilit%"),
+                    MasterJob.description.ilike("%qualification%"),
+                    MasterJob.description.ilike("%requirement%"),
+                    MasterJob.description.ilike("%what you'll do%"),
+                    MasterJob.description.ilike("%what you’ll do%"),
+                    MasterJob.description.ilike("%about the role%"),
                 ),
             )
         if filters.get("location"):
