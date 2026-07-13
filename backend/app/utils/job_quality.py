@@ -39,6 +39,18 @@ _JOB_DETAIL_MARKER_RE = re.compile(
     r")\b"
 )
 
+# LOCKED PRODUCT INVARIANT: jobs exposed by PlaceUp must carry a complete JD.
+# Keep this policy centralized and code-owned; individual connectors and env
+# settings must not weaken it. A future policy change requires updating the
+# contract tests together with this version marker.
+COMPLETE_JD_POLICY_VERSION = "placeup_complete_jd_v1"
+COMPLETE_JD_MIN_CHARS = 1200
+COMPLETE_JD_MIN_WORDS = 120
+COMPLETE_JD_UNSTRUCTURED_MIN_WORDS = 180
+_TRUNCATED_JD_TAIL_RE = re.compile(
+    r"(?i)(?:\.\.\.|…|\b(?:read|see|show|view)\s+more|\bcontinue\s+reading|\bdescription\s+truncated)\s*$"
+)
+
 
 def clean_job_company(company: Any, description: Any = "", title: Any = "") -> str:
     """Return the employer, not the board, when a source page leaks into company."""
@@ -215,6 +227,34 @@ def has_usable_job_description(description: Any, *, min_words: int = 35, min_cha
     if len(words) >= min_words:
         return True
     return len(words) >= 20 and bool(_JOB_DETAIL_MARKER_RE.search(text))
+
+
+def complete_job_description_reason(description: Any) -> str | None:
+    """Return why a JD violates the locked frontend publication contract.
+
+    Completeness cannot be proven from arbitrary third-party HTML, so the
+    invariant uses conservative evidence: substantial text, a real JD section
+    signal (unless the posting is exceptionally detailed), and no explicit
+    truncation tail. Rows that fail remain quarantined for the repair worker.
+    """
+    text = job_description_text(description)
+    if not text:
+        return "missing job description"
+    if len(text) < COMPLETE_JD_MIN_CHARS:
+        return f"job description below {COMPLETE_JD_MIN_CHARS} characters"
+    words = re.findall(r"\b[a-zA-Z][a-zA-Z0-9+#./-]*\b", text)
+    if len(words) < COMPLETE_JD_MIN_WORDS:
+        return f"job description below {COMPLETE_JD_MIN_WORDS} words"
+    if _TRUNCATED_JD_TAIL_RE.search(text):
+        return "job description has a truncation marker"
+    if len(words) < COMPLETE_JD_UNSTRUCTURED_MIN_WORDS and not _JOB_DETAIL_MARKER_RE.search(text):
+        return "job description lacks responsibilities or qualifications sections"
+    return None
+
+
+def has_complete_job_description(description: Any) -> bool:
+    """Whether a JD may be persisted as active and returned to the frontend."""
+    return complete_job_description_reason(description) is None
 
 
 def infer_posted_at(posted_at: Any, description: Any = "", *, now: datetime | None = None) -> Any:

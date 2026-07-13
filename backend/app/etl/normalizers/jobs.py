@@ -6,7 +6,8 @@ from app.db.postgres import normalize_text
 from app.utils.job_quality import (
     clean_job_company,
     clean_job_description,
-    has_usable_job_description,
+    COMPLETE_JD_POLICY_VERSION,
+    complete_job_description_reason,
     infer_posted_at,
     is_probably_fake_or_scam_job,
     is_probably_job_search_page,
@@ -58,8 +59,9 @@ def normalize_job_payload(job: dict) -> dict:
         company_name = ""
     if is_probably_fake_or_scam_job(title, company_name or job.get("company") or "", description, job.get("job_url") or job.get("job_url_direct") or ""):
         validation_errors.append("high-confidence fake/scam or non-posting artifact")
-    if not has_usable_job_description(description):
-        validation_errors.append("thin or missing job description")
+    jd_error = complete_job_description_reason(description)
+    if jd_error:
+        validation_errors.append(f"incomplete job description: {jd_error}")
     if not str(job.get("job_url") or job.get("job_url_direct") or "").strip():
         validation_errors.append("missing apply URL")
     if not str(job.get("location") or "").strip():
@@ -77,6 +79,8 @@ def normalize_job_payload(job: dict) -> dict:
         "sponsor_verified": global_visa["sponsor_verified"],
         "sponsor_source": global_visa["sponsor_source"],
         "english_friendly": global_visa["english_friendly"],
+        "jd_completeness_policy": COMPLETE_JD_POLICY_VERSION,
+        "jd_complete": jd_error is None,
     }
     if description_html:
         metadata["description_html"] = description_html

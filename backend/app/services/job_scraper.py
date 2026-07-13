@@ -35,9 +35,9 @@ from app.services.job_description_details import (
     clean_description_text,
     fetch_full_job_description,
     is_html_fetch_allowed,
-    is_thin_description,
 )
 from app.services.global_visa_rules import resolve_country
+from app.utils.job_quality import has_complete_job_description
 from app.services.scrapling_job_discovery import (
     build_scrapling_targets,
     scrape_scrapling_targets,
@@ -1145,18 +1145,17 @@ async def run_scrape_cycle(
 
 
 async def _hydrate_thin_job_descriptions(jobs: list[JobPost]) -> None:
-    """Best-effort full JD fetch for direct career pages before persistence."""
+    """Fetch every incomplete JD before persistence.
+
+    This intentionally has no per-run candidate cap: completeness is a locked
+    publication invariant, not an optional enrichment budget. Failed repairs
+    are quarantined by the central loader and never reach the frontend.
+    """
     if not jobs:
         return
 
-    # Cap raised 350 -> 900 and concurrency 6 -> 10 so large scrape cycles
-    # hydrate far more thin postings before persistence instead of leaving
-    # most of the cycle with partial descriptions. Still env-overridable.
-    max_jobs = _env_int("SCRAPER_JD_HYDRATE_MAX_JOBS", 900)
     concurrency = max(1, _env_int("SCRAPER_JD_HYDRATE_CONCURRENCY", 16))
     timeout = max(8.0, _env_float("SCRAPER_JD_HYDRATE_TIMEOUT_SECONDS", 22.0))
-    if max_jobs <= 0:
-        return
 
     def _candidate_urls(job: JobPost) -> list[str]:
         seen: set[str] = set()
@@ -1190,10 +1189,8 @@ async def _hydrate_thin_job_descriptions(jobs: list[JobPost]) -> None:
     candidates: list[JobPost] = []
     candidate_urls: dict[str, list[str]] = {}
     for job in jobs:
-        if len(candidates) >= max_jobs:
-            break
         description = clean_description_text(getattr(job, "description", "") or "")
-        if not is_thin_description(description, min_chars=1200, min_words=120):
+        if has_complete_job_description(description):
             continue
         urls = _candidate_urls(job)
         if urls:
@@ -1219,7 +1216,7 @@ async def _hydrate_thin_job_descriptions(jobs: list[JobPost]) -> None:
                 )
             if details:
                 replacement = clean_description_text(details.description)
-                if len(replacement) > len(current) + 300:
+                if has_complete_job_description(replacement) and len(replacement) > len(current):
                     break
             details = None
         if details is None:
@@ -1249,10 +1246,9 @@ async def _hydrate_thin_job_descriptions(jobs: list[JobPost]) -> None:
         results = await asyncio.gather(*[_hydrate_one(job) for job in candidates], return_exceptions=True)
     hydrated = sum(1 for result in results if result is True)
     logger.info(
-        "JD hydration: upgraded %s/%s thin direct-page descriptions (cap=%s concurrency=%s)",
+        "JD hydration: upgraded %s/%s incomplete direct-page descriptions (no cap; concurrency=%s)",
         hydrated,
         len(candidates),
-        max_jobs,
         concurrency,
     )
 

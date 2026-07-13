@@ -9,6 +9,11 @@ from app.db.postgres import upsert_company
 from app.db.schema import Job
 from app.utils.deduplication import generate_content_hash
 from app.utils.text_processing import extract_relevant_keywords, extract_skills_from_text
+from app.utils.job_quality import (
+    COMPLETE_JD_POLICY_VERSION,
+    complete_job_description_reason,
+    has_complete_job_description,
+)
 
 
 def load_normalized_jobs(db: Session, jobs: list[dict]) -> int:
@@ -21,6 +26,11 @@ def load_normalized_jobs(db: Session, jobs: list[dict]) -> int:
         normalized = job if "company_name" in job else _compat_normalize(job)
         if not normalized.get("id") or not normalized.get("title") or not normalized.get("company_name"):
             continue
+
+        # Locked publication boundary. Some official/API ingestion paths pass
+        # pre-normalized dictionaries directly to this loader, so enforcing the
+        # full-JD contract only in normalize_job_payload was bypassable.
+        normalized = _enforce_complete_jd_policy(normalized)
 
         company = upsert_company(db, normalized["company_name"])
         extra_metadata = dict(normalized.get("extra_metadata") or {})
@@ -121,6 +131,29 @@ def _validation_errors(normalized: dict) -> list[str]:
     return [str(error) for error in errors if str(error).strip()] if isinstance(errors, list) else []
 
 
+def _enforce_complete_jd_policy(normalized: dict) -> dict:
+    row = dict(normalized)
+    metadata = dict(row.get("extra_metadata") or {})
+    errors = [
+        error for error in _validation_errors(row)
+        if not error.lower().startswith(("thin or missing job description", "incomplete job description:"))
+    ]
+    reason = complete_job_description_reason(row.get("description") or "")
+    metadata["jd_completeness_policy"] = COMPLETE_JD_POLICY_VERSION
+    metadata["jd_complete"] = reason is None
+    if reason:
+        errors.append(f"incomplete job description: {reason}")
+        row["status"] = "quarantined"
+    elif not errors and str(row.get("status") or "active").lower() == "quarantined":
+        row["status"] = "active"
+    if errors:
+        metadata["validation_errors"] = list(dict.fromkeys(errors))
+    else:
+        metadata.pop("validation_errors", None)
+    row["extra_metadata"] = metadata
+    return row
+
+
 def _find_existing_job(db: Session, values: dict) -> Job | None:
     existing = db.get(Job, values["id"])
     if existing:
@@ -166,6 +199,8 @@ def _update_existing_job(db: Session, existing: Job, values: dict) -> None:
     incoming_desc = str(values.get("description") or "").strip()
     existing_desc = str(existing.description or "").strip()
     existing_meta = existing.extra_metadata if isinstance(existing.extra_metadata, dict) else {}
+    existing_has_complete_jd = has_complete_job_description(existing_desc)
+    incoming_has_complete_jd = has_complete_job_description(incoming_desc)
     keep_existing_description = bool(existing_desc) and (
         len(incoming_desc) < 200
         or (existing_meta.get("description_hydrated") and len(incoming_desc) <= len(existing_desc))
@@ -183,6 +218,27 @@ def _update_existing_job(db: Session, existing: Job, values: dict) -> None:
         ):
             if k in existing_meta:
                 merged_meta[k] = existing_meta[k]
+        values = dict(values)
+        values["extra_metadata"] = merged_meta
+    # A partial refresh must never quarantine or downgrade a previously
+    # complete active posting. Preserve the full JD and its publication state.
+    if existing_has_complete_jd and not incoming_has_complete_jd:
+        protected_fields.add("status")
+        protected_fields.add("description")
+        merged_meta = dict(values.get("extra_metadata") or {})
+        remaining_errors = [
+            error for error in (merged_meta.get("validation_errors") or [])
+            if not str(error).lower().startswith(("thin or missing job description", "incomplete job description:"))
+        ]
+        if remaining_errors:
+            merged_meta["validation_errors"] = remaining_errors
+        else:
+            merged_meta.pop("validation_errors", None)
+        merged_meta["jd_complete"] = True
+        merged_meta["jd_completeness_policy"] = COMPLETE_JD_POLICY_VERSION
+        for key in ("description_hydrated", "description_hydrated_from", "description_extractor", "description_html"):
+            if key in existing_meta:
+                merged_meta[key] = existing_meta[key]
         values = dict(values)
         values["extra_metadata"] = merged_meta
 

@@ -15,7 +15,14 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.config import settings
 from app.db.schema import Company, Contact, H1BSponsor, Job, MasterJob, StagingRecord, VisaSponsor
 from app.services.global_visa_rules import COUNTRY_RULES, TARGET_COUNTRIES, in_target_country, resolve_country
-from app.utils.job_quality import clean_job_company, clean_job_description, infer_posted_at
+from app.utils.job_quality import (
+    COMPLETE_JD_MIN_CHARS,
+    COMPLETE_JD_POLICY_VERSION,
+    clean_job_company,
+    clean_job_description,
+    has_complete_job_description,
+    infer_posted_at,
+)
 
 
 def json_default(value):
@@ -320,13 +327,16 @@ class PostgresClient:
         source_url: str | None = None,
         extra_metadata: dict | None = None,
     ) -> int:
-        if not job_id or not description:
+        if not job_id or not has_complete_job_description(description):
             return 0
+        metadata = dict(extra_metadata or {})
+        metadata["jd_complete"] = True
+        metadata["jd_completeness_policy"] = COMPLETE_JD_POLICY_VERSION
         params = {
             "job_id": job_id,
             "description": description,
             "source_url": source_url,
-            "extra_metadata": json.dumps(extra_metadata or {}, default=json_default),
+            "extra_metadata": json.dumps(metadata, default=json_default),
         }
         with self.session() as db:
             total = 0
@@ -336,6 +346,7 @@ class PostgresClient:
                         """
                         update master_jobs
                            set description = :description,
+                               status = 'active',
                                source_url = coalesce(:source_url, source_url),
                                extra_metadata = coalesce(extra_metadata, '{}'::jsonb) || cast(:extra_metadata as jsonb)
                          where id = :job_id
@@ -349,6 +360,7 @@ class PostgresClient:
                     """
                     update jobs
                        set description = :description,
+                           status = 'active',
                            source_url = coalesce(:source_url, source_url),
                            extra_metadata = coalesce(extra_metadata, '{}'::jsonb) || cast(:extra_metadata as jsonb)
                      where id = :job_id
@@ -877,6 +889,8 @@ class PostgresClient:
             stmt = stmt.where(Job.source_name == filters["source"])
         if filters.get("status"):
             stmt = stmt.where(Job.status == filters["status"])
+        if filters.get("complete_jd_only"):
+            stmt = stmt.where(func.length(func.trim(func.coalesce(Job.description, ""))) >= COMPLETE_JD_MIN_CHARS)
         if filters.get("location"):
             stmt = stmt.where(Job.location.ilike(f"%{filters['location']}%"))
         if filters.get("country"):
@@ -957,6 +971,8 @@ class PostgresClient:
             stmt = stmt.where(MasterJob.source_name == filters["source"])
         if filters.get("status"):
             stmt = stmt.where(MasterJob.status == filters["status"])
+        if filters.get("complete_jd_only"):
+            stmt = stmt.where(func.length(func.trim(func.coalesce(MasterJob.description, ""))) >= COMPLETE_JD_MIN_CHARS)
         if filters.get("location"):
             stmt = stmt.where(MasterJob.location.ilike(f"%{filters['location']}%"))
         if filters.get("country"):

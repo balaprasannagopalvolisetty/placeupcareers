@@ -40,6 +40,7 @@ from app.services.global_visa_rules import (
     visa_program_options,
 )
 from app.utils.job_quality import (
+    has_complete_job_description,
     has_usable_job_description,
     is_probably_fake_or_scam_job,
     sanitize_job_description_html,
@@ -175,7 +176,7 @@ async def _repair_detail_description_background(job: dict, db) -> None:
     if not details:
         return
     repaired = clean_description_text(details.description)
-    if len(repaired) <= len(description) + 300:
+    if not has_complete_job_description(repaired) or len(repaired) <= len(description):
         return
     meta = dict(job.get("extra_metadata") or {})
     meta["description_hydrated"] = True
@@ -1432,6 +1433,9 @@ async def list_jobs(
     if source:
         filters["source"] = source
     filters["status"] = status or "active"
+    # Locked frontend boundary: incomplete snippets never enter the candidate
+    # pool, regardless of which scraper or source table produced them.
+    filters["complete_jd_only"] = True
     if visa_only:
         filters["visa_only"] = True
     if job_type and job_type.strip():
@@ -1921,6 +1925,14 @@ async def list_jobs(
                         j["description"] = full[:50000]
             except Exception as exc:
                 logger.debug("Full-text page hydration skipped: %s", exc)
+
+        # The SQL length predicate keeps pool queries fast; this exact shared
+        # policy check runs after full-text hydration and is the final guard
+        # before any job description can cross the frontend API boundary.
+        page_jobs = [
+            row for row in page_jobs
+            if has_complete_job_description(row.get("description") or "")
+        ]
 
         # Re-score the visible page against hydrated descriptions so the list
         # shows the exact number the Job Detail page computes. Pool ranking
@@ -2421,14 +2433,14 @@ async def get_job_detail(
     # strict budget so the user who just clicked sees the complete description.
     # Background repair alone only fixed the row for the NEXT visitor.
     _desc_now = clean_description_text(job.get("description") or "")
-    if len(_desc_now) < 400:
+    if not has_complete_job_description(_desc_now):
         _url = str(job.get("job_url") or job.get("source_url") or "").strip()
         if _url and is_html_fetch_allowed(_url):
             try:
                 details = await fetch_full_job_description(_url, timeout=6.0, expand_links=True)
                 if details:
                     _repaired = clean_description_text(details.description)
-                    if len(_repaired) > len(_desc_now) + 300:
+                    if has_complete_job_description(_repaired) and len(_repaired) > len(_desc_now):
                         job = dict(job)
                         job["description"] = details.description
                         meta = dict(job.get("extra_metadata") or {})
@@ -2458,6 +2470,16 @@ async def get_job_detail(
         background_tasks.add_task(_resolve_company_link_background, dict(job), db)
     title = job.get("title") or ""
     description = job.get("description") or ""
+    if not has_complete_job_description(description):
+        # A direct detail URL must not bypass the same invariant used by lists.
+        # The repair task remains scheduled for retry, while the frontend gets
+        # an honest temporary response instead of a partial JD.
+        if _should_schedule_detail_repair(job):
+            background_tasks.add_task(_repair_detail_description_background, dict(job), db)
+        raise HTTPException(
+            status_code=409,
+            detail="This job description is still being completed from the employer source.",
+        )
     cat, rname = categorize(title)
     payload = _apply_job_specific_visa_rules(dict(job))
     payload["taxonomy_category"] = cat

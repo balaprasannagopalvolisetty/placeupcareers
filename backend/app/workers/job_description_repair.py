@@ -17,8 +17,8 @@ from app.services.job_description_details import (
     clean_description_text,
     fetch_full_job_description,
     is_html_fetch_allowed,
-    is_thin_description,
 )
+from app.utils.job_quality import COMPLETE_JD_POLICY_VERSION, has_complete_job_description
 
 logger = logging.getLogger("placeup.workers.job_description_repair")
 ADVISORY_LOCK_KEY = 6412226682827
@@ -36,11 +36,12 @@ SELECT
     extra_metadata,
     coalesce(extra_metadata->>'source_table', 'master_jobs') AS source_table
 FROM master_jobs
-WHERE status = 'active'
+WHERE status IN ('active', 'quarantined')
   AND source_url IS NOT NULL
   AND source_url <> ''
   AND (
-    description IS NULL
+    status = 'quarantined'
+    OR description IS NULL
     OR length(description) < :thin_chars
     OR array_length(regexp_split_to_array(trim(coalesce(description, '')), '\\s+'), 1) < :thin_words
   )
@@ -52,6 +53,7 @@ UPDATE_MASTER_SQL = """
 UPDATE master_jobs
 SET
     description = :description,
+    status = 'active',
     source_url = coalesce(nullif(:source_url, ''), source_url),
     extra_metadata = coalesce(extra_metadata, '{}'::jsonb) || cast(:metadata AS jsonb)
 WHERE id = :id
@@ -61,6 +63,7 @@ UPDATE_JOBS_SQL = """
 UPDATE jobs
 SET
     description = :description,
+    status = 'active',
     source_url = coalesce(nullif(:source_url, ''), source_url),
     extra_metadata = coalesce(extra_metadata, '{}'::jsonb) || cast(:metadata AS jsonb)
 WHERE id = :id
@@ -102,11 +105,11 @@ def _is_better_description(current: str, candidate: str, *, thin_chars: int, thi
     candidate_clean = clean_description_text(candidate)
     if not candidate_clean:
         return False
-    if not is_thin_description(current_clean, min_chars=thin_chars, min_words=thin_words):
+    if has_complete_job_description(current_clean):
         return False
-    if len(candidate_clean.split()) < thin_words or len(candidate_clean) < thin_chars:
+    if not has_complete_job_description(candidate_clean):
         return False
-    return len(candidate_clean) >= len(current_clean) + 300
+    return len(candidate_clean) > len(current_clean)
 
 
 async def _repair_one(row: dict[str, Any], *, thin_chars: int, thin_words: int) -> dict[str, Any]:
@@ -152,6 +155,8 @@ def _write_repairs(repairs: list[dict[str, Any]]) -> dict[str, int]:
                 "jd_repair_extractor": repair["extractor"],
                 "jd_previous_length": repair["previous_length"],
                 "jd_new_length": repair["new_length"],
+                "jd_complete": True,
+                "jd_completeness_policy": COMPLETE_JD_POLICY_VERSION,
             })
             params = {
                 "id": repair["id"],
