@@ -33,7 +33,7 @@ const J = {
 };
 
 const TIME_OPTIONS = [
-  { label: "Recent (24h)", value: "" },
+  { label: "Recent (24h)", value: "24h" },
   { label: "Last 8h", value: "8h" },
   { label: "Today", value: "today" },
   { label: "Yesterday", value: "yesterday" },
@@ -105,6 +105,7 @@ interface TaxonomyCategory { name: string; icon: string; roles: TaxonomyRole[] }
 interface TaxonomyMeta {
   category_count?: number;
   role_count?: number;
+  role_pipeline_count?: number;
   backfill_term_count?: number;
   scrape_term_count?: number;
 }
@@ -536,7 +537,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const [visaPrograms, setVisaPrograms] = useState<VisaProgramOption[]>([]);
   const [countryFilter, setCountryFilter] = useState("");
   const [visaProgramFilter, setVisaProgramFilter] = useState("");
-  const [timeFilter, setTimeFilter] = useState("");
+  const [timeFilter, setTimeFilter] = useState("24h");
   const [maxYears, setMaxYears] = useState(10);
   const [visaOnly, setVisaOnly] = useState(false);
   const [personalized, setPersonalized] = useState(true);
@@ -944,10 +945,13 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
     [page, safeTotalPages, isMobile],
   );
   const currentPageStart = total > 0 ? ((page - 1) * pageSize) + 1 : 0;
-  const currentPageEnd = total > 0 ? Math.min(page * pageSize, total) : 0;
+  const currentPageEnd = total > 0 && filtered.length > 0
+    ? currentPageStart + filtered.length - 1
+    : currentPageStart;
   const canGoPrevious = page > 1 && !loading;
   const canGoNext = page < safeTotalPages && !loading;
   const taxonomyRoleCount = Number(taxonomyMeta?.role_count || allRoles.length || 0);
+  const rolePipelineCount = Number(taxonomyMeta?.role_pipeline_count || 117);
   const scrapeTermCount = Number(taxonomyMeta?.scrape_term_count || 0);
   const targetRoleCount = userPrefs?.target_roles?.length || 0;
   const savedRoleMode = personalized && targetRoleCount > 0;
@@ -1205,7 +1209,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             {(() => {
               const refineCount =
                 (countryFilter ? 1 : 0) + (visaProgramFilter ? 1 : 0) + (visaOnly ? 1 : 0) +
-                (timeFilter ? 1 : 0) + (maxYears !== 10 ? 1 : 0) + (sortBy !== "match" ? 1 : 0);
+                (timeFilter && timeFilter !== "24h" ? 1 : 0) + (maxYears !== 10 ? 1 : 0) + (sortBy !== "match" ? 1 : 0);
               const open = refineOpen || refineCount > 0;
               return (
                 <button
@@ -1232,7 +1236,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
           </div>
 
           {/* ── Row 2 · WHERE + HOW: refine group, collapsed by default ── */}
-          {(refineOpen || countryFilter || visaProgramFilter || visaOnly || timeFilter || maxYears !== 10 || sortBy !== "match") && (
+          {(refineOpen || countryFilter || visaProgramFilter || visaOnly || (timeFilter && timeFilter !== "24h") || maxYears !== 10 || sortBy !== "match") && (
           <div style={{ flexBasis: "100%", display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center", paddingTop: 10, borderTop: `1px solid ${J.line}` }}>
             <span style={{ fontSize: 10, fontWeight: 850, letterSpacing: "0.12em", textTransform: "uppercase", color: J.t3, fontFamily: F.sans, marginRight: 2 }}>
               Refine
@@ -1297,7 +1301,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             </button>
             {hasServerFilters && (
               <button
-                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setCountryFilter(defaultTargetCountry || "all"); setVisaProgramFilter(""); setVisaOnly(false); setTimeFilter(""); setMaxYears(10); setActiveCategory(null); setActiveRole(null); setPersonalized(true); setPage(1); }}
+                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setCountryFilter(defaultTargetCountry || "all"); setVisaProgramFilter(""); setVisaOnly(false); setTimeFilter("24h"); setMaxYears(10); setActiveCategory(null); setActiveRole(null); setPersonalized(true); setPage(1); }}
                 style={{ ...controlStyle(), cursor: "pointer", fontWeight: 800, color: J.t2, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
                 title="Reset all filters"
               >
@@ -1311,7 +1315,8 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             {filtered.length.toLocaleString()} visible
             {matchingPositionsCount ? ` / ${matchingPositionsCount.toLocaleString()} ${savedRoleMode || hasServerFilters ? "matching" : "open"}` : ""}
             {savedRoleMode && globalOpenPositionsCount ? ` - ${globalOpenPositionsCount.toLocaleString()} global open` : ""}
-            {taxonomyRoleCount ? ` - ${taxonomyRoleCount.toLocaleString()} current roles` : ""}
+            {rolePipelineCount ? ` - ${rolePipelineCount.toLocaleString()} role pipelines` : ""}
+            {taxonomyRoleCount ? ` covering ${taxonomyRoleCount.toLocaleString()} titles` : ""}
             {scrapeTermCount ? ` / ${scrapeTermCount.toLocaleString()} scrape terms` : ""}
             {savedRoleMode ? ` - personalized from ${targetRoleCount} saved roles` : ""}
             {pipelineStatus?.last_scraped_at ? ` - refreshed ${formatPosted(pipelineStatus.last_scraped_at)}` : ""}
@@ -1432,7 +1437,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
               <div style={{ fontSize: 14, fontWeight: 850, color: J.text, marginBottom: 6 }}>No jobs match the current filters.</div>
               <div style={{ fontSize: 12, color: J.t2, marginBottom: 12 }}>Try clearing the search, location, or time filter.</div>
               <button
-                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setCountryFilter(defaultTargetCountry || "all"); setVisaProgramFilter(""); setVisaOnly(false); setTimeFilter(""); setActiveCategory(null); setActiveRole(null); setPersonalized(true); setPage(1); }}
+                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setCountryFilter(defaultTargetCountry || "all"); setVisaProgramFilter(""); setVisaOnly(false); setTimeFilter("24h"); setActiveCategory(null); setActiveRole(null); setPersonalized(true); setPage(1); }}
                 style={{ padding: "8px 14px", borderRadius: 8, border: `1px solid ${J.line}`, background: "var(--pu-148-163-184-005)", color: J.blue, fontSize: 12, fontWeight: 800, fontFamily: F.sans, cursor: "pointer" }}
               >Reset filters</button>
             </div>

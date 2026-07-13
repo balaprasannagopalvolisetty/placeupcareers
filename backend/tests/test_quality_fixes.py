@@ -250,6 +250,19 @@ def test_default_jobs_visibility_is_a_rolling_24_hours():
     assert cutoff <= after - timedelta(hours=23, minutes=59, seconds=59)
 
 
+def test_explicit_24h_filter_is_a_rolling_window():
+    from app.api.jobs import _posted_window
+
+    before = datetime.now(timezone.utc)
+    cutoff, end = _posted_window("24h")
+    after = datetime.now(timezone.utc)
+
+    assert end is None
+    assert cutoff is not None
+    assert before - timedelta(hours=24, seconds=1) <= cutoff
+    assert cutoff <= after - timedelta(hours=23, minutes=59, seconds=59)
+
+
 def test_exact_country_query_avoids_redundant_scope_and_coalesce_scan():
     client = PostgresClient.__new__(PostgresClient)
     stmt = client._apply_master_job_filters(select(MasterJob.id), {
@@ -270,7 +283,9 @@ def test_frontend_complete_jd_filter_is_enforced_in_sql_and_loads_full_text():
     client = PostgresClient.__new__(PostgresClient)
     filters = {"status": "active", "complete_jd_only": True, "full_description": True}
     stmt = client._apply_master_job_filters(select(MasterJob.id), filters)
-    sql = str(stmt.compile(dialect=postgresql.dialect())).lower()
+    compiled = stmt.compile(dialect=postgresql.dialect())
+    sql = str(compiled).lower()
 
     assert "length(trim(coalesce(master_jobs.description" in sql
+    assert "jd_complete" in compiled.params.values()
     assert client._needs_full_description(filters) is True

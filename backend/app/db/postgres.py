@@ -904,7 +904,10 @@ class PostgresClient:
         if filters.get("status"):
             stmt = stmt.where(Job.status == filters["status"])
         if filters.get("complete_jd_only"):
-            stmt = stmt.where(func.length(func.trim(func.coalesce(Job.description, ""))) >= COMPLETE_JD_MIN_CHARS)
+            stmt = stmt.where(
+                func.length(func.trim(func.coalesce(Job.description, ""))) >= COMPLETE_JD_MIN_CHARS,
+                Job.extra_metadata.op("->>")("jd_complete") == "true",
+            )
         if filters.get("location"):
             stmt = stmt.where(Job.location.ilike(f"%{filters['location']}%"))
         if filters.get("country"):
@@ -986,7 +989,10 @@ class PostgresClient:
         if filters.get("status"):
             stmt = stmt.where(MasterJob.status == filters["status"])
         if filters.get("complete_jd_only"):
-            stmt = stmt.where(func.length(func.trim(func.coalesce(MasterJob.description, ""))) >= COMPLETE_JD_MIN_CHARS)
+            stmt = stmt.where(
+                func.length(func.trim(func.coalesce(MasterJob.description, ""))) >= COMPLETE_JD_MIN_CHARS,
+                MasterJob.extra_metadata.op("->>")("jd_complete") == "true",
+            )
         if filters.get("location"):
             stmt = stmt.where(MasterJob.location.ilike(f"%{filters['location']}%"))
         if filters.get("country"):

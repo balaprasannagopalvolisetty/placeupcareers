@@ -26,7 +26,9 @@ from app.job_taxonomy import (
     all_linkedin_style_role_names,
     all_role_backfill_search_terms,
     all_role_names,
+    all_unique_role_names,
     categorize,
+    role_pipeline_shards,
 )
 from app.services.global_visa_rules import COUNTRY_RULES, TARGET_COUNTRIES, normalize_country_code, resolve_country
 from app.utils.terminal_table import render_table
@@ -105,6 +107,39 @@ COVERAGE_FLOOR_ENABLED = os.getenv("SCRAPER_COVERAGE_FLOOR_ENABLED", "false").st
 # schedule. Repeating that multi-hour universe walk here delayed the fresh
 # JobSpy batches until the next scheduler tick, so it is opt-in only.
 BOARD_PASS_ENABLED = os.getenv("SCRAPER_BOARD_PASS_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+ROLE_PIPELINE_COUNT = max(1, int(os.getenv("SCRAPER_ROLE_PIPELINE_COUNT", "117")))
+
+
+def _role_pipeline_task() -> tuple[int, int, list[str]] | None:
+    """Return this Cloud Run task's role shard when matrix mode is active."""
+    raw_index = os.getenv("CLOUD_RUN_TASK_INDEX", "").strip()
+    matrix_enabled = os.getenv("SCRAPER_ROLE_MATRIX_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+    if not matrix_enabled:
+        return None
+    if not raw_index:
+        raise RuntimeError("SCRAPER_ROLE_MATRIX_ENABLED requires CLOUD_RUN_TASK_INDEX")
+    task_index = int(raw_index)
+    task_count = int(os.getenv("CLOUD_RUN_TASK_COUNT", str(ROLE_PIPELINE_COUNT)))
+    if task_count != ROLE_PIPELINE_COUNT:
+        raise RuntimeError(
+            f"Cloud Run task count {task_count} does not match SCRAPER_ROLE_PIPELINE_COUNT={ROLE_PIPELINE_COUNT}"
+        )
+    if task_index < 0 or task_index >= task_count:
+        raise RuntimeError(f"Invalid Cloud Run task index {task_index}/{task_count}")
+    return task_index, task_count, role_pipeline_shards(task_count)[task_index]
+
+
+def _scraper_advisory_lock_key() -> int:
+    """Use one lock per country/role task instead of one global scraper lock."""
+    task = _role_pipeline_task()
+    if task is None:
+        return ADVISORY_LOCK_KEY
+    task_index, _, _ = task
+    countries = _selected_target_countries()
+    if len(countries) != 1:
+        raise RuntimeError("Role-matrix tasks must target exactly one country")
+    country_number = int.from_bytes(countries[0].encode("ascii"), "big")
+    return ADVISORY_LOCK_KEY + (country_number * 1000) + task_index + 1
 
 
 def _encoded_terms(terms: list[str]) -> str:
@@ -184,14 +219,15 @@ async def _run_batched() -> int:
     def budget_available(min_remaining: int = 900) -> bool:
         return budget_remaining() > min_remaining
 
-    roles = all_role_names()
+    matrix_task = _role_pipeline_task()
+    roles = matrix_task[2] if matrix_task else all_unique_role_names()
     linkedin_style_roles = all_linkedin_style_role_names()
     terms = all_balanced_taxonomy_scrape_search_terms()
     countries = _selected_target_countries()
     country_locations = _target_locations()
     role_country_pairs = len(roles) * len(countries)
-    public_role_batches = [roles[i:i + BATCH_SIZE] for i in range(0, len(roles), BATCH_SIZE)]
-    if public_role_batches:
+    public_role_batches = [roles] if matrix_task else [roles[i:i + BATCH_SIZE] for i in range(0, len(roles), BATCH_SIZE)]
+    if public_role_batches and not matrix_task:
         # Without an explicit override, rotate the slice every six-hour slot
         # so a bounded run still covers the complete taxonomy over time.
         stride = PUBLIC_MAX_BATCHES_PER_RUN or 1
@@ -205,30 +241,42 @@ async def _run_batched() -> int:
         public_role_batches = public_role_batches[:PUBLIC_MAX_BATCHES_PER_RUN]
     failures = 0
 
-    logger.info(
-        "6h role-country coverage plan: %s canonical roles x %s countries = %s role-country pairs; countries=%s",
-        len(roles),
-        len(countries),
-        role_country_pairs,
-        ",".join(countries),
-    )
-
-    logger.info("6h scraper running direct H1B/ATS board pass")
-    try:
-        api_connector_count = await run_api_connectors_to_postgres(
-            queries=terms,
-            countries=countries,
-            sources=os.getenv("API_CONNECTOR_SOURCES", DIRECT_ATS_CONNECTOR_SOURCES),
-            # Public batches publish master_jobs after the first completion.
-            # Deferring here avoids two consecutive full-table rebuilds before
-            # the time-sensitive role/country searches even begin.
-            sync_master=False,
+    if matrix_task:
+        logger.info(
+            "Country-role matrix task %s/%s: country=%s roles=%s",
+            matrix_task[0] + 1,
+            matrix_task[1],
+            countries[0],
+            ", ".join(roles),
         )
-        logger.info("6h official API/ATS connectors loaded %s jobs", api_connector_count)
-    except Exception as exc:
-        failures += 1
-        logger.warning("6h official API/ATS connector pass failed; continuing with board/public sources: %s", exc)
-    if BOARD_PASS_ENABLED:
+    else:
+        logger.info(
+            "6h role-country coverage plan: %s unique roles x %s countries = %s role-country pairs; countries=%s",
+            len(roles),
+            len(countries),
+            role_country_pairs,
+            ",".join(countries),
+        )
+
+    if matrix_task:
+        logger.info("Country-role task skips global ATS connector fan-out; the global scraper owns that pass.")
+    else:
+        logger.info("6h scraper running direct H1B/ATS board pass")
+        try:
+            api_connector_count = await run_api_connectors_to_postgres(
+                queries=terms,
+                countries=countries,
+                sources=os.getenv("API_CONNECTOR_SOURCES", DIRECT_ATS_CONNECTOR_SOURCES),
+                # Public batches publish master_jobs after the first completion.
+                # Deferring here avoids two consecutive full-table rebuilds before
+                # the time-sensitive role/country searches even begin.
+                sync_master=False,
+            )
+            logger.info("6h official API/ATS connectors loaded %s jobs", api_connector_count)
+        except Exception as exc:
+            failures += 1
+            logger.warning("6h official API/ATS connector pass failed; continuing with board/public sources: %s", exc)
+    if BOARD_PASS_ENABLED and not matrix_task:
         board_code = await run(_base_args(
             queries=_encoded_terms(linkedin_style_roles),
             locations=country_locations,
@@ -263,9 +311,15 @@ async def _run_batched() -> int:
             queries=_encoded_terms(batch),
             locations=country_locations,
             sources=public_sources,
-            schedule_type=f"6h-public-{phase}-{index:02d}",
+            schedule_type=(
+                f"country-{countries[0]}-role-{matrix_task[0] + 1:03d}"
+                if matrix_task else f"6h-public-{phase}-{index:02d}"
+            ),
             max_per_source=batch_size,
-            skip_master_sync=True,
+            # Matrix tasks publish after loading. The master publisher uses a
+            # non-blocking DB advisory lock, so concurrent tasks cannot corrupt
+            # or interleave the shared serving table.
+            skip_master_sync=not bool(matrix_task),
         ))
         if code:
             logger.warning("6h scraper public %s batch %s/%s failed with code %s", phase, index, total, code)
@@ -331,7 +385,7 @@ async def _run_batched() -> int:
     ])
     failures += sum(1 for code in public_results if code)
 
-    if public_results:
+    if public_results and not matrix_task:
         try:
             await asyncio.to_thread(_rebuild_master_sync)
             logger.info("6h scraper master jobs sync complete after public role batches")
@@ -339,7 +393,7 @@ async def _run_batched() -> int:
             failures += 1
             logger.warning("6h scraper master jobs sync after public role batches failed: %s", exc)
 
-    if COVERAGE_FLOOR_ENABLED and budget_available(min_remaining=1800):
+    if COVERAGE_FLOOR_ENABLED and not matrix_task and budget_available(min_remaining=1800):
         coverage_floor_terms = all_role_backfill_search_terms()
         coverage_floor_sources = _merge_sources(
             public_sources,
@@ -395,7 +449,8 @@ async def _run_batched() -> int:
     else:
         logger.info("6h scraper post-run purge skipped (no retention window set; nothing deleted).")
 
-    _log_role_country_coverage(floor=COVERAGE_AUDIT_FLOOR)
+    if not matrix_task:
+        _log_role_country_coverage(floor=COVERAGE_AUDIT_FLOOR)
 
     total_failure_slots = 2 + max(1, len(public_role_batches))
     return 1 if failures >= total_failure_slots else 0
@@ -507,12 +562,13 @@ def main() -> int:
         # holder from also keeping an hours-old idle transaction/snapshot,
         # which previously blocked online indexes and maintenance work.
         with client.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+            lock_key = _scraper_advisory_lock_key()
             locked = bool(connection.execute(
                 text("SELECT pg_try_advisory_lock(:lock_key)"),
-                {"lock_key": ADVISORY_LOCK_KEY},
+                {"lock_key": lock_key},
             ).scalar())
             if not locked:
-                logger.warning("Another 6h scraper execution is already running; skipping this run.")
+                logger.warning("Another scraper execution owns lock %s; skipping this task.", lock_key)
                 return 0
             try:
                 result = asyncio.run(_run_batched())
@@ -520,7 +576,7 @@ def main() -> int:
                 try:
                     connection.execute(
                         text("SELECT pg_advisory_unlock(:lock_key)"),
-                        {"lock_key": ADVISORY_LOCK_KEY},
+                        {"lock_key": lock_key},
                     )
                 except Exception as unlock_exc:
                     # The advisory lock is session-scoped; closing the session

@@ -764,6 +764,8 @@ def _posted_window(value: Optional[str], tz_offset_minutes: int = 0) -> tuple[Op
     key = value.strip().lower()
     if key in {"8h", "last_8h", "recent", "recent_8h"}:
         return now - timedelta(hours=DEFAULT_RECENT_JOB_HOURS), None
+    if key in {"24h", "last_24h", "recent_24h"}:
+        return now - timedelta(hours=DEFAULT_VISIBLE_MAX_AGE_HOURS), None
     if key == "today":
         return local_midnight - user_offset, None
     if key == "yesterday":
@@ -1624,14 +1626,14 @@ async def list_jobs(
             fetch_limit = 4000 if personalized else min(max(offset + page_size * 8, 800), 4000)
             fetch_offset = 0
         elif post_filter_since or post_filter_before:
-            fetch_limit = min(max(offset + page_size * 8, 500), 2500)
+            fetch_limit = min(max(offset + page_size * 8, 800), 8000)
             fetch_offset = 0
         else:
             # Post-fetch filters (country scope, is_target_experience) routinely
             # drop ~50-70% of rows, which is why users were seeing ~16 cards even
             # though the API said "20 per page". Over-fetch ×4 so a full page still
             # renders after filtering, then bound to a safe ceiling.
-            fetch_limit = min(max(offset + page_size * 8, 360), 2500)
+            fetch_limit = min(max(offset + page_size * 8, 800), 8000)
             fetch_offset = 0
         # Do not push a large OR of wildcard title aliases into PostgreSQL for
         # personalized feeds. On the 450K-row production inventory that plan
@@ -1649,6 +1651,10 @@ async def list_jobs(
             not filters.get("source")
             and hasattr(db, "get_jobs_source_balanced")
             and not taxonomy_filter_active
+            # Exact freshness windows must walk the complete newest-first
+            # inventory. A per-source cap would omit valid 24-hour postings
+            # from high-volume ATSes.
+            and not post_filter_since
             # title_terms feeds need the deterministic full-inventory query —
             # the per-source cap of the balanced query would silently drop
             # matching jobs from high-volume sources.
@@ -1895,7 +1901,7 @@ async def list_jobs(
             # so pages past that point can never be served. Don't advertise
             # them — deeper exploration goes through country/role filters,
             # which re-pool from the full table.
-            total = min(total, 2500)
+            total = min(total, fetch_limit)
             total_pages = max(1, math.ceil(total / page_size))
 
         # Cap to the requested page_size. For taxonomy/category filters we

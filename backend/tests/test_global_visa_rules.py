@@ -11,7 +11,9 @@ from app.etl.jobs_scraper_6h import (
     _base_args,
     _selected_target_countries,
     _target_locations,
+    _role_pipeline_task,
 )
+from app.job_taxonomy import all_unique_role_names, role_pipeline_shards
 from app.models.job import JobSource
 from app.services.job_scraper import _jobspy_indeed_country, _source_supports_location
 
@@ -57,6 +59,29 @@ def test_scraper_targets_all_countries_with_a_bounded_rotating_role_slice():
     assert 1 <= PUBLIC_MAX_BATCHES_PER_RUN <= 16
     assert JOBSPY_RECENCY_HOURS == 24
     assert _base_args().jobspy_hours_old == 24
+
+
+def test_117_role_pipelines_cover_every_unique_role_once():
+    shards = role_pipeline_shards(117)
+    flattened = [role for shard in shards for role in shard]
+
+    assert len(shards) == 117
+    assert set(flattened) == set(all_unique_role_names())
+    assert len(flattened) == len(set(flattened))
+    assert max(map(len, shards)) - min(map(len, shards)) <= 1
+
+
+def test_cloud_run_role_task_selects_one_of_117_shards(monkeypatch):
+    monkeypatch.setenv("SCRAPER_ROLE_MATRIX_ENABLED", "true")
+    monkeypatch.setenv("SCRAPER_ROLE_PIPELINE_COUNT", "117")
+    monkeypatch.setenv("CLOUD_RUN_TASK_COUNT", "117")
+    monkeypatch.setenv("CLOUD_RUN_TASK_INDEX", "42")
+
+    index, count, roles = _role_pipeline_task()
+
+    assert index == 42
+    assert count == 117
+    assert roles == role_pipeline_shards(117)[42]
 
 
 def test_country_scraper_can_isolate_one_country(monkeypatch):

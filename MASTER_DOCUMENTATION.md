@@ -107,7 +107,23 @@ Deploy per-country scraper jobs:
 ```
 
 Each country job uses the same backend image but scopes its run to one country.
-Jobs are named like `placeup-country-scraper-us`.
+Jobs are named like `placeup-country-scraper-us`. Every country job contains
+117 Cloud Run tasks (`--tasks 117`). Those tasks shard every unique taxonomy
+title across 117 role pipelines, producing a deterministic 32 x 117 = 3,744
+country/role coverage matrix on every scheduled cycle. If the taxonomy grows
+beyond 117 titles, a pipeline owns two or more titles; no title is dropped.
+
+The collection request path is deliberately separated:
+
+1. Client and web application request the newest positions from `placeup-api`.
+2. The application server reads only active, complete-JD records posted or
+   first discovered during the rolling last 24 hours.
+3. Thirty-two isolated country jobs run the 117 role-pipeline matrix against
+   the source connectors.
+4. Normalization, completeness quarantine, deduplication, and the locked master
+   publisher prepare the serving inventory.
+5. The Jobs page requests 40 results per page and renders numbered pagination
+   at the bottom until the matching 24-hour inventory is exhausted.
 
 ## Job Collection Rules
 

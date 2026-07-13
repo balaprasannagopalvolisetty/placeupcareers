@@ -377,6 +377,27 @@ def all_role_names() -> list[str]:
     return [role.name for cat in CATEGORIES for role in cat.roles]
 
 
+def all_unique_role_names() -> list[str]:
+    """Canonical roles with duplicate names removed, preserving UI order."""
+    return list(dict.fromkeys(all_role_names()))
+
+
+def role_pipeline_shards(pipeline_count: int = 117) -> list[list[str]]:
+    """Split the complete role taxonomy across a fixed worker matrix.
+
+    Production uses 117 role pipelines inside each of the 32 country jobs.
+    The taxonomy can grow beyond 117 names, so a pipeline is a shard rather
+    than a promise that only one title belongs to it. Round-robin assignment
+    guarantees every unique role is searched exactly once per country cycle.
+    """
+    if pipeline_count < 1:
+        raise ValueError("pipeline_count must be at least 1")
+    shards: list[list[str]] = [[] for _ in range(pipeline_count)]
+    for index, role_name in enumerate(all_unique_role_names()):
+        shards[index % pipeline_count].append(role_name)
+    return shards
+
+
 LINKEDIN_ROLE_NAME_OVERRIDES: dict[str, tuple[str, ...]] = {
     "DevOps / Cloud Engineer": ("DevOps Engineer", "Cloud Engineer", "Site Reliability Engineer"),
     "QA / Test Engineer": ("QA Engineer", "Software Test Engineer", "Automation Engineer"),
@@ -625,13 +646,14 @@ def categorize(title: str) -> tuple[str, str]:
 
 def to_payload() -> dict:
     """Serialize the full taxonomy for the frontend."""
-    role_count = sum(len(cat.roles) for cat in CATEGORIES)
+    role_count = len(all_unique_role_names())
     backfill_term_count = len(all_role_backfill_search_terms())
     scrape_term_count = len(all_taxonomy_scrape_search_terms())
     return {
         "meta": {
             "category_count": len(CATEGORIES),
             "role_count": role_count,
+            "role_pipeline_count": 117,
             "backfill_term_count": backfill_term_count,
             "scrape_term_count": scrape_term_count,
         },
