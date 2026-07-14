@@ -263,6 +263,17 @@ def test_explicit_24h_filter_is_a_rolling_window():
     assert cutoff <= after - timedelta(hours=23, minutes=59, seconds=59)
 
 
+def test_jobs_endpoint_default_page_size_matches_frontend_contract():
+    import inspect
+
+    from app.api.jobs import list_jobs
+
+    page_size_query = inspect.signature(list_jobs).parameters["page_size"].default
+
+    assert page_size_query.default == 40
+    assert "40-per-page" in page_size_query.description
+
+
 def test_exact_country_query_avoids_redundant_scope_and_coalesce_scan():
     client = PostgresClient.__new__(PostgresClient)
     stmt = client._apply_master_job_filters(select(MasterJob.id), {

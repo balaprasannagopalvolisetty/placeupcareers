@@ -45,6 +45,10 @@ aiofiles>=24.1.0
 apscheduler>=3.10.0
 google-api-python-client>=2.150.0
 google-auth>=2.35.0
+# Cloud Storage for rendered tailored resumes/cover letters (apply subsystem).
+google-cloud-storage>=2.18.0
+# Cloud Tasks for per-ATS submission queues (APPLY_QUEUE_BACKEND=cloudtasks).
+google-cloud-tasks>=2.16.0
 
 # Auth — real JWT + password hashing (bcrypt called directly; passlib is
 # incompatible with bcrypt >= 4.x and trips spurious 72-byte errors)

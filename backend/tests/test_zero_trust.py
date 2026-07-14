@@ -12,6 +12,7 @@ import time
 
 import jwt
 import pytest
+from starlette.requests import Request
 
 from app.config import settings
 from app import zero_trust as zt
@@ -104,6 +105,23 @@ def test_service_token_header_is_separate_from_cloud_run_iam():
     assert p is not None
     assert p.subject == "svc:web-server"
     assert p.has_scope("pipeline")
+
+
+def test_internal_api_key_is_valid_for_cloud_tasks_origin_bypass():
+    from app.middleware.security import _has_valid_internal_credential
+
+    previous = settings.internal_api_key
+    settings.internal_api_key = "test-internal-key"
+    try:
+        request = Request({
+            "type": "http",
+            "method": "POST",
+            "path": "/api/apply/internal-submit",
+            "headers": [(b"x-api-key", b"test-internal-key")],
+        })
+        assert _has_valid_internal_credential(request) is True
+    finally:
+        settings.internal_api_key = previous
 
 
 # ─── Authorization helpers (deny-by-default) ─────────────────────────────────

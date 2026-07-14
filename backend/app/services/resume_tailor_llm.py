@@ -178,3 +178,56 @@ async def tailor_resume(
         logger.warning("LLM resume tailoring returned unusable JSON; falling back.")
         return None
     return parsed
+
+
+COVER_LETTER_SYSTEM_PROMPT = """You are an expert cover-letter writer. Write a concise, specific, human-sounding cover letter for ONE job posting, using ONLY true facts from the candidate's resume — never invent employers, titles, metrics, or skills. Rules:
+- 3-4 short paragraphs, under 320 words. No greeting line like "To Whom It May Concern"; open with "Dear Hiring Team,".
+- Paragraph 1: why this specific role/company, and the single strongest genuine match.
+- Paragraph 2-3: 2-3 concrete, true accomplishments from the resume that map to the JD's top needs (with real metrics if present).
+- Final short paragraph: enthusiasm + thanks. Close with "Sincerely," then the candidate's name on the next line.
+- American English, natural voice, no buzzword soup, no em-dashes, no fabrication. Output PLAIN TEXT only (no markdown), paragraphs separated by a blank line."""
+
+
+async def generate_cover_letter(
+    *,
+    resume_text: str,
+    job_title: str,
+    job_company: str,
+    job_description: str,
+    candidate_name: str = "",
+    work_auth: str = "",
+    api_key: Optional[str] = None,
+    model: Optional[str] = None,
+    timeout: float = 30.0,
+) -> Optional[str]:
+    """Generate a per-position cover letter as plain text. Returns None on any
+    failure so the apply flow proceeds with a resume-only packet."""
+    key = (api_key or settings.groq_api_key or "").strip()
+    if not key or not (resume_text or "").strip():
+        return None
+    user_msg = (
+        f"CANDIDATE_NAME: {candidate_name or 'the candidate'}\n"
+        f"USER_WORK_AUTH: {work_auth or 'Not specified'}\n\n"
+        f"JOB_POSTING:\nTitle: {job_title}\nCompany: {job_company}\n\n{job_description}\n\n"
+        f"USER_CURRENT_RESUME (the ONLY source of truth for facts):\n{resume_text}"
+    )
+    payload = {
+        "model": model or settings.llm_model,
+        "messages": [
+            {"role": "system", "content": COVER_LETTER_SYSTEM_PROMPT},
+            {"role": "user", "content": user_msg},
+        ],
+        "temperature": 0.4,
+        "max_tokens": 900,
+    }
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(GROQ_CHAT_URL, json=payload, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+        text = (data["choices"][0]["message"]["content"] or "").strip()
+    except (httpx.HTTPError, KeyError, IndexError, TypeError) as exc:
+        logger.warning("LLM cover-letter call failed: %s", exc)
+        return None
+    return text or None

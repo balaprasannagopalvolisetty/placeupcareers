@@ -242,6 +242,33 @@ class Settings(BaseSettings):
         description="Dedicated-inbox subdomain. Each user gets "
                     "first.last@<inbox_domain> via AWS SES inbound.",
     )
+    apply_docs_bucket: str = Field(
+        default="",
+        description="GCS bucket for rendered tailored resumes/cover letters. "
+                    "Empty = local-dir fallback (dev/tests).",
+    )
+    apply_docs_local_dir: str = Field(
+        default="/tmp/placeup_tailored",
+        description="Local fallback directory for rendered docs when "
+                    "APPLY_DOCS_BUCKET is unset.",
+    )
+    apply_live_submit_enabled: bool = Field(
+        default=False,
+        description="Master safety gate for REAL ATS submission. False = the "
+                    "submit path validates + prepares but does NOT POST to the "
+                    "ATS (returns a dry-run confirmation), so deploys can't fire "
+                    "real applications by accident. Flip to true to submit for "
+                    "real (only affects credentialed ATS like Recruitee).",
+    )
+    apply_credentialed_ats: str = Field(
+        default="recruitee",
+        description="Comma-separated ats_types PlaceUp actually holds submit "
+                    "credentials for (open API or approved partner token). Only "
+                    "these are true one-click submit; everything else prepares + "
+                    "reviews but can't auto-submit until a credential is added. "
+                    "Grows as partner programs (SmartRecruiters/Workable/JazzHR/"
+                    "Phenom/Teamtailor) are approved. Recruitee needs no key.",
+    )
 
     # --- Database / Firebase / GCP ---
     database_backend: str = Field(default="postgres")

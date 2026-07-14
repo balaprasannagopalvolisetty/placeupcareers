@@ -221,14 +221,31 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+def _has_valid_internal_credential(request: Request) -> bool:
+    """Validate a service token or the legacy internal API key.
+
+    Cloud Tasks reaches the Cloud Run origin directly, so this credential is
+    also the explicit exception to the Cloudflare edge lock below. Browser and
+    user bearer tokens never qualify for that exception.
+    """
+    service_token = request.headers.get("x-service-token", "")
+    if service_token:
+        from app.zero_trust import principal_from_service_token
+
+        return principal_from_service_token(service_token) is not None
+    api_key = request.headers.get("x-api-key", "")
+    return bool(
+        api_key
+        and settings.internal_api_key
+        and secrets.compare_digest(api_key, settings.internal_api_key)
+    )
+
+
 def _has_valid_auth_header(request: Request) -> bool:
     authorization = request.headers.get("authorization", "")
-    api_key = request.headers.get("x-api-key", "")
     if authorization.lower().startswith("bearer "):
         return bool(_user_id_from_header(request))
-    if api_key and settings.internal_api_key:
-        return secrets.compare_digest(api_key, settings.internal_api_key)
-    return False
+    return _has_valid_internal_credential(request)
 
 
 def _has_any_credential(request: Request) -> bool:
@@ -321,7 +338,11 @@ class RouteAccessMiddleware(BaseHTTPMiddleware):
             return denial_response(status_code=429, retry_after=ban_left)
 
         # 2. Cloudflare origin lock (health/root stay open for Cloud Run probes).
-        if path not in {"/", "/api/health"} and not _passed_through_cloudflare(request):
+        if (
+            path not in {"/", "/api/health"}
+            and not _passed_through_cloudflare(request)
+            and not _has_valid_internal_credential(request)
+        ):
             log.warning("Blocked direct-to-origin request: path=%s ip=%s", path, ip)
             ban_tracker.record_failure(ip)
             return denial_response(status_code=403)

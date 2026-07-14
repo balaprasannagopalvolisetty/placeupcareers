@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 from typing import Optional
+from urllib.parse import urlparse
 
 from app.services.apply.base import (
     ApplyResult,
@@ -178,17 +179,89 @@ class RecruiteeAdapter(BaseATSAdapter):
             p.attachments["resume"] = resume_url
         if cover_letter_url:
             p.attachments["cover_letter"] = cover_letter_url
-        _require(p, "name", "email")
+        # Recruitee requires name/email for every offer and defaults phone/CV
+        # to required. Be conservative so review catches missing phone before
+        # a real submission; BaseATSAdapter.validate enforces the resume.
+        _require(p, "name", "email", "phone")
         p.notes.append("Recruitee public Careers Site API accepts no-auth candidate POSTs.")
         return p
 
-    async def submit(self, payload: PreparedPayload) -> ApplyResult:  # pragma: no cover - network
+    async def submit(self, payload: PreparedPayload) -> ApplyResult:
+        """Submit the application to Recruitee's public Careers Site API
+        (`POST /offers/{slug}/candidates`, no auth). Sends the candidate JSON;
+        uploads the private GCS document as multipart `candidate[cv]`.
+
+        Gated by APPLY_LIVE_SUBMIT_ENABLED: when off, everything is prepared and
+        validated but no POST is made (dry-run), so a deploy can't fire real
+        applications by accident.
+        """
         if httpx is None:
             return ApplyResult(ok=False, message="httpx unavailable")
-        # Recruitee is the one platform we could submit with no employer key.
-        # Guarded behind the orchestrator's approval gate; real POST wired at
-        # launch after live-doc verification.
-        raise NotImplementedError("Recruitee submit pending live-doc verification")
+
+        from app.config import settings
+        from app.services.apply import doc_storage
+
+        parsed_endpoint = urlparse(payload.endpoint)
+        host = (parsed_endpoint.hostname or "").lower()
+        if (
+            parsed_endpoint.scheme != "https"
+            or not host.endswith(".recruitee.com")
+            or host == "recruitee.com"
+            or not parsed_endpoint.path.startswith("/api/offers/")
+            or not parsed_endpoint.path.endswith("/candidates")
+        ):
+            return ApplyResult(ok=False, message="Invalid Recruitee candidate endpoint")
+
+        f = payload.fields or {}
+        candidate = {
+            "name": (f.get("name") or f"{f.get('first_name','')} {f.get('last_name','')}").strip(),
+            "email": f.get("email") or "",
+            "phone": f.get("phone") or "",
+        }
+        if f.get("cover_letter"):
+            candidate["cover_letter"] = f["cover_letter"]
+        if not candidate["name"] or not candidate["email"] or not candidate["phone"]:
+            return ApplyResult(ok=False, message="Recruitee requires name + email + phone")
+
+        # Resolve the private CV server-side. Production attachments are gs://
+        # references and are never exposed through public/signed URLs.
+        resume_uri = (payload.attachments or {}).get("resume") or ""
+        if not resume_uri:
+            return ApplyResult(ok=False, message="Recruitee requires a tailored CV")
+
+        # --- Dry-run (safety default) ---
+        if not settings.apply_live_submit_enabled:
+            return ApplyResult(
+                ok=True,
+                confirmation_ref="DRYRUN",
+                message="Dry-run: validated, not submitted (APPLY_LIVE_SUBMIT_ENABLED=false).",
+                dry_run=True,
+            )
+
+        # --- Live submission ---
+        cv_bytes = doc_storage.read_document(resume_uri)
+        if not cv_bytes:
+            return ApplyResult(ok=False, message="Recruitee requires an accessible tailored CV")
+        try:  # pragma: no cover - network
+            async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+                data = {f"candidate[{k}]": v for k, v in candidate.items() if v not in (None, "")}
+                files = {"candidate[cv]": ("resume.pdf", cv_bytes, "application/pdf")}
+                # Recruitee recommends async=true for heavy files such as PDFs.
+                endpoint = str(httpx.URL(payload.endpoint).copy_add_param("async", "true"))
+                resp = await client.post(endpoint, data=data, files=files)
+        except httpx.HTTPError as exc:  # pragma: no cover - network
+            return ApplyResult(ok=False, message=f"Recruitee request failed: {exc}")
+
+        if resp.status_code == 201:  # pragma: no cover - network
+            try:
+                data = resp.json()
+                ref = str((data.get("candidate") or data).get("id") or "")
+            except Exception:
+                ref = ""
+            return ApplyResult(ok=True, confirmation_ref=ref or "submitted", message="Submitted to Recruitee.")
+        if resp.status_code == 422:  # pragma: no cover - network
+            return ApplyResult(ok=False, message=f"Recruitee validation error: {resp.text[:300]}")
+        return ApplyResult(ok=False, message=f"Recruitee returned {resp.status_code}: {resp.text[:200]}")
 
 
 class _PartnerAuthAdapter(BaseATSAdapter):

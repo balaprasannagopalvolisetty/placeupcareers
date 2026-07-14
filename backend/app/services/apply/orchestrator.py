@@ -108,6 +108,7 @@ async def prepare_application(
         tailored = {}
     app["tailored_resume_url"] = tailored.get("resume_url")
     app["tailored_cover_letter_url"] = tailored.get("cover_letter_url")
+    app["tailored_documents"] = tailored.get("documents") or {}
     app["match_score"] = int(tailored.get("match_score") or job.get("match_score") or 0)
     app["ats_score"] = int(tailored.get("ats_score") or 0)
     if tailored:
@@ -123,6 +124,8 @@ async def prepare_application(
             resume_url=app["tailored_resume_url"],
             cover_letter_url=app["tailored_cover_letter_url"],
         )
+        if tailored.get("cover_letter"):
+            payload.fields["cover_letter"] = tailored["cover_letter"]
         problems = adapter.validate(payload)
         app["submission_method"] = SubmissionMethod.API.value
         app["prepared_payload"] = {
@@ -181,13 +184,22 @@ async def approve_application(
     if answers:
         app.setdefault("prepared_payload", {}).setdefault("fields", {}).update(answers)
     _event(app, "approved", status=ApplicationStatus.QUEUED)
+    # Persist the reviewed fields and QUEUED state before creating Cloud Tasks.
+    # A task can dispatch immediately; saving afterward risks submitting the
+    # stale, pre-review payload.
+    store.save_application(app)
 
     ats_type = app.get("ats_type") or ""
 
     async def _do_submit():
         await _run_submit(store, app_id)
 
-    await enqueue_fn(app_id, ats_type, _do_submit)
+    try:
+        await enqueue_fn(app_id, ats_type, _do_submit)
+    except Exception as exc:
+        app["error"] = f"Could not queue submission: {exc}"
+        _event(app, "queue_failed", app["error"], status=ApplicationStatus.FAILED)
+        return store.save_application(app)
     return store.save_application(app)
 
 
@@ -216,7 +228,10 @@ async def _run_submit(store: ApplyStore, app_id: str) -> dict:
                 attachments=(app.get("prepared_payload") or {}).get("attachments", {}),
             )
             result = await adapter.submit(pp)
-            if result.ok:
+            if result.dry_run:
+                app["confirmation_ref"] = result.confirmation_ref or "DRYRUN"
+                _event(app, "dry_run_complete", result.message, status=ApplicationStatus.NEEDS_REVIEW)
+            elif result.ok:
                 app["confirmation_ref"] = result.confirmation_ref
                 app["submitted_at"] = _now().isoformat()
                 _event(app, "submitted_api", result.message, status=ApplicationStatus.APPLIED)

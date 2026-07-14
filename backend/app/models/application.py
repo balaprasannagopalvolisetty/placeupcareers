@@ -181,6 +181,7 @@ class Application(BaseModel):
     ats_score: int = 0
     tailored_resume_url: Optional[str] = None
     tailored_cover_letter_url: Optional[str] = None
+    tailored_documents: dict[str, str] = Field(default_factory=dict)
     # Payload the adapter intends to submit — shown verbatim in review.
     prepared_payload: dict = Field(default_factory=dict)
     confirmation_screenshot_url: Optional[str] = None

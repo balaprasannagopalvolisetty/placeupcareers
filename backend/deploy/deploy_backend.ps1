@@ -6,6 +6,21 @@ param(
   [string]$UserFirestoreProjectId = "placeup-firebase-641222668282",
   [string]$UserFirestoreDatabase = "(default)",
   [string]$FrontendUrl = "https://placeupcareer.com",
+  # Cloud Storage bucket for rendered tailored resumes/cover letters. Created
+  # (idempotently) and granted to placeup-api-sa below.
+  [string]$ApplyDocsBucket = "placeup-tailored-docs",
+  # Comma-separated ats_types PlaceUp holds submit credentials for (open API or
+  # partner token). Recruitee is credential-free; add partners as approved.
+  [string]$ApplyCredentialedAts = "recruitee",
+  # Explicit production safety gate. When present, an approved Recruitee
+  # application performs the real documented candidate POST.
+  [switch]$EnableLiveApply,
+  # Backward-compatible switch. Production now always provisions Cloud Tasks;
+  # passing this remains accepted by older runbooks but is no longer required.
+  [switch]$CreateApplyQueues,
+  # Cloud Tasks HTTP push target (the service that runs a queued submission).
+  # Defaults to the public API service, protected by its internal credential.
+  [string]$ApplyWorkerUrl = "https://placeup-api-rui2a74muq-ue.a.run.app",
   # Scaling knobs. Defaults fit the CURRENT 20-vCPU regional quota
   # (2 vCPU x 10 instances). After a quota increase, raise ApiMaxInstances
   # here instead of editing the script body. See SCALING_PLAYBOOK.md.
@@ -23,6 +38,14 @@ $Image = "$Region-docker.pkg.dev/$ProjectId/placeup/backend:latest"
 # DB_STATEMENT_TIMEOUT_MS=15000: API queries fail fast into the stale-page
 # cache instead of hanging when the scraper has Cloud SQL busy.
 $ApiEnv = "APP_ENV=production,DATABASE_BACKEND=postgres,DB_POOL_SIZE=5,DB_MAX_OVERFLOW=10,DB_STATEMENT_TIMEOUT_MS=15000,USER_DATABASE_BACKEND=$UserDatabaseBackend,USER_FIRESTORE_PROJECT_ID=$UserFirestoreProjectId,USER_FIRESTORE_DATABASE=$UserFirestoreDatabase,SCRAPE_INTERVAL_HOURS=6,SCRAPEGRAPH_ENABLED=false,ADMIN_EMAILS=operations@placeupcareer.com,FREE_ACCESS_ENABLED=true,SIGNUP_REQUIRE_PAYMENT=false,INVITE_GATE_ENABLED=false,CONTACT_RECIPIENT_EMAIL=operations@placeupcareer.com"
+# Automated Application System (apply orchestration + tailored-doc rendering).
+# GCP_PROJECT_ID lets google-cloud-storage pick the right project for uploads.
+# Production is GCP-only: approvals always use Cloud Tasks. The in-process
+# queue remains available only when developers explicitly configure it outside
+# this production deploy script.
+$ApplyQueueBackend = "cloudtasks"
+$ApplyLiveSubmit = if ($EnableLiveApply) { "true" } else { "false" }
+$ApiEnv = "$ApiEnv,APPLY_FEATURE_ENABLED=true,APPLY_LIVE_SUBMIT_ENABLED=$ApplyLiveSubmit,APPLY_DOCS_BUCKET=$ApplyDocsBucket,APPLY_CREDENTIALED_ATS=$ApplyCredentialedAts,APPLY_QUEUE_BACKEND=$ApplyQueueBackend,APPLY_QUEUE_REGION=$Region,APPLY_WORKER_URL=$ApplyWorkerUrl,INBOX_DOMAIN=mail.placeupcareer.com,GCP_PROJECT_ID=$ProjectId"
 if ($FrontendUrl) {
   $ApiEnv = "$ApiEnv,FRONTEND_URL=$FrontendUrl"
 }
@@ -78,6 +101,8 @@ foreach ($EmailSecretName in @(
 $InternalApiSecret = Test-SecretExists "INTERNAL_API_KEY"
 if ($InternalApiSecret) {
   $ApiSecrets = "$ApiSecrets,INTERNAL_API_KEY=INTERNAL_API_KEY:latest"
+} else {
+  throw "INTERNAL_API_KEY secret is required for authenticated Cloud Tasks pushes."
 }
 $ServiceTokenSecret = Test-SecretExists "SERVICE_TOKEN_SECRET"
 if ($ServiceTokenSecret) {
@@ -119,6 +144,54 @@ gcloud.cmd builds submit $BackendRoot --tag $Image
 if ($LASTEXITCODE -ne 0) {
   throw "Cloud Build failed - aborting deploy so services are not re-pointed at a stale image."
 }
+
+# --- Tailored-document storage bucket (apply subsystem) ---
+# Idempotent: create the bucket if missing (uniform access, private) and grant
+# the API runtime SA object admin so it can write/read rendered resumes and
+# cover letters. Safe to re-run.
+$ApiSa = "placeup-api-sa@$ProjectId.iam.gserviceaccount.com"
+$BucketUri = "gs://$ApplyDocsBucket"
+gcloud.cmd storage buckets describe $BucketUri --project $ProjectId 2>$null | Out-Null
+if ($LASTEXITCODE -ne 0) {
+  Write-Host "Creating tailored-docs bucket $BucketUri ..."
+  gcloud.cmd storage buckets create $BucketUri --project $ProjectId --location $Region --uniform-bucket-level-access
+  if ($LASTEXITCODE -ne 0) { throw "Failed to create bucket $BucketUri" }
+}
+gcloud.cmd storage buckets add-iam-policy-binding $BucketUri `
+  --member "serviceAccount:$ApiSa" `
+  --role "roles/storage.objectAdmin" | Out-Null
+
+# --- Per-ATS Cloud Tasks queues (apply submission pacing) ---
+# Always provisioned for production. Rates mirror apply_queue.PER_ATS_RATE so each
+# ATS is throttled independently (Workday far slower than Greenhouse). Idempotent:
+# create if missing, otherwise update the rate. The queue name pattern is
+# `apply-<ats_type>`, matching services/apply/apply_queue.py.
+Write-Host "Ensuring Cloud Tasks API + per-ATS queues in $Region ..."
+  gcloud.cmd services enable cloudtasks.googleapis.com --project $ProjectId | Out-Null
+  $ApplyQueues = @(
+    @{ name = "apply-greenhouse";      rps = 5;   conc = 10 },
+    @{ name = "apply-ashby";           rps = 5;   conc = 10 },
+    @{ name = "apply-smartrecruiters"; rps = 5;   conc = 10 },
+    @{ name = "apply-workable";        rps = 5;   conc = 10 },
+    @{ name = "apply-recruitee";       rps = 5;   conc = 10 },
+    @{ name = "apply-browser";          rps = 0.1; conc = 1  }
+  )
+  foreach ($q in $ApplyQueues) {
+    gcloud.cmd tasks queues describe $q.name --location $Region --project $ProjectId 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host "  creating queue $($q.name) ($($q.rps)/s, conc $($q.conc))"
+      gcloud.cmd tasks queues create $q.name --location $Region --project $ProjectId `
+        --max-dispatches-per-second $q.rps --max-concurrent-dispatches $q.conc
+      if ($LASTEXITCODE -ne 0) { throw "Failed to create Cloud Tasks queue $($q.name)" }
+    } else {
+      gcloud.cmd tasks queues update $q.name --location $Region --project $ProjectId `
+        --max-dispatches-per-second $q.rps --max-concurrent-dispatches $q.conc | Out-Null
+    }
+  }
+  # The API SA enqueues submission tasks — grant the enqueuer role.
+  gcloud.cmd projects add-iam-policy-binding $ProjectId `
+    --member "serviceAccount:$ApiSa" --role "roles/cloudtasks.enqueuer" | Out-Null
+  Write-Host "Cloud Tasks queues ready; APPLY_QUEUE_BACKEND=cloudtasks."
 
 # IMPORTANT: the API service uses --update-env-vars / --update-secrets (MERGE
 # semantics), NOT --set-* (REPLACE semantics). Auth-critical settings that are

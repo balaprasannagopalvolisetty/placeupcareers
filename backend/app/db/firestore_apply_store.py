@@ -36,8 +36,10 @@ _INBOX = "inbox_messages"
 _ADAPTERS = "ats_adapters"
 
 
-def _company_key(uid: str, company: str) -> str:
-    return f"{uid}__{(company or '').strip().lower().replace('/', '_')}"
+def _company_key(uid: str, company: str, position_key: str = "") -> str:
+    company_part = (company or "").strip().lower().replace("/", "_")
+    position_part = (position_key or "general").strip().lower().replace("/", "_")
+    return f"{uid}__{company_part}__{position_part}"
 
 
 class FirestoreApplyStore:
@@ -112,22 +114,63 @@ class FirestoreApplyStore:
         return data
 
     # --- tailored docs cache ---
-    def get_tailored_docs(self, uid: str, company: str) -> Optional[dict]:
-        key = _company_key(uid, company)
+    def get_tailored_docs(self, uid: str, company: str, position_key: str = "") -> Optional[dict]:
+        key = _company_key(uid, company, position_key)
         snap = _with_retries(lambda: _client().collection(_TAILORED).document(key).get())
         return (snap.to_dict() or {}) if snap.exists else None
 
-    def save_tailored_docs(self, uid: str, company: str, data: dict) -> dict:
-        key = _company_key(uid, company)
+    def save_tailored_docs(
+        self,
+        uid: str,
+        company: str,
+        data: dict,
+        position_key: str = "",
+    ) -> dict:
+        key = _company_key(uid, company, position_key)
         data["created_at"] = data.get("created_at") or _now_iso()
         _client().collection(_TAILORED).document(key).set(data, merge=True)
         return data
 
-    def render_and_store_tailored(self, uid: str, company: str, spec: dict, cover: bool) -> dict:
-        """Render the tailored spec to ATS-safe docs and upload to Cloud
-        Storage. Left as an integration hook — returns no URLs until wired to
-        the docx/pdf renderer + GCS bucket."""
-        return {"resume_url": None, "cover_letter_url": None}
+    def render_and_store_tailored(
+        self,
+        uid: str,
+        company: str,
+        spec: dict,
+        cover_letter: Optional[str] = None,
+        position_key: str = "",
+    ) -> dict:
+        """Render the tailored spec (+ optional cover letter) to ATS-safe
+        DOCX/PDF and upload to Cloud Storage. Returns the stored URLs. The
+        resume DOCX is treated as the canonical resume_url (ATS-preferred);
+        the PDF is also stored and returned for the UI/preview."""
+        from app.services.apply import doc_storage
+        from app.services.apply.resume_renderer import render_all
+
+        resume = (spec or {}).get("resume") or spec or {}
+        try:
+            files = render_all(resume, cover_letter)
+        except Exception as exc:  # pragma: no cover - defensive
+            log.warning("render_all failed for %s/%s: %s", uid, company, exc)
+            return {"resume_url": None, "cover_letter_url": None}
+
+        urls: dict[str, Optional[str]] = {}
+        for name, data in files.items():
+            urls[name] = doc_storage.store_document(
+                uid,
+                company,
+                name,
+                data,
+                position_key=position_key,
+            )
+
+        return {
+            "resume_url": urls.get("resume.pdf") or urls.get("resume.docx"),
+            "resume_docx_url": urls.get("resume.docx"),
+            "resume_pdf_url": urls.get("resume.pdf"),
+            "cover_letter_url": urls.get("cover_letter.pdf") or urls.get("cover_letter.docx"),
+            "cover_letter_docx_url": urls.get("cover_letter.docx"),
+            "cover_letter_pdf_url": urls.get("cover_letter.pdf"),
+        }
 
     def get_resume_text(self, uid: str, resume_id: Optional[str]) -> str:
         try:

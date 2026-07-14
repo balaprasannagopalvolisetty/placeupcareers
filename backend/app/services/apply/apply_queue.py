@@ -18,6 +18,7 @@ application id here), enqueuing the same application twice is a no-op.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from dataclasses import dataclass, field
 
@@ -39,6 +40,13 @@ PER_ATS_RATE: dict[str, float] = {
     "successfactors": 0.1,
     "_default": 0.5,
 }
+
+# Dedicated queues provisioned by deploy_backend.ps1. Browser/Tier-B/C and
+# unknown platforms share one deliberately slow queue until their production
+# drivers are implemented.
+DEDICATED_QUEUES = frozenset({
+    "greenhouse", "ashby", "smartrecruiters", "workable", "recruitee",
+})
 
 
 def rate_for(ats_type: str) -> float:
@@ -90,17 +98,35 @@ def _enqueue_cloud_tasks(task_name: str, ats_type: str, app_id: str) -> bool:  #
     client = tasks_v2.CloudTasksClient()
     project = settings.gcp_project_id
     location = getattr(settings, "apply_queue_region", "us-east1")
-    queue = f"apply-{ats_type}"
+    queue_key = (ats_type or "").strip().lower()
+    queue = f"apply-{queue_key if queue_key in DEDICATED_QUEUES else 'browser'}"
     parent = client.queue_path(project, location, queue)
-    handler_url = f"{getattr(settings, 'apply_worker_url', '')}/internal/apply/submit"
+    worker_url = str(getattr(settings, "apply_worker_url", "") or "").rstrip("/")
+    if not worker_url:
+        raise RuntimeError("APPLY_WORKER_URL is required for the Cloud Tasks backend")
+    handler_url = f"{worker_url}/api/apply/internal-submit"
+    headers = {"Content-Type": "application/json"}
+    # Authenticate the push to the internal-submit handler with the shared key.
+    if getattr(settings, "internal_api_key", ""):
+        headers["X-API-Key"] = settings.internal_api_key
+    else:
+        raise RuntimeError("INTERNAL_API_KEY is required for Cloud Tasks pushes")
     task = {
         "name": client.task_path(project, location, queue, task_name),
         "http_request": {
             "http_method": tasks_v2.HttpMethod.POST,
             "url": handler_url,
-            "headers": {"Content-Type": "application/json"},
-            "body": f'{{"app_id":"{app_id}"}}'.encode(),
+            "headers": headers,
+            "body": json.dumps({"app_id": app_id}).encode("utf-8"),
         },
     }
-    client.create_task(request={"parent": parent, "task": task})
+    try:
+        client.create_task(request={"parent": parent, "task": task})
+    except Exception as exc:
+        # Cloud Tasks retains completed task names for a deduplication window.
+        # Treat an already-existing name as the intended idempotent no-op while
+        # allowing every other infrastructure/auth error to fail the approval.
+        if exc.__class__.__name__ == "AlreadyExists":
+            return False
+        raise
     return True

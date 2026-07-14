@@ -6,7 +6,7 @@ import {
   Menu, X, User, ChevronDown, Briefcase,
   TrendingUp, ChevronRight, CheckCircle2, Bookmark, Clock,
   ArrowUpRight, MapPin, DollarSign, FileCheck,
-  Shield, Wand2,
+  Shield, Wand2, Zap,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import * as api from "../lib/api";
@@ -103,7 +103,9 @@ const NAV_ITEMS = [
   { icon: Home,     label: "Overview", to: "/dashboard" },
   { icon: FileText, label: "Resumes", to: "/dashboard/resumes" },
   { icon: Briefcase,label: "Jobs", to: "/dashboard/jobs" },
+  { icon: Zap,      label: "One-Click Apply", to: "/dashboard/one-click-apply" },
   { icon: Wand2,   label: "Tailor", to: "/dashboard/tailor" },
+  { icon: FileText, label: "Resume Studio", to: "/dashboard/resume-studio" },
   { icon: BarChart3,label: "Analytics", to: "/dashboard/analytics" },
   { icon: Settings, label: "Settings", to: "/dashboard/settings" },
 ];

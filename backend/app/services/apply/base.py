@@ -52,6 +52,9 @@ class ApplyResult:
     # If the API path hits something only a human can clear.
     needs_you: bool = False
     needs_you_reason: Optional[str] = None
+    # A validated safety-gate run is not a real application and must never be
+    # recorded as APPLIED.
+    dry_run: bool = False
 
 
 class BaseATSAdapter:

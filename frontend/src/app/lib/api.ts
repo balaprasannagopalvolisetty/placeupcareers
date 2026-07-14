@@ -972,6 +972,75 @@ export async function getApplyInbox() {
   return request<InboxMessageRow[]>("/api/apply/inbox");
 }
 
+export interface OneClickJob {
+  job_id: string;
+  title: string;
+  company: string;
+  location: string;
+  job_url: string;
+  ats_type: string;
+  match_score: number;
+  one_click_ready: boolean;
+  intake_method: string;
+}
+
+export interface OneClickFeed {
+  jobs: OneClickJob[];
+  credentialed_ats: string[];
+  api_submittable_ats: string[];
+  live_submit_enabled: boolean;
+}
+
+/** Positions from Tier A candidate-apply APIs for the One-Click Apply tab.
+ *  `one_click_ready` = PlaceUp holds a submit credential for that ATS today. */
+export async function getOneClickJobs(params: { limit?: number; ready_only?: boolean } = {}) {
+  const qs = new URLSearchParams();
+  if (params.limit) qs.set("limit", String(params.limit));
+  if (params.ready_only) qs.set("ready_only", "true");
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return request<OneClickFeed>(`/api/apply/one-click${suffix}`);
+}
+
+// ── Resume Studio: structured resume spec + server-side render ──
+
+export interface ResumeSpecSkillGroup { category: string; items: string[]; }
+export interface ResumeSpecExperience {
+  title: string; company: string; location?: string; dates?: string; bullets: string[];
+}
+export interface ResumeSpecEducation {
+  degree: string; institution?: string; location?: string; dates?: string;
+}
+export interface ResumeSpec {
+  name: string;
+  contact: string[];
+  summary: string;
+  skills: ResumeSpecSkillGroup[];
+  experience: ResumeSpecExperience[];
+  education: ResumeSpecEducation[];
+  certifications: string[];
+  projects: string[];
+}
+
+export interface RenderedDocuments {
+  resume_pdf?: string;   // base64
+  resume_docx?: string;
+  cover_letter_pdf?: string;
+  cover_letter_docx?: string;
+}
+
+/** Render a resume spec (+ optional cover letter) to ATS-safe DOCX/PDF.
+ *  Returns base64 payloads for preview/download. Stateless. */
+export async function renderResumeDocuments(resume: ResumeSpec, cover_letter?: string) {
+  return request<RenderedDocuments>(
+    "/api/apply/render",
+    { method: "POST", body: JSON.stringify({ resume, cover_letter: cover_letter || "" }) },
+  );
+}
+
+export function emptyResumeSpec(): ResumeSpec {
+  return { name: "", contact: [], summary: "", skills: [], experience: [], education: [], certifications: [], projects: [] };
+}
+
 export async function addTailorQueueItem(payload: Omit<TailorQueueItem, "id" | "created_at" | "updated_at" | "status">) {
   const result = await request<{ item: TailorQueueItem; used_today: number; daily_limit: number; remaining_today: number }>(
     "/api/user/tailor-queue",

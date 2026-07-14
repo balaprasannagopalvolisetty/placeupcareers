@@ -204,3 +204,19 @@ def infer_ats_type(job: dict) -> str:
 
     source = _normalize(str(job.get("source") or job.get("source_name") or ""))
     return source if source in ATS_TIERS else ""
+
+
+def parse_credentialed(csv: str | None) -> frozenset[str]:
+    """Normalize the APPLY_CREDENTIALED_ATS csv into a set of ats_types.
+
+    An entry only counts if it's both a known API-submittable platform and
+    actually credentialed (so a typo can't accidentally 'enable' Workday)."""
+    items = {_normalize(part) for part in (csv or "").split(",") if part.strip()}
+    return frozenset(a for a in items if a in API_SUBMITTABLE_ATS)
+
+
+def is_one_click_ready(ats_type: str | None, credentialed: frozenset[str]) -> bool:
+    """True when a job can be submitted via API right now — the platform is
+    API-submittable AND PlaceUp holds a submit credential/partner token for it.
+    Recruitee is credential-free, so it's ready as soon as it's listed."""
+    return is_api_submittable(ats_type) and _normalize(ats_type) in credentialed

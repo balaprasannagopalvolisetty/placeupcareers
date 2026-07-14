@@ -35,6 +35,12 @@ const TailorResumePage = lazy(() =>
 const ApplicationsPage = lazy(() =>
   import("./components/dashboard/ApplicationsPage").then((m) => ({ default: m.ApplicationsPage }))
 );
+const OneClickApplyPage = lazy(() =>
+  import("./components/dashboard/OneClickApplyPage").then((m) => ({ default: m.OneClickApplyPage }))
+);
+const ResumeStudioPage = lazy(() =>
+  import("./components/dashboard/ResumeStudioPage").then((m) => ({ default: m.ResumeStudioPage }))
+);
 const AnalyticsPage = lazy(() =>
   import("./components/dashboard/AnalyticsPage").then((m) => ({ default: m.AnalyticsPage }))
 );
@@ -116,6 +122,8 @@ export const router = createBrowserRouter([
           { path: "tailor", Component: authedGuarded(TailorResumePage) },
           { path: "alerts", Component: authedGuarded(DashboardJobsRedirect) },
           { path: "applications", Component: authedGuarded(ApplicationsPage) },
+          { path: "one-click-apply", Component: authedGuarded(OneClickApplyPage) },
+          { path: "resume-studio", Component: authedGuarded(ResumeStudioPage) },
           { path: "analytics", Component: authedGuarded(AnalyticsPage) },
           { path: "settings", Component: authedGuarded(SettingsPage) },
           { path: "profile", Component: authedGuarded(UserProfilePage) },

@@ -1,6 +1,6 @@
 # PlaceUp Career Master Documentation
 
-Last updated: 2026-07-12
+Last updated: 2026-07-14
 
 This is the single source of truth for PlaceUp Career. Keep this file current
 and avoid adding scattered markdown files unless the team explicitly decides to
@@ -45,6 +45,15 @@ Production stays on Google Cloud and Firebase.
 - Secrets: Google Secret Manager.
 - Scheduled work: Cloud Run Jobs plus Cloud Scheduler.
 - Static frontend domain: `https://placeupcareer.com`.
+- Apply submission queue: Cloud Tasks, one queue per ATS (`apply-{ats_type}`),
+  paced per-platform (Workday throttled far slower than Greenhouse).
+- Browser automation: Playwright on Cloud Run Jobs (batch) / a Cloud Run
+  service (interactive handoff), with a managed-browser fallback (Steel.dev /
+  Browserbase) once concurrency exceeds what Cloud Run handles.
+- Dedicated inbox: AWS SES inbound (MX on `mail.placeupcareer.com`) → S3 →
+  Lambda → FastAPI webhook. This is the one intentional cross-cloud dependency;
+  it is chosen over Gmail restricted-scope OAuth (see the Automated Application
+  System section for the rationale).
 
 Do not use Supabase for production infrastructure.
 
@@ -269,6 +278,14 @@ The scraper must collect full job descriptions when available. Thin descriptions
 are marked and repaired by background/detail hydration jobs instead of being
 presented as complete matches.
 
+Serving boundary (2026-07-13): the Jobs API defaults to 40 positions per page.
+For explicit freshness filters, PostgreSQL applies the honest posting window
+before pagination: use `posted_at` when the ATS supplies it and fall back to
+`first_seen_at` only when `posted_at` is missing. `last_seen_at` is never treated
+as a new posting date. The locked complete-JD boundary accepts the canonical
+`jd_complete=true` flag and conservatively recognizes substantial legacy JDs so
+older rows cannot blank the feed solely because they predate that metadata flag.
+
 ## Labels
 
 Every job should be normalized with:
@@ -329,6 +346,295 @@ Important files:
 
 The Career Copilot local files are useful patterns only. Production should not
 depend on `jobs_data.js` or local `.careercopilot` state.
+
+## Automated Application System
+
+PlaceUp prepares and — after a mandatory human review — submits applications on
+the user's behalf. The engine is hybrid: submit through legitimate candidate
+ATS APIs where they exist, and fall back to server-side headless-browser
+automation only for platforms that are web-form-only. A non-optional
+review-before-submit gate sits on every application. The system prefers APIs,
+throttles hard, never defeats CAPTCHAs, and hands off to the user instead.
+
+This is legally contested territory: Workday, LinkedIn and most ATS Terms of
+Service prohibit automated submission. The review-before-submit + per-application
+human approval model reduces but does not eliminate account/IP-blocking risk.
+Users must give explicit, specific, informed consent before we submit for them,
+and they — not the LLM — are responsible for the truthfulness of their answers.
+
+### Intake tiers (the core routing decision)
+
+Every ATS falls into one tier; the tier drives the whole flow.
+
+- Tier A — candidate-facing submission API: Greenhouse, Ashby, SmartRecruiters,
+  Workable, Recruitee, plus Teamtailor, JazzHR, Phenom (partner-auth). IMPORTANT
+  (verified 2026-07-12): "Tier A" means a candidate-apply API *exists* and we can
+  map to it — it does NOT mean submission is open. Reading postings is public,
+  but **submitting** an application is credential-gated on almost every one:
+    - Recruitee — genuinely open: no-auth candidate POST. The one true
+      submit-without-a-key case.
+    - Greenhouse — `POST` submit needs HTTP Basic Auth with that company's
+      Job Board API Key (per-employer). Reading the board is no-auth.
+    - Ashby — `applicationForm.submit` needs the org's `candidatesWrite` key;
+      no general public apply API.
+    - SmartRecruiters — `POST /postings/:uuid/candidates` needs an API key or
+      OAuth; they run a partner "Post an Application" program.
+    - Workable — creating a candidate needs a Bearer token; a **partner token**
+      exists for building across many accounts.
+  So Greenhouse/Ashby/SmartRecruiters/Workable are submittable only once PlaceUp
+  holds a partner token (or a specific employer's key). See "Submit credentials
+  & partner programs" below. This corrects the original architecture PDF, which
+  labeled Tier A "no employer key needed" — true for reading, not for posting.
+- Tier B — API exists but requires the employer's OAuth/API key (Workday,
+  iCIMS, Oracle/Taleo, SuccessFactors, UKG, ADP, Zoho Recruit, Dover, Gem,
+  Pinpoint). We never hold employer credentials, so these are treated as
+  web-form-only.
+- Tier C — web-form-only, headless browser required (Lever, Workday candidate
+  side, Rippling, BambooHR, Jobvite, BreezyHR, Paylocity, Dayforce, Join,
+  Hireology, Polymer, plus every Tier B platform).
+
+Routing lives in `backend/app/services/apply/tiers.py`. `infer_ats_type(job)`
+resolves the real platform from metadata / canonical URL (never the scraper
+fan-out worker name); `resolve_tier` returns the tier (unknown ⇒ Tier C, the
+always-available path); `is_api_submittable` is the static Phase-0 allowlist
+(`API_SUBMITTABLE_ATS`) that never depends on adapter import order.
+
+### Security-control boundary (non-negotiable)
+
+PlaceUp never solves, bypasses, or automates past a CAPTCHA, OTP challenge, or
+bot-detection check. These exist specifically to stop automated submission;
+defeating them would violate ATS Terms of Service (Workday/iCIMS/LinkedIn
+explicitly prohibit it), get the *user's* email/IP flagged or banned, cause
+applications to be silently discarded, and expose PlaceUp to account termination
+and legal (circumvention) exposure. When a site presents one of these, the
+browser worker sets `NEEDS_YOU` and hands the single challenge to the user — it
+does not fill the whole form invisibly and it does not use CAPTCHA-solving
+services. This is a product principle, not a temporary limitation, and requests
+to remove it are declined.
+
+### Submit credentials & partner programs
+
+There is no single API to buy. Submit access to each ATS comes one of two ways:
+
+1. Partner program (the scalable path) — apply to each vendor as an integration
+   partner and receive a partner token that lets you submit across their
+   customers' boards. SmartRecruiters, Workable, JazzHR, Phenom and Teamtailor
+   all issue partner tokens. Applying is generally free but approval is a
+   business/contract relationship; some involve review, revenue-share, or fees,
+   and terms change — confirm with each vendor's partnerships team. Prices are
+   not publicly fixed.
+2. Per-employer key — only works for companies PlaceUp has a direct relationship
+   with (not useful for a candidate-side aggregator).
+
+Recruitee needs neither — its candidate POST is open today.
+
+`APPLY_CREDENTIALED_ATS` (config, default `recruitee`) is the comma-separated
+set of ats_types PlaceUp currently holds a submit credential for. It's the
+single switch that turns a platform from "prepare + review only" into true
+one-click submit. Add an ats_type here the moment its partner token/key is
+configured in Secret Manager, and every matching job becomes one-click with no
+code change. `tiers.parse_credentialed` + `tiers.is_one_click_ready` gate this.
+
+### One-Click Apply tab
+
+A dedicated dashboard tab (`/dashboard/one-click-apply`,
+`frontend/src/app/components/dashboard/OneClickApplyPage.tsx`) lists positions
+sourced from Tier A candidate-apply APIs. Each card is flagged `one_click_ready`
+when its ATS is in `APPLY_CREDENTIALED_ATS` (submittable via the official API
+right now, after the review gate — no CAPTCHA, no browser). Jobs whose ATS isn't
+credentialed yet show as "Prepare" (they still tailor + review, but can't
+auto-submit until the credential lands). The ready set expands automatically as
+partner programs are approved. Backed by `GET /api/apply/one-click`
+(`limit`, `ready_only`) which reuses the main jobs source and annotates each row.
+Day one this is effectively the Recruitee feed; it grows with each partner token.
+
+### Components
+
+- Apply Orchestration (`app/services/apply/orchestrator.py`) — resolves tier,
+  runs tailoring, builds the Tier A payload or fills the Tier C form up to (not
+  including) submit, and lands the application in `NEEDS_REVIEW`. On approval it
+  enqueues the submission; nothing is ever submitted without `confirm=true`.
+- Tier A adapters (`app/services/apply/adapters_tier_a.py`) — one per platform.
+  `build_payload` is a pure, unit-tested mapping; `submit` is the only method
+  that touches the network and only runs after approval. Adapters validate
+  required fields client-side (Greenhouse's Job Board API does not validate them
+  server-side); SmartRecruiters renders EEO fields last and records consent.
+  **Recruitee `submit()` is fully implemented** (the one open, no-credential
+  API): it POSTs to the public `/offers/{slug}/candidates` endpoint, reading the
+  private GCS resume server-side and sending it as a multipart `candidate[cv]`
+  upload; 201 → APPLIED (candidate id
+  saved as the confirmation ref), 422 → FAILED with the validation message. The
+  other Tier A adapters' `submit()` stay as integration points pending partner
+  credentials. Real submission is gated by `APPLY_LIVE_SUBMIT_ENABLED` (default
+  false = dry-run: validate + prepare, no POST) so deploys can't fire real
+  applications by accident.
+- Browser worker (`app/services/apply/browser_worker.py`) — Playwright scaffold
+  + the graceful-handoff state machine. On a CAPTCHA / OTP / bot-check it sets
+  `NEEDS_YOU`, freezes automation, and opens a live view (CDP screencast over
+  WebSocket; user input relayed back). It never solves or bypasses a control.
+  `browser.close()` always runs in a finally block.
+- Tailoring pipeline (`app/services/apply/tailoring_pipeline.py`) — JD-signal
+  extraction → tailor resume with only true facts from the base resume (reuses
+  `resume_tailor_llm` + `ats_analysis`) → per-position cover letter
+  (`resume_tailor_llm.generate_cover_letter`, true facts only) → render to
+  ATS-safe DOCX/PDF → score → cache per (user, company, position). Keep the LLM router
+  model-agnostic. Runs for every application (apply + One-Click).
+- Resume renderer (`app/services/apply/resume_renderer.py`) — server-side,
+  ATS-safe renderer that turns the tailored resume spec into DOCX (python-docx)
+  and PDF (reportlab): single column, standard fonts, real headings, no tables /
+  text boxes / images. Also renders the cover letter. Original PlaceUp
+  templates — no third-party code or branding. `render_all(resume, cover)`
+  returns a name→bytes map.
+- Doc storage (`app/services/apply/doc_storage.py`) — uploads rendered docs to
+  GCS (`APPLY_DOCS_BUCKET`, `gs://…` refs). Production is strictly GCS-only;
+  `APPLY_DOCS_LOCAL_DIR` is available only in development/tests.
+  `render_and_store_tailored`
+  in the apply store now renders + stores and returns resume/cover-letter URLs
+  (previously a stub).
+- Resume Studio (`frontend/.../ResumeStudioPage.tsx`, `/dashboard/resume-studio`)
+  — optional in-app editor for manual tweaks: edit the structured resume spec,
+  live-preview the server-rendered PDF, download PDF/DOCX + cover letter. Backed
+  by `POST /api/apply/render` (stateless base64 render). Per-position
+  auto-render still happens in the pipeline; the Studio is for hand-edits.
+
+### GCP deployment (apply subsystem)
+
+Production-ready on Google Cloud — no local dependencies required:
+
+- Rendered docs live in a **private** Cloud Storage bucket (`APPLY_DOCS_BUCKET`,
+  default `placeup-tailored-docs`). `deploy_backend.ps1` creates the bucket
+  idempotently (uniform access, private) and grants `placeup-api-sa` the
+  `roles/storage.objectAdmin` role. `store_document` writes `gs://…` refs; the
+  bucket is never public. The UI fetches docs through the ownership-checked
+  `GET /api/apply/{id}/document/{kind}` endpoint, which streams the bytes
+  server-side via `doc_storage.read_document`.
+- Deps `google-cloud-storage` and `google-cloud-tasks` are in
+  `backend/requirements.txt`; the render deps `python-docx` + `reportlab` were
+  already present.
+- `deploy_backend.ps1` sets the apply env on `placeup-api`:
+  `APPLY_FEATURE_ENABLED=true`, `APPLY_DOCS_BUCKET`, `APPLY_CREDENTIALED_ATS`,
+  `APPLY_QUEUE_BACKEND`, `APPLY_QUEUE_REGION`, `INBOX_DOMAIN`, `GCP_PROJECT_ID`.
+  It uses `--update-env-vars` (merge), so out-of-band auth/email settings are
+  preserved.
+- Per-ATS Cloud Tasks queues are provisioned on every production deploy. The
+  script enables the API, creates/updates dedicated Tier-A queues plus a slow
+  shared browser queue, grants `placeup-api-sa` `roles/cloudtasks.enqueuer`, and
+  sets `APPLY_QUEUE_BACKEND=cloudtasks` + `APPLY_WORKER_URL`. The historical
+  `-CreateApplyQueues` switch remains accepted but is no longer required.
+- Submission push handler `POST /api/apply/internal-submit` runs a queued
+  submission (`orchestrator._run_submit`) for one application. Internal-key
+  protected — the Cloud Tasks enqueuer (`apply_queue._enqueue_cloud_tasks`) adds
+  the standard `X-API-Key` header. The zero-trust middleware accepts that
+  verified internal credential for direct Cloud Run service traffic. The local
+  queue is a development/test fallback and is never selected by production deploys.
+- **Going live on Recruitee** (the one ready-now ATS): keep
+  `APPLY_CREDENTIALED_ATS` including `recruitee` and deploy with
+  `-EnableLiveApply`. The script explicitly sets
+  `APPLY_LIVE_SUBMIT_ENABLED=true`. After that, a user's
+  approve on a Recruitee job actually submits via the official API (resume +
+  cover letter attached), with the human review gate still required. Leave it
+  false to demo the whole flow as a dry-run first.
+- Before trusting the Recruitee field names against a live offer, run the probe
+  `backend/scripts/recruitee_submit_probe.py` (dry-run by default; `--live`
+  actually submits). It prints the exact request the adapter sends so you can
+  confirm the documented multipart `candidate[cv]` contract.
+- The local-dir fallback (`APPLY_DOCS_LOCAL_DIR`) is only for dev/tests. In
+  production a missing bucket or failed upload returns no document instead of
+  writing an ephemeral `file://` reference.
+- Deploy: `.\backend\deploy\deploy_backend.ps1 -ProjectId steel-shine-492401-u6
+  -Region us-east1 -DbInstance placeup-backend -ApplyDocsBucket
+  placeup-tailored-docs -EnableLiveApply` (bucket, queues, IAM, env, and the
+  explicit real-submit safety switch handled automatically).
+- Dedicated inbox (`app/services/apply/inbox_ingest.py`) — parses the SES→Lambda
+  webhook, extracts OTP/verification codes, classifies the message, and links it
+  to an application. Codes are surfaced in the review UI; the user still enters
+  them.
+- Per-ATS queue (`app/services/apply/apply_queue.py`) — Cloud Tasks abstraction
+  with a local asyncio fallback; per-ATS rate limits; idempotent on app id.
+- Store (`app/db/firestore_apply_store.py`) — Firestore CRUD for `applications`,
+  `application_profiles`, `tailored_docs`, `inbox_messages`, `ats_adapters`.
+- API (`app/api/apply.py`) — `POST/GET /api/apply`, `GET /api/apply/{id}`,
+  `POST /api/apply/{id}/approve|cancel`, `PATCH /api/apply/{id}/status`,
+  `GET/PUT /api/apply/profile`, `GET /api/apply/inbox`,
+  `GET /api/apply/one-click` (One-Click Apply feed),
+  `POST /api/apply/render` (Resume Studio DOCX/PDF render),
+  `GET /api/apply/{id}/document/{kind}` (ownership-checked stream of a stored
+  tailored resume/cover-letter from private Cloud Storage), and the
+  service-authenticated `POST /api/apply/inbox/webhook` +
+  `POST /api/apply/internal-submit` (Cloud Tasks submission push target). Gated
+  by `APPLY_FEATURE_ENABLED` (503 when off, no redeploy needed).
+- Frontend — the existing `ApplicationsPage.tsx` kanban tracker, the new
+  `ReviewBeforeSubmit.tsx` gate, and the new `OneClickApplyPage.tsx` tab
+  (`/dashboard/one-click-apply`, in `Dashboard.tsx` NAV_ITEMS); apply client
+  functions in `lib/api.ts` (`startApplication`, `approveApplication`,
+  `setApplicationStatus`, `getOneClickJobs`, …).
+
+### Why the dedicated inbox, not Gmail OAuth
+
+Each user gets `first.last@mail.placeupcareer.com` via an SES catch-all receipt
+rule — no per-user provisioning. Gmail restricted scope is rejected because it
+forces an annual CASA Tier 2 security assessment (recurring cost) and a
+**lifetime 100-user cap that cannot be reset until the app is verified** — a
+non-starter for a consumer product targeting thousands of students. Record this
+rejection in the design doc, not just here.
+
+### Data minimization & compliance
+
+- Prefer per-application data entry over storing ATS logins; minimize stored
+  credentials. Voluntary EEO/identity answers are **not persisted** in Phase 0
+  (`_assert_profile_minimized` in `app/api/apply.py` rejects them) until Cloud
+  KMS envelope encryption is wired; users enter them at review time.
+- Encrypt sensitive fields with Cloud KMS; scope Firestore rules to owner +
+  service account; audit-log every submission with a screenshot/receipt.
+- GDPR/CCPA: explicit consent for automated submission, data export + deletion,
+  retention limits on `inbox_messages`, DPAs with SES/Cloudflare.
+
+### Change-course thresholds
+
+- If block/failure rate on an ATS exceeds ~5–10%, slow that queue or disable
+  browser automation for it and route to manual.
+- If an ATS requires handoff on >50% of attempts, deprioritize automating it.
+- Stay on Cloud Run until interactive browser concurrency regularly exceeds
+  ~25–50 simultaneous sessions; then move to a managed browser or GKE pool.
+
+### Phased roadmap
+
+- Phase 0 (done in this pass): tier framework + Tier A adapters (Greenhouse,
+  Ashby, SmartRecruiters, Workable, Recruitee) + application data model +
+  tracker + review gate. No browser automation yet.
+- Phase 1: tailoring pipeline with diff UI + review gate; dedicated-inbox SES
+  capture + OTP extraction.
+- Phase 2: Playwright browser worker on Cloud Run Jobs for Tier C (start with
+  Greenhouse-form + Lever, then Workday); Cloud Tasks per-ATS queues.
+- Phase 3: real-time handoff (screencast + input relay); full kanban statuses;
+  CSV import/export.
+- Phase 4: scale-out (managed browser / GKE), remaining Tier C adapters by
+  demand, block-rate dashboards, compliance hardening.
+
+### Caveats to verify before launch
+
+Verify each Tier A adapter against live ATS docs. Greenhouse Harvest v1/v2 are
+deprecated after 2026-08-31 (migrate to v3). Gem/Polymer/Join write-capability
+were unconfirmed in public docs. LLM prices move (Gemini 2.0 Flash deprecated
+2026-06-01) — keep the router model-agnostic.
+
+Important files:
+
+- `backend/app/models/application.py`
+- `backend/app/services/apply/` (tiers, base, adapters_tier_a, orchestrator,
+  browser_worker, tailoring_pipeline, inbox_ingest, apply_queue)
+- `backend/app/db/firestore_apply_store.py`
+- `backend/app/api/apply.py`
+- `backend/tests/test_apply_system.py`
+- `frontend/src/app/components/dashboard/ReviewBeforeSubmit.tsx`
+- `frontend/src/app/components/dashboard/OneClickApplyPage.tsx`
+- `frontend/src/app/components/dashboard/ResumeStudioPage.tsx`
+- `backend/app/services/apply/resume_renderer.py`,
+  `backend/app/services/apply/doc_storage.py`
+- Config: `APPLY_FEATURE_ENABLED`, `APPLY_LIVE_SUBMIT_ENABLED`,
+  `APPLY_CREDENTIALED_ATS`, `APPLY_QUEUE_BACKEND`, `APPLY_WORKER_URL`,
+  `INBOX_DOMAIN`, `APPLY_DOCS_BUCKET`, `APPLY_DOCS_LOCAL_DIR` in
+  `backend/app/config.py`
 
 ## Frontend Rules
 
@@ -424,6 +730,13 @@ Run focused backend tests after scraper/security changes:
 
 ```powershell
 python -m pytest backend\tests\test_zero_trust.py backend\tests\test_global_visa_rules.py backend\tests\test_board_discovery_sweep.py backend\tests\test_api_sources.py
+```
+
+Run the apply-subsystem tests after any change to `app/services/apply/*`,
+`app/api/apply.py`, or the application models:
+
+```powershell
+python -m pytest backend\tests\test_apply_system.py
 ```
 
 Run frontend build after UI changes:

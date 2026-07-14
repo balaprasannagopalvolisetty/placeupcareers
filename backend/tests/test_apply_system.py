@@ -121,13 +121,57 @@ def test_recruitee_builds_full_name():
     adapter = get_adapter("recruitee")
     payload = adapter.build_payload(
         job={"board_token": "hello", "ats_slug": "eng"},
-        profile={"first_name": "Bala", "last_name": "V", "email": "b@x.com"},
+        profile={"first_name": "Bala", "last_name": "V", "email": "b@x.com", "phone": "555-0100"},
         answers={},
         resume_url="r.pdf",
         cover_letter_url=None,
     )
     assert payload.fields["name"] == "Bala V"
     assert payload.endpoint == "https://hello.recruitee.com/api/offers/eng/candidates"
+
+
+def test_recruitee_submit_dry_run_when_live_disabled():
+    """With APPLY_LIVE_SUBMIT_ENABLED off, submit validates but does not POST."""
+    from app.config import settings
+    from app.services.apply.base import PreparedPayload
+
+    adapter = get_adapter("recruitee")
+    payload = PreparedPayload(
+        ats_type="recruitee",
+        endpoint="https://hello.recruitee.com/api/offers/eng/candidates",
+        fields={"name": "Bala V", "email": "b@x.com", "phone": "555-0100"},
+        attachments={"resume": "gs://private-bucket/tailored/u/job/resume.pdf"},
+    )
+    prev = settings.apply_live_submit_enabled
+    settings.apply_live_submit_enabled = False
+    try:
+        result = asyncio.run(adapter.submit(payload))
+    finally:
+        settings.apply_live_submit_enabled = prev
+    assert result.ok is True
+    assert result.dry_run is True
+    assert result.confirmation_ref == "DRYRUN"
+
+
+def test_recruitee_submit_requires_name_and_email():
+    """Even with live submit on, a missing email is rejected before any POST."""
+    from app.config import settings
+    from app.services.apply.base import PreparedPayload
+
+    adapter = get_adapter("recruitee")
+    payload = PreparedPayload(
+        ats_type="recruitee",
+        endpoint="https://hello.recruitee.com/api/offers/eng/candidates",
+        fields={"name": "Bala V", "email": ""},
+        attachments={},
+    )
+    prev = settings.apply_live_submit_enabled
+    settings.apply_live_submit_enabled = True
+    try:
+        result = asyncio.run(adapter.submit(payload))
+    finally:
+        settings.apply_live_submit_enabled = prev
+    assert result.ok is False
 
 
 # --------------------------- orchestrator state machine ---------------------------
@@ -154,6 +198,68 @@ class FakeStore:
 
 async def _fake_tailor(**kwargs):
     return {"resume_url": "tailored.pdf", "match_score": 82, "ats_score": 71}
+
+
+def test_production_document_storage_never_falls_back_to_local(tmp_path):
+    from app.config import settings
+    from app.services.apply import doc_storage
+
+    previous = (settings.app_env, settings.apply_docs_bucket, settings.apply_docs_local_dir)
+    settings.app_env = "production"
+    settings.apply_docs_bucket = ""
+    settings.apply_docs_local_dir = str(tmp_path)
+    try:
+        uri = doc_storage.store_document("u1", "Acme", "resume.pdf", b"pdf", position_key="job-1")
+    finally:
+        settings.app_env, settings.apply_docs_bucket, settings.apply_docs_local_dir = previous
+
+    assert uri is None
+    assert list(tmp_path.rglob("*")) == []
+
+
+def test_dev_document_storage_round_trip_and_content_type(tmp_path):
+    from app.config import settings
+    from app.services.apply import doc_storage
+
+    previous = (settings.app_env, settings.apply_docs_bucket, settings.apply_docs_local_dir)
+    settings.app_env = "development"
+    settings.apply_docs_bucket = ""
+    settings.apply_docs_local_dir = str(tmp_path)
+    try:
+        uri = doc_storage.store_document(
+            "u1", "Acme", "resume.pdf", b"%PDF-test", position_key="job-1"
+        )
+        assert uri is not None
+        assert doc_storage.read_document(uri) == b"%PDF-test"
+        assert doc_storage.content_type_for(uri) == "application/pdf"
+    finally:
+        settings.app_env, settings.apply_docs_bucket, settings.apply_docs_local_dir = previous
+
+
+def test_resume_renderer_produces_pdf_and_docx_bytes():
+    from app.services.apply.resume_renderer import render_all
+
+    files = render_all({
+        "name": "Bala V",
+        "contact": ["b@example.com"],
+        "summary": "Operations analyst.",
+        "skills": [{"category": "Tools", "items": ["Excel", "SQL"]}],
+        "experience": [],
+        "education": [],
+        "certifications": [],
+        "projects": [],
+    }, "Dear Hiring Team,\n\nThank you.\n\nSincerely,\nBala V")
+
+    assert files["resume.pdf"].startswith(b"%PDF")
+    assert files["resume.docx"].startswith(b"PK")
+    assert files["cover_letter.pdf"].startswith(b"%PDF")
+    assert files["cover_letter.docx"].startswith(b"PK")
+
+
+def test_tailored_cache_key_is_per_position():
+    from app.db.firestore_apply_store import _company_key
+
+    assert _company_key("u1", "Acme", "job-1") != _company_key("u1", "Acme", "job-2")
 
 
 def test_prepare_tier_a_reaches_needs_review_with_api_payload():

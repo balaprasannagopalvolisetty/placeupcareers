@@ -88,10 +88,17 @@ async def run_tailoring(
         except Exception as exc:
             log.debug("resume text lookup failed: %s", exc)
 
-    # Cache hit? Reuse per (user, company).
+    position_key = str(
+        job.get("id")
+        or job.get("job_id")
+        or job.get("external_id")
+        or title
+    )
+
+    # Cache hit? Reuse only for this exact user/company/position.
     if store is not None:
         try:
-            cached = store.get_tailored_docs(uid, company)  # type: ignore
+            cached = store.get_tailored_docs(uid, company, position_key)  # type: ignore
             if cached:
                 log.info("tailoring cache hit for %s/%s", uid, company)
                 return cached
@@ -103,7 +110,9 @@ async def run_tailoring(
 
     resume_url: Optional[str] = None
     cover_letter_url: Optional[str] = None
+    documents: dict = {}
     diff: Optional[dict] = None
+    cover_text: Optional[str] = None
 
     try:
         from app.services.resume_tailor_llm import tailor_resume
@@ -117,13 +126,38 @@ async def run_tailoring(
         )
         if spec:
             diff = {"tailored_spec": spec}
-            # Rendering to an ATS-safe PDF/DOCX + upload to Cloud Storage is the
-            # production step; the store handles persistence and returns URLs.
+            # Per-position cover letter (true facts only). Optional; failure
+            # leaves a resume-only packet.
+            if generate_cover_letter:
+                try:
+                    from app.services.resume_tailor_llm import generate_cover_letter as _gen_cover
+
+                    cover_text = await _gen_cover(
+                        resume_text=resume_text,
+                        job_title=title,
+                        job_company=company,
+                        job_description=jd,
+                        candidate_name=str((spec.get("resume") or {}).get("name") or ""),
+                        work_auth=str(profile.get("visa_status") or profile.get("work_authorization") or ""),
+                    )
+                except Exception as exc:
+                    log.debug("cover-letter generation skipped: %s", exc)
+                if cover_text:
+                    diff["cover_letter"] = cover_text
+            # Render the tailored resume (+ cover letter) to ATS-safe DOCX/PDF
+            # and upload to Cloud Storage; the store returns the URLs.
             if store is not None:
                 try:
-                    urls = store.render_and_store_tailored(uid, company, spec, generate_cover_letter)  # type: ignore
+                    urls = store.render_and_store_tailored(  # type: ignore
+                        uid,
+                        company,
+                        spec,
+                        cover_text,
+                        position_key,
+                    )
                     resume_url = urls.get("resume_url")
                     cover_letter_url = urls.get("cover_letter_url")
+                    documents = {k: v for k, v in urls.items() if v}
                 except Exception as exc:
                     log.debug("tailored render/store skipped: %s", exc)
     except Exception as exc:
@@ -134,6 +168,8 @@ async def run_tailoring(
         "company": company,
         "resume_url": resume_url,
         "cover_letter_url": cover_letter_url,
+        "documents": documents,
+        "cover_letter": cover_text,
         "jd_signals": jd_signals,
         "match_score": match_score,
         "ats_score": ats_score,
@@ -141,7 +177,7 @@ async def run_tailoring(
     }
     if store is not None:
         try:
-            store.save_tailored_docs(uid, company, result)  # type: ignore
+            store.save_tailored_docs(uid, company, result, position_key)  # type: ignore
         except Exception:
             pass
     return result
