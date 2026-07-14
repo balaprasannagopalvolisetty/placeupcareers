@@ -319,6 +319,7 @@ export interface JobPost {
   description_html?: string;
   score_type?: "resume_match" | "insufficient_jd" | "resume_required" | string;
   score_guarded?: boolean;
+  source?: string;
   job_url?: string;
   source_url?: string;
   taxonomy_category?: string;
@@ -342,6 +343,7 @@ export interface JobListResponse {
   page: number;
   page_size: number;
   total_pages: number;
+  source_breakdown?: { direct: number; aggregator: number };
   filters_applied: Record<string, unknown>;
 }
 
@@ -980,22 +982,36 @@ export interface OneClickJob {
   job_url: string;
   ats_type: string;
   match_score: number;
+  score_type: string;
   one_click_ready: boolean;
   intake_method: string;
+  posted_at?: string;
+  source?: string;
 }
 
 export interface OneClickFeed {
   jobs: OneClickJob[];
+  total: number;
+  ready_total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  window_days: number;
+  target_roles: string[];
+  target_country?: string | null;
   credentialed_ats: string[];
   api_submittable_ats: string[];
   live_submit_enabled: boolean;
 }
 
-/** Positions from Tier A candidate-apply APIs for the One-Click Apply tab.
- *  `one_click_ready` = PlaceUp holds a submit credential for that ATS today. */
-export async function getOneClickJobs(params: { limit?: number; ready_only?: boolean } = {}) {
+/** Personalized positions from direct ATS boards for One-Click Apply.
+ *  Every row supports tailoring; `one_click_ready` means the ATS can also be
+ *  submitted through an approved candidate API today. */
+export async function getOneClickJobs(params: { limit?: number; page?: number; page_size?: number; ready_only?: boolean } = {}) {
   const qs = new URLSearchParams();
   if (params.limit) qs.set("limit", String(params.limit));
+  if (params.page) qs.set("page", String(params.page));
+  if (params.page_size) qs.set("page_size", String(params.page_size));
   if (params.ready_only) qs.set("ready_only", "true");
   const suffix = qs.toString() ? `?${qs.toString()}` : "";
   return request<OneClickFeed>(`/api/apply/one-click${suffix}`);

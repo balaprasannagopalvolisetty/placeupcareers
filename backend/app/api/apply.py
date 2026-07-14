@@ -43,11 +43,11 @@ from app.services.apply.tailoring_pipeline import run_tailoring
 from app.services.apply.tiers import (
     API_SUBMITTABLE_ATS,
     infer_ats_type,
-    is_api_submittable,
     is_one_click_ready,
     parse_credentialed,
     tier_for_ats,
 )
+from app.scrape_constants import FIRST_PARTY_ATS_SOURCES
 
 log = logging.getLogger("placeup.apply")
 
@@ -168,66 +168,175 @@ async def render_documents(body: dict = Body(...), uid: str = Depends(current_us
 
 @router.get("/one-click")
 async def one_click_feed(
-    limit: int = Query(60, ge=1, le=200, description="Max jobs to return"),
+    limit: int | None = Query(None, ge=1, le=200, description="Legacy page-size alias"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(40, ge=1, le=100),
     ready_only: bool = Query(False, description="Only jobs submittable right now"),
     uid: str = Depends(current_user_id),
     db=Depends(get_db),
 ):
-    """Feed for the One-Click Apply tab: positions from Tier A candidate-apply
-    APIs. Each job is flagged `one_click_ready` when PlaceUp holds a submit
-    credential for that ATS (open API or approved partner token); the rest still
-    prepare + review but can't auto-submit until a credential is added.
+    """Personalized direct-ATS feed for the One-Click Apply tab.
 
-    Query the API-capable ATS sources at the database boundary. The previous
+    Every direct ATS role can be opened and tailored. Each job is separately
+    flagged `one_click_ready` when PlaceUp can submit it through an approved
+    candidate API; all other ATS roles remain available for Prepare + Review.
+
+    Query direct ATS sources at the database boundary. The previous
     implementation fetched a small slice of the entire global inventory and
     filtered ATS types afterwards. High-volume aggregator rows could fill that
     slice (or make it exceed the statement timeout), leaving this page empty
     even while eligible ATS rows existed in the database.
     """
+    from app.api.jobs import (
+        _active_resume_text,
+        _baseline_ats_score,
+        _cached_score_job_against_resume,
+        _job_effective_datetime,
+        _job_matches_role_terms,
+        _preference_terms,
+        _prepare_resume_tokens,
+        _terms_for_role_names,
+    )
+    from app.services.global_visa_rules import normalize_country_code, resolve_country
+
     credentialed = parse_credentialed(settings.apply_credentialed_ats)
+    preferred_roles, preferred_locations = _preference_terms(uid)
+    role_terms = _terms_for_role_names(preferred_roles) if preferred_roles else []
+    target_country = None
+    for preferred_location in preferred_locations:
+        target_country = normalize_country_code(resolve_country(preferred_location))
+        if target_country:
+            break
+
+    # One-Click is an active direct-ATS inventory, not the Jobs page's strict
+    # "posted today" view. A 30-day honest window supplies enough direct ATS
+    # roles for saved-role matching while every card still displays its real
+    # posting date. The main Jobs page remains last-24-hours by default.
+    window_days = 30
+    effective_page_size = limit or page_size
+    filters = {
+        "status": "active",
+        "complete_jd_only": True,
+        # ATS refreshes fan out over hundreds of boards and do not all finish
+        # inside the same 24-hour slice. Seven days is the verification SLA;
+        # `honest_since` below still prevents old posting dates being relabelled.
+        "seen_since": datetime.now(timezone.utc) - timedelta(days=7),
+        "honest_since": datetime.now(timezone.utc) - timedelta(days=window_days),
+        "sources": sorted(FIRST_PARTY_ATS_SOURCES),
+    }
+    if target_country:
+        filters["country"] = target_country
+    if role_terms:
+        filters["title_terms"] = role_terms
+
     try:
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
         rows = await db.get_jobs(
-            filters={
-                "status": "active",
-                "complete_jd_only": True,
-                "seen_since": cutoff,
-                "honest_since": cutoff,
-                "sources": sorted(API_SUBMITTABLE_ATS),
-            },
-            limit=max(limit * 3, limit),
+            filters=filters,
+            limit=max(effective_page_size * 10, 600),
             offset=0,
         )
     except Exception as exc:  # pragma: no cover - defensive
         log.warning("one_click_feed jobs query failed: %s", exc)
         rows = []
 
-    jobs: list[dict] = []
+    candidates: list[dict] = []
     for row in rows:
-        ats = infer_ats_type(row)
-        if not is_api_submittable(ats):
+        resolved_job_country = normalize_country_code(resolve_country(
+            f"{row.get('location') or ''} {row.get('title') or ''}"
+        ))
+        if target_country and resolved_job_country and resolved_job_country != target_country:
+            continue
+        ats = infer_ats_type(row) or str(row.get("source") or row.get("source_name") or "ats").strip().lower()
+        if preferred_roles and not _job_matches_role_terms(row, preferred_roles, role_terms):
             continue
         ready = settings.apply_live_submit_enabled and is_one_click_ready(ats, credentialed)
         if ready_only and not ready:
             continue
+        row = dict(row)
+        row["ats_type"] = ats
+        row["one_click_ready"] = ready
+        candidates.append(row)
+
+    # Hydrate the already-small, role-filtered ATS pool in one indexed query.
+    # The scoring excerpt is large enough to include responsibilities and
+    # requirements while avoiding repeated NLP passes over long legal/benefits
+    # boilerplate. The complete JD remains stored and is fetched by job detail
+    # and Prepare; this endpoint never truncates the source record itself.
+    try:
+        get_descriptions = getattr(db, "get_job_descriptions", None)
+        descriptions = (
+            await get_descriptions([str(row.get("id") or "") for row in candidates])
+            if get_descriptions else {}
+        )
+        for row in candidates:
+            full = descriptions.get(str(row.get("id") or "")) or ""
+            if full:
+                row["description"] = full[:4000]
+    except Exception as exc:  # pragma: no cover - production DB fallback
+        log.debug("one_click full-JD hydration skipped: %s", exc)
+
+    resume_text = await _active_resume_text(uid)
+    resume_cache = _prepare_resume_tokens(resume_text) if resume_text else None
+    for row in candidates:
+        title = str(row.get("title") or "")
+        description = str(row.get("description") or "")
+        if resume_text:
+            score = _cached_score_job_against_resume(
+                resume_text,
+                f"{title}\n{description}",
+                resume_cache=resume_cache,
+                job_id=str(row.get("id") or ""),
+            )
+            row["match_score"] = score or _baseline_ats_score(row)
+            row["score_type"] = "resume_match" if score else "baseline_ats"
+        else:
+            row["match_score"] = _baseline_ats_score(row)
+            row["score_type"] = "baseline_ats"
+
+    candidates.sort(key=lambda row: (
+        -int(row.get("match_score") or 0),
+        -(_job_effective_datetime(row).timestamp() if _job_effective_datetime(row) else 0),
+        str(row.get("id") or ""),
+    ))
+
+    total = len(candidates)
+    ready_total = sum(1 for row in candidates if row.get("one_click_ready"))
+    total_pages = max(1, (total + effective_page_size - 1) // effective_page_size)
+    safe_page = min(page, total_pages)
+    start = (safe_page - 1) * effective_page_size
+    page_rows = candidates[start:start + effective_page_size]
+
+    jobs: list[dict] = []
+    for row in page_rows:
+        ats = str(row.get("ats_type") or "")
         info = tier_for_ats(ats)
         jobs.append({
             "job_id": str(row.get("id") or row.get("job_id") or ""),
             "title": row.get("title") or "",
             "company": row.get("company") or "",
             "location": row.get("location") or "",
-            "job_url": row.get("source_url") or row.get("url") or "",
+            "job_url": row.get("job_url") or row.get("source_url") or row.get("url") or "",
             "ats_type": ats,
             "match_score": int(row.get("match_score") or 0),
-            "one_click_ready": ready,
+            "score_type": row.get("score_type") or "baseline_ats",
+            "one_click_ready": bool(row.get("one_click_ready")),
             "intake_method": getattr(info, "intake_method", "") if info else "",
+            "posted_at": row.get("posted_at") or row.get("first_seen_at"),
+            "source": row.get("source") or row.get("source_name") or ats,
         })
-        if len(jobs) >= limit:
-            break
 
     return {
         "jobs": jobs,
+        "total": total,
+        "ready_total": ready_total,
+        "page": safe_page,
+        "page_size": effective_page_size,
+        "total_pages": total_pages,
+        "window_days": window_days,
+        "target_roles": preferred_roles,
+        "target_country": target_country,
         "credentialed_ats": sorted(credentialed),
+        "direct_ats_sources": sorted(FIRST_PARTY_ATS_SOURCES),
         "api_submittable_ats": sorted(API_SUBMITTABLE_ATS),
         "live_submit_enabled": settings.apply_live_submit_enabled,
     }

@@ -635,6 +635,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   }, [page]);
   const pageSize = 40;
   const [totalPages, setTotalPages] = useState(1);
+  const [sourceBreakdown, setSourceBreakdown] = useState<{ direct: number; aggregator: number }>({ direct: 0, aggregator: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -809,6 +810,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       setJobs([]);
       setTotal(0);
       setTotalPages(1);
+      setSourceBreakdown({ direct: 0, aggregator: 0 });
     }
 
     const params: Record<string, string | number | boolean> = { page, page_size: pageSize, max_years: maxYears, sort: sortBy, personalized, tz_offset: new Date().getTimezoneOffset() };
@@ -855,6 +857,10 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
           ? response.total_pages
           : Math.max(1, Math.ceil((typeof reportedTotal === "number" ? reportedTotal : incoming.length) / pageSize));
         setTotalPages(Math.max(1, reportedPages));
+        setSourceBreakdown({
+          direct: Number(response?.source_breakdown?.direct || 0),
+          aggregator: Number(response?.source_breakdown?.aggregator || 0),
+        });
       })
       .catch((err) => {
         if (active && jobsRequestId.current === requestId) {
@@ -958,6 +964,9 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const scrapeTermCount = Number(taxonomyMeta?.scrape_term_count || 0);
   const targetRoleCount = userPrefs?.target_roles?.length || 0;
   const savedRoleMode = personalized && targetRoleCount > 0;
+  const onlyAggregatorMatchesToday = Boolean(
+    savedRoleMode && timeFilter === "24h" && sourceBreakdown.direct === 0 && sourceBreakdown.aggregator > 0
+  );
   const globalOpenPositionsCount = allJobsCount || total;
   const matchingPositionsCount = total;
   const timeFilterLabel = TIME_OPTIONS.find((chip) => chip.value === timeFilter)?.label || timeFilter;
@@ -1425,6 +1434,18 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
         {trackingFilterFallback && !error && (
           <div style={{ padding: "10px 12px", borderRadius: 10, background: "var(--pu-59-130-246-008)", border: "1px solid var(--pu-59-130-246-022)", color: J.t2, fontFamily: F.sans, fontSize: 12 }}>
             Showing the full fetched page because every position on this page was already marked applied or interview.
+          </div>
+        )}
+
+        {onlyAggregatorMatchesToday && !loading && !error && (
+          <div style={{ padding: "12px 14px", borderRadius: 10, background: "var(--pu-245-158-11-008)", border: "1px solid var(--pu-245-158-11-025)", color: J.t2, fontFamily: F.sans, fontSize: 12, lineHeight: 1.5, display: "flex", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: 10, flexDirection: isMobile ? "column" : "row" }}>
+            <span>
+              No direct ATS posting matched these exact saved roles in the last 24 hours. Showing all {sourceBreakdown.aggregator.toLocaleString()} matching jobs posted today from verified job boards; dates are not being widened or invented.
+            </span>
+            <button onClick={() => { window.location.href = "/dashboard/one-click-apply"; }}
+              style={{ height: 32, padding: "0 12px", borderRadius: 8, border: `1px solid ${J.line}`, background: J.card, color: J.blue, fontSize: 11.5, fontWeight: 800, fontFamily: F.sans, cursor: "pointer", whiteSpace: "nowrap" }}>
+              View recent direct ATS roles
+            </button>
           </div>
         )}
 

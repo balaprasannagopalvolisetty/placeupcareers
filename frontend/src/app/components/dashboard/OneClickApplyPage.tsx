@@ -1,18 +1,19 @@
 /**
- * One-Click Apply — positions sourced from Tier A candidate-apply APIs.
+ * One-Click Apply — personalized positions sourced from direct ATS boards.
  *
  * A job is "ready" when PlaceUp holds a submit credential for its ATS (an open
  * API like Recruitee, or an approved partner token). Ready jobs submit through
  * the official API after the review-before-submit gate — no CAPTCHA, no browser
  * automation. Jobs whose ATS isn't credentialed yet are shown as "Prepare"
  * (they still tailor + review, but can't auto-submit until the credential is
- * added). The ready set grows automatically as partner programs are approved.
+ * added). All other direct ATS roles can still be tailored and prepared.
  *
  * Follows the app rules: react-router, motion/react, theme tokens only.
  */
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
-import { Zap, ShieldCheck, Clock, RefreshCw, Building2, MapPin } from "lucide-react";
+import { useNavigate } from "react-router";
+import { Zap, ShieldCheck, Clock, RefreshCw, Building2, MapPin, FileText, CalendarDays } from "lucide-react";
 import { LoadingLogo } from "../LoadingLogo";
 import * as api from "../../lib/api";
 import { ReviewBeforeSubmit } from "./ReviewBeforeSubmit";
@@ -30,10 +31,12 @@ const T = {
 };
 
 export function OneClickApplyPage() {
+  const navigate = useNavigate();
   const [feed, setFeed] = useState<api.OneClickFeed | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [readyOnly, setReadyOnly] = useState(false);
+  const [page, setPage] = useState(1);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [review, setReview] = useState<api.ApplicationRecord | null>(null);
 
@@ -41,7 +44,7 @@ export function OneClickApplyPage() {
     setLoading(true);
     setError(null);
     try {
-      setFeed(await api.getOneClickJobs({ limit: 80, ready_only: readyOnly }));
+      setFeed(await api.getOneClickJobs({ page, page_size: 40, ready_only: readyOnly }));
     } catch (e: any) {
       setError(e?.message || "Could not load One-Click positions.");
     } finally {
@@ -49,10 +52,22 @@ export function OneClickApplyPage() {
     }
   }
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [readyOnly]);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [readyOnly, page]);
 
   const jobs = feed?.jobs || [];
-  const readyCount = useMemo(() => jobs.filter((j) => j.one_click_ready).length, [jobs]);
+  const readyCount = feed?.ready_total ?? jobs.filter((j) => j.one_click_ready).length;
+  const pageNumbers = useMemo(() => {
+    const pages = feed?.total_pages || 1;
+    const start = Math.max(1, Math.min(page - 2, pages - 4));
+    return Array.from({ length: Math.min(5, pages) }, (_, index) => start + index);
+  }, [feed?.total_pages, page]);
+
+  const formatPosted = (value?: string) => {
+    if (!value) return "Date unavailable";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "Date unavailable";
+    return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(date);
+  };
 
   async function startApply(job: api.OneClickJob) {
     setBusyId(job.job_id);
@@ -77,10 +92,10 @@ export function OneClickApplyPage() {
             <Zap size={22} style={{ color: "var(--pu-0ea5e9)" }} />
             <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0 }}>One-Click Apply</h1>
           </div>
-          <p style={{ fontSize: 14, color: T.t2, margin: "8px 0 0", maxWidth: 720 }}>
-            Positions from ATS platforms with a candidate-apply API. Ready jobs submit
-            through the official API after your review — no CAPTCHA, no browser step.
-            More light up as partner integrations are approved.
+          <p style={{ fontSize: 14, color: T.t2, margin: "8px 0 0", maxWidth: 760 }}>
+            Your saved-role matches from direct ATS platforms, ranked by resume match score.
+            Open any position to review its complete JD, then tailor your resume and cover letter
+            before the review-and-submit step.
           </p>
         </div>
         <button onClick={load}
@@ -99,7 +114,11 @@ export function OneClickApplyPage() {
           color: T.green, background: "var(--pu-1-17-38-04)", border: `1px solid ${T.border}`,
           padding: "5px 10px", borderRadius: 999,
         }}>
-          <ShieldCheck size={14} /> {readyCount} ready to submit now
+          <ShieldCheck size={14} /> {readyCount.toLocaleString()} ready to submit now
+        </span>
+        <span style={{ fontSize: 12, color: T.t2 }}>
+          {(feed?.total || 0).toLocaleString()} relevant ATS roles
+          {feed?.target_country ? ` in ${feed.target_country}` : ""} · latest {feed?.window_days || 30} days
         </span>
         <span style={{ fontSize: 12, color: T.t3, fontFamily: F.mono }}>
           Credentialed: {(feed?.credentialed_ats || []).join(", ") || "none yet"}
@@ -110,7 +129,7 @@ export function OneClickApplyPage() {
           </span>
         )}
         <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: T.t2, marginLeft: "auto", cursor: "pointer" }}>
-          <input type="checkbox" checked={readyOnly} onChange={(e) => setReadyOnly(e.target.checked)} />
+          <input type="checkbox" checked={readyOnly} onChange={(e) => { setReadyOnly(e.target.checked); setPage(1); }} />
           Ready-to-submit only
         </label>
       </div>
@@ -122,17 +141,20 @@ export function OneClickApplyPage() {
           textAlign: "center", padding: 48, borderRadius: 16, color: T.t2,
           background: T.card, border: `1px solid ${T.border}`,
         }}>
-          No API-apply positions in the current window. Try turning off the
-          "ready-to-submit only" filter, or refresh.
+          No recently verified direct ATS positions match your saved roles and target country in this window.
+          Try turning off the "ready-to-submit only" filter, or update your saved roles.
         </div>
       ) : (
         <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))" }}>
           {jobs.map((job) => (
             <motion.div key={job.job_id}
               initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.15 }}
+              role="button" tabIndex={0}
+              onClick={() => navigate(`/dashboard/jobs/${job.job_id}`)}
+              onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") navigate(`/dashboard/jobs/${job.job_id}`); }}
               style={{
                 background: T.card, border: `1px solid ${T.border}`, borderRadius: 14,
-                padding: 16, display: "flex", flexDirection: "column", gap: 10, minWidth: 0,
+                padding: 16, display: "flex", flexDirection: "column", gap: 10, minWidth: 0, cursor: "pointer",
               }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                 <div style={{ minWidth: 0 }}>
@@ -146,32 +168,67 @@ export function OneClickApplyPage() {
                     </div>
                   )}
                 </div>
-                <span style={{
-                  height: "fit-content", fontSize: 11, fontFamily: F.mono, padding: "3px 8px",
-                  borderRadius: 999, color: job.one_click_ready ? T.green : T.t3,
-                  border: `1px solid ${T.border}`, background: "var(--pu-1-17-38-04)", whiteSpace: "nowrap",
-                }}>
-                  {job.ats_type}
-                </span>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+                  <span style={{ fontSize: 22, fontWeight: 850, lineHeight: 1, color: job.match_score >= 70 ? T.green : job.match_score >= 50 ? T.warn : T.t2 }}>
+                    {job.match_score}%
+                  </span>
+                  <span style={{ fontSize: 10, color: T.t3 }}>resume match</span>
+                  <span style={{
+                    height: "fit-content", fontSize: 11, fontFamily: F.mono, padding: "3px 8px",
+                    borderRadius: 999, color: job.one_click_ready ? T.green : T.t3,
+                    border: `1px solid ${T.border}`, background: "var(--pu-1-17-38-04)", whiteSpace: "nowrap",
+                  }}>
+                    {job.ats_type}
+                  </span>
+                </div>
               </div>
 
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "auto" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", fontSize: 11, color: T.t3 }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><CalendarDays size={12} /> Posted {formatPosted(job.posted_at)}</span>
+                <span>Direct source: {job.source || job.ats_type}</span>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: "auto", flexWrap: "wrap" }}>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: job.one_click_ready ? T.green : T.t3 }}>
                   {job.one_click_ready ? <ShieldCheck size={13} /> : <Clock size={13} />}
                   {job.one_click_ready ? "One-click ready" : "Prepare & review"}
                 </span>
-                <button onClick={() => startApply(job)} disabled={busyId === job.job_id}
+                <div style={{ display: "flex", gap: 7, marginLeft: "auto" }}>
+                <button onClick={(event) => { event.stopPropagation(); navigate(`/dashboard/jobs/${job.job_id}`); }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6, padding: "8px 12px",
+                    borderRadius: 10, fontSize: 12, fontWeight: 650, color: T.t2,
+                    border: `1px solid ${T.border}`, cursor: "pointer", background: "transparent",
+                  }}>
+                  <FileText size={14} /> View full JD
+                </button>
+                <button onClick={(event) => { event.stopPropagation(); startApply(job); }} disabled={busyId === job.job_id}
                   style={{
                     display: "flex", alignItems: "center", gap: 6, padding: "8px 14px",
                     borderRadius: 10, fontSize: 13, fontWeight: 600, color: "var(--pu-ffffff-t)", border: "none",
                     cursor: busyId === job.job_id ? "wait" : "pointer",
                     opacity: busyId === job.job_id ? 0.6 : 1, background: T.grad,
                   }}>
-                  <Zap size={14} /> {job.one_click_ready ? "Apply" : "Prepare"}
+                  <Zap size={14} /> {busyId === job.job_id ? "Tailoring..." : job.one_click_ready ? "Tailor & Apply" : "Tailor & Prepare"}
                 </button>
+                </div>
               </div>
             </motion.div>
           ))}
+        </div>
+      )}
+
+      {(feed?.total_pages || 1) > 1 && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, marginTop: 18, flexWrap: "wrap" }}>
+          <button disabled={page <= 1 || loading} onClick={() => setPage((value) => Math.max(1, value - 1))}
+            style={{ padding: "8px 12px", borderRadius: 9, border: `1px solid ${T.border}`, background: "transparent", color: T.t2, cursor: page <= 1 ? "default" : "pointer", opacity: page <= 1 ? 0.45 : 1 }}>Previous</button>
+          {pageNumbers.map((pageNumber) => (
+            <button key={pageNumber} onClick={() => setPage(pageNumber)}
+              style={{ width: 34, height: 34, borderRadius: 9, border: `1px solid ${T.border}`, background: page === pageNumber ? T.grad : "transparent", color: page === pageNumber ? "var(--pu-ffffff-t)" : T.t2, cursor: "pointer" }}>{pageNumber}</button>
+          ))}
+          <button disabled={page >= (feed?.total_pages || 1) || loading} onClick={() => setPage((value) => Math.min(feed?.total_pages || 1, value + 1))}
+            style={{ padding: "8px 12px", borderRadius: 9, border: `1px solid ${T.border}`, background: "transparent", color: T.t2, cursor: page >= (feed?.total_pages || 1) ? "default" : "pointer", opacity: page >= (feed?.total_pages || 1) ? 0.45 : 1 }}>Next</button>
+          <span style={{ fontSize: 12, color: T.t3, marginLeft: 4 }}>Page {feed?.page || page} of {feed?.total_pages || 1}</span>
         </div>
       )}
 

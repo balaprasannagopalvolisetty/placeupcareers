@@ -23,6 +23,7 @@ from app.services.apply.inbox_ingest import (
 )
 from app.models.application import InboxClassification
 from app.api.apply import _assert_profile_minimized, one_click_feed
+from app.scrape_constants import FIRST_PARTY_ATS_SOURCES
 from app.models.application import ApplicationProfile
 from fastapi import HTTPException
 
@@ -67,7 +68,15 @@ def test_ats_inference_uses_metadata_and_canonical_url():
     assert tiers.infer_ats_type({"source_url": "https://acme.wd5.myworkdayjobs.com/en-US/jobs/job/1"}) == "workday"
 
 
-def test_one_click_feed_filters_api_sources_in_database():
+def test_one_click_feed_filters_direct_ats_sources_in_database(monkeypatch):
+    from app.api import jobs as jobs_api
+
+    async def no_resume(_uid):
+        return None
+
+    monkeypatch.setattr(jobs_api, "_preference_terms", lambda _uid: ([], []))
+    monkeypatch.setattr(jobs_api, "_active_resume_text", no_resume)
+
     class FakeJobsDb:
         def __init__(self):
             self.filters = None
@@ -84,11 +93,59 @@ def test_one_click_feed_filters_api_sources_in_database():
             }]
 
     fake_db = FakeJobsDb()
-    result = asyncio.run(one_click_feed(limit=60, ready_only=False, uid="u1", db=fake_db))
+    result = asyncio.run(one_click_feed(limit=60, page=1, page_size=40, ready_only=False, uid="u1", db=fake_db))
 
-    assert fake_db.filters["sources"] == sorted(tiers.API_SUBMITTABLE_ATS)
+    assert fake_db.filters["sources"] == sorted(FIRST_PARTY_ATS_SOURCES)
     assert [job["job_id"] for job in result["jobs"]] == ["job-1"]
     assert result["jobs"][0]["ats_type"] == "recruitee"
+    assert result["total"] == 1
+    assert result["total_pages"] == 1
+
+
+def test_one_click_feed_personalizes_scores_and_paginates(monkeypatch):
+    from app.api import jobs as jobs_api
+
+    async def active_resume(_uid):
+        return "Security engineer with Python, AWS, SIEM, and incident response experience."
+
+    monkeypatch.setattr(
+        jobs_api,
+        "_preference_terms",
+        lambda _uid: (["security engineer"], ["united states"]),
+    )
+    monkeypatch.setattr(jobs_api, "_active_resume_text", active_resume)
+    monkeypatch.setattr(jobs_api, "_prepare_resume_tokens", lambda _text: {})
+    monkeypatch.setattr(
+        jobs_api,
+        "_cached_score_job_against_resume",
+        lambda _resume, job_text, **_kw: 91 if "Cloud" in job_text else (78 if "Product" in job_text else 66),
+    )
+
+    class FakeJobsDb:
+        def __init__(self):
+            self.filters = None
+
+        async def get_jobs(self, *, filters, limit, offset):
+            self.filters = filters
+            return [
+                {"id": "j1", "title": "Security Engineer", "company": "A", "country": "US", "source": "greenhouse", "job_url": "https://boards.greenhouse.io/a/jobs/1", "description": "security role"},
+                {"id": "j2", "title": "Cloud Security Engineer", "company": "B", "country": "US", "source": "ashby", "job_url": "https://jobs.ashbyhq.com/b/2", "description": "cloud role"},
+                {"id": "j3", "title": "Product Security Engineer", "company": "C", "country": "US", "source": "smartrecruiters", "job_url": "https://jobs.smartrecruiters.com/c/3", "description": "product role"},
+            ]
+
+        async def get_job_descriptions(self, job_ids):
+            return {job_id: f"Complete responsibilities and qualifications for {job_id}. " * 30 for job_id in job_ids}
+
+    fake_db = FakeJobsDb()
+    result = asyncio.run(one_click_feed(limit=None, page=1, page_size=2, ready_only=False, uid="u1", db=fake_db))
+
+    assert fake_db.filters["country"] == "US"
+    assert "security engineer" in [term.lower() for term in fake_db.filters["title_terms"]]
+    assert result["total"] == 3
+    assert result["total_pages"] == 2
+    assert [job["job_id"] for job in result["jobs"]] == ["j2", "j3"]
+    assert [job["match_score"] for job in result["jobs"]] == [91, 78]
+    assert result["jobs"][0]["job_url"].startswith("https://")
 
 
 def test_prepare_rejects_missing_job_instead_of_creating_empty_application():

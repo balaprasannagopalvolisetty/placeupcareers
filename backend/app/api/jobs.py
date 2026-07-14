@@ -1548,6 +1548,7 @@ async def list_jobs(
             logger.warning("count_jobs degraded to estimate (%s): %s", fallback, count_exc)
             return fallback
 
+    source_breakdown: dict[str, int] = {"direct": 0, "aggregator": 0}
     try:
         free_text_search_active = bool(search and search.strip())
         # Taxonomy filters are derived from title/category matching. Counting
@@ -1702,12 +1703,23 @@ async def list_jobs(
                 or meta.get("location_country")
                 or visa_payload.get("visa_country")
             )
-            location_scope, _ = in_scope_country(
+            location_scope, resolved_location_country = in_scope_country(
                 f"{j.get('location') or ''} {requested_location} {j.get('title') or ''}",
                 default_country=default_country,
             )
             if not location_scope:
                 continue
+            # Some aggregator imports stamped the scrape's requested country
+            # onto the row even when the returned location was abroad. The
+            # visible country filter must trust the posting location/title
+            # evidence over that stale metadata or a US feed leaks IN/DE/CA
+            # roles. Unknown/remote locations may still use the stored default.
+            if filters.get("country") and resolved_location_country != filters["country"]:
+                continue
+            if resolved_location_country:
+                j = dict(j)
+                j["country"] = resolved_location_country
+                j["visa"] = {**visa_payload, "visa_country": resolved_location_country}
             if not is_target_experience(
                 j.get("title") or "",
                 meta.get("years_min"),
@@ -1750,25 +1762,40 @@ async def list_jobs(
             j["role"] = rname
             decorated.append(j)
 
+        # Apply saved-role matching BEFORE the source policy. The old order
+        # chose unrelated direct rows first and then removed them by role,
+        # producing an empty personalized page even when matching jobs existed.
+        if personalized and preferred_roles and not role and not category and not free_text_search_active:
+            decorated = [
+                j for j in decorated
+                if _job_matches_role_terms(j, preferred_roles, preferred_role_terms)
+            ]
+
+        from app.scrape_constants import AGGREGATOR_SOURCES
+        source_breakdown = {
+            "direct": sum(
+                1 for j in decorated
+                if str(j.get("source_name") or j.get("source") or "").strip().lower() not in AGGREGATOR_SOURCES
+            ),
+            "aggregator": sum(
+                1 for j in decorated
+                if str(j.get("source_name") or j.get("source") or "").strip().lower() in AGGREGATOR_SOURCES
+            ),
+        }
+
         # Direct-source policy: the feed serves ATS/company-page postings.
         # Aggregator copies (LinkedIn/Indeed/Dice/...) only backfill when the
         # direct pool can't fill a page, so users apply at the source instead
         # of through re-scraped listings. JOBS_FEED_INCLUDE_AGGREGATORS=true
         # restores blended results without a deploy.
         if not filters.get("source") and os.getenv("JOBS_FEED_INCLUDE_AGGREGATORS", "").strip().lower() not in {"1", "true", "yes", "on"}:
-            from app.scrape_constants import AGGREGATOR_SOURCES
             direct_rows = [
                 j for j in decorated
-                if str(j.get("source_name") or "").strip().lower() not in AGGREGATOR_SOURCES
+                if str(j.get("source_name") or j.get("source") or "").strip().lower() not in AGGREGATOR_SOURCES
             ]
             if len(direct_rows) >= page_size:
                 decorated = direct_rows
 
-        if personalized and preferred_roles and not role and not category and not free_text_search_active:
-            decorated = [
-                j for j in decorated
-                if _job_matches_role_terms(j, preferred_roles, preferred_role_terms)
-            ]
         if taxonomy_filter_active:
             total = len(decorated)
             total_pages = max(1, math.ceil(total / page_size))
@@ -2020,6 +2047,7 @@ async def list_jobs(
             "page": page,
             "page_size": page_size,
             "total_pages": total_pages,
+            "source_breakdown": source_breakdown,
             "filters_applied": {
                 **{k: v for k, v in filters.items() if k != "coverage_scan"},
                 **({"role": role} if role else {}),
