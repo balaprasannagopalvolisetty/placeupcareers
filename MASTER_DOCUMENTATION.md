@@ -280,6 +280,8 @@ async scorers (`match_engine.compute_match_score`,
 Groq is absent or fails, a deterministic parser still produces a truthful,
 renderable resume and cover-letter fallback. Broken or old document caches are
 regenerated under tailoring pipeline v2.
+`deploy_backend.ps1` binds `GROQ_API_KEY` from Secret Manager when that secret
+exists; without it, production uses the deterministic renderable fallback.
 
 Job Detail scores (2026-07-11): the top card's Match % rates ROLE fit; the
 "Resume readiness" card (formerly "ATS score breakdown") rates how well the
