@@ -129,7 +129,20 @@ def _write_results(results: list[dict[str, Any]]) -> dict[str, int]:
     master_updated = 0
     jobs_updated = 0
     with client.session() as db:
-        for result in results:
+        from app.etl.master_jobs import try_acquire_master_jobs_lock
+
+        master_lock_acquired = try_acquire_master_jobs_lock(db)
+        if not master_lock_acquired:
+            logger.warning(
+                "Master publisher is active; writing resolver results to jobs only. "
+                "The next master sync will publish them."
+            )
+
+        # Match the canonical ordering used by MASTER_SYNC_SQL. Updating a
+        # multi-row batch in discovery order previously formed a lock cycle
+        # with the canonical-key-ordered upsert.
+        ordered_results = sorted(results, key=lambda item: str(item.get("id") or ""))
+        for result in ordered_results:
             params = {
                 "id": result["id"],
                 "description": result.get("description") or "",
@@ -137,7 +150,8 @@ def _write_results(results: list[dict[str, Any]]) -> dict[str, int]:
                 "source_name": result.get("source_name") or "",
                 "source_job_id": result.get("source_job_id") or "",
             }
-            master_updated += int(db.execute(text(UPDATE_MASTER_SQL), params).rowcount or 0)
+            if master_lock_acquired:
+                master_updated += int(db.execute(text(UPDATE_MASTER_SQL), params).rowcount or 0)
             jobs_updated += int(db.execute(text(UPDATE_JOBS_SQL), params).rowcount or 0)
     return {"master_updated": master_updated, "jobs_updated": jobs_updated}
 

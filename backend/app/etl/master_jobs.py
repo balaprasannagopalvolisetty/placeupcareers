@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+import time
 
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.db.postgres import PostgresClient
@@ -20,6 +22,8 @@ logger = logging.getLogger("placeup.etl.master_jobs")
 # holding those locks can itself form a deadlock cycle.
 MASTER_REBUILD_LOCK_KEY = 6412226682827
 MASTER_REBUILD_LOCK_SQL = "SELECT pg_try_advisory_xact_lock(:lock_key)"
+MASTER_SYNC_MAX_ATTEMPTS = 3
+MASTER_SYNC_RETRY_DELAYS_SECONDS = (0.25, 0.75)
 
 
 MASTER_SYNC_SQL = """
@@ -154,13 +158,24 @@ ON CONFLICT (canonical_key) DO UPDATE SET
 """
 
 
-def _rebuild_in_session(db: Session) -> int:
-    acquired = bool(
+def try_acquire_master_jobs_lock(db: Session) -> bool:
+    """Return whether this transaction owns the shared master_jobs writer lock."""
+    return bool(
         db.execute(
             text(MASTER_REBUILD_LOCK_SQL),
             {"lock_key": MASTER_REBUILD_LOCK_KEY},
         ).scalar()
     )
+
+
+def _is_deadlock(exc: OperationalError) -> bool:
+    original = getattr(exc, "orig", None)
+    sqlstate = getattr(original, "sqlstate", None) or getattr(original, "pgcode", None)
+    return sqlstate == "40P01"
+
+
+def _rebuild_in_session(db: Session) -> int:
+    acquired = try_acquire_master_jobs_lock(db)
     if not acquired:
         logger.warning(
             "Master jobs sync skipped: another publisher currently owns lock %s",
@@ -168,10 +183,31 @@ def _rebuild_in_session(db: Session) -> int:
         )
         return 0
 
-    result = db.execute(text(MASTER_SYNC_SQL))
-    count = int(result.rowcount or 0)
-    logger.info("Master jobs sync complete: %s rows upserted", count)
-    return count
+    # The advisory lock coordinates all current publishers, while the nested
+    # transaction protects source rows already written by callers. If an old
+    # or external writer that does not yet honor the lock causes PostgreSQL to
+    # choose this statement as a 40P01 deadlock victim, rolling back only the
+    # savepoint lets us retry without losing those collected source jobs.
+    for attempt in range(1, MASTER_SYNC_MAX_ATTEMPTS + 1):
+        try:
+            with db.begin_nested():
+                result = db.execute(text(MASTER_SYNC_SQL))
+            count = int(result.rowcount or 0)
+            logger.info("Master jobs sync complete: %s rows upserted", count)
+            return count
+        except OperationalError as exc:
+            if not _is_deadlock(exc) or attempt >= MASTER_SYNC_MAX_ATTEMPTS:
+                raise
+            delay = MASTER_SYNC_RETRY_DELAYS_SECONDS[attempt - 1]
+            logger.warning(
+                "Master jobs sync deadlocked on attempt %s/%s; retrying in %.2fs",
+                attempt,
+                MASTER_SYNC_MAX_ATTEMPTS,
+                delay,
+            )
+            time.sleep(delay)
+
+    raise RuntimeError("Master jobs sync retry loop exhausted")  # pragma: no cover
 
 
 def rebuild_master_jobs(client: PostgresClient | Session | None = None, *, db: Session | None = None) -> int:

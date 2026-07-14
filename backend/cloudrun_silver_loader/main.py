@@ -14,7 +14,7 @@ logging.basicConfig(level=logging.INFO)
 FIRESTORE_DATABASE = os.environ.get("FIRESTORE_DATABASE", "ra-jobs")
 FIRESTORE_COLLECTION = os.environ.get("FIRESTORE_COLLECTION", "jobs")
 
-DB_USER = os.environ.get("DB_USER", "postgres")
+DB_USER = os.environ.get("DB_USER", "placeup")
 DB_PASS = os.environ.get("DB_PASS")
 DB_NAME = os.environ.get("DB_NAME", "jobssilverdb")
 DB_HOST = os.environ.get("DB_HOST", "/cloudsql/steel-shine-492401-u6:us-east1:placeup-backend")
@@ -364,6 +364,7 @@ def clean_and_load_jobs(request):
             currency, visa_opt, visa_stem_opt, visa_h1b, h1b_verified, visa_score, status,
             posted_at, first_seen_at, last_seen_at, source_priority, merged_sources, extra_metadata
         FROM source_rows
+        ORDER BY canonical_key
         ON CONFLICT (canonical_key) DO UPDATE SET
             title = EXCLUDED.title,
             company = EXCLUDED.company,
@@ -395,9 +396,26 @@ def clean_and_load_jobs(request):
         if clean_records:
             log_record_types(clean_records[0], label="first_clean_record")
 
-        cursor.execute(schema_repair_query)
+        # Production schema changes are owned by migrations/deploys, not by a
+        # scheduled data-loader identity. Running ALTER TABLE here required
+        # table ownership and caused every scheduled load to fail after moving
+        # from the legacy postgres superuser to the least-privileged app user.
+        # Keep the repair available only for an explicitly opted-in recovery
+        # deployment.
+        if os.getenv("SILVER_SCHEMA_REPAIR_ENABLED", "false").strip().lower() in {"1", "true", "yes"}:
+            cursor.execute(schema_repair_query)
         execute_values(cursor, insert_query, clean_records, template=row_template, page_size=500)
-        cursor.execute(master_sync_query)
+        # Coordinate with the API/worker master publisher. The silver rows are
+        # still committed when another publisher owns the lock; that publisher
+        # (or the next scheduled one) will include them. This prevents the two
+        # independently deployed pipelines from interleaving ON CONFLICT row
+        # locks and deadlocking.
+        cursor.execute("SELECT pg_try_advisory_xact_lock(%s)", (6412226682827,))
+        master_lock_acquired = bool(cursor.fetchone()[0])
+        if master_lock_acquired:
+            cursor.execute(master_sync_query)
+        else:
+            logger.warning("Master sync skipped because another publisher owns the shared lock")
         conn.commit()
 
         cursor.close()

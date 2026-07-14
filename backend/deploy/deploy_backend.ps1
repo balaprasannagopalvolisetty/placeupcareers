@@ -254,6 +254,22 @@ if ($LASTEXITCODE -ne 0) {
   throw "placeup-api deploy FAILED - the API is still running the previous image. Fix the error above and rerun."
 }
 
+# Fast, deterministic publication smoke/repair job. Keeping this definition in
+# the main deploy prevents manual rebuilds from silently running a stale image.
+gcloud.cmd run jobs deploy placeup-master-jobs-rebuild `
+  --image $Image `
+  --region $Region `
+  --service-account "placeup-etl-sa@$ProjectId.iam.gserviceaccount.com" `
+  --command python `
+  --args="-m,app.etl.master_jobs" `
+  --set-cloudsql-instances "$ProjectId`:$Region`:$DbInstance" `
+  --set-env-vars "APP_ENV=production,DATABASE_BACKEND=postgres,DB_POOL_SIZE=1,DB_MAX_OVERFLOW=0" `
+  --set-secrets "DATABASE_URL=DATABASE_URL:latest" `
+  --memory 1Gi `
+  --cpu 1 `
+  --max-retries 0 `
+  --task-timeout 1800
+
 gcloud.cmd run jobs deploy placeup-job-scraper-6h `
   --image $Image `
   --region $Region `
@@ -402,8 +418,8 @@ gcloud.cmd run jobs deploy placeup-board-discovery-sweep `
   --set-secrets "DATABASE_URL=DATABASE_URL:latest" `
   --memory 1Gi `
   --cpu 1 `
-  --max-retries 1 `
-  --task-timeout 21600
+  --max-retries 0 `
+  --task-timeout 19800
 
 # Resolves each third-party posting (LinkedIn/Dice/Glassdoor/...) to the
 # employer's OFFICIAL careers page / ATS posting and upgrades the JD +
@@ -419,7 +435,7 @@ gcloud.cmd run jobs deploy placeup-company-link-resolver `
   --set-secrets "DATABASE_URL=DATABASE_URL:latest" `
   --memory 1Gi `
   --cpu 1 `
-  --max-retries 1 `
+  --max-retries 0 `
   --task-timeout 3600
 
 gcloud.cmd run jobs deploy placeup-stale-jobs-sweeper `

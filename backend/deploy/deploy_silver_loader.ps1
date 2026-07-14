@@ -3,13 +3,15 @@ param(
   [string]$Region = "us-east1",
   [string]$DbInstance = "placeup-backend",
   [string]$DbName = "jobssilverdb",
-  [string]$DbUser = "postgres",
+  [string]$DbUser = "placeup",
   [string]$DbPassSecret = "SILVER_DB_PASS",
   [string]$FirestoreDatabase = "ra-jobs",
   [string]$FirestoreCollection = "jobs"
 )
 
 $ErrorActionPreference = "Stop"
+$BackendRoot = Split-Path -Parent $PSScriptRoot
+$SilverLoaderRoot = Join-Path $BackendRoot "cloudrun_silver_loader"
 
 gcloud.cmd config set project $ProjectId
 
@@ -17,7 +19,7 @@ gcloud.cmd functions deploy clean-and-load-jobs `
   --gen2 `
   --runtime python312 `
   --region $Region `
-  --source ".\cloudrun_silver_loader" `
+  --source $SilverLoaderRoot `
   --entry-point clean_and_load_jobs `
   --trigger-http `
   --no-allow-unauthenticated `
