@@ -7,6 +7,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Image = "$Region-docker.pkg.dev/$ProjectId/placeup/frontend:latest"
+$FrontendRoot = $PSScriptRoot
+$CloudBuildConfig = Join-Path $FrontendRoot "cloudbuild.yaml"
 
 # Guard: this nginx-served SPA ships CSP "connect-src 'self'" and uses
 # SameSite=Strict refresh cookies. Baking an ABSOLUTE API base means every
@@ -48,8 +50,8 @@ if (@($repoName) -notcontains "placeup") {
     --description="PlaceUp frontend containers"
 }
 
-Invoke-Gcloud builds submit . `
-  --config cloudbuild.yaml `
+Invoke-Gcloud builds submit $FrontendRoot `
+  --config $CloudBuildConfig `
   --substitutions "_IMAGE=$Image,_VITE_API_BASE=$ApiBase"
 
 Invoke-Gcloud run deploy placeup-frontend `

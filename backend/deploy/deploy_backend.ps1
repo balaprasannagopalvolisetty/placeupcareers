@@ -18,6 +18,9 @@ param(
   # Backward-compatible switch. Production now always provisions Cloud Tasks;
   # passing this remains accepted by older runbooks but is no longer required.
   [switch]$CreateApplyQueues,
+  # Reuse the already-pushed :latest image when resuming after a post-build
+  # infrastructure failure. Normal deployments should leave this unset.
+  [switch]$SkipBuild,
   # Cloud Tasks HTTP push target (the service that runs a queued submission).
   # Defaults to the public API service, protected by its internal credential.
   [string]$ApplyWorkerUrl = "https://placeup-api-rui2a74muq-ue.a.run.app",
@@ -63,6 +66,21 @@ function Test-SecretExists([string]$SecretName) {
   $ErrorActionPreference = "Continue"
   try {
     & gcloud.cmd secrets describe $SecretName --project $ProjectId --format="value(name)" *> $null
+    return $LASTEXITCODE -eq 0
+  } finally {
+    $ErrorActionPreference = $previousErrorAction
+  }
+}
+
+# Expected "not found" checks must not become terminating PowerShell errors.
+# gcloud writes a 404 to stderr for missing resources; with the script-wide
+# ErrorActionPreference=Stop that used to abort the first production deploy
+# before the idempotent create branch could run.
+function Test-GcloudResourceExists([scriptblock]$DescribeCommand) {
+  $previousErrorAction = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    & $DescribeCommand *> $null
     return $LASTEXITCODE -eq 0
   } finally {
     $ErrorActionPreference = $previousErrorAction
@@ -140,9 +158,13 @@ if ($GreenhouseTokensSecret) {
 # ./backend subfolder, which silently FAILED to build a new image when run
 # from backend/ - every job then redeployed the stale :latest image.)
 $BackendRoot = Split-Path -Parent $PSScriptRoot
-gcloud.cmd builds submit $BackendRoot --tag $Image
-if ($LASTEXITCODE -ne 0) {
-  throw "Cloud Build failed - aborting deploy so services are not re-pointed at a stale image."
+if (-not $SkipBuild) {
+  gcloud.cmd builds submit $BackendRoot --tag $Image
+  if ($LASTEXITCODE -ne 0) {
+    throw "Cloud Build failed - aborting deploy so services are not re-pointed at a stale image."
+  }
+} else {
+  Write-Host "Skipping Cloud Build and reusing the already-pushed image $Image."
 }
 
 # --- Tailored-document storage bucket (apply subsystem) ---
@@ -151,12 +173,19 @@ if ($LASTEXITCODE -ne 0) {
 # cover letters. Safe to re-run.
 $ApiSa = "placeup-api-sa@$ProjectId.iam.gserviceaccount.com"
 $BucketUri = "gs://$ApplyDocsBucket"
-gcloud.cmd storage buckets describe $BucketUri --project $ProjectId 2>$null | Out-Null
-if ($LASTEXITCODE -ne 0) {
+if (-not (Test-GcloudResourceExists {
+  gcloud.cmd storage buckets describe $BucketUri --project $ProjectId
+})) {
   Write-Host "Creating tailored-docs bucket $BucketUri ..."
-  gcloud.cmd storage buckets create $BucketUri --project $ProjectId --location $Region --uniform-bucket-level-access
+  gcloud.cmd storage buckets create $BucketUri --project $ProjectId --location $Region `
+    --uniform-bucket-level-access --public-access-prevention
   if ($LASTEXITCODE -ne 0) { throw "Failed to create bucket $BucketUri" }
 }
+# Enforce privacy on existing buckets as well; relying on inherited project
+# policy could allow a future policy change to expose tailored documents.
+gcloud.cmd storage buckets update $BucketUri --project $ProjectId `
+  --uniform-bucket-level-access --public-access-prevention | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "Failed to enforce private access on bucket $BucketUri" }
 gcloud.cmd storage buckets add-iam-policy-binding $BucketUri `
   --member "serviceAccount:$ApiSa" `
   --role "roles/storage.objectAdmin" | Out-Null
@@ -177,8 +206,10 @@ Write-Host "Ensuring Cloud Tasks API + per-ATS queues in $Region ..."
     @{ name = "apply-browser";          rps = 0.1; conc = 1  }
   )
   foreach ($q in $ApplyQueues) {
-    gcloud.cmd tasks queues describe $q.name --location $Region --project $ProjectId 2>$null | Out-Null
-    if ($LASTEXITCODE -ne 0) {
+    $QueueName = $q.name
+    if (-not (Test-GcloudResourceExists {
+      gcloud.cmd tasks queues describe $QueueName --location $Region --project $ProjectId
+    })) {
       Write-Host "  creating queue $($q.name) ($($q.rps)/s, conc $($q.conc))"
       gcloud.cmd tasks queues create $q.name --location $Region --project $ProjectId `
         --max-dispatches-per-second $q.rps --max-concurrent-dispatches $q.conc
