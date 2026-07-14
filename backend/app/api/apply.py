@@ -178,8 +178,11 @@ async def one_click_feed(
     credential for that ATS (open API or approved partner token); the rest still
     prepare + review but can't auto-submit until a credential is added.
 
-    Reuses the same jobs source as the main feed; no ranking/pagination beyond
-    freshness so the tab stays cheap.
+    Query the API-capable ATS sources at the database boundary. The previous
+    implementation fetched a small slice of the entire global inventory and
+    filtered ATS types afterwards. High-volume aggregator rows could fill that
+    slice (or make it exceed the statement timeout), leaving this page empty
+    even while eligible ATS rows existed in the database.
     """
     credentialed = parse_credentialed(settings.apply_credentialed_ats)
     try:
@@ -190,8 +193,9 @@ async def one_click_feed(
                 "complete_jd_only": True,
                 "seen_since": cutoff,
                 "honest_since": cutoff,
+                "sources": sorted(API_SUBMITTABLE_ATS),
             },
-            limit=max(limit * 6, limit),
+            limit=max(limit * 3, limit),
             offset=0,
         )
     except Exception as exc:  # pragma: no cover - defensive

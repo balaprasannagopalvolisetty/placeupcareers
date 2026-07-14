@@ -548,13 +548,16 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
 
   // Persist + restore the filter setup across navigation (opening a job and
   // coming back used to reset every filter — #3a). Restored once on mount.
+  // Version 2 retires old sessions that permanently restored Last 8h / 0-2
+  // years and made a healthy 24-hour inventory look empty after deployment.
+  const JOB_FILTERS_STORAGE_KEY = "placeup_jobs_filters_v2";
   const filtersRestored = useRef(false);
   const countryFilterInitialized = useRef(false);
   useEffect(() => {
     if (filtersRestored.current) return;
     filtersRestored.current = true;
     let f: any = {};
-    try { f = JSON.parse(sessionStorage.getItem("placeup_jobs_filters") || "{}"); } catch { f = {}; }
+    try { f = JSON.parse(sessionStorage.getItem(JOB_FILTERS_STORAGE_KEY) || "{}"); } catch { f = {}; }
     if (f && Object.keys(f).length) {
       if (f.searchRaw) { setSearchRaw(f.searchRaw); setSearch(f.searchRaw); }
       if (f.locationRaw) { setLocationRaw(f.locationRaw); setLocation(f.locationRaw); }
@@ -578,7 +581,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   }, []);
   useEffect(() => {
     try {
-      sessionStorage.setItem("placeup_jobs_filters", JSON.stringify({
+      sessionStorage.setItem(JOB_FILTERS_STORAGE_KEY, JSON.stringify({
         searchRaw, locationRaw, countryFilter, visaProgramFilter, timeFilter,
         maxYears, visaOnly, sortBy, activeCategory, activeRole,
       }));
@@ -1437,7 +1440,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
               <div style={{ fontSize: 14, fontWeight: 850, color: J.text, marginBottom: 6 }}>No jobs match the current filters.</div>
               <div style={{ fontSize: 12, color: J.t2, marginBottom: 12 }}>Try clearing the search, location, or time filter.</div>
               <button
-                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setCountryFilter(defaultTargetCountry || "all"); setVisaProgramFilter(""); setVisaOnly(false); setTimeFilter("24h"); setActiveCategory(null); setActiveRole(null); setPersonalized(true); setPage(1); }}
+                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setCountryFilter(defaultTargetCountry || "all"); setVisaProgramFilter(""); setVisaOnly(false); setTimeFilter("24h"); setMaxYears(10); setActiveCategory(null); setActiveRole(null); setPersonalized(true); setPage(1); }}
                 style={{ padding: "8px 14px", borderRadius: 8, border: `1px solid ${J.line}`, background: "var(--pu-148-163-184-005)", color: J.blue, fontSize: 12, fontWeight: 800, fontFamily: F.sans, cursor: "pointer" }}
               >Reset filters</button>
             </div>

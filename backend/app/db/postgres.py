@@ -901,6 +901,10 @@ class PostgresClient:
             stmt = stmt.where(Job.category == filters["category"])
         if filters.get("source"):
             stmt = stmt.where(Job.source_name == filters["source"])
+        if filters.get("sources"):
+            sources = [str(value).strip().lower() for value in filters["sources"] if str(value).strip()]
+            if sources:
+                stmt = stmt.where(Job.source_name.in_(sources))
         if filters.get("status"):
             stmt = stmt.where(Job.status == filters["status"])
         if filters.get("complete_jd_only"):
@@ -1011,6 +1015,10 @@ class PostgresClient:
             stmt = stmt.where(MasterJob.extra_metadata.op("->>")("category") == filters["category"])
         if filters.get("source"):
             stmt = stmt.where(MasterJob.source_name == filters["source"])
+        if filters.get("sources"):
+            sources = [str(value).strip().lower() for value in filters["sources"] if str(value).strip()]
+            if sources:
+                stmt = stmt.where(MasterJob.source_name.in_(sources))
         if filters.get("status"):
             stmt = stmt.where(MasterJob.status == filters["status"])
         if filters.get("complete_jd_only"):

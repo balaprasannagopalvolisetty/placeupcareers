@@ -22,7 +22,7 @@ from app.services.apply.inbox_ingest import (
     parse_webhook,
 )
 from app.models.application import InboxClassification
-from app.api.apply import _assert_profile_minimized
+from app.api.apply import _assert_profile_minimized, one_click_feed
 from app.models.application import ApplicationProfile
 from fastapi import HTTPException
 
@@ -65,6 +65,30 @@ def test_ats_inference_uses_metadata_and_canonical_url():
     assert tiers.infer_ats_type({"source_name": "tier1_ats", "extra_metadata": {"ats": "ashby"}}) == "ashby"
     assert tiers.infer_ats_type({"source_name": "tier1_ats", "source_url": "https://jobs.lever.co/acme/123"}) == "lever"
     assert tiers.infer_ats_type({"source_url": "https://acme.wd5.myworkdayjobs.com/en-US/jobs/job/1"}) == "workday"
+
+
+def test_one_click_feed_filters_api_sources_in_database():
+    class FakeJobsDb:
+        def __init__(self):
+            self.filters = None
+
+        async def get_jobs(self, *, filters, limit, offset):
+            self.filters = filters
+            return [{
+                "id": "job-1",
+                "title": "Security Engineer",
+                "company": "Acme",
+                "location": "New York, NY",
+                "source_name": "recruitee",
+                "source_url": "https://acme.recruitee.com/o/security-engineer",
+            }]
+
+    fake_db = FakeJobsDb()
+    result = asyncio.run(one_click_feed(limit=60, ready_only=False, uid="u1", db=fake_db))
+
+    assert fake_db.filters["sources"] == sorted(tiers.API_SUBMITTABLE_ATS)
+    assert [job["job_id"] for job in result["jobs"]] == ["job-1"]
+    assert result["jobs"][0]["ats_type"] == "recruitee"
 
 
 def test_prepare_rejects_missing_job_instead_of_creating_empty_application():
