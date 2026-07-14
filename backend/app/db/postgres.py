@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy import and_, create_engine, func, inspect, or_, select, text
@@ -329,6 +329,49 @@ class PostgresClient:
 
     async def get_job(self, job_id: str) -> Optional[dict]:
         return self.get_job_sync(job_id)
+
+    def source_coverage_sync(self, hours: int = 24) -> list[dict]:
+        """Count active serving jobs grouped by source over a rolling window.
+
+        Powers the ATS-coverage health endpoint so operators can see, at a
+        glance, how much of the live inventory comes from first-party ATS
+        boards versus LinkedIn/Indeed/Dice aggregators. Uses the honest posting
+        window (posted_at, falling back to first_seen_at) — never last_seen_at,
+        which aggregator refreshes constantly bump.
+        """
+        hours = max(1, int(hours))
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        if self._master_jobs_available():
+            with self.session() as db:
+                stmt = (
+                    select(MasterJob.source_name, func.count().label("n"))
+                    .where(MasterJob.status == "active")
+                    .where(func.length(func.trim(func.coalesce(MasterJob.description, ""))) >= COMPLETE_JD_MIN_CHARS)
+                    .where(
+                        or_(
+                            MasterJob.posted_at >= cutoff,
+                            and_(MasterJob.posted_at.is_(None), MasterJob.first_seen_at >= cutoff),
+                        )
+                    )
+                    .group_by(MasterJob.source_name)
+                )
+                rows = db.execute(stmt).all()
+        else:
+            with self.session() as db:
+                stmt = (
+                    select(Job.source_name, func.count().label("n"))
+                    .where(Job.status == "active")
+                    .where(func.length(func.trim(func.coalesce(Job.description, ""))) >= COMPLETE_JD_MIN_CHARS)
+                    .where(
+                        or_(
+                            Job.posted_at >= cutoff,
+                            and_(Job.posted_at.is_(None), Job.first_seen_at >= cutoff),
+                        )
+                    )
+                    .group_by(Job.source_name)
+                )
+                rows = db.execute(stmt).all()
+        return [{"source": (row[0] or "unknown"), "count": int(row[1] or 0)} for row in rows]
 
     async def upsert_job(self, job_id: str, job_data: dict) -> None:
         await self.upsert_jobs_batch([job_data | {"id": job_id}])

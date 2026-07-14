@@ -249,6 +249,38 @@ CATS (catsone), and an Eightfold alias (same /api/apply/v2/jobs pattern as
 Phenom) — 36 dispatch keys in careers_ats.ATS_DISPATCH, wired into
 first-party sources, slug probes, and tier1 providers.
 
+Direct-ATS collection guarantee (2026-07-14): the 6h scraper's
+`DIRECT_ATS_CONNECTOR_SOURCES` now includes the free, no-auth first-party ATS
+APIs (`greenhouse`, `lever`, `ashby`, `smartrecruiters`) alongside
+`career_site_feed`/`remoteok`/`remotive`/`jobicy`. Every scheduled run now pulls
+real ATS-portal jobs directly from the H-1B sponsor board registry — no longer
+dependent on `APIFY_TOKEN` or the separate `placeup-board-discovery-sweep` job —
+so the direct-ATS inventory that feeds One-Click Apply refreshes even when the
+separate board sweep is delayed. Override with
+`API_CONNECTOR_SOURCES`. The per-country matrix jobs now also run this direct-ATS
+pass — once per country, on the first role shard (`CLOUD_RUN_TASK_INDEX=0`) — so
+all 32 countries get real ATS-portal coverage without fetching every board on all
+117 shards. Whole-board results are filtered before persistence, so one country
+task cannot load another country's rows. Toggle with
+`SCRAPER_MATRIX_DIRECT_ATS_ENABLED` (default true).
+
+ATS coverage health check (2026-07-14): `GET /api/health/ats-coverage?hours=24`
+reports the live supply mix — first-party ATS boards vs aggregators
+(LinkedIn/Indeed/Dice) — with per-source complete-JD counts, percentages,
+`first_party_share`, and a `direct_ats_healthy` flag. Health requires a non-zero
+direct count and `ATS_COVERAGE_MIN_FIRST_PARTY_SHARE` (default 5%). Use it to confirm the scraper is actually
+landing ATS-portal jobs and to watch One-Click Apply supply. Backed by
+`PostgresClient.source_coverage_sync` (honest posting window, never last_seen_at).
+
+Apply tailoring completion (2026-07-14): (1) the duplicate cover-letter
+implementation is consolidated into one Groq path with true-facts-only numeric
+grounding checks; ungrounded output is rejected. (2) `tailoring_pipeline._score` calls the real
+async scorers (`match_engine.compute_match_score`,
+`ats_scorer.score_resume_against_job`) and records before/after scores. (3) when
+Groq is absent or fails, a deterministic parser still produces a truthful,
+renderable resume and cover-letter fallback. Broken or old document caches are
+regenerated under tailoring pipeline v2.
+
 Job Detail scores (2026-07-11): the top card's Match % rates ROLE fit; the
 "Resume readiness" card (formerly "ATS score breakdown") rates how well the
 resume document presents that fit (bullets/metrics/formatting). Labeled +
@@ -438,15 +470,16 @@ code change. `tiers.parse_credentialed` + `tiers.is_one_click_ready` gate this.
 ### One-Click Apply tab
 
 A dedicated dashboard tab (`/dashboard/one-click-apply`,
-`frontend/src/app/components/dashboard/OneClickApplyPage.tsx`) lists positions
-sourced from Tier A candidate-apply APIs. Each card is flagged `one_click_ready`
+`frontend/src/app/components/dashboard/OneClickApplyPage.tsx`) lists the user's
+target-role matches from recently verified direct ATS boards, with full-JD
+links, real posting dates, resume match score, and numbered pagination. Each card is flagged `one_click_ready`
 when its ATS is in `APPLY_CREDENTIALED_ATS` (submittable via the official API
 right now, after the review gate — no CAPTCHA, no browser). Jobs whose ATS isn't
-credentialed yet show as "Prepare" (they still tailor + review, but can't
+credentialed yet show as "Tailor & Prepare" (they still tailor + review, but can't
 auto-submit until the credential lands). The ready set expands automatically as
 partner programs are approved. Backed by `GET /api/apply/one-click`
-(`limit`, `ready_only`) which reuses the main jobs source and annotates each row.
-Day one this is effectively the Recruitee feed; it grows with each partner token.
+(`page`, `page_size`, `ready_only`). Only the ready subset is constrained by
+partner credentials; non-ready direct ATS roles remain available for preparation.
 
 ### Components
 
@@ -468,16 +501,17 @@ Day one this is effectively the Recruitee feed; it grows with each partner token
   credentials. Real submission is gated by `APPLY_LIVE_SUBMIT_ENABLED` (default
   false = dry-run: validate + prepare, no POST) so deploys can't fire real
   applications by accident.
-- Browser worker (`app/services/apply/browser_worker.py`) — Playwright scaffold
-  + the graceful-handoff state machine. On a CAPTCHA / OTP / bot-check it sets
-  `NEEDS_YOU`, freezes automation, and opens a live view (CDP screencast over
-  WebSocket; user input relayed back). It never solves or bypasses a control.
+- Browser worker (`app/services/apply/browser_worker.py`) — graceful-handoff
+  state machine with an injectable Playwright-driver seam. The generic Tier-C
+  driver/live-view bridge is not enabled yet; those roles safely return
+  `NEEDS_YOU` for manual completion. It never solves or bypasses a control, and
   `browser.close()` always runs in a finally block.
 - Tailoring pipeline (`app/services/apply/tailoring_pipeline.py`) — JD-signal
   extraction → tailor resume with only true facts from the base resume (reuses
   `resume_tailor_llm` + `ats_analysis`) → per-position cover letter
   (`resume_tailor_llm.generate_cover_letter`, true facts only) → render to
-  ATS-safe DOCX/PDF → score → cache per (user, company, position). Keep the LLM router
+  ATS-safe DOCX/PDF → before/after score → cache per (user, company, position).
+  A deterministic true-facts-only fallback remains renderable when Groq is down. Keep the LLM router
   model-agnostic. Runs for every application (apply + One-Click).
 - Resume renderer (`app/services/apply/resume_renderer.py`) — server-side,
   ATS-safe renderer that turns the tailored resume spec into DOCX (python-docx)
@@ -602,8 +636,9 @@ rejection in the design doc, not just here.
 - Phase 0 (done in this pass): tier framework + Tier A adapters (Greenhouse,
   Ashby, SmartRecruiters, Workable, Recruitee) + application data model +
   tracker + review gate. No browser automation yet.
-- Phase 1: tailoring pipeline with diff UI + review gate; dedicated-inbox SES
-  capture + OTP extraction.
+- Phase 1 (backend complete): tailoring pipeline with diff data + review gate;
+  dedicated-inbox SES capture + OTP extraction. Rich field-level diff display
+  can continue to improve in the frontend.
 - Phase 2: Playwright browser worker on Cloud Run Jobs for Tier C (start with
   Greenhouse-form + Lever, then Workday); Cloud Tasks per-ATS queues.
 - Phase 3: real-time handoff (screencast + input relay); full kanban statuses;

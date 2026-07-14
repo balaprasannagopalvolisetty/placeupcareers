@@ -94,7 +94,7 @@ def _extract_json(text: str) -> Optional[dict]:
     return None
 
 
-def _valid(parsed: dict) -> bool:
+def _valid(parsed: dict, resume_text: str = "") -> bool:
     if not isinstance(parsed, dict):
         return False
     resume = parsed.get("resume")
@@ -106,6 +106,16 @@ def _valid(parsed: dict) -> bool:
     exp = resume.get("experience")
     if not isinstance(exp, list) or not exp:
         return False
+    if resume_text:
+        grounded_sections = {
+            key: resume.get(key)
+            for key in ("summary", "skills", "experience", "education", "certifications", "projects")
+        }
+        output_numbers = set(re.findall(r"\d+(?:\.\d+)?", json.dumps(grounded_sections, default=str)))
+        source_numbers = set(re.findall(r"\d+(?:\.\d+)?", resume_text))
+        if output_numbers - source_numbers:
+            logger.warning("LLM resume introduced ungrounded numeric claims; falling back.")
+            return False
     return True
 
 
@@ -174,7 +184,7 @@ async def tailor_resume(
         return None
 
     parsed = _extract_json(content)
-    if not _valid(parsed):
+    if not _valid(parsed, resume_text):
         logger.warning("LLM resume tailoring returned unusable JSON; falling back.")
         return None
     return parsed
@@ -227,7 +237,20 @@ async def generate_cover_letter(
             resp.raise_for_status()
             data = resp.json()
         text = (data["choices"][0]["message"]["content"] or "").strip()
-    except (httpx.HTTPError, KeyError, IndexError, TypeError) as exc:
+    except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
         logger.warning("LLM cover-letter call failed: %s", exc)
         return None
-    return text or None
+    text = re.sub(r"^```(?:\w+)?\s*|\s*```$", "", text, flags=re.I | re.M).strip()
+    if len(text) < 80:
+        logger.warning("LLM cover-letter returned too little text; skipping.")
+        return None
+
+    # A prompt is not a safety boundary. Reject numeric claims that do not
+    # occur in the source resume so an LLM cannot invent percentages, years,
+    # dollar amounts, team sizes, or scale metrics in the generated letter.
+    source_numbers = set(re.findall(r"\d+(?:\.\d+)?", resume_text or ""))
+    output_numbers = set(re.findall(r"\d+(?:\.\d+)?", text))
+    if output_numbers - source_numbers:
+        logger.warning("LLM cover-letter introduced ungrounded numeric claims; skipping.")
+        return None
+    return text

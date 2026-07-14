@@ -28,4 +28,5 @@ FIRST_PARTY_ATS_SOURCES: frozenset[str] = frozenset({
     "zoho_recruit", "adp", "dover", "gem", "successfactors", "pinpoint",
     "polymer", "phenom", "dayforce", "join", "hireology",
     "freshteam", "jobylon", "comeet", "homerun", "catsone", "eightfold",
+    "career_site_feed",
 })

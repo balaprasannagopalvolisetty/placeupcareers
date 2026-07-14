@@ -18,9 +18,38 @@ from app.etl.loaders.jobs import load_normalized_jobs
 from app.etl.master_jobs import rebuild_master_jobs
 from app.etl.normalizers.jobs import infer_country
 from app.job_taxonomy import all_role_names
+from app.services.global_visa_rules import normalize_country_code
 from app.utils.deduplication import generate_content_hash
 
 logger = logging.getLogger(__name__)
+
+
+def _filter_requested_countries(
+    rows: list[NormalizedJob],
+    countries: list[str] | None,
+) -> list[NormalizedJob]:
+    """Enforce country isolation for whole-board ATS connectors.
+
+    Greenhouse/Lever/Ashby/SmartRecruiters APIs return an entire company board,
+    unlike query-based providers. Without this post-fetch boundary, every one
+    of the 32 country matrix jobs persisted the same global board rows. Unknown
+    remote locations remain acceptable only for a multi-country/global pass;
+    a single-country job must have evidence for that country.
+    """
+    requested = {
+        code
+        for value in (countries or [])
+        if (code := normalize_country_code(value))
+    }
+    if not requested:
+        return rows
+    allow_unknown = len(requested) > 1
+    filtered: list[NormalizedJob] = []
+    for job in rows:
+        country = normalize_country_code(job.country) or normalize_country_code(infer_country(job.location))
+        if country in requested or (not country and allow_unknown):
+            filtered.append(job)
+    return filtered
 
 
 async def fetch_all(
@@ -94,7 +123,14 @@ async def fetch_all(
         if exc:
             logger.warning("api_source failed source=%s error=%s", label, exc)
             continue
-        logger.info("api_source fetched source=%s count=%s", label, len(rows))
+        fetched_count = len(rows)
+        rows = _filter_requested_countries(rows, countries)
+        logger.info(
+            "api_source fetched source=%s count=%s country_eligible=%s",
+            label,
+            fetched_count,
+            len(rows),
+        )
         if rows and on_batch:
             await on_batch(label, rows)
         jobs.extend(rows)

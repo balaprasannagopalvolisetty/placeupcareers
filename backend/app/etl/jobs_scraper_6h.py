@@ -36,7 +36,14 @@ from app.utils.terminal_table import render_table
 logger = logging.getLogger(__name__)
 
 DIRECT_ATS_CONNECTOR_SOURCES = (
-    "career_site_feed~remoteok~remotive~jobicy"
+    # Free, no-auth first-party ATS APIs (company tokens come from the H-1B
+    # sponsor board registry) so EVERY scraper run collects real jobs straight
+    # from ATS portals — not just the LinkedIn/Indeed/Dice aggregator pass.
+    # These run independently of APIFY_TOKEN and of the separate
+    # placeup-board-discovery-sweep job, so direct-ATS inventory (which feeds
+    # the One-Click Apply page) can never go stale because a side job didn't run.
+    # career_site_feed still adds Apify career-page ingest when APIFY_TOKEN is set.
+    "greenhouse~lever~ashby~smartrecruiters~career_site_feed~remoteok~remotive~jobicy"
 )
 
 # Public/API passes must cover every taxonomy role, not just USAJobs. Keep the
@@ -107,6 +114,13 @@ COVERAGE_FLOOR_ENABLED = os.getenv("SCRAPER_COVERAGE_FLOOR_ENABLED", "false").st
 # schedule. Repeating that multi-hour universe walk here delayed the fresh
 # JobSpy batches until the next scheduler tick, so it is opt-in only.
 BOARD_PASS_ENABLED = os.getenv("SCRAPER_BOARD_PASS_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+# Per-country matrix jobs historically skipped the direct-ATS connector pass
+# entirely ("the global scraper owns that pass"). When the 32-country matrix IS
+# the scheduled topology, that leaves country inventories aggregator-heavy. With
+# this on (default), each country job runs the direct first-party ATS connectors
+# once — on its first role shard (task index 0) — so all 32 countries get real
+# ATS-portal coverage without fetching every board on all 117 shards.
+MATRIX_DIRECT_ATS_ENABLED = os.getenv("SCRAPER_MATRIX_DIRECT_ATS_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
 ROLE_PIPELINE_COUNT = max(1, int(os.getenv("SCRAPER_ROLE_PIPELINE_COUNT", "117")))
 
 
@@ -258,10 +272,22 @@ async def _run_batched() -> int:
             ",".join(countries),
         )
 
-    if matrix_task:
-        logger.info("Country-role task skips global ATS connector fan-out; the global scraper owns that pass.")
-    else:
-        logger.info("6h scraper running direct H1B/ATS board pass")
+    # Direct first-party ATS connector pass (Greenhouse/Lever/Ashby/
+    # SmartRecruiters + career-site feed). The global (non-matrix) scraper always
+    # runs it. In the per-country matrix, running full board fetches on all 117
+    # role shards would be 117x redundant, so it runs once per country — on the
+    # first shard (task index 0) — which still gives every one of the 32
+    # countries a direct-ATS pass (the target-country prefilter keeps only that
+    # country's rows). Toggle with SCRAPER_MATRIX_DIRECT_ATS_ENABLED.
+    run_direct_ats = (matrix_task is None) or (MATRIX_DIRECT_ATS_ENABLED and matrix_task[0] == 0)
+    if matrix_task and not run_direct_ats:
+        logger.info(
+            "Country-role task %s/%s skips the direct ATS connector pass; shard 1 of %s owns it.",
+            matrix_task[0] + 1, matrix_task[1], countries[0],
+        )
+    if run_direct_ats:
+        scope = f"country={countries[0]}" if matrix_task else "global"
+        logger.info("Scraper running direct first-party ATS connector pass (%s)", scope)
         try:
             api_connector_count = await run_api_connectors_to_postgres(
                 queries=terms,
@@ -272,10 +298,10 @@ async def _run_batched() -> int:
                 # the time-sensitive role/country searches even begin.
                 sync_master=False,
             )
-            logger.info("6h official API/ATS connectors loaded %s jobs", api_connector_count)
+            logger.info("Direct API/ATS connectors loaded %s jobs (%s)", api_connector_count, scope)
         except Exception as exc:
             failures += 1
-            logger.warning("6h official API/ATS connector pass failed; continuing with board/public sources: %s", exc)
+            logger.warning("Direct API/ATS connector pass failed; continuing with board/public sources: %s", exc)
     if BOARD_PASS_ENABLED and not matrix_task:
         board_code = await run(_base_args(
             queries=_encoded_terms(linkedin_style_roles),
