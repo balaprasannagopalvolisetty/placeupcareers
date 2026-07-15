@@ -2,6 +2,7 @@ FROM node:24-bookworm-slim
 
 ARG OPENCLAW_VERSION=2026.6.6
 RUN npm install --global "openclaw@${OPENCLAW_VERSION}" \
+    && node "$(npm root --global)/openclaw/scripts/postinstall-bundled-plugins.mjs" \
     && useradd --create-home --uid 10001 openclaw
 
 WORKDIR /srv/placeup-openclaw

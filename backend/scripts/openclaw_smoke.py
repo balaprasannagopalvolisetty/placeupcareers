@@ -40,6 +40,12 @@ def main() -> int:
         json=payload,
         timeout=150,
     )
+    if response.is_error:
+        try:
+            detail = str(response.json().get("detail") or "")[:500]
+        except Exception:
+            detail = "non-JSON error response"
+        print(json.dumps({"ok": False, "status": response.status_code, "detail": detail}))
     response.raise_for_status()
     data = response.json()
     resume_spec = data.get("resume_spec")

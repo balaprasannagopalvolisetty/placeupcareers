@@ -3,7 +3,8 @@ param(
     [string]$Region = "us-east1",
     [string]$ProviderSecret = "OLLAMA_API_KEY",
     [string]$ServiceTokenSecret = "openclaw-placeup-service-token",
-    [string]$Model = "ollama-cloud/glm-5.2:cloud"
+    [string]$Model = "ollama-cloud/glm-5.2",
+    [switch]$EnableApiIntegration
 )
 
 $ErrorActionPreference = "Stop"
@@ -33,13 +34,16 @@ gcloud secrets add-iam-policy-binding $ServiceTokenSecret --project $ProjectId `
     --member "serviceAccount:$ApiServiceAccount" --role roles/secretmanager.secretAccessor | Out-Null
 gcloud builds submit $Root --tag $Image --project $ProjectId
 if ($LASTEXITCODE -ne 0) { throw "OpenClaw Cloud Build failed; API integration was not changed." }
+# Cloud Run callers authenticate with Google-signed ID tokens. Using the
+# normal ingress path keeps service-to-service calls working without a VPC
+# connector; --no-allow-unauthenticated and roles/run.invoker keep it private.
 gcloud run deploy $Service `
     --image $Image `
     --project $ProjectId `
     --region $Region `
     --service-account $OpenClawServiceAccount `
     --no-allow-unauthenticated `
-    --ingress internal `
+    --ingress all `
     --memory 2Gi `
     --cpu 2 `
     --concurrency 1 `
@@ -55,9 +59,13 @@ gcloud run services add-iam-policy-binding $Service `
 
 $Url = gcloud run services describe $Service --project $ProjectId --region $Region --format "value(status.url)"
 if ($LASTEXITCODE -ne 0 -or -not $Url) { throw "OpenClaw service has no ready URL; refusing to enable the API integration." }
-gcloud run services update placeup-api --project $ProjectId --region $Region `
-    --update-env-vars "OPENCLAW_TAILOR_ENABLED=true,OPENCLAW_TAILOR_URL=$Url,OPENCLAW_TAILOR_TIMEOUT_SECONDS=120" `
-    --update-secrets "OPENCLAW_TAILOR_TOKEN=$ServiceTokenSecret`:latest"
-if ($LASTEXITCODE -ne 0) { throw "OpenClaw is deployed, but placeup-api integration update failed." }
 Write-Host "OpenClaw tailoring service deployed privately at $Url"
-Write-Host "placeup-api is now configured to use the private OpenClaw GLM-5.2 tailoring service."
+if ($EnableApiIntegration) {
+    gcloud run services update placeup-api --project $ProjectId --region $Region `
+        --update-env-vars "OPENCLAW_TAILOR_ENABLED=true,OPENCLAW_TAILOR_URL=$Url,OPENCLAW_TAILOR_TIMEOUT_SECONDS=120" `
+        --update-secrets "OPENCLAW_TAILOR_TOKEN=$ServiceTokenSecret`:latest"
+    if ($LASTEXITCODE -ne 0) { throw "OpenClaw is deployed, but placeup-api integration update failed." }
+    Write-Host "placeup-api is now configured to use the private OpenClaw GLM-5.2 tailoring service."
+} else {
+    Write-Host "placeup-api was not changed. Run the smoke job, then redeploy with -EnableApiIntegration after the model call passes."
+}
