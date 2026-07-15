@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 const port = Number(process.env.PORT || 8080);
 const serviceToken = process.env.PLACEUP_SERVICE_TOKEN || "";
-const model = process.env.OPENCLAW_MODEL || "openai/gpt-5-mini";
+const model = process.env.OPENCLAW_MODEL || "ollama-cloud/glm-5.2:cloud";
 
 function reply(res, code, body) {
   const payload = JSON.stringify(body);

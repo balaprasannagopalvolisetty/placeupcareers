@@ -128,7 +128,7 @@ def test_one_click_feed_personalizes_scores_and_paginates(monkeypatch):
         async def get_jobs(self, *, filters, limit, offset):
             self.filters = filters
             return [
-                {"id": "j1", "title": "Security Engineer", "company": "A", "country": "US", "source": "greenhouse", "job_url": "https://boards.greenhouse.io/a/jobs/1", "description": "security role"},
+                {"id": "j1", "title": "Security Engineer", "company": "A", "country": "", "location": "New York, NY", "source": "greenhouse", "job_url": "https://boards.greenhouse.io/a/jobs/1", "description": "security role"},
                 {"id": "j2", "title": "Cloud Security Engineer", "company": "B", "country": "US", "source": "ashby", "job_url": "https://jobs.ashbyhq.com/b/2", "description": "cloud role"},
                 {"id": "j3", "title": "Product Security Engineer", "company": "C", "country": "US", "source": "smartrecruiters", "job_url": "https://jobs.smartrecruiters.com/c/3", "description": "product role"},
             ]
@@ -139,7 +139,9 @@ def test_one_click_feed_personalizes_scores_and_paginates(monkeypatch):
     fake_db = FakeJobsDb()
     result = asyncio.run(one_click_feed(limit=None, page=1, page_size=2, ready_only=False, uid="u1", db=fake_db))
 
-    assert fake_db.filters["country"] == "US"
+    # Country is resolved from each ATS posting's location after the query so
+    # rows with "New York, NY" and a blank country column are not lost.
+    assert "country" not in fake_db.filters
     assert "security engineer" in [term.lower() for term in fake_db.filters["title_terms"]]
     assert result["total"] == 3
     assert result["total_pages"] == 2

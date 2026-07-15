@@ -224,8 +224,12 @@ async def one_click_feed(
         "honest_since": datetime.now(timezone.utc) - timedelta(days=window_days),
         "sources": sorted(FIRST_PARTY_ATS_SOURCES),
     }
-    if target_country:
-        filters["country"] = target_country
+    # Do not push the destination country into SQL here. A large portion of
+    # first-party ATS rows have a precise location (for example New York, NY)
+    # but an empty/stale normalized country column. The exact SQL predicate
+    # discarded those legitimate US roles before the location resolver below
+    # could classify them. Country targeting remains strict in Python using
+    # the posting's location/title evidence.
     if role_terms:
         filters["title_terms"] = role_terms
 
@@ -242,9 +246,10 @@ async def one_click_feed(
     candidates: list[dict] = []
     for row in rows:
         resolved_job_country = normalize_country_code(resolve_country(
-            f"{row.get('location') or ''} {row.get('title') or ''}"
+            f"{row.get('location') or ''} {row.get('title') or ''}",
+            default=row.get("country"),
         ))
-        if target_country and resolved_job_country and resolved_job_country != target_country:
+        if target_country and resolved_job_country != target_country:
             continue
         ats = infer_ats_type(row) or str(row.get("source") or row.get("source_name") or "ats").strip().lower()
         if preferred_roles and not _job_matches_role_terms(row, preferred_roles, role_terms):
