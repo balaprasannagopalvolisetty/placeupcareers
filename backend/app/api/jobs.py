@@ -39,6 +39,7 @@ from app.services.global_visa_rules import (
     resolve_country,
     visa_program_options,
 )
+from app.services.apply.tiers import infer_ats_type, is_one_click_ready, parse_credentialed
 from app.utils.job_quality import (
     has_complete_job_description,
     has_usable_job_description,
@@ -1400,6 +1401,7 @@ async def list_jobs(
     entry_level: bool = Query(True, description="Prioritize 0-10 yr roles (default true)"),
     max_years: int = Query(10, ge=0, le=50, description="Default max required years of experience"),
     tz_offset: int = Query(0, description="Client timezone offset in minutes from UTC (JS getTimezoneOffset)"),
+    one_click_only: bool = Query(False, description="Only show positions with a live, configured API submission path"),
     db=Depends(get_db),
     user_id: Optional[str] = Depends(fast_optional_user_id),
 ):
@@ -1415,6 +1417,7 @@ async def list_jobs(
         user_id or "anon", page, page_size, search, location, country, visa_program,
         category, source, status, visa_only, role, time_filter, sort, personalized,
         include_scores, entry_level, max_years, min_salary, job_type, tz_offset,
+        one_click_only,
     ))
     filters = {}
     if search:
@@ -1525,6 +1528,7 @@ async def list_jobs(
         "entry_level": entry_level,
         "max_years": max_years,
         "tz_offset": tz_offset,
+        "one_click_only": one_click_only,
         "filters": filters,
         "preferred_roles": preferred_roles,
         "preferred_locations": preferred_locations,
@@ -1943,37 +1947,52 @@ async def list_jobs(
         # slice from the full pool; for the standard path the over-fetch ×4
         # means we have more than page_size rows after dropping non-US/CA
         # and out-of-experience-range items, so we still trim to page_size.
-        if taxonomy_filter_active:
-            page_jobs = decorated[offset:offset + page_size]
-        elif sort in {"match", "recent"}:
-            page_jobs = decorated[offset:offset + page_size]
-        else:
-            page_jobs = decorated[offset:offset + page_size] if filters.get("source") else _source_diverse_page(decorated, page_size, page)
+        credentialed_ats = parse_credentialed(settings.apply_credentialed_ats)
+        for row in decorated:
+            ats_type = infer_ats_type(row)
+            row["ats_type"] = ats_type
+            row["one_click_ready"] = bool(
+                settings.apply_live_submit_enabled
+                and is_one_click_ready(ats_type, credentialed_ats)
+            )
+        if one_click_only:
+            decorated = [row for row in decorated if row.get("one_click_ready")]
+
+        # Hydrate and validate enough candidates to backfill a full page. The
+        # old order selected 40 first and then rejected incomplete JDs, which
+        # is why users could see only 24 positions on an otherwise full page.
+        needed = offset + page_size
+        hydrate_limit = min(len(decorated), max(needed * 4, page_size * 4))
+        page_candidates = decorated[:hydrate_limit]
 
         # Hydrate the visible page with FULL descriptions. Pool queries use a
         # 900-char prefix for speed, but the cards/detail/tailor queue should
         # operate on the complete JD for the rows the user can actually see.
-        if page_jobs:
+        if page_candidates:
             try:
                 get_descriptions = getattr(db, "get_job_descriptions", None)
                 full_descriptions = (
-                    await get_descriptions([str(j.get("id") or "") for j in page_jobs])
+                    await get_descriptions([str(j.get("id") or "") for j in page_candidates])
                     if get_descriptions else {}
                 )
-                for j in page_jobs:
+                for j in page_candidates:
                     full = full_descriptions.get(str(j.get("id") or "")) or ""
                     if full and len(full) > len(str(j.get("description") or "")):
                         j["description"] = full[:50000]
             except Exception as exc:
-                logger.debug("Full-text page hydration skipped: %s", exc)
+                logger.debug("Full-text candidate hydration skipped: %s", exc)
 
         # The SQL length predicate keeps pool queries fast; this exact shared
         # policy check runs after full-text hydration and is the final guard
         # before any job description can cross the frontend API boundary.
-        page_jobs = [
-            row for row in page_jobs
+        complete_candidates = [
+            row for row in page_candidates
             if has_complete_job_description(row.get("description") or "")
         ]
+        page_jobs = complete_candidates[offset:offset + page_size]
+        if hydrate_limit == len(decorated):
+            total = len(complete_candidates)
+            total_pages = max(1, math.ceil(total / page_size)) if total else 1
 
         # Re-score the visible page against hydrated descriptions so the list
         # shows the exact number the Job Detail page computes. Pool ranking
@@ -2058,6 +2077,7 @@ async def list_jobs(
                 **({"status": status} if status else {}),
                 **({"sort": sort} if sort else {}),
                 **({"personalized": personalized and bool(preferred_roles)} if personalized else {}),
+                **({"one_click_only": True} if one_click_only else {}),
             },
         }
         if job_posts:
@@ -2613,6 +2633,12 @@ async def get_top_matches(
         post_filter_before = today_before
     resume_text = await _active_resume_text(user_id)
     preferred_roles, preferred_locations = _preference_terms(user_id)
+    if not location:
+        for preferred_location in preferred_locations:
+            preferred_country = normalize_country_code(resolve_country(preferred_location))
+            if preferred_country:
+                filters["country"] = preferred_country
+                break
     terms = _terms_for_role_names(preferred_roles)
     _selected_roles = set(preferred_roles)
     _tier_role_terms = [t.lower() for t in terms if len(str(t).strip()) >= 3]
@@ -2675,7 +2701,7 @@ async def get_top_matches(
                 item["score_type"] = "baseline_ats"
             hay = f"{item.get('title') or ''} {rname} {cat}".lower()
             loc_hay = f"{item.get('location') or ''}".lower()
-            if isinstance(item.get("match_score"), int) and preferred_roles and any(term in hay for term in preferred_roles):
+            if isinstance(item.get("match_score"), int) and preferred_roles and any(term.lower() in hay for term in preferred_roles):
                 item["match_score"] = min(98, int(item["match_score"] or 0) + 6)
             if isinstance(item.get("match_score"), int) and preferred_locations and any(term in loc_hay for term in preferred_locations):
                 item["match_score"] = min(98, int(item["match_score"] or 0) + 3)
@@ -2706,6 +2732,25 @@ async def get_top_matches(
             if isinstance(row.get("match_score"), int) and int(row.get("match_score") or 0) >= min_score
         ]
     ranked.sort(key=lambda row: _projection_sort_key(row, tz_offset_minutes=tz_offset))
+    # Give every selected role a fair chance to appear on Overview instead of
+    # allowing one high-volume title family to consume all featured slots.
+    role_diverse: list[dict] = []
+    selected_ids: set[str] = set()
+    for preferred_role in preferred_roles:
+        role_terms = _terms_for_role_names([preferred_role])
+        match = next(
+            (
+                row for row in ranked
+                if str(row.get("id") or "") not in selected_ids
+                and _job_matches_role_terms(row, [preferred_role], role_terms)
+            ),
+            None,
+        )
+        if match:
+            role_diverse.append(match)
+            selected_ids.add(str(match.get("id") or ""))
+    role_diverse.extend(row for row in ranked if str(row.get("id") or "") not in selected_ids)
+    ranked = role_diverse
     response_payload = {
         "jobs": ranked[:limit],
         "total": len(ranked),
@@ -2713,6 +2758,8 @@ async def get_top_matches(
         "page_size": limit,
         "total_pages": 1,
         "filters_applied": {**filters, "min_score": min_score, "fresh_basis": fresh_basis},
+        "target_roles": preferred_roles,
+        "target_country": filters.get("country"),
     }
     _store_fast_response(response_cache_key, response_payload)
     return response_payload

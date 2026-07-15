@@ -21,6 +21,8 @@ store object so it is testable without Firestore.
 """
 from __future__ import annotations
 
+import asyncio
+import html
 import logging
 from datetime import datetime, timezone
 from typing import Optional, Protocol
@@ -34,7 +36,8 @@ from app.models.application import (
 )
 from app.services.apply.base import get_adapter
 from app.services.apply.browser_worker import BrowserApplyWorker, HandoffTrigger
-from app.services.apply.tiers import infer_ats_type, is_api_submittable, resolve_tier, tier_for_ats
+from app.services.apply.tiers import infer_ats_type, is_one_click_ready, parse_credentialed, resolve_tier, tier_for_ats
+from app.config import settings
 
 log = logging.getLogger("placeup.apply")
 
@@ -117,7 +120,11 @@ async def prepare_application(
     answers = dict((profile.get("custom_answers") or {}))
 
     # --- Tier A: build the API payload for review ---
-    if is_api_submittable(ats_type):
+    api_ready = bool(
+        settings.apply_live_submit_enabled
+        and is_one_click_ready(ats_type, parse_credentialed(settings.apply_credentialed_ats))
+    )
+    if api_ready:
         adapter = get_adapter(ats_type)
         payload = adapter.build_payload(
             job=job, profile=profile, answers=answers,
@@ -235,6 +242,40 @@ async def _run_submit(store: ApplyStore, app_id: str) -> dict:
                 app["confirmation_ref"] = result.confirmation_ref
                 app["submitted_at"] = _now().isoformat()
                 _event(app, "submitted_api", result.message, status=ApplicationStatus.APPLIED)
+                # Send PlaceUp's own receipt only after the ATS accepted the
+                # submission. Employer acknowledgements are controlled by the
+                # employer/ATS and cannot honestly be promised by PlaceUp.
+                profile = store.get_profile(app.get("uid") or "") or {}
+                recipient = str(profile.get("email") or "").strip()
+                if recipient:
+                    try:
+                        from app.services.email import send_email
+
+                        title = html.escape(str(app.get("title") or "position"))
+                        company = html.escape(str(app.get("company") or "the employer"))
+                        ref = html.escape(str(app.get("confirmation_ref") or "Not provided by ATS"))
+                        await asyncio.to_thread(
+                            send_email,
+                            recipient,
+                            f"Application submitted: {app.get('title') or 'position'}",
+                            html=(
+                                f"<h2>Your application was submitted</h2>"
+                                f"<p><strong>{title}</strong> at <strong>{company}</strong></p>"
+                                f"<p>ATS confirmation: <code>{ref}</code></p>"
+                                "<p>You can review this submission in PlaceUp Applications.</p>"
+                            ),
+                            text=(
+                                f"Your application for {app.get('title') or 'position'} at "
+                                f"{app.get('company') or 'the employer'} was submitted. "
+                                f"ATS confirmation: {app.get('confirmation_ref') or 'Not provided by ATS'}."
+                            ),
+                        )
+                        app["confirmation_email_sent"] = True
+                        _event(app, "confirmation_email_sent", recipient)
+                    except Exception as exc:
+                        log.warning("Submission receipt email failed for %s: %s", app_id, exc)
+                        app["confirmation_email_sent"] = False
+                        _event(app, "confirmation_email_failed", str(exc)[:240])
             elif result.needs_you:
                 app["needs_you_reason"] = result.needs_you_reason
                 _event(app, "handoff_required", result.message, status=ApplicationStatus.NEEDS_YOU)

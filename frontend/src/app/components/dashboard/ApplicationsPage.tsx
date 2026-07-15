@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { LoadingLogo } from "../LoadingLogo";
 import { Link } from "react-router";
 import { motion } from "motion/react";
-import { Briefcase, ExternalLink, Search, RefreshCw, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { Briefcase, Download, ExternalLink, Search, RefreshCw, CheckCircle2, XCircle, Clock } from "lucide-react";
 import * as api from "../../lib/api";
 import { ReviewBeforeSubmit } from "./ReviewBeforeSubmit";
 
@@ -56,6 +56,20 @@ export function ApplicationsPage() {
   const [reloadKey, setReloadKey] = useState(0);
   const [automated, setAutomated] = useState<api.ApplicationRecord[]>([]);
   const [reviewing, setReviewing] = useState<api.ApplicationRecord | null>(null);
+
+  async function downloadDocument(appId: string, kind: "resume" | "cover_letter") {
+    try {
+      const { blob, filename } = await api.getApplicationDocument(appId, kind, "pdf");
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err: any) {
+      setError(err?.message || "Document is not available.");
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -182,17 +196,23 @@ export function ApplicationsPage() {
         <div style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 14, padding: 14 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: T.text, fontFamily: F.sans, marginBottom: 10 }}>PlaceUp-assisted applications</div>
           <div style={{ display: "grid", gap: 8 }}>
-            {automated.slice(0, 8).map((app) => (
+            {automated.slice(0, 20).map((app) => (
               <div key={app.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center", padding: "10px 12px", borderRadius: 10, border: `1px solid ${T.border}`, background: "var(--pu-148-163-184-003)" }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ color: T.text, fontSize: 13, fontWeight: 700, fontFamily: F.sans, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{app.title || "Application"}</div>
                   <div style={{ color: T.t3, fontSize: 11, fontFamily: F.sans, marginTop: 2 }}>{app.company || "Unknown company"} · Tier {app.tier} · {app.status.replaceAll("_", " ")}</div>
+                  {app.confirmation_ref && <div style={{ color: "var(--pu-86efac-t)", fontSize: 11, fontFamily: F.mono, marginTop: 4 }}>ATS confirmation: {app.confirmation_ref}</div>}
+                  {app.submitted_at && <div style={{ color: T.t3, fontSize: 10, marginTop: 2 }}>Submitted {formatDate(app.submitted_at)}{app.confirmation_email_sent ? " · receipt emailed" : ""}</div>}
                 </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
                 {app.status === "needs_review" ? (
                   <button onClick={() => setReviewing(app)} style={{ padding: "7px 11px", borderRadius: 8, border: "none", background: T.grad, color: "white", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Review</button>
-                ) : app.job_url ? (
+                ) : null}
+                {app.tailored_resume_url && <button onClick={() => downloadDocument(app.id, "resume")} title="Download tailored resume" style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${T.border}`, background: "transparent", color: T.t2, cursor: "pointer" }}><Download size={12} /></button>}
+                {app.job_url ? (
                   <a href={app.job_url} target="_blank" rel="noopener noreferrer" style={{ color: T.t2, fontSize: 11, textDecoration: "none" }}>Open <ExternalLink size={10} /></a>
                 ) : null}
+                </div>
               </div>
             ))}
           </div>

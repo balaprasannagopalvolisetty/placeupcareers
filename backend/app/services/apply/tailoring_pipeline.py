@@ -225,17 +225,35 @@ async def run_tailoring(
     spec: Optional[dict] = None
     tailoring_method = "none"
 
+    # OpenClaw is an optional, private service boundary. It is never hosted in
+    # the API process; failure or an invalid truth-grounded response falls
+    # through to the established LLM/deterministic pipeline.
+    try:
+        from app.services.apply.openclaw_tailor import tailor_with_openclaw
+
+        openclaw_result = await tailor_with_openclaw(
+            resume_text=resume_text,
+            job=job,
+            profile=profile,
+        )
+        if openclaw_result:
+            spec = openclaw_result["resume_spec"]
+            cover_text = openclaw_result.get("cover_letter") or None
+            tailoring_method = "openclaw"
+    except Exception as exc:
+        log.warning("OpenClaw integration skipped: %s", exc)
+
     try:
         from app.services.resume_tailor_llm import tailor_resume
 
-        spec = await tailor_resume(
+        spec = spec or await tailor_resume(
             resume_text=resume_text,
             job_title=title,
             job_company=company,
             job_description=jd,
             work_auth=str(profile.get("visa_status") or profile.get("work_authorization") or ""),
         )
-        if spec:
+        if spec and tailoring_method == "none":
             tailoring_method = "llm"
     except Exception as exc:
         log.warning("tailoring LLM step failed: %s", exc)
@@ -248,7 +266,7 @@ async def run_tailoring(
             log.warning("deterministic tailoring fallback failed: %s", exc)
 
     if spec:
-        if generate_cover_letter:
+        if generate_cover_letter and not cover_text:
             try:
                 from app.services.resume_tailor_llm import generate_cover_letter as _gen_cover
 

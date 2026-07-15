@@ -12,7 +12,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { Zap, ShieldCheck, Clock, RefreshCw, Building2, MapPin, FileText, CalendarDays } from "lucide-react";
 import { LoadingLogo } from "../LoadingLogo";
 import * as api from "../../lib/api";
@@ -39,12 +39,18 @@ export function OneClickApplyPage() {
   const [page, setPage] = useState(1);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [review, setReview] = useState<api.ApplicationRecord | null>(null);
+  const [applications, setApplications] = useState<Record<string, api.ApplicationRecord>>({});
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      setFeed(await api.getOneClickJobs({ page, page_size: 40, ready_only: readyOnly }));
+      const [nextFeed, appRows] = await Promise.all([
+        api.getOneClickJobs({ page, page_size: 40, ready_only: readyOnly }),
+        api.listApplications().catch(() => [] as api.ApplicationRecord[]),
+      ]);
+      setFeed(nextFeed);
+      setApplications(Object.fromEntries((appRows || []).map((app) => [String(app.job_id), app])));
     } catch (e: any) {
       setError(e?.message || "Could not load One-Click positions.");
     } finally {
@@ -132,6 +138,7 @@ export function OneClickApplyPage() {
           <input type="checkbox" checked={readyOnly} onChange={(e) => { setReadyOnly(e.target.checked); setPage(1); }} />
           Ready-to-submit only
         </label>
+        <Link to="/dashboard/applications" style={{ fontSize: 12, color: "var(--pu-60a5fa-t)", textDecoration: "none" }}>View submission tracker →</Link>
       </div>
 
       {error && <p style={{ color: T.warn, fontSize: 13, marginBottom: 12 }}>{error}</p>}
@@ -186,6 +193,12 @@ export function OneClickApplyPage() {
               <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", fontSize: 11, color: T.t3 }}>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><CalendarDays size={12} /> Posted {formatPosted(job.posted_at)}</span>
                 <span>Direct source: {job.source || job.ats_type}</span>
+                {applications[job.job_id] && (
+                  <span style={{ color: applications[job.job_id].status === "applied" ? T.green : T.warn, fontWeight: 750 }}>
+                    Status: {applications[job.job_id].status.replaceAll("_", " ")}
+                    {applications[job.job_id].confirmation_ref ? ` · ${applications[job.job_id].confirmation_ref}` : ""}
+                  </span>
+                )}
               </div>
 
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: "auto", flexWrap: "wrap" }}>
@@ -236,7 +249,7 @@ export function OneClickApplyPage() {
         <ReviewBeforeSubmit
           application={review}
           onClose={() => setReview(null)}
-          onApproved={() => { setReview(null); load(); }}
+          onApproved={(updated) => { setReview(updated); }}
         />
       )}
     </div>

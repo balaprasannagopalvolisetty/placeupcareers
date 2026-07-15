@@ -540,6 +540,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const [timeFilter, setTimeFilter] = useState("24h");
   const [maxYears, setMaxYears] = useState(10);
   const [visaOnly, setVisaOnly] = useState(false);
+  const [oneClickOnly, setOneClickOnly] = useState(false);
   const [personalized, setPersonalized] = useState(true);
   const [sortBy, setSortBy] = useState<"match" | "recent">("match");
   // Minimal-by-default filters: the Refine row stays collapsed behind a
@@ -574,6 +575,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       if (f.timeFilter) setTimeFilter(f.timeFilter);
       if (typeof f.maxYears === "number") setMaxYears(f.maxYears);
       if (typeof f.visaOnly === "boolean") setVisaOnly(f.visaOnly);
+      if (typeof f.oneClickOnly === "boolean") setOneClickOnly(f.oneClickOnly);
       if (f.sortBy === "match" || f.sortBy === "recent") setSortBy(f.sortBy);
       if (f.activeCategory) setActiveCategory(f.activeCategory);
       if (f.activeRole) setActiveRole(f.activeRole);
@@ -583,10 +585,10 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
     try {
       sessionStorage.setItem(JOB_FILTERS_STORAGE_KEY, JSON.stringify({
         searchRaw, locationRaw, countryFilter, visaProgramFilter, timeFilter,
-        maxYears, visaOnly, sortBy, activeCategory, activeRole,
+        maxYears, visaOnly, oneClickOnly, sortBy, activeCategory, activeRole,
       }));
     } catch { /* storage disabled */ }
-  }, [searchRaw, locationRaw, countryFilter, visaProgramFilter, timeFilter, maxYears, visaOnly, sortBy, activeCategory, activeRole]);
+  }, [searchRaw, locationRaw, countryFilter, visaProgramFilter, timeFilter, maxYears, visaOnly, oneClickOnly, sortBy, activeCategory, activeRole]);
 
   // Dates follow the user's targeted country: the active country filter
   // wins, else the first saved target location that maps to a country.
@@ -650,7 +652,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const [taxonomyMeta, setTaxonomyMeta] = useState<TaxonomyMeta | null>(null);
   const jobsRequestId = useRef(0);
   const hasServerFilters = Boolean(
-    activeCategory || activeRole || search || location || (countryFilter && countryFilter !== "all") || visaProgramFilter || visaOnly || timeFilter ||
+    activeCategory || activeRole || search || location || (countryFilter && countryFilter !== "all") || visaProgramFilter || visaOnly || oneClickOnly || timeFilter ||
     (personalized && (userPrefs?.target_roles?.length || 0) > 0)
   );
 
@@ -822,6 +824,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
     if (search) params.search = search;
     if (location) params.location = location;
     if (visaOnly) params.visa_only = true;
+    if (oneClickOnly) params.one_click_only = true;
     if (activeCategory && !activeRole) params.category = activeCategory;
     if (activeRole) params.role = activeRole;
     if (countryFilter) params.country = countryFilter;
@@ -876,7 +879,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       .finally(() => { if (active && jobsRequestId.current === requestId) setLoading(false); });
 
     return () => { active = false; };
-  }, [authLoading, isAuthenticated, activeCategory, activeRole, search, location, countryFilter, visaProgramFilter, visaOnly, timeFilter, maxYears, personalized, sortBy, page, resumeVersion, reloadKey]);
+  }, [authLoading, isAuthenticated, activeCategory, activeRole, search, location, countryFilter, visaProgramFilter, visaOnly, oneClickOnly, timeFilter, maxYears, personalized, sortBy, page, resumeVersion, reloadKey]);
 
   // Debounce search/location so API is only called after typing stops.
   useEffect(() => {
@@ -897,20 +900,16 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
 
   useEffect(() => {
     setPage(1);
-  }, [activeCategory, activeRole, search, location, countryFilter, visaProgramFilter, visaOnly, timeFilter, maxYears, personalized]);
+  }, [activeCategory, activeRole, search, location, countryFilter, visaProgramFilter, visaOnly, oneClickOnly, timeFilter, maxYears, personalized]);
 
   const savedIds = useMemo(() => getSavedIds(), [savedVersion]);
   const trackedJobs = useMemo(() => ({ ...getTrackedJobs(), ...serverTrackedJobs }), [appliedVersion, serverTrackedJobs]);
 
-  const visibleAfterTrackingFilter = jobs.filter((job) => {
-    const id = String(job.id || "");
-    const status = id ? trackedJobs[id] : "";
-    return status !== "applied" && status !== "interview";
-  });
-  const filtered = visibleAfterTrackingFilter.length > 0 || jobs.length === 0
-    ? visibleAfterTrackingFilter
-    : jobs;
-  const trackingFilterFallback = jobs.length > 0 && visibleAfterTrackingFilter.length === 0;
+  // Tracking state is a badge, never a visibility filter. Hiding already
+  // applied/interview roles made a complete server page look arbitrarily
+  // short and prevented users from reopening the original JD.
+  const filtered = jobs;
+  const trackingFilterFallback = false;
 
   const allRoles = useMemo(
     () => Array.from(new Set(taxonomy.flatMap((cat) => cat.roles.map((role) => role.name)).filter(Boolean)))
@@ -970,10 +969,13 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const globalOpenPositionsCount = allJobsCount || total;
   const matchingPositionsCount = total;
   const timeFilterLabel = TIME_OPTIONS.find((chip) => chip.value === timeFilter)?.label || timeFilter;
-  const pageCountLabel = `${filtered.length.toLocaleString()} of ${Math.min(pageSize, total || filtered.length).toLocaleString()} positions`;
+  const pageCountLabel = total
+    ? `${currentPageStart.toLocaleString()}-${currentPageEnd.toLocaleString()} of ${total.toLocaleString()} positions`
+    : "0 positions";
   const filterSummaryParts = [
     pageCountLabel,
     visaOnly ? "Visa-friendly" : "",
+    oneClickOnly ? "One-click ready" : "",
     countryFilter && countryFilter !== "all" ? `Country: ${countryFlag(countryFilter)} ${countryFilter}` : "",
     timeFilter ? `Time: ${timeFilterLabel}` : "",
     activeRole ? `Role: ${activeRole}` : "",
@@ -1248,7 +1250,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
           </div>
 
           {/* ── Row 2 · WHERE + HOW: refine group, collapsed by default ── */}
-          {(refineOpen || countryFilter || visaProgramFilter || visaOnly || (timeFilter && timeFilter !== "24h") || maxYears !== 10 || sortBy !== "match") && (
+          {(refineOpen || countryFilter || visaProgramFilter || visaOnly || oneClickOnly || (timeFilter && timeFilter !== "24h") || maxYears !== 10 || sortBy !== "match") && (
           <div style={{ flexBasis: "100%", display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center", paddingTop: 10, borderTop: `1px solid ${J.line}` }}>
             <span style={{ fontSize: 10, fontWeight: 850, letterSpacing: "0.12em", textTransform: "uppercase", color: J.t3, fontFamily: F.sans, marginRight: 2 }}>
               Refine
@@ -1272,6 +1274,10 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             <button onClick={() => { setVisaOnly(!visaOnly); setPage(1); }}
               style={{ ...controlStyle(), border: `1px solid ${visaOnly ? "var(--pu-34-197-94-032)" : J.line}`, background: visaOnly ? J.greenBg : J.card, color: visaOnly ? "var(--pu-86efac-t)" : J.t2, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
               <Filter size={12} /> Visa-friendly
+            </button>
+            <button onClick={() => { setOneClickOnly(!oneClickOnly); setPage(1); }}
+              style={{ ...controlStyle(), border: `1px solid ${oneClickOnly ? "var(--pu-59-130-246-04)" : J.line}`, background: oneClickOnly ? J.blueBg : J.card, color: oneClickOnly ? J.blue : J.t2, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+              <ShieldCheck size={12} /> One-click ready
             </button>
             <select
               value={timeFilter}
@@ -1313,7 +1319,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             </button>
             {hasServerFilters && (
               <button
-                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setCountryFilter(defaultTargetCountry || "all"); setVisaProgramFilter(""); setVisaOnly(false); setTimeFilter("24h"); setMaxYears(10); setActiveCategory(null); setActiveRole(null); setPersonalized(true); setPage(1); }}
+                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setCountryFilter(defaultTargetCountry || "all"); setVisaProgramFilter(""); setVisaOnly(false); setOneClickOnly(false); setTimeFilter("24h"); setMaxYears(10); setActiveCategory(null); setActiveRole(null); setPersonalized(true); setPage(1); }}
                 style={{ ...controlStyle(), cursor: "pointer", fontWeight: 800, color: J.t2, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
                 title="Reset all filters"
               >
@@ -1461,7 +1467,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
               <div style={{ fontSize: 14, fontWeight: 850, color: J.text, marginBottom: 6 }}>No jobs match the current filters.</div>
               <div style={{ fontSize: 12, color: J.t2, marginBottom: 12 }}>Try clearing the search, location, or time filter.</div>
               <button
-                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setCountryFilter(defaultTargetCountry || "all"); setVisaProgramFilter(""); setVisaOnly(false); setTimeFilter("24h"); setMaxYears(10); setActiveCategory(null); setActiveRole(null); setPersonalized(true); setPage(1); }}
+                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setCountryFilter(defaultTargetCountry || "all"); setVisaProgramFilter(""); setVisaOnly(false); setOneClickOnly(false); setTimeFilter("24h"); setMaxYears(10); setActiveCategory(null); setActiveRole(null); setPersonalized(true); setPage(1); }}
                 style={{ padding: "8px 14px", borderRadius: 8, border: `1px solid ${J.line}`, background: "var(--pu-148-163-184-005)", color: J.blue, fontSize: 12, fontWeight: 800, fontFamily: F.sans, cursor: "pointer" }}
               >Reset filters</button>
             </div>
@@ -1570,6 +1576,11 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
                         </span>
                       );
                     })()}
+                    {job.one_click_ready && (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 850, padding: "4px 8px", borderRadius: 999, background: "var(--pu-34-197-94-012)", color: "var(--pu-86efac-t)", border: "1px solid var(--pu-34-197-94-03)", fontFamily: F.sans }}>
+                        <ShieldCheck size={11} /> One-click apply
+                      </span>
+                    )}
                     {englishFriendly && <span style={{ fontSize: 11, fontWeight: 750, padding: "4px 8px", borderRadius: 999, background: J.greenBg, color: "var(--pu-86efac-t)", fontFamily: F.sans }}>English-friendly</span>}
                     {sponsorVerified && <span style={{ fontSize: 11, fontWeight: 750, padding: "4px 8px", borderRadius: 999, background: "var(--pu-34-197-94-008)", color: "var(--pu-86efac-t)", fontFamily: F.sans }}>{sourceLabel(visaRecord.sponsor_source)}</span>}
                   </div>

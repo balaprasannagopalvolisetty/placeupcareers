@@ -343,7 +343,7 @@ def test_tailored_cache_key_is_per_position():
     assert _company_key("u1", "Acme", "job-1") != _company_key("u1", "Acme", "job-2")
 
 
-def test_prepare_tier_a_reaches_needs_review_with_api_payload():
+def test_uncredentialed_tier_a_is_not_mislabeled_as_live_api_submit():
     store = FakeStore({
         "title": "SWE", "company": "Duolingo", "ats_type": "greenhouse",
         "board_token": "duolingo", "ats_job_id": "99", "job_url": "https://x",
@@ -354,13 +354,12 @@ def test_prepare_tier_a_reaches_needs_review_with_api_payload():
             store, "u1", "job1", None, True, "note", _fake_tailor
         )
     )
-    assert app["status"] == ApplicationStatus.NEEDS_REVIEW.value
-    assert app["submission_method"] == SubmissionMethod.API.value
-    assert app["prepared_payload"]["endpoint"].startswith("https://boards-api.greenhouse.io")
+    assert app["status"] == ApplicationStatus.NEEDS_YOU.value
+    assert app["submission_method"] == SubmissionMethod.BROWSER.value
     assert app["match_score"] == 82
 
 
-def test_approve_requires_confirmation_then_submits():
+def test_unavailable_submit_path_cannot_be_approved_as_if_live():
     store = FakeStore({
         "title": "SWE", "company": "Duolingo", "ats_type": "greenhouse",
         "board_token": "duolingo", "ats_job_id": "99", "job_url": "https://x",
@@ -376,18 +375,12 @@ def test_approve_requires_confirmation_then_submits():
             orchestrator.approve_application(store, "u1", app["id"], False, {}, _noop_enqueue)
         )
 
-    # confirm=True enqueues + runs the submit (Greenhouse submit is a configured
-    # integration point -> NotImplementedError -> NEEDS_YOU/manual, never FAILED).
-    asyncio.run(
-        orchestrator.approve_application(store, "u1", app["id"], True, {"phone": "555"}, _inline_enqueue)
-    )
-    final = store.get_application(app["id"])
-    assert final["status"] in (
-        ApplicationStatus.NEEDS_YOU.value,
-        ApplicationStatus.APPLIED.value,
-    )
-    kinds = [h["kind"] for h in final["history"]]
-    assert "approved" in kinds
+    # A technically API-capable ATS without a configured working adapter must
+    # never present an approval button that implies a real submission.
+    with pytest.raises(ValueError):
+        asyncio.run(
+            orchestrator.approve_application(store, "u1", app["id"], True, {"phone": "555"}, _inline_enqueue)
+        )
 
 
 def test_prepare_tier_c_routes_to_browser_and_handoff():

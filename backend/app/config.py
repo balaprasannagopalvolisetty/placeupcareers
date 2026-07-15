@@ -269,6 +269,10 @@ class Settings(BaseSettings):
                     "Grows as partner programs (SmartRecruiters/Workable/JazzHR/"
                     "Phenom/Teamtailor) are approved. Recruitee needs no key.",
     )
+    openclaw_tailor_enabled: bool = Field(default=False)
+    openclaw_tailor_url: str = Field(default="")
+    openclaw_tailor_token: str = Field(default="")
+    openclaw_tailor_timeout_seconds: float = Field(default=90.0, ge=10.0, le=180.0)
 
     # --- Database / Firebase / GCP ---
     database_backend: str = Field(default="postgres")

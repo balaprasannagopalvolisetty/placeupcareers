@@ -205,6 +205,24 @@ async function request<T>(path: string, init: RequestInit = {}, retryOnAuth = tr
   return exec;
 }
 
+async function requestBlob(path: string, retryOnAuth = true): Promise<{ blob: Blob; filename: string }> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    credentials: "include",
+    headers: buildHeaders(undefined, undefined),
+  });
+  if (response.status === 401 && retryOnAuth && shouldAttemptRefresh(path)) {
+    await refreshAccessToken();
+    return requestBlob(path, false);
+  }
+  if (!response.ok) {
+    const message = await response.text().catch(() => "");
+    throw new Error(message || `Document request failed (${response.status})`);
+  }
+  const disposition = response.headers.get("content-disposition") || "";
+  const filename = disposition.match(/filename\*?=(?:UTF-8'')?["']?([^"';]+)/i)?.[1] || "placeup-document";
+  return { blob: await response.blob(), filename: decodeURIComponent(filename) };
+}
+
 // Any time we know server state mutated, blow the cache so the next
 // read pulls fresh data. Without this hook, the TTL cache would keep
 // serving a stale dashboard for up to READ_TTL_MS after upload/delete.
@@ -324,6 +342,8 @@ export interface JobPost {
   source_url?: string;
   taxonomy_category?: string;
   role?: string;
+  ats_type?: string;
+  one_click_ready?: boolean;
   hiring_manager_name?: string;
   hiring_manager_email?: string;
   hiring_manager_linkedin?: string;
@@ -877,6 +897,9 @@ export interface ApplicationRecord {
   ats_score: number;
   tailored_resume_url?: string | null;
   tailored_cover_letter_url?: string | null;
+  tailored_documents?: Record<string, string>;
+  confirmation_ref?: string | null;
+  confirmation_email_sent?: boolean;
   prepared_payload?: Record<string, unknown>;
   confirmation_screenshot_url?: string | null;
   needs_you_reason?: string | null;
@@ -926,6 +949,11 @@ export async function listApplications() {
 
 export async function getApplication(appId: string) {
   return request<ApplicationRecord>(`/api/apply/${encodeURIComponent(appId)}`);
+}
+
+export async function getApplicationDocument(appId: string, kind: "resume" | "cover_letter", format: "pdf" | "docx" = "pdf") {
+  const documentKind = `${kind}_${format}_url`;
+  return requestBlob(`/api/apply/${encodeURIComponent(appId)}/document/${documentKind}`);
 }
 
 /** The human approval gate. `confirm` must be true or the server rejects it. */

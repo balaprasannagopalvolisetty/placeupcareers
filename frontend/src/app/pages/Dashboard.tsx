@@ -6,7 +6,7 @@ import {
   Menu, X, User, ChevronDown, Briefcase,
   TrendingUp, ChevronRight, CheckCircle2, Bookmark, Clock,
   ArrowUpRight, MapPin, DollarSign, FileCheck,
-  Shield, Wand2, Zap,
+  Shield, Wand2, Zap, ClipboardCheck,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import * as api from "../lib/api";
@@ -104,8 +104,8 @@ const NAV_ITEMS = [
   { icon: FileText, label: "Resumes", to: "/dashboard/resumes" },
   { icon: Briefcase,label: "Jobs", to: "/dashboard/jobs" },
   { icon: Zap,      label: "One-Click Apply", to: "/dashboard/one-click-apply" },
+  { icon: ClipboardCheck, label: "Applications", to: "/dashboard/applications" },
   { icon: Wand2,   label: "Tailor", to: "/dashboard/tailor" },
-  { icon: FileText, label: "Resume Studio", to: "/dashboard/resume-studio" },
   { icon: BarChart3,label: "Analytics", to: "/dashboard/analytics" },
   { icon: Settings, label: "Settings", to: "/dashboard/settings" },
 ];
@@ -397,9 +397,11 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
           <div style={{ fontFamily: F.sans, fontSize: isMobile ? 30 : 38, fontWeight: 800, color: T.text, lineHeight: 1, marginBottom: 4 }}>
             {marketLoading && !market ? "--" : <SpringCounter target={Number(market?.total_active || 0)} />}
           </div>
-          <div style={{ fontSize: 13, color: T.t2, fontFamily: F.sans }}>Live job market</div>
+          <div style={{ fontSize: 13, color: T.t2, fontFamily: F.sans }}>Your target-role market</div>
           <div style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, marginTop: 2, lineHeight: 1.45 }}>
-            {market?.targeted ? "Open positions for your target roles" : "All active open positions"}
+            {market?.targeted
+              ? `All open matches for ${market.target_roles?.length || 0} selected roles${market.target_country ? ` in ${market.target_country}` : ""}`
+              : "Add target roles to personalize this market"}
           </div>
         </GlowCard>
 
