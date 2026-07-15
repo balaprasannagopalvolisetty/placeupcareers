@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from app.api.health import ats_coverage
 from app.etl.api_sources.runner import _filter_requested_countries
 from app.etl.api_sources.schema import NormalizedJob
+from app.middleware.security import _is_public_read
 from app.services.apply import tailoring_pipeline
 from app.services.apply.tailoring_pipeline import TAILORING_PIPELINE_VERSION
 from app.services import resume_tailor_llm
@@ -171,3 +172,7 @@ def test_ats_coverage_flags_low_direct_share(monkeypatch):
     assert result["first_party_share"] == 0.04
     assert result["direct_ats_healthy"] is False
     assert result["supply_status"] == "degraded"
+
+
+def test_ats_coverage_health_endpoint_is_public():
+    assert _is_public_read("/api/health/ats-coverage") is True

@@ -71,6 +71,7 @@ MAX_REQUEST_BODY_BYTES = 12 * 1024 * 1024
 PUBLIC_READ_PATHS = {
     "/",
     "/api/health",
+    "/api/health/ats-coverage",
     "/api/auth/demo",
     "/api/auth/oidc/providers",
     "/api/auth/session",
