@@ -761,12 +761,54 @@ Health check:
 Invoke-WebRequest -UseBasicParsing https://placeupcareer.com/api/health
 ```
 
+## Private master-job ATS analysis
+
+PlaceUp self-hosts `SlyGoblin/mistral_ATSscore_generation` over
+`mistralai/Mistral-7B-Instruct-v0.2`; no third-party inference API receives job
+descriptions. The private model produces normalized skills, keywords,
+responsibilities, experience, seniority, education, certifications, and work
+authorization data. `app.workers.master_ats_analysis` writes the versioned
+result to `master_jobs.extra_metadata.ats_model_analysis` for every active job
+with a complete description. Description hashes make the backfill resumable and
+automatically re-analyze changed JDs.
+
+Preferred Cloud Run GPU deployment (requires one L4 quota):
+
+```powershell
+.\backend\deploy\deploy_ats_model.ps1 `
+  -ProjectId steel-shine-492401-u6 `
+  -ApiRegion us-east1 `
+  -GpuRegion us-east4 `
+  -DbInstance placeup-backend `
+  -CreateSchedule
+```
+
+Quota-efficient Compute Engine deployment (one P4, 4-bit NF4, resumable Spot
+VM, private Docker network, no ingress firewall rule, and automatic shutdown on
+success or failure):
+
+```powershell
+.\backend\deploy\deploy_ats_batch_vm.ps1 `
+  -ProjectId steel-shine-492401-u6 `
+  -Zone us-central1-a `
+  -GpuType nvidia-tesla-p4 `
+  -MachineType n1-standard-4 `
+  -ProvisioningModel SPOT `
+  -CreateSchedule
+```
+
+The project must have both a regional GPU allowance and a non-zero
+`GPUS_ALL_REGIONS` quota before either GPU runtime can start. Images, service
+accounts, Secret Manager tokens, database access, and the worker can be
+provisioned before that quota is granted.
+
 ## Testing
 
 Run focused backend tests after scraper/security changes:
 
 ```powershell
 python -m pytest backend\tests\test_zero_trust.py backend\tests\test_global_visa_rules.py backend\tests\test_board_discovery_sweep.py backend\tests\test_api_sources.py
+python -m pytest backend\tests\test_master_ats_analysis.py
 ```
 
 Run the apply-subsystem tests after any change to `app/services/apply/*`,
