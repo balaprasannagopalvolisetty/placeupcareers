@@ -24,6 +24,21 @@ $StartupScript = Resolve-Path (Join-Path $PSScriptRoot "start_ats_batch_vm.sh")
 
 gcloud.cmd services enable compute.googleapis.com secretmanager.googleapis.com artifactregistry.googleapis.com cloudscheduler.googleapis.com --project $ProjectId
 
+# Fail before repeatedly changing IAM/network state when Google Cloud will not
+# allow any GPU VM in the project. Regional accelerator quota is necessary but
+# is not sufficient: GPUS_ALL_REGIONS must also be at least one.
+$ProjectInfo = (gcloud.cmd compute project-info describe --project $ProjectId --format json | Out-String) | ConvertFrom-Json
+$GlobalGpuQuota = $ProjectInfo.quotas | Where-Object { $_.metric -eq "GPUS_ALL_REGIONS" } | Select-Object -First 1
+if (-not $GlobalGpuQuota -or [double]$GlobalGpuQuota.limit -le [double]$GlobalGpuQuota.usage) {
+    $QuotaUrl = "https://console.cloud.google.com/iam-admin/quotas?project=$ProjectId"
+    throw @"
+Google Cloud blocked the ATS VM before creation: GPUS_ALL_REGIONS is $($GlobalGpuQuota.limit) (usage $($GlobalGpuQuota.usage)).
+Request a value of 1 for Compute Engine API -> GPUs (all regions):
+$QuotaUrl
+If the automatic request is denied for insufficient usage history, open a Cloud Billing/Quota support case. No GPU VM was created.
+"@
+}
+
 $Networks = @(gcloud.cmd compute networks list --project $ProjectId --format "value(name)")
 if ($Networks -notcontains $Network) {
     gcloud.cmd compute networks create $Network --project $ProjectId --subnet-mode custom
