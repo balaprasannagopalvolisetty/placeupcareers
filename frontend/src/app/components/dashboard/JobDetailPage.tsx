@@ -492,6 +492,7 @@ export function JobDetailPage({ jobId, onBack }: { jobId: string; onBack: () => 
         position_open: positionOpen === "unknown" ? undefined : positionOpen === "yes",
         salary_offered: salaryOffered.trim() || undefined,
         notes: applyNotes.trim() || undefined,
+        posted_at: (job as any)?.posted_at || undefined,
       });
       setApplied(status === "applied");
       setShowApplyModal(false);

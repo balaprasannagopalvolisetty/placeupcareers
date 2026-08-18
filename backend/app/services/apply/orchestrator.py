@@ -134,7 +134,34 @@ async def prepare_application(
         if tailored.get("cover_letter"):
             payload.fields["cover_letter"] = tailored["cover_letter"]
         problems = adapter.validate(payload)
+        # Unknown form questions: try answering them with the AI model from
+        # the JD + resume + cover letter + signup profile. Anything the model
+        # cannot answer confidently STAYS in missing_required, which holds the
+        # application as PENDING in the review modal until the user answers,
+        # saves, and approves — then it is rechecked and submitted.
+        if payload.missing_required:
+            try:
+                from app.services.apply.question_answerer import auto_answer_questions
+
+                ai_answers = await auto_answer_questions(
+                    uid=uid,
+                    profile=profile,
+                    questions=list(payload.missing_required),
+                    job=job,
+                    cover_letter=str(tailored.get("cover_letter") or ""),
+                )
+            except Exception as exc:  # noqa: BLE001 — never block preparation
+                log.warning("AI question answering failed: %s", exc)
+                ai_answers = {}
+            if ai_answers:
+                payload.fields.update(ai_answers)
+                payload.missing_required = [
+                    q for q in payload.missing_required if q not in ai_answers
+                ]
+                app["ai_answered_questions"] = sorted(ai_answers)
+                _event(app, "ai_answered", f"{len(ai_answers)} unknown questions answered from resume/JD")
         app["submission_method"] = SubmissionMethod.API.value
+        app["pending_questions"] = list(payload.missing_required)
         app["prepared_payload"] = {
             "endpoint": payload.endpoint,
             "fields": payload.fields,
@@ -155,11 +182,31 @@ async def prepare_application(
         result = await worker.prepare(
             job_url=app["job_url"], adapter_config={}, payload={"profile": profile, "answers": answers},
         )
-        app["prepared_payload"] = {"note": result.message}
+        # Surface the profile answers that WILL be typed into the form so the
+        # review modal shows editable fields for browser submissions too.
+        browser_fields = {
+            "full_name": str(profile.get("full_name") or profile.get("name") or ""),
+            "email": str(profile.get("email") or ""),
+            "phone": str(profile.get("phone") or ""),
+            "location": str(profile.get("location") or ""),
+            "work_authorization": str(profile.get("visa_status") or profile.get("work_authorization") or ""),
+            **{str(k): str(v) for k, v in answers.items()},
+        }
+        app["prepared_payload"] = {"note": result.message, "fields": browser_fields}
         app["confirmation_screenshot_url"] = result.screenshot_url
         if result.status is ApplicationStatus.NEEDS_YOU:
+            # Preparation-time handoff signals (no browser pool available yet,
+            # CAPTCHA expected, etc.) must NOT dead-end the flow before the
+            # user even reviewed. Keep the application in NEEDS_REVIEW so the
+            # Step 2 approve button always exists; the real interactive
+            # handoff happens during the queued submit, where NEEDS_YOU is
+            # meaningful and actionable.
             app["needs_you_reason"] = result.handoff.value
-            _event(app, "handoff_required", result.message, status=ApplicationStatus.NEEDS_YOU)
+            _event(
+                app, "handoff_expected",
+                result.message or "Browser submission will hand off for any CAPTCHA/OTP.",
+                status=ApplicationStatus.NEEDS_REVIEW,
+            )
         else:
             _event(app, "prepared_browser", result.message, status=ApplicationStatus.NEEDS_REVIEW)
 

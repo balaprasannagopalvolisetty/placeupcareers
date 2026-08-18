@@ -122,8 +122,14 @@ export function ReviewBeforeSubmit({ application, onClose, onApproved }: Props) 
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <ShieldCheck size={18} style={{ color: "var(--pu-0ea5e9)" }} />
-              <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Review before submit</h2>
+              <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>
+                Step 2 of 2 · Review & auto-apply
+              </h2>
             </div>
+            <p style={{ fontSize: 12, color: T.t3, margin: "4px 0 0" }}>
+              Step 1 tailored your resume and cover letter for this position. Approving below
+              submits the application on your behalf using these documents.
+            </p>
             <p style={{ fontSize: 13, color: T.t2, margin: "6px 0 0" }}>
               {application.title} · {application.company} ·{" "}
               <span style={{ fontFamily: F.mono }}>Tier {application.tier}</span>{" "}
@@ -179,6 +185,27 @@ export function ReviewBeforeSubmit({ application, onClose, onApproved }: Props) 
                 This ATS is web-form only. On approval the assistant fills the form up to
                 the submit button and hands control to you for any CAPTCHA, OTP, or bot-check —
                 it never bypasses a security control.
+              </div>
+            )}
+            {Object.keys(fields).length > 0 && (
+              <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+                <p style={{ fontSize: 12, color: T.t3, margin: 0 }}>
+                  These answers from your profile will be typed into the form — edit anything before approving:
+                </p>
+                {Object.keys(fields).map((k) => (
+                  <label key={k} style={{ display: "grid", gap: 4 }}>
+                    <span style={{ fontSize: 12, color: T.t2 }}>{k}</span>
+                    <input
+                      value={fields[k] ?? ""}
+                      onChange={(e) => setFields((f) => ({ ...f, [k]: e.target.value }))}
+                      style={{
+                        background: "var(--pu-1-17-38-05)", border: `1px solid ${T.border}`,
+                        borderRadius: 8, padding: "8px 10px", color: T.text, fontSize: 13,
+                        fontFamily: F.sans,
+                      }}
+                    />
+                  </label>
+                ))}
               </div>
             )}
           </div>
@@ -269,7 +296,7 @@ export function ReviewBeforeSubmit({ application, onClose, onApproved }: Props) 
               display: "flex", alignItems: "center", gap: 8,
             }}>
             {submitting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
-            {isBrowser ? "Approve & continue" : "Approve & submit"}
+            {isBrowser ? "Approve & continue" : "Approve & Auto-Apply"}
           </button>}
         </div>
       </motion.div>

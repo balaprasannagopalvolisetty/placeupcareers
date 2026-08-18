@@ -355,7 +355,7 @@ export function SettingsPage() {
           )}
 
           <div style={{ fontSize: 12, color: T.t3, fontFamily: F.sans, lineHeight: 1.5 }}>
-            Your account data lives in encrypted Firestore collections
+            Your account data lives in the configured private account store
             (<code>users</code>, <code>user_preferences</code>, <code>user_resumes</code>,
             <code>user_applications</code>, <code>user_alerts</code>, <code>auth_sessions</code>).
             See <a href="/privacy" style={{ color: T.t2 }}>Privacy Policy</a> for the
@@ -448,7 +448,7 @@ export function SettingsPage() {
           >
             <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>Delete your account?</h3>
             <p style={{ fontSize: 13, color: T.t2, lineHeight: 1.5, marginTop: 8 }}>
-              Type your password to confirm. Every Firestore record we hold for you will be
+              Type your password to confirm. Every account record we hold for you will be
               removed immediately. Your refresh tokens will be revoked so all other devices
               are signed out.
             </p>

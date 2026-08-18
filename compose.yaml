@@ -1,0 +1,287 @@
+name: placeup-local
+
+x-backend-environment: &backend-environment
+  APP_ENV: development
+  DATABASE_BACKEND: postgres
+  DATABASE_URL: postgresql+psycopg://placeup:${LOCAL_POSTGRES_PASSWORD:-placeup_local_dev}@postgres:5432/placeup
+  DB_POOL_SIZE: "5"
+  DB_MAX_OVERFLOW: "10"
+  USER_DATABASE_BACKEND: firestore
+  USER_FIRESTORE_PROJECT_ID: placeup-local
+  USER_FIRESTORE_DATABASE: "(default)"
+  FIRESTORE_EMULATOR_HOST: firestore:8080
+  GOOGLE_CLOUD_PROJECT: placeup-local
+  GCP_PROJECT_ID: placeup-local
+  FRONTEND_URL: http://localhost:3000
+  FREE_ACCESS_ENABLED: "true"
+  INVITE_GATE_ENABLED: "false"
+  SIGNUP_REQUIRE_PAYMENT: "false"
+  SIGNUP_EMAIL_VERIFICATION: "false"
+  OTP_MFA_ENABLED: "false"
+  EMAIL_PROVIDER: console
+  CF_ORIGIN_SECRET: ""
+  APP_SERVER_IAM_AUTH: "false"
+  APPLY_FEATURE_ENABLED: "true"
+  APPLY_QUEUE_BACKEND: local
+  APPLY_DOCS_BUCKET: ""
+  APPLY_DOCS_LOCAL_DIR: /data/tailored
+  APPLY_LIVE_SUBMIT_ENABLED: "false"
+  OPENCLAW_TAILOR_ENABLED: ${LOCAL_AI_ENABLED:-false}
+  OPENCLAW_TAILOR_URL: http://openclaw:8080
+  OPENCLAW_TAILOR_TOKEN: ${OPENCLAW_TAILOR_TOKEN:-local-openclaw-token}
+  REDIS_URL: redis://redis:6379/0
+
+x-backend-service: &backend-service
+  build:
+    context: ./backend
+    dockerfile: Dockerfile
+  env_file:
+    - .env.local
+  restart: unless-stopped
+  volumes:
+    - tailored_documents:/data/tailored
+  depends_on:
+    postgres:
+      condition: service_healthy
+    firestore:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    migrate:
+      condition: service_completed_successfully
+    seed:
+      condition: service_completed_successfully
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: placeup
+      POSTGRES_USER: placeup
+      POSTGRES_PASSWORD: ${LOCAL_POSTGRES_PASSWORD:-placeup_local_dev}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U placeup -d placeup"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  firestore:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    command:
+      - gcloud
+      - beta
+      - emulators
+      - firestore
+      - start
+      - --host-port=0.0.0.0:8080
+      - --project=placeup-local
+      - --data-dir=/data
+      - --quiet
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8085:8080"
+    volumes:
+      - firestore_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8080'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - .env.local
+    environment:
+      <<: *backend-environment
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  seed:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - .env.local
+    environment:
+      <<: *backend-environment
+    command: ["python", "-m", "app.etl.local_seed"]
+    restart: "no"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  api:
+    <<: *backend-service
+    environment:
+      <<: *backend-environment
+      SERVER_ROLE: web
+      APP_SERVER_URL: http://app-server:8080
+      WEB_CONCURRENCY: "2"
+    ports:
+      - "127.0.0.1:8000:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 30
+      start_period: 20s
+
+  app-server:
+    <<: *backend-service
+    environment:
+      <<: *backend-environment
+      SERVER_ROLE: app
+      APP_SERVER_URL: ""
+      WEB_CONCURRENCY: "1"
+    expose:
+      - "8080"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE: ""
+    environment:
+      BACKEND_ORIGIN: http://api:8080
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:8080"
+    volumes:
+      - ./frontend/nginx.local.conf:/etc/nginx/templates/default.conf.template:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  scheduler:
+    <<: *backend-service
+    profiles: ["workers"]
+    environment:
+      <<: *backend-environment
+      SERVER_ROLE: worker
+      LOCAL_TIMEZONE: ${LOCAL_TIMEZONE:-America/Chicago}
+      LOCAL_WORKER_CONCURRENCY: ${LOCAL_WORKER_CONCURRENCY:-2}
+      LOCAL_SCHEDULER_DISABLED_JOBS: ${LOCAL_SCHEDULER_DISABLED_JOBS:-}
+      LOCAL_ATS_ANALYSIS_ENABLED: ${LOCAL_ATS_ANALYSIS_ENABLED:-false}
+      ATS_MODEL_URL: http://ats-model:8080
+      ATS_MODEL_SERVICE_TOKEN: ${ATS_MODEL_SERVICE_TOKEN:-local-ats-token}
+      SCRAPER_RUN_BUDGET_SECONDS: ${SCRAPER_RUN_BUDGET_SECONDS:-10800}
+      SCRAPE_MAX_CONCURRENCY: ${SCRAPE_MAX_CONCURRENCY:-8}
+      SCRAPEGRAPH_ENABLED: "false"
+      SCRAPEGRAPH_DISCOVERY_ENABLED: "false"
+    command: ["python", "-m", "app.workers.local_scheduler"]
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ai"]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  ollama-pull:
+    image: ollama/ollama:latest
+    profiles: ["ai"]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["ollama pull \"$${OLLAMA_MODEL}\""]
+    restart: "no"
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  openclaw:
+    build:
+      context: ./backend/openclaw_service
+      dockerfile: Dockerfile
+    profiles: ["ai"]
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      PLACEUP_SERVICE_TOKEN: ${OPENCLAW_TAILOR_TOKEN:-local-openclaw-token}
+      OPENCLAW_MODEL: ollama/${OLLAMA_MODEL:-qwen2.5:7b}
+      OLLAMA_API_KEY: ollama-local
+      OLLAMA_HOST: http://ollama:11434
+      TAILOR_MAX_CONCURRENCY: "1"
+      TAILOR_MAX_RETRIES: "2"
+      TAILOR_CHILD_TIMEOUT_MS: "300000"
+    ports:
+      - "127.0.0.1:8090:8080"
+    volumes:
+      - ./backend/openclaw_service/local/openclaw.json:/home/openclaw/.openclaw/openclaw.json:ro
+    depends_on:
+      ollama-pull:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 8s
+      retries: 20
+
+  ats-model:
+    build:
+      context: ./backend/ats_model_service
+      dockerfile: Dockerfile
+    profiles: ["ats"]
+    restart: unless-stopped
+    environment:
+      PLACEUP_SERVICE_TOKEN: ${ATS_MODEL_SERVICE_TOKEN:-local-ats-token}
+      ATS_DEVICE: ${ATS_DEVICE:-auto}
+      ATS_LOAD_IN_4BIT: ${ATS_LOAD_IN_4BIT:-true}
+      HF_HOME: /models
+    ports:
+      - "127.0.0.1:8091:8080"
+    volumes:
+      - ats_models:/models
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=5)"]
+      interval: 20s
+      timeout: 8s
+      retries: 30
+      start_period: 30s
+
+volumes:
+  postgres_data:
+  firestore_data:
+  redis_data:
+  tailored_documents:
+  ollama_models:
+  ats_models:

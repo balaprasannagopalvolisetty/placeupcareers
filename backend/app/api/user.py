@@ -1659,24 +1659,51 @@ async def generate_tailored_resume(
     tailored_resume = None
     diagnostics = None
     engine = "deterministic"
+    llm_out = None
+    llm_provider = ""
+    # Primary path: the private OpenClaw service running Ollama Cloud
+    # glm-5.2:cloud — the same engine One-Click Apply uses, so Tailor and
+    # One-Click produce identical-quality documents. Falls back to the Groq
+    # tailor spec, then deterministic — generation never breaks.
     try:
-        from app.services.resume_tailor_llm import tailor_resume as _llm_tailor
-        llm_out = await _llm_tailor(
+        from app.services.apply.openclaw_tailor import tailor_with_openclaw
+
+        openclaw_out = await tailor_with_openclaw(
             resume_text=resume_text,
-            job_title=str(job_data.get("title") or ""),
-            job_company=str(job_data.get("company") or ""),
-            job_description=str(job_data.get("description") or ""),
-            work_auth=str(user.get("visa_status") or "Not specified"),
+            job=job_data,
+            profile={
+                "full_name": f"{user.get('first_name') or ''} {user.get('last_name') or ''}".strip(),
+                "visa_status": str(user.get("visa_status") or "Not specified"),
+            },
         )
-    except Exception as exc:  # noqa: BLE001 — degrade to deterministic
-        log.warning("LLM tailoring unavailable for %s: %s", user_id, exc)
-        llm_out = None
+        if openclaw_out and isinstance(openclaw_out.get("resume_spec"), dict):
+            llm_out = openclaw_out["resume_spec"]
+            llm_provider = "ollama-cloud/glm-5.2"
+    except Exception as exc:  # noqa: BLE001 — degrade to Groq/deterministic
+        log.warning("OpenClaw tailoring unavailable for %s: %s", user_id, exc)
+    if llm_out is None:
+        try:
+            from app.services.resume_tailor_llm import tailor_resume as _llm_tailor
+            llm_out = await _llm_tailor(
+                resume_text=resume_text,
+                job_title=str(job_data.get("title") or ""),
+                job_company=str(job_data.get("company") or ""),
+                job_description=str(job_data.get("description") or ""),
+                work_auth=str(user.get("visa_status") or "Not specified"),
+            )
+            if llm_out:
+                llm_provider = "groq"
+        except Exception as exc:  # noqa: BLE001 — degrade to deterministic
+            log.warning("LLM tailoring unavailable for %s: %s", user_id, exc)
+            llm_out = None
     llm_payload = None
     if llm_out:
         llm_payload = _payload_from_llm(llm_out, job_data, user, resume_text)
         if llm_payload:
             engine = "llm"
             diagnostics = {k: llm_out.get(k) for k in ("work_auth", "match", "red_flags") if llm_out.get(k) is not None}
+            if llm_provider:
+                diagnostics["provider"] = llm_provider
     deterministic_payload = _build_tailored_resume_payload(resume_text, resume_json, job_data, matched, missing, user)
     conservative_payload = _build_original_preserving_tailored_payload(resume_text, resume_json, job_data, matched, missing, user)
     current_match_score = max(0, min(100, int(item.get("match_score") or 0)))

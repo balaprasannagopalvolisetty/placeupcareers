@@ -388,22 +388,6 @@ export interface AlertSettings {
   weekly_report: boolean;
 }
 
-export interface AnalyticsDashboard {
-  metrics: { label: string; value: string; trend: string }[];
-  applications_over_time: { month: string; apps: number; interviews: number; matches: number }[];
-  ats_score_history: { version: string; score: number }[];
-  total_applications?: number;
-  applications_this_month?: number;
-  profile_views?: number;
-  profile_views_week?: number;
-  resume_downloads?: number;
-  resume_downloads_week?: number;
-  top_match_score?: number;
-  top_match_role?: string;
-  time_series?: { month: string; apps: number; interviews: number; matches: number }[];
-  resume_scores?: { version: string; score: number }[];
-}
-
 export interface H1BSearchResponse {
   sponsors: Array<Record<string, unknown>>;
   salary_data: Array<Record<string, unknown>>;
@@ -805,6 +789,7 @@ export interface UserApplicationRow {
   position_open?: boolean;
   salary_offered?: string;
   notes?: string;
+  posted_at?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -1030,6 +1015,8 @@ export interface OneClickFeed {
   credentialed_ats: string[];
   api_submittable_ats: string[];
   live_submit_enabled: boolean;
+  /** Elite-only: whether THIS user may use automated one-click submission. */
+  one_click_allowed?: boolean;
 }
 
 /** Personalized positions from direct ATS boards for One-Click Apply.
@@ -1258,10 +1245,7 @@ export async function deleteAlert(alertId: string) {
   return request<{ deleted: string }>(`/api/alerts/${encodeURIComponent(alertId)}`, { method: "DELETE" });
 }
 
-// ─── Analytics ───
-
-export async function getAnalyticsDashboard() { return request<AnalyticsDashboard>("/api/analytics/dashboard"); }
-export const getAnalytics = getAnalyticsDashboard;
+// ─── Analytics (market widget only — the analytics page was removed) ───
 
 export interface MarketBreakdownItem { key: string; count: number }
 export interface MarketAnalytics {

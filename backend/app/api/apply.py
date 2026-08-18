@@ -80,6 +80,18 @@ def _assert_profile_minimized(profile: ApplicationProfile) -> None:
         )
 
 
+def _one_click_allowed(uid: str) -> bool:
+    """Elite-only automated submission. Import is local to avoid a circular
+    import at module load (billing imports security which is fine, but apply
+    is imported by main before billing)."""
+    try:
+        from app.api.billing import user_plan_atleast
+
+        return user_plan_atleast(uid, "elite")
+    except Exception:  # pragma: no cover - defensive
+        return False
+
+
 def _store():
     # Instantiated per request; cheap (reuses the shared Firestore client).
     from app.db.firestore_apply_store import FirestoreApplyStore
@@ -344,6 +356,9 @@ async def one_click_feed(
         "direct_ats_sources": sorted(FIRST_PARTY_ATS_SOURCES),
         "api_submittable_ats": sorted(API_SUBMITTABLE_ATS),
         "live_submit_enabled": settings.apply_live_submit_enabled,
+        # Elite-only automation flag. Everyone (Pro included) sees every
+        # position; only Elite accounts get the automated submit action.
+        "one_click_allowed": _one_click_allowed(uid),
     }
 
 
@@ -395,7 +410,17 @@ async def approve(
     decision: ReviewDecision = Body(...),
     uid: str = Depends(current_user_id),
 ):
-    """The non-optional human gate. Requires confirm=true."""
+    """The non-optional human gate. Requires confirm=true.
+
+    Automated one-click submission is an Elite feature. Pro users can see
+    one-click-ready positions, tailor and prepare documents, but must submit
+    the application themselves on the company site.
+    """
+    if not _one_click_allowed(uid):
+        raise HTTPException(
+            status_code=402,
+            detail="One-click submission requires the Elite plan. You can still download your tailored documents and apply yourself.",
+        )
     store = _store()
     try:
         app = await approve_application(

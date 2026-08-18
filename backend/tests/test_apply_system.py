@@ -356,8 +356,12 @@ def test_uncredentialed_tier_a_is_not_mislabeled_as_live_api_submit():
             store, "u1", "job1", None, True, "note", _fake_tailor
         )
     )
-    assert app["status"] == ApplicationStatus.NEEDS_YOU.value
+    # Preparation-time handoff signals no longer dead-end the flow: the app
+    # stays reviewable (Step 2 approve button) and the honest handoff happens
+    # during the queued submit instead.
+    assert app["status"] == ApplicationStatus.NEEDS_REVIEW.value
     assert app["submission_method"] == SubmissionMethod.BROWSER.value
+    assert app["needs_you_reason"]
     assert app["match_score"] == 82
 
 
@@ -377,12 +381,15 @@ def test_unavailable_submit_path_cannot_be_approved_as_if_live():
             orchestrator.approve_application(store, "u1", app["id"], False, {}, _noop_enqueue)
         )
 
-    # A technically API-capable ATS without a configured working adapter must
-    # never present an approval button that implies a real submission.
-    with pytest.raises(ValueError):
-        asyncio.run(
-            orchestrator.approve_application(store, "u1", app["id"], True, {"phone": "555"}, _inline_enqueue)
-        )
+    # A technically API-capable ATS without a configured working adapter can
+    # be approved (the review gate still runs), but the submission must never
+    # be faked as a live API success — the browser path hands off honestly.
+    approved = asyncio.run(
+        orchestrator.approve_application(store, "u1", app["id"], True, {"phone": "555"}, _inline_enqueue)
+    )
+    final = store.get_application(approved["id"]) or approved
+    assert final["status"] != ApplicationStatus.APPLIED.value
+    assert not final.get("confirmation_ref")
 
 
 def test_prepare_tier_c_routes_to_browser_and_handoff():
@@ -394,8 +401,10 @@ def test_prepare_tier_c_routes_to_browser_and_handoff():
         orchestrator.prepare_application(store, "u1", "job2", None, False, "", _fake_tailor)
     )
     assert app["submission_method"] == SubmissionMethod.BROWSER.value
-    # No browser available in tests -> honest handoff to the user.
-    assert app["status"] == ApplicationStatus.NEEDS_YOU.value
+    # No browser available in tests -> the handoff is recorded, but the app
+    # remains reviewable so the user always reaches the Step 2 approve gate.
+    assert app["status"] == ApplicationStatus.NEEDS_REVIEW.value
+    assert app["needs_you_reason"]
 
 
 async def _noop_enqueue(app_id, ats_type, coro_factory):

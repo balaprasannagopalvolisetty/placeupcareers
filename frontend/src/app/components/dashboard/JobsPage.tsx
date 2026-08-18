@@ -33,6 +33,7 @@ const J = {
 };
 
 const TIME_OPTIONS = [
+  { label: "All open", value: "all" },
   { label: "Recent (24h)", value: "24h" },
   { label: "Last 8h", value: "8h" },
   { label: "Today", value: "today" },
@@ -537,7 +538,9 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const [visaPrograms, setVisaPrograms] = useState<VisaProgramOption[]>([]);
   const [countryFilter, setCountryFilter] = useState("");
   const [visaProgramFilter, setVisaProgramFilter] = useState("");
-  const [timeFilter, setTimeFilter] = useState("24h");
+  // Default to ALL currently-open positions (the backend caps visibility at
+  // the 60-day retention window). Users narrow with the explicit time chips.
+  const [timeFilter, setTimeFilter] = useState("all");
   const [maxYears, setMaxYears] = useState(10);
   const [visaOnly, setVisaOnly] = useState(false);
   const [oneClickOnly, setOneClickOnly] = useState(false);
@@ -549,9 +552,9 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
 
   // Persist + restore the filter setup across navigation (opening a job and
   // coming back used to reset every filter — #3a). Restored once on mount.
-  // Version 2 retires old sessions that permanently restored Last 8h / 0-2
-  // years and made a healthy 24-hour inventory look empty after deployment.
-  const JOB_FILTERS_STORAGE_KEY = "placeup_jobs_filters_v2";
+  // Version 3 retires sessions saved when 24h was the default, so everyone
+  // starts on the full "All open" inventory after deployment.
+  const JOB_FILTERS_STORAGE_KEY = "placeup_jobs_filters_v3";
   const filtersRestored = useRef(false);
   const countryFilterInitialized = useRef(false);
   useEffect(() => {
@@ -652,7 +655,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const [taxonomyMeta, setTaxonomyMeta] = useState<TaxonomyMeta | null>(null);
   const jobsRequestId = useRef(0);
   const hasServerFilters = Boolean(
-    activeCategory || activeRole || search || location || (countryFilter && countryFilter !== "all") || visaProgramFilter || visaOnly || oneClickOnly || timeFilter ||
+    activeCategory || activeRole || search || location || (countryFilter && countryFilter !== "all") || visaProgramFilter || visaOnly || oneClickOnly || (timeFilter && timeFilter !== "all") ||
     (personalized && (userPrefs?.target_roles?.length || 0) > 0)
   );
 
@@ -829,7 +832,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
     if (activeRole) params.role = activeRole;
     if (countryFilter) params.country = countryFilter;
     if (visaProgramFilter) params.visa_program = visaProgramFilter;
-    if (timeFilter) {
+    if (timeFilter && timeFilter !== "all") {
       params.time_filter = timeFilter;
     }
 
@@ -966,6 +969,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
   const onlyAggregatorMatchesToday = Boolean(
     savedRoleMode && timeFilter === "24h" && sourceBreakdown.direct === 0 && sourceBreakdown.aggregator > 0
   );
+  const timeFilterActive = Boolean(timeFilter && timeFilter !== "all");
   const globalOpenPositionsCount = allJobsCount || total;
   const matchingPositionsCount = total;
   const timeFilterLabel = TIME_OPTIONS.find((chip) => chip.value === timeFilter)?.label || timeFilter;
@@ -977,7 +981,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
     visaOnly ? "Visa-friendly" : "",
     oneClickOnly ? "One-click ready" : "",
     countryFilter && countryFilter !== "all" ? `Country: ${countryFlag(countryFilter)} ${countryFilter}` : "",
-    timeFilter ? `Time: ${timeFilterLabel}` : "",
+    timeFilterActive ? `Time: ${timeFilterLabel}` : "",
     activeRole ? `Role: ${activeRole}` : "",
     activeCategory ? `Category: ${activeCategory}` : "",
     visaProgramFilter ? `Visa: ${visibleVisaPrograms.find((program) => program.code === visaProgramFilter)?.name || visaProgramFilter}` : "",
@@ -1000,6 +1004,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
       match_score: typeof job.match_score === "number" ? job.match_score : 0,
       status,
       position_open: true,
+      posted_at: job.posted_at || undefined,
     });
   };
 
@@ -1223,7 +1228,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             {(() => {
               const refineCount =
                 (countryFilter ? 1 : 0) + (visaProgramFilter ? 1 : 0) + (visaOnly ? 1 : 0) +
-                (timeFilter && timeFilter !== "24h" ? 1 : 0) + (maxYears !== 10 ? 1 : 0) + (sortBy !== "match" ? 1 : 0);
+                (timeFilter && timeFilter !== "all" ? 1 : 0) + (maxYears !== 10 ? 1 : 0) + (sortBy !== "match" ? 1 : 0);
               const open = refineOpen || refineCount > 0;
               return (
                 <button
@@ -1250,7 +1255,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
           </div>
 
           {/* ── Row 2 · WHERE + HOW: refine group, collapsed by default ── */}
-          {(refineOpen || countryFilter || visaProgramFilter || visaOnly || oneClickOnly || (timeFilter && timeFilter !== "24h") || maxYears !== 10 || sortBy !== "match") && (
+          {(refineOpen || countryFilter || visaProgramFilter || visaOnly || oneClickOnly || (timeFilter && timeFilter !== "all") || maxYears !== 10 || sortBy !== "match") && (
           <div style={{ flexBasis: "100%", display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center", paddingTop: 10, borderTop: `1px solid ${J.line}` }}>
             <span style={{ fontSize: 10, fontWeight: 850, letterSpacing: "0.12em", textTransform: "uppercase", color: J.t3, fontFamily: F.sans, marginRight: 2 }}>
               Refine
@@ -1319,7 +1324,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
             </button>
             {hasServerFilters && (
               <button
-                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setCountryFilter(defaultTargetCountry || "all"); setVisaProgramFilter(""); setVisaOnly(false); setOneClickOnly(false); setTimeFilter("24h"); setMaxYears(10); setActiveCategory(null); setActiveRole(null); setPersonalized(true); setPage(1); }}
+                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setCountryFilter(defaultTargetCountry || "all"); setVisaProgramFilter(""); setVisaOnly(false); setOneClickOnly(false); setTimeFilter("all"); setMaxYears(10); setActiveCategory(null); setActiveRole(null); setPersonalized(true); setPage(1); }}
                 style={{ ...controlStyle(), cursor: "pointer", fontWeight: 800, color: J.t2, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
                 title="Reset all filters"
               >
@@ -1467,7 +1472,7 @@ export function JobsPage({ onJobClick }: { onJobClick: (id: string) => void }) {
               <div style={{ fontSize: 14, fontWeight: 850, color: J.text, marginBottom: 6 }}>No jobs match the current filters.</div>
               <div style={{ fontSize: 12, color: J.t2, marginBottom: 12 }}>Try clearing the search, location, or time filter.</div>
               <button
-                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setCountryFilter(defaultTargetCountry || "all"); setVisaProgramFilter(""); setVisaOnly(false); setOneClickOnly(false); setTimeFilter("24h"); setMaxYears(10); setActiveCategory(null); setActiveRole(null); setPersonalized(true); setPage(1); }}
+                onClick={() => { setSearchRaw(""); setSearch(""); setLocationRaw(""); setLocation(""); setCountryFilter(defaultTargetCountry || "all"); setVisaProgramFilter(""); setVisaOnly(false); setOneClickOnly(false); setTimeFilter("all"); setMaxYears(10); setActiveCategory(null); setActiveRole(null); setPersonalized(true); setPage(1); }}
                 style={{ padding: "8px 14px", borderRadius: 8, border: `1px solid ${J.line}`, background: "var(--pu-148-163-184-005)", color: J.blue, fontSize: 12, fontWeight: 800, fontFamily: F.sans, cursor: "pointer" }}
               >Reset filters</button>
             </div>

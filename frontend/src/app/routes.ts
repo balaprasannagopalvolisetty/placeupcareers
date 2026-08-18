@@ -38,9 +38,6 @@ const ApplicationsPage = lazy(() =>
 const OneClickApplyPage = lazy(() =>
   import("./components/dashboard/OneClickApplyPage").then((m) => ({ default: m.OneClickApplyPage }))
 );
-const AnalyticsPage = lazy(() =>
-  import("./components/dashboard/AnalyticsPage").then((m) => ({ default: m.AnalyticsPage }))
-);
 const SettingsPage = lazy(() =>
   import("./components/dashboard/SettingsPage").then((m) => ({ default: m.SettingsPage }))
 );
@@ -121,7 +118,7 @@ export const router = createBrowserRouter([
           { path: "applications", Component: authedGuarded(ApplicationsPage) },
           { path: "one-click-apply", Component: authedGuarded(OneClickApplyPage) },
           { path: "resume-studio", Component: authedGuarded(DashboardJobsRedirect) },
-          { path: "analytics", Component: authedGuarded(AnalyticsPage) },
+          { path: "analytics", Component: authedGuarded(DashboardJobsRedirect) },
           { path: "settings", Component: authedGuarded(SettingsPage) },
           { path: "profile", Component: authedGuarded(UserProfilePage) },
         ],

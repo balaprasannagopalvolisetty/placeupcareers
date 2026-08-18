@@ -1,5 +1,15 @@
 # PlaceUp OpenClaw Tailoring Service
 
+## Local runtime
+
+The default PlaceUp local stack runs this service beside an Ollama container
+and selects `ollama/qwen2.5:7b`. `compose.yaml` mounts
+`local/openclaw.json`, uses Ollama's native API at `http://ollama:11434`, and
+passes only the application-level service token. No hosted model key or Google
+identity token is involved. Start it with `start_local.ps1 -WithAI`.
+
+The remainder of this file documents the optional legacy Cloud Run topology.
+
 This is a separate, private Cloud Run service. It is deliberately not bundled
 into `placeup-api`, permits no unauthenticated invocation, has no browser or
 channel tools, and has no ATS submission permissions. The API authenticates

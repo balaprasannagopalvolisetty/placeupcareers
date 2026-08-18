@@ -177,3 +177,4 @@ class UserApplication(BaseModel):
     position_open: Optional[bool] = None
     salary_offered: Optional[str] = None
     notes: Optional[str] = None
+    posted_at: Optional[str] = None

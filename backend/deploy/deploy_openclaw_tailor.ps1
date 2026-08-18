@@ -3,7 +3,7 @@ param(
     [string]$Region = "us-east1",
     [string]$ProviderSecret = "OLLAMA_API_KEY",
     [string]$ServiceTokenSecret = "openclaw-placeup-service-token",
-    [string]$Model = "ollama-cloud/glm-5.2",
+    [string]$Model = "glm-5.2:cloud",
     [switch]$EnableApiIntegration
 )
 
@@ -37,6 +37,8 @@ if ($LASTEXITCODE -ne 0) { throw "OpenClaw Cloud Build failed; API integration w
 # Cloud Run callers authenticate with Google-signed ID tokens. Using the
 # normal ingress path keeps service-to-service calls working without a VPC
 # connector; --no-allow-unauthenticated and roles/run.invoker keep it private.
+# Eight instances x two CPUs stays below this project's regional Cloud Run
+# allocation while still allowing 128 concurrent tailoring requests.
 gcloud run deploy $Service `
     --image $Image `
     --project $ProjectId `
@@ -46,9 +48,10 @@ gcloud run deploy $Service `
     --ingress all `
     --memory 2Gi `
     --cpu 2 `
-    --concurrency 1 `
+    --concurrency 16 `
+    --max-instances 8 `
     --timeout 180 `
-    --set-env-vars "OPENCLAW_MODEL=$Model" `
+    --set-env-vars "OPENCLAW_MODEL=$Model,TAILOR_MAX_CONCURRENCY=16" `
     --set-secrets "OLLAMA_API_KEY=$ProviderSecret`:latest,PLACEUP_SERVICE_TOKEN=$ServiceTokenSecret`:latest"
 if ($LASTEXITCODE -ne 0) { throw "OpenClaw Cloud Run deployment failed; API integration was not changed." }
 

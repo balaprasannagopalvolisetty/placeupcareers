@@ -20,6 +20,7 @@ SERVICE_TOKEN = os.getenv("PLACEUP_SERVICE_TOKEN", "")
 MAX_INPUT_CHARS = int(os.getenv("ATS_MAX_INPUT_CHARS", "24000"))
 LOAD_IN_4BIT = os.getenv("ATS_LOAD_IN_4BIT", "true").strip().lower() in {"1", "true", "yes"}
 LOAD_IN_8BIT = not LOAD_IN_4BIT and os.getenv("ATS_LOAD_IN_8BIT", "false").strip().lower() in {"1", "true", "yes"}
+DEVICE_MODE = os.getenv("ATS_DEVICE", "auto").strip().lower()
 
 app = FastAPI(title="PlaceUp ATS Model", docs_url=None, redoc_url=None, openapi_url=None)
 _load_lock = threading.Lock()
@@ -48,27 +49,35 @@ def _load_model():
 
         log.info("Loading ATS base and adapter models")
         tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL, use_fast=True)
+        has_cuda = bool(torch.cuda.is_available())
+        use_cuda = DEVICE_MODE == "cuda" or (DEVICE_MODE == "auto" and has_cuda)
+        if DEVICE_MODE == "cuda" and not has_cuda:
+            raise RuntimeError("ATS_DEVICE=cuda was requested but CUDA is unavailable")
+        # bitsandbytes quantization is CUDA-only. CPU mode is slower but keeps
+        # the full model path usable on a cloud-free workstation with enough RAM.
+        load_4bit = LOAD_IN_4BIT and use_cuda
+        load_8bit = LOAD_IN_8BIT and use_cuda
         quantization = None
-        if LOAD_IN_4BIT:
+        if load_4bit:
             quantization = BitsAndBytesConfig(
                 load_in_4bit=True,
                 bnb_4bit_quant_type="nf4",
                 bnb_4bit_compute_dtype=torch.float16,
                 bnb_4bit_use_double_quant=True,
             )
-        elif LOAD_IN_8BIT:
+        elif load_8bit:
             quantization = BitsAndBytesConfig(load_in_8bit=True)
         base = AutoModelForCausalLM.from_pretrained(
             BASE_MODEL,
-            torch_dtype=torch.float16 if not (LOAD_IN_4BIT or LOAD_IN_8BIT) else None,
+            torch_dtype=(torch.float16 if use_cuda else torch.float32) if not (load_4bit or load_8bit) else None,
             quantization_config=quantization,
-            device_map="auto",
+            device_map="auto" if use_cuda else {"": "cpu"},
             low_cpu_mem_usage=True,
         )
         model = PeftModel.from_pretrained(base, ADAPTER_MODEL)
         model.eval()
         _tokenizer, _model = tokenizer, model
-        log.info("ATS model ready: %s + %s", BASE_MODEL, ADAPTER_MODEL)
+        log.info("ATS model ready: %s + %s on %s", BASE_MODEL, ADAPTER_MODEL, "cuda" if use_cuda else "cpu")
     return _tokenizer, _model
 
 
@@ -150,7 +159,8 @@ def _generate(req: AnalyzeRequest) -> dict[str, Any]:
 
     tokenizer, model = _load_model()
     encoded = tokenizer(_prompt(req), return_tensors="pt", truncation=True, max_length=3072)
-    encoded = {key: value.to("cuda") for key, value in encoded.items()}
+    target = next(model.parameters()).device
+    encoded = {key: value.to(target) for key, value in encoded.items()}
     with torch.inference_mode():
         output = model.generate(
             **encoded,

@@ -1,5 +1,10 @@
 # PlaceUp Career Master Documentation
 
+> Local-only deployment is now supported. See `LOCAL_RUN.md` and
+> `compose.yaml` for the cloud-free PostgreSQL + Firestore emulator + local
+> workers + Ollama/OpenClaw topology. Existing GCP deployment instructions are
+> retained only for teams that deliberately choose the hosted topology.
+
 Last updated: 2026-07-14
 
 This is the single source of truth for PlaceUp Career. Keep this file current
@@ -841,6 +846,116 @@ Manual label repair:
 ```powershell
 gcloud.cmd run jobs execute placeup-visa-label-backfill --region us-east1 --project steel-shine-492401-u6 --args="--all" --async
 ```
+
+## July 18, 2026 Release — Dashboard/Jobs/Tailor Overhaul
+
+Summary of changes in this release:
+
+- Analytics page removed entirely (`/dashboard/analytics` redirects to Jobs;
+  backend `/api/analytics/dashboard` deleted; `/api/analytics/market` kept for
+  the Overview market widget).
+- Applications page minimized to title + posted date + applied date; counts
+  and rows include ONLY `status == "applied"` records. `posted_at` is now
+  stored on user applications.
+- Jobs page: default view is ALL currently-open positions (new "All open"
+  time option; the visibility boundary equals the 60-day retention window in
+  `api/jobs.py: VISIBLE_RETENTION_DAYS`). Role/category filters now push
+  taxonomy title terms into the indexed SQL query, fixing empty results when
+  selecting a role. The Experience filter is re-applied against the FULL job
+  description after hydration.
+- One-click apply: automated submission (`POST /api/apply/{id}/approve`) is
+  Elite-only (402 otherwise). Everyone still sees every position and can
+  tailor + prepare. The one-click feed returns `one_click_allowed`.
+- Retention: `SCRAPER_RETENTION_DAYS` now defaults to 60 (2 months) and the
+  new `app/workers/job_retention.py` job purges expired AND non-taxonomy
+  positions daily.
+- Scraper: coverage audit now feeds a targeted gap backfill
+  (`SCRAPER_GAP_BACKFILL_*` envs) so thin role-country cells are re-scraped in
+  the same run.
+- ATS score: the SlyGoblin/mistral_ATSscore_generation analysis stored in
+  `extra_metadata.ats_model_analysis` is blended into visible match scores
+  (70% deterministic + 30% model requirement coverage).
+- Tailoring: the OpenClaw service runs the LOCAL openclaw CLI only
+  (`openclaw agent --model glm-5.2:cloud`); no direct HTTP API path. Each
+  instance runs a bounded pool of 16 child processes with retry/backoff, and
+  Cloud Run scales to 32 instances (≈512 concurrent requests). The Tailor
+  page uses this service first, then Groq, then deterministic. Prompt now
+  also emits a specific 3-paragraph cover letter.
+
+Deploy steps (PowerShell, in order):
+
+```powershell
+# 0) SECURITY: rotate the Ollama Cloud API key (it was shared in chat), then:
+gcloud.cmd secrets create OLLAMA_API_KEY --project steel-shine-492401-u6 --replication-policy automatic
+echo <NEW_KEY> | gcloud.cmd secrets versions add OLLAMA_API_KEY --project steel-shine-492401-u6 --data-file=-
+
+# 1) OpenClaw tailoring service (local openclaw CLI, --model glm-5.2:cloud)
+#    The script builds the image, mounts OLLAMA_API_KEY + service token from
+#    Secret Manager, and sets concurrency 16 x max-instances 32.
+backend\deploy\deploy_openclaw_tailor.ps1 -ProjectId steel-shine-492401-u6 -EnableApiIntegration
+
+# 2) API + app server (jobs/apply/user/analytics changes)
+backend\deploy\deploy_backend.ps1 -ProjectId steel-shine-492401-u6
+backend\deploy\deploy_app_server.ps1 -ProjectId steel-shine-492401-u6
+
+# 3) Scraper image (retention default + gap backfill)
+backend\deploy\deploy_country_scrapers.ps1 -ProjectId steel-shine-492401-u6
+
+# 4) Retention job (daily 60-day + non-taxonomy purge)
+gcloud.cmd run jobs create placeup-job-retention --region us-east1 --project steel-shine-492401-u6 `
+  --image us-east1-docker.pkg.dev/steel-shine-492401-u6/placeup/backend:latest `
+  --command python --args="-m,app.workers.job_retention" `
+  --set-secrets DATABASE_URL=DATABASE_URL:latest --max-retries 1 --task-timeout 3600
+gcloud.cmd scheduler jobs create http placeup-job-retention-daily --project steel-shine-492401-u6 `
+  --location us-east1 --schedule "0 9 * * *" `
+  --uri "https://run.googleapis.com/v2/projects/steel-shine-492401-u6/locations/us-east1/jobs/placeup-job-retention:run" `
+  --oauth-service-account-email placeup-api-sa@steel-shine-492401-u6.iam.gserviceaccount.com
+
+# 5) Frontend
+cd frontend
+npm run build
+.\deploy_frontend.ps1
+```
+
+Follow-up fixes (same release, second deploy):
+
+- Jobs feed starvation: personalized feeds now keep role title-terms in the
+  indexed SQL query (the newest-4k pool only spanned hours of the 60-day
+  window, showing 1 result while the market widget counted 2k+). Exact
+  resume scoring is capped at 1200 pool rows; the visible page is always
+  exact-scored.
+- Taxonomy direction reversed per product decision: unknown-role positions
+  are KEPT (non-taxonomy purge is now opt-in via --include-non-taxonomy).
+  New `app/workers/taxonomy_evolution.py` reports high-volume unknown titles
+  as add candidates and zero-inventory roles as remove candidates (emails
+  operations@).
+- One-click flow: preparation-time NEEDS_YOU no longer dead-ends the modal —
+  apps stay in NEEDS_REVIEW so Step 2 (approve & auto-apply) always exists.
+  Unknown ATS questions are auto-answered by the LLM from JD+resume+cover+
+  profile (`services/apply/question_answerer.py`); EEO/sensitive questions
+  are never auto-answered; anything unanswered holds the application pending
+  in the modal until the user fills it, saves, and approves.
+- Review modal shows editable profile answers for browser submissions too.
+- Notification bell refreshes every 60s and on window focus.
+- Resume quality score (e.g. 75) is computed deterministically at upload
+  time by `score_resume_quality`; the GPU model scores JOBS against the
+  resume (match/ATS scores), not this number. It changes when a new resume
+  version is uploaded.
+
+Run ALL master job descriptions through the private mistral ATS model (after
+GPU deploy; see "Private master-job ATS analysis" section):
+
+```powershell
+.\backend\deploy\deploy_ats_model.ps1 -ProjectId steel-shine-492401-u6 -ApiRegion us-east1 -GpuRegion us-east4 -DbInstance placeup-backend -CreateSchedule
+# or the Spot-VM variant (deploy_ats_batch_vm.ps1); either runs
+# app.workers.master_ats_analysis until every active JD is analyzed.
+```
+
+Required env/secrets after deploy: `OPENCLAW_TAILOR_ENABLED=true`,
+`OPENCLAW_TAILOR_URL=<service url>`, `OPENCLAW_TAILOR_TOKEN` (existing
+secret), `OLLAMA_API_KEY` (rotated). Optional: `SCRAPER_RETENTION_DAYS`
+(default 60), `SCRAPER_GAP_BACKFILL_ENABLED` (default true),
+`TAILOR_MAX_CONCURRENCY` (default 16 per instance; total = × max-instances).
 
 ## Documentation Policy
 

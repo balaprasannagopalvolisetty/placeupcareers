@@ -239,15 +239,18 @@ def test_effective_job_date_uses_first_collected_when_ats_omits_posted_date():
     assert _job_effective_datetime(job) == datetime(2026, 7, 12, 12, 0, tzinfo=timezone.utc)
 
 
-def test_default_jobs_visibility_is_a_rolling_24_hours():
-    from app.api.jobs import _visible_jobs_cutoff
+def test_default_jobs_visibility_matches_the_60_day_retention_window():
+    # Users browse ALL currently-open positions; the visibility boundary
+    # equals the retention window (60 days), not a 24-hour slice.
+    from app.api.jobs import VISIBLE_RETENTION_DAYS, _visible_jobs_cutoff
 
+    assert VISIBLE_RETENTION_DAYS == 60
     before = datetime.now(timezone.utc)
     cutoff = _visible_jobs_cutoff()
     after = datetime.now(timezone.utc)
 
-    assert before - timedelta(hours=24, seconds=1) <= cutoff
-    assert cutoff <= after - timedelta(hours=23, minutes=59, seconds=59)
+    assert before - timedelta(days=60, seconds=1) <= cutoff
+    assert cutoff <= after - timedelta(days=59, hours=23, minutes=59, seconds=59)
 
 
 def test_explicit_24h_filter_is_a_rolling_window():

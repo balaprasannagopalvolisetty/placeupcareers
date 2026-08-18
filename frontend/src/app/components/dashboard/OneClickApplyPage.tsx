@@ -62,6 +62,9 @@ export function OneClickApplyPage() {
 
   const jobs = feed?.jobs || [];
   const readyCount = feed?.ready_total ?? jobs.filter((j) => j.one_click_ready).length;
+  // Elite users get automated submission; Pro users see every position and
+  // can tailor + prepare, then apply themselves.
+  const oneClickAllowed = feed?.one_click_allowed !== false;
   const pageNumbers = useMemo(() => {
     const pages = feed?.total_pages || 1;
     const start = Math.max(1, Math.min(page - 2, pages - 4));
@@ -132,6 +135,12 @@ export function OneClickApplyPage() {
         {feed && !feed.live_submit_enabled && (
           <span style={{ fontSize: 12, color: T.warn }}>
             Live submission safety gate is off; preparation and review remain available.
+          </span>
+        )}
+        {feed && !oneClickAllowed && (
+          <span style={{ fontSize: 12, color: T.warn }}>
+            One-click submission is an Elite feature. You can still tailor, prepare, and apply yourself —{" "}
+            <Link to="/dashboard/settings" style={{ color: "var(--pu-60a5fa-t)" }}>upgrade to Elite</Link> for automated submission.
           </span>
         )}
         <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: T.t2, marginLeft: "auto", cursor: "pointer" }}>
@@ -222,7 +231,7 @@ export function OneClickApplyPage() {
                     cursor: busyId === job.job_id ? "wait" : "pointer",
                     opacity: busyId === job.job_id ? 0.6 : 1, background: T.grad,
                   }}>
-                  <Zap size={14} /> {busyId === job.job_id ? "Tailoring..." : job.one_click_ready ? "Tailor & Apply" : "Tailor & Prepare"}
+                  <Zap size={14} /> {busyId === job.job_id ? "Tailoring..." : job.one_click_ready && oneClickAllowed ? "Tailor & Apply" : "Tailor & Prepare"}
                 </button>
                 </div>
               </div>

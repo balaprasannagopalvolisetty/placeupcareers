@@ -431,7 +431,10 @@ def delete_resume(user_id: str, resume_id: str) -> int:
 
 
 def count_user_applications(user_id: str) -> int:
-    return len(list(_client().collection("user_applications").where("user_id", "==", user_id).stream()))
+    # Only genuinely applied rows count — merely opened/tracked/skipped
+    # positions must not inflate the user's application numbers.
+    rows = _client().collection("user_applications").where("user_id", "==", user_id).stream()
+    return sum(1 for snap in rows if (snap.to_dict() or {}).get("status") == "applied")
 
 
 def upsert_user_application(user_id: str, payload: dict) -> dict:
@@ -456,6 +459,7 @@ def upsert_user_application(user_id: str, payload: dict) -> dict:
         "position_open": payload.get("position_open"),
         "salary_offered": payload.get("salary_offered") or "",
         "notes": payload.get("notes") or "",
+        "posted_at": payload.get("posted_at") or "",
         "updated_at": now,
     }
     existing = _doc("user_applications", app_id).get()

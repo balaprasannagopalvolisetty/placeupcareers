@@ -52,6 +52,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 DEFAULT_VISIBLE_MAX_AGE_HOURS = 24
 DEFAULT_RECENT_JOB_HOURS = 8
+# Frontend visibility boundary: users see EVERY currently-open position that is
+# at most this old. Retention cleanup deletes anything older, so the two
+# boundaries must stay in sync (see workers/job_retention.py).
+VISIBLE_RETENTION_DAYS = 60
 _detail_repair_recent: dict[str, datetime] = {}
 _match_score_cache: dict[str, tuple[datetime, int]] = {}
 _MATCH_SCORE_CACHE_TTL = timedelta(minutes=30)
@@ -624,6 +628,66 @@ def _cached_score_job_against_resume(
     return score
 
 
+def _model_analysis_score(job: dict, resume_text: str) -> Optional[int]:
+    """Resume coverage of the SlyGoblin/mistral_ATSscore_generation analysis.
+
+    The master_ats_analysis worker stores the GPU model's extracted
+    required_skills / keywords / preferred_skills in
+    extra_metadata.ats_model_analysis. When present, measure how much of that
+    model-extracted requirement set the resume actually covers and return a
+    0-100 sub-score. Returns None when no analysis exists yet.
+    """
+    if not resume_text:
+        return None
+    meta = job.get("extra_metadata") or {}
+    if not isinstance(meta, dict):
+        return None
+    analysis = meta.get("ats_model_analysis")
+    if not isinstance(analysis, dict):
+        return None
+    hay = resume_text.lower()
+
+    def _coverage(terms: object) -> Optional[int]:
+        if not isinstance(terms, list):
+            return None
+        cleaned = [str(t).strip().lower() for t in terms if str(t).strip()]
+        if not cleaned:
+            return None
+        hits = sum(1 for term in cleaned if term in hay)
+        return round(100 * hits / len(cleaned))
+
+    parts: list[int] = []
+    weights: list[int] = []
+    for value, weight in (
+        (_coverage(analysis.get("required_skills")), 3),
+        (_coverage(analysis.get("keywords")), 2),
+        (_coverage(analysis.get("preferred_skills")), 1),
+    ):
+        if value is not None:
+            parts.append(value * weight)
+            weights.append(weight)
+    if not weights:
+        return None
+    return max(0, min(100, round(sum(parts) / sum(weights))))
+
+
+def _blend_model_score(job: dict, resume_text: Optional[str]) -> None:
+    """Blend the deterministic score with the mistral ATS model's coverage.
+
+    70% deterministic keyword/skill engine + 30% GPU-model requirement
+    coverage. Only applies when the job has a stored model analysis and the
+    row was scored against a real resume."""
+    if not resume_text or job.get("score_type") != "resume_match":
+        return
+    model_score = _model_analysis_score(job, resume_text)
+    if model_score is None:
+        return
+    base = int(job.get("match_score") or 0)
+    job["match_score"] = max(0, min(100, round(0.7 * base + 0.3 * model_score)))
+    job["score_type"] = "resume_match"
+    job["model_score"] = model_score
+
+
 def score_breakdown(resume_text: str, job_text: str, *, resume_cache: Optional[dict] = None) -> dict:
     """Return an explainable score: the final number AND the inputs that
     went into it. Powers the "Why this score?" tooltip on the Job Detail
@@ -781,11 +845,13 @@ def _posted_window(value: Optional[str], tz_offset_minutes: int = 0) -> tuple[Op
 def _visible_jobs_cutoff() -> datetime:
     """Default frontend isolation boundary.
 
-    Older jobs remain in Postgres/master_jobs for audit/history, but normal
-    frontend projections show only positions posted/first collected in the
-    rolling last 24 hours.
+    Users must be able to browse ALL currently-open matching positions, not
+    just the last 24 hours. The boundary equals the retention window: data
+    older than 60 days is deleted by the retention worker, so the frontend
+    shows the complete live inventory. Explicit time chips (24h/today/week/
+    month) still narrow the view.
     """
-    return datetime.now(timezone.utc) - timedelta(hours=DEFAULT_VISIBLE_MAX_AGE_HOURS)
+    return datetime.now(timezone.utc) - timedelta(days=VISIBLE_RETENTION_DAYS)
 
 
 def _recent_jobs_cutoff() -> datetime:
@@ -1499,7 +1565,13 @@ async def list_jobs(
     _target_categories = _categories_for_role_names(preferred_roles)
     if personalized and not title_terms and not search and preferred_roles:
         title_terms = preferred_role_terms
-    if title_terms and not taxonomy_filter_active:
+    if title_terms:
+        # Push the taxonomy/role alias terms into the indexed pg_trgm title
+        # query for role/category filters too. Previously the role pool was
+        # just the newest rows with NO title predicate, so selecting a role
+        # from the dropdown frequently found zero matches inside the bounded
+        # pool and rendered an empty "reset filters" state even though the
+        # inventory holds thousands of matching jobs.
         filters["title_terms"] = title_terms
 
     offset = (page - 1) * page_size
@@ -1648,14 +1720,17 @@ async def list_jobs(
             # renders after filtering, then bound to a safe ceiling.
             fetch_limit = min(max(offset + page_size * 8, 800), 8000)
             fetch_offset = 0
-        # Do not push a large OR of wildcard title aliases into PostgreSQL for
-        # personalized feeds. On the 450K-row production inventory that plan
-        # can consume the entire statement timeout before returning one row.
-        # Pull a bounded, newest-first country pool using the last_seen index,
-        # then apply the same precise role matching below in Python.
+        # Personalized feeds MUST keep title_terms in the SQL query. The old
+        # "pop title_terms, pull newest country pool" strategy worked when the
+        # visible window was 24 hours (the 4k pool covered the entire window),
+        # but under the 60-day inventory a 4k newest-first pool spans only a
+        # few hours — users saw 1 visible match while the market widget
+        # correctly counted 2k+ for the same roles. The pg_trgm title index
+        # serves these wildcard role searches efficiently (same plan the
+        # exact-count path and role feeds already use; terms are capped at 80
+        # in the DB layer).
         db_filters = dict(filters)
         if title_terms_active and personalized:
-            db_filters.pop("title_terms", None)
             effective_cutoff = db_filters.pop("effective_since", None)
             if effective_cutoff is not None:
                 db_filters["seen_since"] = effective_cutoff
@@ -1840,6 +1915,7 @@ async def list_jobs(
                         resume_text, f"{jt}\n{jd}", resume_cache=resume_cache, job_id=str(j.get("id") or ""),
                     )
                     j["score_type"] = "resume_match"
+                    _blend_model_score(j, resume_text)
                 else:
                     _set_insufficient_jd_score(j)
             else:
@@ -1862,7 +1938,14 @@ async def list_jobs(
         # Personalized target-role/country feeds must be globally rankable by
         # the user's resume score. Score that bounded candidate pool now; broad
         # anonymous/all-country pools retain the cheaper two-stage baseline.
-        exact_personalized_pool = bool(resume_text and personalized and preferred_roles)
+        # Bound exact resume scoring: with title_terms now pushed into SQL, a
+        # personalized pool can legitimately contain thousands of matches
+        # across the 60-day window. Exact-scoring all of them per request made
+        # the page slow; rank pools beyond the cap with the cheap baseline and
+        # exact-score only the visible page (which happens below anyway).
+        exact_personalized_pool = bool(
+            resume_text and personalized and preferred_roles and len(decorated) <= 1200
+        )
         deep_pool = len(decorated) > max(page_size * 3, 120) and not exact_personalized_pool
         for job_data in decorated:
             if deep_pool:
@@ -1989,6 +2072,22 @@ async def list_jobs(
             row for row in page_candidates
             if has_complete_job_description(row.get("description") or "")
         ]
+        # Re-apply the Experience filter against the FULL job description.
+        # Pool rows carry a truncated ~900-char JD, so "8+ years required"
+        # stated deeper in the text was invisible to the first pass and the
+        # Experience dropdown appeared to do nothing. Full-text hydration
+        # above makes this second pass authoritative for the visible page.
+        if max_years < 50:
+            complete_candidates = [
+                row for row in complete_candidates
+                if is_target_experience(
+                    row.get("title") or "",
+                    (row.get("extra_metadata") or {}).get("years_min") if isinstance(row.get("extra_metadata"), dict) else None,
+                    (row.get("extra_metadata") or {}).get("years_max") if isinstance(row.get("extra_metadata"), dict) else None,
+                    max_years=max_years,
+                    description=row.get("description") or "",
+                )
+            ]
         page_jobs = complete_candidates[offset:offset + page_size]
         if hydrate_limit == len(decorated):
             total = len(complete_candidates)
@@ -2008,6 +2107,7 @@ async def list_jobs(
                             resume_text, f"{jt}\n{full}", resume_cache=resume_cache, job_id=str(j.get("id") or ""),
                         )
                         j["score_type"] = "resume_match"
+                        _blend_model_score(j, resume_text)
                     else:
                         _set_insufficient_jd_score(j)
                 if sort == "recent":

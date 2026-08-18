@@ -4,6 +4,7 @@ Database layer for production deployment on Google Cloud.
 """
 
 import logging
+import os
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -30,8 +31,15 @@ def get_firestore_db():
 
         from app.config import settings
 
+        emulator_host = os.getenv("FIRESTORE_EMULATOR_HOST", "").strip()
+        project_id = settings.user_firestore_project_id or settings.gcp_project_id or "placeup-local"
+
         if not firebase_admin._apps:
-            if settings.firebase_credentials_path:
+            if emulator_host:
+                # The emulator is fully local and deliberately uses no Google
+                # credentials. FIRESTORE_EMULATOR_HOST handles routing.
+                firebase_admin.initialize_app(options={"projectId": project_id})
+            elif settings.firebase_credentials_path:
                 try:
                     cred = credentials.Certificate(settings.firebase_credentials_path)
                     firebase_admin.initialize_app(cred)
@@ -41,8 +49,11 @@ def get_firestore_db():
             else:
                 firebase_admin.initialize_app()
 
-        _db = firestore.client()
-        logger.info("Firestore client initialized successfully")
+        _db = firestore.client(database_id=settings.user_firestore_database)
+        logger.info(
+            "Firestore client initialized successfully%s",
+            f" against local emulator {emulator_host}" if emulator_host else "",
+        )
         return _db
 
     except Exception as e:

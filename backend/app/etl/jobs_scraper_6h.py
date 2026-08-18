@@ -79,20 +79,32 @@ except ValueError:
     JOBSPY_RECENCY_HOURS = 24
 PURGE_EXCEPT_TODAY = os.getenv("SCRAPER_PURGE_EXCEPT_TODAY", "false").strip().lower() not in {"0", "false", "no", "off"}
 PURGE_TIMEZONE = os.getenv("SCRAPER_PURGE_TIMEZONE", "America/Chicago").strip() or "America/Chicago"
-# Rolling retention is OPT-IN. Default 0 == never delete anything (matches the
-# previous safe behavior where SCRAPER_PURGE_EXCEPT_TODAY=false did no purge).
-# Set SCRAPER_RETENTION_DAYS=N (>0) to prune only postings older than N days —
-# a thin/failed run still can't wipe the board because recent rows are kept.
-# The stale-jobs sweeper (separate daily job) already marks >30d as inactive.
+# Rolling retention defaults to the platform-wide 60-day (2-month) window:
+# every scrape run automatically prunes postings older than 60 days, matching
+# the frontend visibility boundary in api/jobs.py. Set SCRAPER_RETENTION_DAYS
+# to override, or 0 to disable deletion entirely. A thin/failed run still
+# can't wipe the board because recent rows are always kept.
 try:
-    RETENTION_DAYS = max(0, int(os.getenv("SCRAPER_RETENTION_DAYS", "0")))
+    RETENTION_DAYS = max(0, int(os.getenv("SCRAPER_RETENTION_DAYS", "60")))
 except ValueError:
-    RETENTION_DAYS = 0
+    RETENTION_DAYS = 60
 ADVISORY_LOCK_KEY = 6412226682826
 try:
     COVERAGE_AUDIT_FLOOR = max(0, int(os.getenv("SCRAPER_ROLE_COUNTRY_AUDIT_FLOOR", "70")))
 except ValueError:
     COVERAGE_AUDIT_FLOOR = 70
+# Targeted re-scrape of role-country cells the audit flags as thin, so the
+# 32-country × 117-role matrix converges to full coverage instead of only
+# logging its gaps. Bounded per run to respect the time budget.
+GAP_BACKFILL_ENABLED = os.getenv("SCRAPER_GAP_BACKFILL_ENABLED", "true").strip().lower() not in {"0", "false", "no", "off"}
+try:
+    GAP_BACKFILL_MAX_COUNTRIES = max(1, int(os.getenv("SCRAPER_GAP_BACKFILL_MAX_COUNTRIES", "8")))
+except ValueError:
+    GAP_BACKFILL_MAX_COUNTRIES = 8
+try:
+    GAP_BACKFILL_MAX_ROLES = max(1, int(os.getenv("SCRAPER_GAP_BACKFILL_MAX_ROLES", "40")))
+except ValueError:
+    GAP_BACKFILL_MAX_ROLES = 40
 try:
     # Finish well before the next six-hour trigger. An unbounded run used to
     # spend 6-12 hours walking every role/country/provider combination and
@@ -476,21 +488,60 @@ async def _run_batched() -> int:
         logger.info("6h scraper post-run purge skipped (no retention window set; nothing deleted).")
 
     if not matrix_task:
-        _log_role_country_coverage(floor=COVERAGE_AUDIT_FLOOR)
+        weak_cells = _log_role_country_coverage(floor=COVERAGE_AUDIT_FLOOR)
+        # Targeted gap backfill: don't just report thin role-country cells —
+        # immediately re-scrape them so every one of the 32 countries has
+        # inventory for every one of the 117 roles. Grouped per country so each
+        # pass hits only that country's boards with only its missing roles.
+        if GAP_BACKFILL_ENABLED and weak_cells and budget_available(min_remaining=600):
+            by_country: dict[str, list[str]] = {}
+            for cell in weak_cells:
+                by_country.setdefault(cell["country"], []).append(cell["role"])
+            # Weakest countries first (most missing cells).
+            ranked = sorted(by_country.items(), key=lambda kv: -len(kv[1]))[:GAP_BACKFILL_MAX_COUNTRIES]
+            for gap_country, gap_roles in ranked:
+                if not budget_available(min_remaining=600):
+                    logger.warning("Gap backfill stopped early; run budget remaining %.0fs", budget_remaining())
+                    break
+                rule = COUNTRY_RULES.get(gap_country)
+                gap_location = (rule.name if rule else gap_country).replace(" ", "_")
+                logger.info(
+                    "Gap backfill: country=%s roles=%s (%s weak cells)",
+                    gap_country, len(gap_roles), len(weak_cells),
+                )
+                try:
+                    gap_code = await run(_base_args(
+                        queries=_encoded_terms(sorted(set(gap_roles))[:GAP_BACKFILL_MAX_ROLES]),
+                        locations=gap_location,
+                        sources=public_sources,
+                        max_per_source=80,
+                        jobspy_hours_old=336,
+                        jobspy_page_size=50,
+                        jobspy_max_pages=30,
+                        schedule_type=f"6h-gap-backfill-{gap_country}",
+                    ))
+                    if gap_code:
+                        logger.warning("Gap backfill for %s failed with code %s", gap_country, gap_code)
+                except Exception as exc:
+                    logger.warning("Gap backfill for %s crashed: %s", gap_country, exc)
 
     total_failure_slots = 2 + max(1, len(public_role_batches))
     return 1 if failures >= total_failure_slots else 0
 
 
-def _log_role_country_coverage(*, floor: int) -> None:
+def _log_role_country_coverage(*, floor: int) -> list[dict]:
     """Log the thinnest active role-country cells after the run.
 
     This is intentionally non-fatal. Provider/API outages should not mark a
     scrape run failed, but the coverage matrix must be visible in Cloud Logs so
     we can tune terms/countries instead of discovering gaps only in the UI.
+
+    Returns the weak cells so the caller can run a targeted gap backfill —
+    coverage must reach every one of the 32 countries × 117 roles, not just be
+    reported.
     """
     if floor <= 0:
-        return
+        return []
     roles = all_role_names()
     counts: dict[tuple[str, str], int] = {
         (role, country): 0
@@ -508,7 +559,7 @@ def _log_role_country_coverage(*, floor: int) -> None:
             """)).mappings().all()
     except Exception as exc:
         logger.warning("6h coverage audit skipped: %s", exc)
-        return
+        return []
 
     for row in rows:
         _category, role = categorize(str(row.get("title") or ""))
@@ -540,6 +591,7 @@ def _log_role_country_coverage(*, floor: int) -> None:
         )
     else:
         logger.info("6h role-country coverage audit passed: all %s cells >= %s active jobs", len(counts), floor)
+    return weak
 
 
 def _alert_ops(subject: str, body: str) -> None:

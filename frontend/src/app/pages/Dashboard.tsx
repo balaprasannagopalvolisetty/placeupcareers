@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from "motion/react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import {
-  Home, FileText, Globe, Bell, BarChart3, Settings, LogOut,
+  Home, FileText, Globe, Bell, Settings, LogOut,
   Menu, X, User, ChevronDown, Briefcase,
   TrendingUp, ChevronRight, CheckCircle2, Bookmark, Clock,
   ArrowUpRight, MapPin, DollarSign, FileCheck,
@@ -14,7 +14,6 @@ import FeedbackWidget from "../components/FeedbackWidget";
 import { ThemeToggle } from "../components/Layout";
 import { ResumePage } from "../components/dashboard/ResumePage";
 import { JobsPage } from "../components/dashboard/JobsPage";
-import { AnalyticsPage } from "../components/dashboard/AnalyticsPage";
 import { SettingsPage } from "../components/dashboard/SettingsPage";
 import { UserProfilePage } from "../components/dashboard/UserProfilePage";
 import { JobDetailPage } from "../components/dashboard/JobDetailPage";
@@ -106,7 +105,6 @@ const NAV_ITEMS = [
   { icon: Zap,      label: "One-Click Apply", to: "/dashboard/one-click-apply" },
   { icon: ClipboardCheck, label: "Applications", to: "/dashboard/applications" },
   { icon: Wand2,   label: "Tailor", to: "/dashboard/tailor" },
-  { icon: BarChart3,label: "Analytics", to: "/dashboard/analytics" },
   { icon: Settings, label: "Settings", to: "/dashboard/settings" },
 ];
 
@@ -183,25 +181,30 @@ type FeaturedJob = { id: string | number; title: string; company: string; locati
 // Module-level snapshot so returning to Overview renders the last result
 // instantly instead of flashing an empty "Featured Positions Today" while the
 // network refetches. Survives route changes; refreshed in the background.
-const _overviewSnapshot: { featured: FeaturedJob[] } = { featured: [] };
+const _overviewSnapshot: {
+  featured: FeaturedJob[];
+  market: api.MarketAnalytics | null;
+  summary: api.DashboardSummary | null;
+} = { featured: [], market: null, summary: null };
 
 export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number) => void }) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { isMobile, isTablet } = useViewportFlags();
   const [featuredJobs, setFeaturedJobs] = useState<FeaturedJob[]>(_overviewSnapshot.featured);
-  const [resumeScore, setResumeScore] = useState(0);
-  const [hasResume, setHasResume] = useState(false);
-  const [activeResumeName, setActiveResumeName] = useState("");
-  const [totalApplications, setTotalApplications] = useState(0);
+  const snap = _overviewSnapshot.summary;
+  const [resumeScore, setResumeScore] = useState(Number(snap?.resume_score || 0));
+  const [hasResume, setHasResume] = useState(Boolean(snap?.has_resume));
+  const [activeResumeName, setActiveResumeName] = useState(snap?.active_resume_name || "");
+  const [totalApplications, setTotalApplications] = useState(Number(snap?.total_applications || 0));
   const [applications, setApplications] = useState<api.UserApplicationRow[]>([]);
-  const [totalResumes, setTotalResumes] = useState(0);
-  const [market, setMarket] = useState<api.MarketAnalytics | null>(null);
-  const [marketLoading, setMarketLoading] = useState(true);
+  const [totalResumes, setTotalResumes] = useState(Number(snap?.total_resumes || 0));
+  const [market, setMarket] = useState<api.MarketAnalytics | null>(_overviewSnapshot.market);
+  const [marketLoading, setMarketLoading] = useState(!_overviewSnapshot.market);
   // Distinguishes "still loading" from "genuinely has no resume". Without this
   // the cards flashed "0 / Upload a resume" on every slow fetch even for users
   // who DO have a resume, which looked broken.
-  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [summaryLoading, setSummaryLoading] = useState(!snap);
   const [featuredLoading, setFeaturedLoading] = useState(true);
 
   const handleJobClick = (id: string | number) => {
@@ -253,12 +256,20 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
   // Fast, targeted market count for the user's saved roles/country. This is
   // intentionally separate from the heavier Jobs list so Overview can render
   // quickly even while match scores are being refreshed in the background.
+  // The old 1.8s timeout silently abandoned the request whenever the first
+  // uncached DB count took longer, which is why the Target-Role Market card
+  // showed no real data. Keep the last snapshot on screen and give the
+  // request a realistic budget; the backend caches the result for 2 minutes.
   useEffect(() => {
     let active = true;
-    setMarketLoading(true);
-    withTimeout(api.getMarketAnalytics(), 1800, null)
+    if (!_overviewSnapshot.market) setMarketLoading(true);
+    withTimeout(api.getMarketAnalytics(), 12000, null)
       .then((data) => {
-        if (active) setMarket(data);
+        if (!active) return;
+        if (data) {
+          _overviewSnapshot.market = data;
+          setMarket(data);
+        }
       })
       .finally(() => {
         if (active) setMarketLoading(false);
@@ -269,11 +280,12 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
   // Fetch dashboard summary (resume score, applications, activity)
   useEffect(() => {
     let active = true;
-    setSummaryLoading(true);
-    withTimeout(api.getDashboardSummary(), 1900, null)
+    if (!_overviewSnapshot.summary) setSummaryLoading(true);
+    withTimeout(api.getDashboardSummary(), 8000, null)
       .then((summary) => {
         if (!active) return;
         if (summary) {
+          _overviewSnapshot.summary = summary;
           setResumeScore(Number(summary.resume_score || 0));
           setHasResume(Boolean(summary.has_resume || summary.active_resume_name || Number(summary.total_resumes || 0) > 0));
           setActiveResumeName(summary.active_resume_name || "");
@@ -360,7 +372,7 @@ export function OverviewPage({ onJobClick }: { onJobClick?: (id: string | number
         </GlowCard>
 
         {/* Applications */}
-        <GlowCard style={{ padding: 20 }} onClick={() => navigate("/dashboard/analytics")}>
+        <GlowCard style={{ padding: 20 }} onClick={() => navigate("/dashboard/applications")}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
             <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--pu-37-99-235-01)", border: "1px solid var(--pu-37-99-235-02)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <CheckCircle2 size={16} color={T.burnt} />
@@ -502,17 +514,32 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    const timer = window.setTimeout(() => {
+    let active = true;
+    const refresh = () => {
       api.getNotifications().then((data) => {
+        if (!active) return;
         setNotifications(data.map((item) => ({ ...item, unread: Boolean((item as any).unread) })));
       }).catch(() => {
-        setNotifications([]);
+        if (active) setNotifications([]);
       });
       // Target-role digest powers the bell badge: how many roles matching the
       // user's target positions were added to the database in the last 24h.
-      api.getAlertsDigest().then(setRolesDigest).catch(() => setRolesDigest(null));
-    }, 450);
-    return () => window.clearTimeout(timer);
+      api.getAlertsDigest().then((digest) => { if (active) setRolesDigest(digest); }).catch(() => {
+        if (active) setRolesDigest(null);
+      });
+    };
+    // First fetch shortly after mount, then keep the bell live: refresh every
+    // 60s and whenever the tab regains focus. The old one-shot fetch made the
+    // bell show the same stale entry for the whole session.
+    const timer = window.setTimeout(refresh, 450);
+    const interval = window.setInterval(refresh, 60_000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+    };
   }, [isAuthenticated]);
 
   const displayName = user ? `${user.first_name} ${user.last_name}` : "Loading...";

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { LoadingLogo } from "../LoadingLogo";
 import { Link } from "react-router";
 import { motion } from "motion/react";
-import { Briefcase, Download, ExternalLink, Search, RefreshCw, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { Download, ExternalLink, Search, RefreshCw, CheckCircle2, Clock } from "lucide-react";
 import * as api from "../../lib/api";
 import { ReviewBeforeSubmit } from "./ReviewBeforeSubmit";
 
@@ -19,27 +19,6 @@ const T = {
 
 type Row = api.UserApplicationRow;
 
-const STATUS_PILLS: { label: string; value: string }[] = [
-  { label: "All",           value: "all" },
-  { label: "Applied",       value: "applied" },
-  { label: "Heard back",    value: "heard_back" },
-  { label: "Position open", value: "position_open" },
-  { label: "Skipped",       value: "not_applied" },
-];
-
-function statusBadge(row: Row): { label: string; color: string; bg: string; border: string } {
-  if (row.heard_back === true) {
-    return { label: "Heard back", color: "var(--pu-22c55e-t)", bg: "var(--pu-34-197-94-012)", border: "var(--pu-34-197-94-03)" };
-  }
-  if (row.status === "applied") {
-    return { label: "Applied", color: T.red, bg: "var(--pu-59-130-246-012)", border: "var(--pu-59-130-246-03)" };
-  }
-  if (row.status === "not_applied") {
-    return { label: row.not_applied_reason || "Skipped", color: T.t3, bg: "var(--pu-148-163-184-004)", border: T.border };
-  }
-  return { label: row.status || "Tracked", color: T.t2, bg: "var(--pu-148-163-184-004)", border: T.border };
-}
-
 function formatDate(value?: string): string {
   if (!value) return "—";
   const d = new Date(value);
@@ -47,12 +26,15 @@ function formatDate(value?: string): string {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
+// Applied means genuinely applied. Merely opened/tracked/skipped positions
+// are never shown or counted on this page.
+const isApplied = (r: Row) => r.status === "applied";
+
 export function ApplicationsPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("all");
   const [reloadKey, setReloadKey] = useState(0);
   const [automated, setAutomated] = useState<api.ApplicationRecord[]>([]);
   const [reviewing, setReviewing] = useState<api.ApplicationRecord | null>(null);
@@ -79,17 +61,20 @@ export function ApplicationsPage() {
       .then(([trackedResult, automatedResult]) => {
         if (!active) return;
         const data = trackedResult.status === "fulfilled" ? trackedResult.value : [];
-        // Sort newest-first; backends may return either created_at or updated_at.
-        const sorted = [...(Array.isArray(data) ? data : [])].sort((a, b) => {
-          const ta = new Date(a.updated_at || a.created_at || 0).getTime();
-          const tb = new Date(b.updated_at || b.created_at || 0).getTime();
-          return tb - ta;
-        });
+        const sorted = [...(Array.isArray(data) ? data : [])]
+          .filter(isApplied)
+          .sort((a, b) => {
+            const ta = new Date(a.updated_at || a.created_at || 0).getTime();
+            const tb = new Date(b.updated_at || b.created_at || 0).getTime();
+            return tb - ta;
+          });
         setRows(sorted);
         if (automatedResult.status === "fulfilled") {
-          setAutomated([...(automatedResult.value || [])].sort((a, b) =>
-            new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime()
-          ));
+          setAutomated([...(automatedResult.value || [])]
+            .filter((app) => app.status === "applied")
+            .sort((a, b) =>
+              new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime()
+            ));
         }
         if (trackedResult.status === "rejected" && automatedResult.status === "rejected") {
           setError("Could not load your applications.");
@@ -97,7 +82,7 @@ export function ApplicationsPage() {
       })
       .catch((err) => {
         if (!active) return;
-        setError((err as Error)?.message || "Could not load your tracked applications.");
+        setError((err as Error)?.message || "Could not load your applications.");
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -110,73 +95,26 @@ export function ApplicationsPage() {
     return () => window.removeEventListener("placeup:application-changed", handler);
   }, []);
 
-  const counts = useMemo(() => {
-    const total = rows.length;
-    const applied = rows.filter((r) => r.status === "applied").length;
-    const heard = rows.filter((r) => r.heard_back === true).length;
-    const skipped = rows.filter((r) => r.status === "not_applied").length;
-    return { total, applied, heard, skipped };
-  }, [rows]);
-
-  // Per-day bucket of applied / heard_back over the last 14 days.
-  // Used by the trend chart below — keeps the math simple by counting
-  // each row at its created_at (or updated_at if created_at is absent).
-  const trend = useMemo(() => {
-    const days = 14;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const buckets: Array<{ date: Date; key: string; label: string; applied: number; heard: number }> = [];
-    for (let i = days - 1; i >= 0; i -= 1) {
-      const d = new Date(today);
-      d.setDate(d.getDate() - i);
-      const key = d.toISOString().slice(0, 10);
-      buckets.push({
-        date: d,
-        key,
-        label: d.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
-        applied: 0,
-        heard: 0,
-      });
-    }
-    const byKey = new Map(buckets.map((b) => [b.key, b]));
-    for (const r of rows) {
-      const appliedTs = r.created_at || r.updated_at;
-      if (r.status === "applied" && appliedTs) {
-        const bucket = byKey.get(String(appliedTs).slice(0, 10));
-        if (bucket) bucket.applied += 1;
-      }
-      const heardTs = r.updated_at || r.created_at;
-      if (r.heard_back === true && heardTs) {
-        const bucket = byKey.get(String(heardTs).slice(0, 10));
-        if (bucket) bucket.heard += 1;
-      }
-    }
-    const maxVal = Math.max(1, ...buckets.map((b) => Math.max(b.applied, b.heard)));
-    return { buckets, maxVal };
-  }, [rows]);
+  const counts = useMemo(() => ({
+    applied: rows.length,
+    heard: rows.filter((r) => r.heard_back === true).length,
+  }), [rows]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return rows.filter((r) => {
-      if (filter === "applied" && r.status !== "applied") return false;
-      if (filter === "heard_back" && r.heard_back !== true) return false;
-      if (filter === "position_open" && r.position_open !== true) return false;
-      if (filter === "not_applied" && r.status !== "not_applied") return false;
-      if (!q) return true;
-      const hay = `${r.title || ""} ${r.company || ""} ${r.location || ""}`.toLowerCase();
-      return hay.includes(q);
-    });
-  }, [rows, search, filter]);
+    if (!q) return rows;
+    return rows.filter((r) => `${r.title || ""} ${r.company || ""}`.toLowerCase().includes(q));
+  }, [rows, search]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18, width: "100%", minWidth: 0 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
         <div>
           <h2 style={{ fontFamily: F.sans, fontSize: 22, fontWeight: 700, color: T.text, marginBottom: 4 }}>
-            Application Tracker
+            Applications
           </h2>
           <p style={{ fontSize: 13, color: T.t2, fontFamily: F.sans, marginTop: 0 }}>
-            Every job you've applied to or skipped — and the follow-ups you logged.
+            Positions you actually applied to.
           </p>
         </div>
         <button
@@ -200,7 +138,7 @@ export function ApplicationsPage() {
               <div key={app.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center", padding: "10px 12px", borderRadius: 10, border: `1px solid ${T.border}`, background: "var(--pu-148-163-184-003)" }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ color: T.text, fontSize: 13, fontWeight: 700, fontFamily: F.sans, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{app.title || "Application"}</div>
-                  <div style={{ color: T.t3, fontSize: 11, fontFamily: F.sans, marginTop: 2 }}>{app.company || "Unknown company"} · Tier {app.tier} · {app.status.replaceAll("_", " ")}</div>
+                  <div style={{ color: T.t3, fontSize: 11, fontFamily: F.sans, marginTop: 2 }}>{app.company || "Unknown company"} · {app.status.replaceAll("_", " ")}</div>
                   {app.confirmation_ref && <div style={{ color: "var(--pu-86efac-t)", fontSize: 11, fontFamily: F.mono, marginTop: 4 }}>ATS confirmation: {app.confirmation_ref}</div>}
                   {app.submitted_at && <div style={{ color: T.t3, fontSize: 10, marginTop: 2 }}>Submitted {formatDate(app.submitted_at)}{app.confirmation_email_sent ? " · receipt emailed" : ""}</div>}
                 </div>
@@ -219,13 +157,11 @@ export function ApplicationsPage() {
         </div>
       )}
 
-      {/* Stat strip */}
+      {/* Stat strip — applied positions only */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
         {[
-          { label: "Tracked", value: counts.total, icon: Briefcase, color: T.t2 },
           { label: "Applied", value: counts.applied, icon: CheckCircle2, color: T.red },
           { label: "Heard back", value: counts.heard, icon: Clock, color: "var(--pu-22c55e-t)" },
-          { label: "Skipped", value: counts.skipped, icon: XCircle, color: T.t3 },
         ].map(({ label, value, icon: Icon, color }) => (
           <div key={label}
             style={{
@@ -249,68 +185,21 @@ export function ApplicationsPage() {
         ))}
       </div>
 
-      {/* 14-day applied vs heard-back trend chart.
-         Pure inline SVG — no chart library needed. One bar per day,
-         red = applied that day, green = heard back that day. */}
-      <div style={{
-        background: T.glass, backdropFilter: "blur(20px)",
-        border: `1px solid ${T.border}`, borderRadius: 14, padding: "14px 18px",
-      }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: T.text, fontFamily: F.sans }}>14-day activity</div>
-          <div style={{ display: "flex", gap: 14, fontSize: 11, color: T.t3, fontFamily: F.sans }}>
-            <span><span style={{ display: "inline-block", width: 10, height: 10, background: T.red, borderRadius: 2, marginRight: 5, verticalAlign: "middle" }} /> Applied</span>
-            <span><span style={{ display: "inline-block", width: 10, height: 10, background: "var(--pu-22c55e-b)", borderRadius: 2, marginRight: 5, verticalAlign: "middle" }} /> Heard back</span>
-          </div>
-        </div>
-        <svg width="100%" height="120" viewBox={`0 0 ${trend.buckets.length * 28} 120`} preserveAspectRatio="none" role="img" aria-label="Daily applications trend">
-          {trend.buckets.map((b, i) => {
-            const x = i * 28;
-            const appliedH = (b.applied / trend.maxVal) * 90;
-            const heardH = (b.heard / trend.maxVal) * 90;
-            return (
-              <g key={b.key} transform={`translate(${x}, 0)`}>
-                {/* Y axis lives in the parent — these are stacked vertical bars
-                    anchored to the 100 baseline so growth pushes upward. */}
-                <rect x={3} y={100 - appliedH} width={9} height={appliedH || 0} fill={T.red} rx={1.5} opacity={0.95} />
-                <rect x={14} y={100 - heardH} width={9} height={heardH || 0} fill="var(--pu-22c55e-t)" rx={1.5} opacity={0.95} />
-                {i % 2 === 0 && (
-                  <text x={13} y={114} textAnchor="middle" fontSize="8" fill={T.t3} fontFamily="monospace">{b.label.split(" ")[1]}</text>
-                )}
-              </g>
-            );
-          })}
-        </svg>
-      </div>
-
-      {/* Search + filter chips */}
+      {/* Search */}
       <div style={{
         background: T.glass, backdropFilter: "blur(20px)",
         border: `1px solid ${T.border}`, borderRadius: 14,
-        padding: "10px 14px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap",
+        padding: "10px 14px", display: "flex", gap: 10, alignItems: "center",
       }}>
         <div style={{
-          display: "flex", alignItems: "center", gap: 8, flex: "1 1 220px",
+          display: "flex", alignItems: "center", gap: 8, flex: 1,
           height: 36, padding: "0 12px", borderRadius: 8,
           border: `1px solid ${T.border}`, background: "var(--pu-148-163-184-004)",
         }}>
           <Search size={13} color={T.t3} />
           <input value={search} onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by company, title, or location…"
+            placeholder="Search by company or title…"
             style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: T.text, fontSize: 13, fontFamily: F.sans }} />
-        </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {STATUS_PILLS.map((p) => (
-            <button key={p.value} onClick={() => setFilter(p.value)}
-              style={{
-                height: 32, padding: "0 12px", borderRadius: 9999,
-                border: `1px solid ${filter === p.value ? "transparent" : T.border}`,
-                background: filter === p.value ? T.grad : "transparent",
-                color: filter === p.value ? "var(--pu-ffffff-t)" : T.t2,
-                fontSize: 12, cursor: "pointer", fontFamily: F.sans,
-                fontWeight: filter === p.value ? 600 : 400,
-              }}>{p.label}</button>
-          ))}
         </div>
       </div>
 
@@ -322,75 +211,41 @@ export function ApplicationsPage() {
         </div>
       )}
 
-      {/* Rows */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {/* Minimal rows: title · posted date · applied date */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {loading && rows.length === 0 && (
           <LoadingLogo label="Loading your applications" />
         )}
         {!loading && filtered.length === 0 && !error && (
           <div style={{ textAlign: "center", padding: 40, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 16, color: T.t2, fontFamily: F.sans }}>
-            <div style={{ fontSize: 14, marginBottom: 6 }}>No tracked applications yet.</div>
+            <div style={{ fontSize: 14, marginBottom: 6 }}>No applications yet.</div>
             <div style={{ fontSize: 12, color: T.t3, marginBottom: 12 }}>
-              Click <strong>Apply on Company Website</strong> on any job and we'll log it here for you.
+              Apply to any job and it will be tracked here.
             </div>
             <Link to="/dashboard/jobs" style={{ color: T.red, fontWeight: 600 }}>Browse jobs →</Link>
           </div>
         )}
-        {filtered.map((row, i) => {
-          const badge = statusBadge(row);
-          return (
-            <motion.div key={`${row.job_id}-${row.created_at || i}`}
-              initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(0.02 * i, 0.3) }}
-              style={{
-                background: "linear-gradient(135deg, var(--pu-15-30-55-062), var(--pu-25-18-32-072))",
-                backdropFilter: "blur(20px)", border: `1px solid ${T.border}`,
-                borderRadius: 14, padding: 14,
-                display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 12, alignItems: "center",
-              }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4, flexWrap: "wrap" }}>
-                  <span style={{
-                    fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 999,
-                    background: badge.bg, color: badge.color, border: `1px solid ${badge.border}`,
-                    fontFamily: F.sans, letterSpacing: "0.04em", textTransform: "uppercase",
-                  }}>{badge.label}</span>
-                  {typeof row.match_score === "number" && row.match_score > 0 && (
-                    <span style={{ fontSize: 10, color: T.t3, fontFamily: F.mono }}>{row.match_score}% match</span>
-                  )}
-                  <span style={{ fontSize: 10, color: T.t3, fontFamily: F.sans }}>{formatDate(row.updated_at || row.created_at)}</span>
-                </div>
-                <Link to={`/dashboard/jobs/${row.job_id}`}
-                  style={{ fontSize: 15, fontWeight: 700, color: T.text, fontFamily: F.sans, textDecoration: "none" }}>
-                  {row.title || "Untitled role"}
-                </Link>
-                <div style={{ fontSize: 12, color: T.t2, fontFamily: F.sans, marginTop: 2 }}>
-                  {row.company || "Unknown company"}{row.location ? ` · ${row.location}` : ""}
-                </div>
-                {row.notes && (
-                  <div style={{ fontSize: 12, color: T.t3, fontFamily: F.sans, marginTop: 6, lineHeight: 1.5 }}>
-                    Note: {row.notes}
-                  </div>
-                )}
-                {row.salary_offered && (
-                  <div style={{ fontSize: 12, color: T.t3, fontFamily: F.sans, marginTop: 4 }}>
-                    Salary discussed: {row.salary_offered}
-                  </div>
-                )}
-              </div>
-              {row.job_url && (
-                <a href={row.job_url} target="_blank" rel="noopener noreferrer"
-                  style={{
-                    display: "inline-flex", alignItems: "center", gap: 5,
-                    padding: "8px 12px", borderRadius: 9,
-                    border: `1px solid ${T.border}`, color: T.t2, fontSize: 12,
-                    fontFamily: F.sans, textDecoration: "none",
-                  }}>
-                  Posting <ExternalLink size={11} />
-                </a>
-              )}
-            </motion.div>
-          );
-        })}
+        {filtered.map((row, i) => (
+          <motion.div key={`${row.job_id}-${row.created_at || i}`}
+            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(0.02 * i, 0.3) }}
+            style={{
+              background: T.glass, backdropFilter: "blur(20px)",
+              border: `1px solid ${T.border}`, borderRadius: 12, padding: "12px 16px",
+              display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", gap: 14, alignItems: "center",
+            }}>
+            <Link to={`/dashboard/jobs/${row.job_id}`}
+              title={`${row.title || "Untitled role"}${row.company ? ` · ${row.company}` : ""}`}
+              style={{ fontSize: 14, fontWeight: 600, color: T.text, fontFamily: F.sans, textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {row.title || "Untitled role"}
+            </Link>
+            <span style={{ fontSize: 11, color: T.t3, fontFamily: F.sans, whiteSpace: "nowrap" }}>
+              Posted {formatDate(row.posted_at)}
+            </span>
+            <span style={{ fontSize: 11, color: T.t2, fontFamily: F.sans, whiteSpace: "nowrap" }}>
+              Applied {formatDate(row.created_at || row.updated_at)}
+            </span>
+          </motion.div>
+        ))}
       </div>
       {reviewing && (
         <ReviewBeforeSubmit

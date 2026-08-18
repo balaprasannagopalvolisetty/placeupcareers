@@ -101,3 +101,10 @@ backend/migrations/versions/__pycache__/
 gcp-key.json
 .gcloud/
 backend/deploy/*.local.ps1
+
+# Local all-in-one runtime state/backups (Compose named volumes hold the main
+# databases; this directory is reserved for exports and operator snapshots).
+.local/
+
+# Local scratch artifacts (tailoring test PDFs, throwaway output).
+tmp/

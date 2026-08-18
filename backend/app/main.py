@@ -76,8 +76,9 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning(f"Unsupported USER_DATABASE_BACKEND={settings.user_database_backend!r}")
 
-    # No in-process scheduler — Cloud Scheduler + Cloud Run Jobs handle
-    # scraping, silver loading, and stale-job sweeps in production.
+    # Scheduling stays outside the API process: Cloud Scheduler + Cloud Run
+    # Jobs handle production, while the local scheduler container invokes the
+    # same worker modules directly.
 
     yield
     logger.info("PlaceUp Career Backend shutting down...")
@@ -110,16 +111,19 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-Requested-With"],
 )
-app.add_middleware(
-    TrustedHostMiddleware,
-    allowed_hosts=[
-        "placeupcareer.com",
-        "www.placeupcareer.com",
-        "placeup-api-rui2a74muq-ue.a.run.app",
-        "*.run.app",
-        "testserver",
-    ],
-)
+_trusted_hosts = [
+    "placeupcareer.com",
+    "www.placeupcareer.com",
+    "placeup-api-rui2a74muq-ue.a.run.app",
+    "*.run.app",
+    "testserver",
+]
+if settings.is_development:
+    # Docker Compose service DNS names and browser-facing loopback hosts. Keep
+    # production's allowlist unchanged while allowing the complete stack to run
+    # without Cloud Run or Cloudflare in local development.
+    _trusted_hosts.extend(["localhost", "127.0.0.1", "api", "app-server", "frontend"])
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=_trusted_hosts)
 # Middleware order matters. Starlette runs them in reverse-registration
 # order, so the LAST add_middleware below is the outermost layer.
 # Reading from request → handler:

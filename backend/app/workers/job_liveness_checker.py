@@ -105,8 +105,8 @@ async def run(limit: int = 1500, concurrency: int = 24, dry_run: bool = False) -
                         UPDATE master_jobs
                            SET extra_metadata = COALESCE(extra_metadata, '{}'::jsonb)
                                || jsonb_build_object(
-                                   'liveness_checked_at', :checked_at,
-                                   'liveness_http_status', :status_code
+                                   'liveness_checked_at', CAST(:checked_at AS text),
+                                   'liveness_http_status', CAST(:status_code AS integer)
                                )
                          WHERE id = :id
                     """), {"id": row["id"], "checked_at": now_iso, "status_code": row["status_code"]})
