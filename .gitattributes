@@ -1,0 +1,18 @@
+# Shell scripts, the Makefile and Compose files must keep LF endings even when
+# the repository is checked out on Windows — CRLF breaks `#!/usr/bin/env bash`
+# and makes Make treat recipe lines as syntax errors.
+*.sh            text eol=lf
+Makefile        text eol=lf
+compose*.yaml   text eol=lf
+*.yml           text eol=lf
+
+# PowerShell deployment/runtime scripts stay CRLF for Windows tooling.
+*.ps1           text eol=crlf
+
+# Never normalise binary product assets.
+*.xlsx  binary
+*.pdf   binary
+*.docx  binary
+*.png   binary
+*.jpg   binary
+*.ico   binary

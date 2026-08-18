@@ -1,0 +1,121 @@
+# =============================================================================
+# Linux / Ubuntu production-grade overlay for compose.yaml
+#
+# Applied automatically by scripts/placeup.sh (and therefore by every `make`
+# target). It never changes what the services *are* — only how they behave as
+# long-running processes on a real host:
+#
+#   * bounded, rotated JSON logs so a runaway scraper cannot fill the disk
+#   * a real init process (PID 1) so Ctrl-C and `docker compose down` actually
+#     terminate Python/Node children instead of leaving zombies
+#   * generous stop grace periods so PostgreSQL and Redis flush cleanly
+#   * shared-memory sizing for PostgreSQL and for the Playwright/Chromium
+#     processes the scraper starts (the 64 MB Docker default crashes Chromium)
+#
+# Windows users running start_local.ps1 are unaffected: that script invokes
+# compose.yaml on its own and never loads this file.
+# =============================================================================
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
+x-worker-logging: &worker-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
+services:
+  postgres:
+    logging: *default-logging
+    init: true
+    stop_grace_period: 60s
+    # Sort/hash workspace for the catalogue queries. The 64 MB default forces
+    # large sorts onto disk on a database with millions of postings.
+    shm_size: ${PLACEUP_PG_SHM_SIZE:-512mb}
+    command:
+      - postgres
+      - -c
+      - max_connections=${PLACEUP_PG_MAX_CONNECTIONS:-200}
+      - -c
+      - shared_buffers=${PLACEUP_PG_SHARED_BUFFERS:-512MB}
+      - -c
+      - work_mem=${PLACEUP_PG_WORK_MEM:-16MB}
+      - -c
+      - maintenance_work_mem=${PLACEUP_PG_MAINTENANCE_WORK_MEM:-256MB}
+      - -c
+      - effective_cache_size=${PLACEUP_PG_EFFECTIVE_CACHE_SIZE:-1536MB}
+
+  firestore:
+    logging: *default-logging
+    init: true
+    stop_grace_period: 30s
+
+  redis:
+    logging: *default-logging
+    init: true
+    stop_grace_period: 30s
+
+  migrate:
+    logging: *default-logging
+    init: true
+
+  seed:
+    logging: *default-logging
+    init: true
+
+  api:
+    logging: *default-logging
+    init: true
+    stop_grace_period: 30s
+    # uvicorn honours SIGTERM; give in-flight requests time to drain.
+    environment:
+      PYTHONUNBUFFERED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+      FORWARDED_ALLOW_IPS: "*"
+
+  app-server:
+    logging: *default-logging
+    init: true
+    stop_grace_period: 30s
+    environment:
+      PYTHONUNBUFFERED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+      FORWARDED_ALLOW_IPS: "*"
+
+  frontend:
+    logging: *default-logging
+    init: true
+    stop_grace_period: 20s
+
+  scheduler:
+    logging: *worker-logging
+    init: true
+    stop_grace_period: 120s
+    # Playwright/Chromium in the scraper crashes with the 64 MB default.
+    shm_size: ${PLACEUP_SCRAPER_SHM_SIZE:-1gb}
+    environment:
+      PYTHONUNBUFFERED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+
+  ollama:
+    logging: *default-logging
+    init: true
+    stop_grace_period: 60s
+
+  ollama-pull:
+    logging: *default-logging
+
+  openclaw:
+    logging: *default-logging
+    init: true
+    stop_grace_period: 30s
+
+  ats-model:
+    logging: *worker-logging
+    init: true
+    stop_grace_period: 60s
+    shm_size: ${PLACEUP_ATS_SHM_SIZE:-2gb}
