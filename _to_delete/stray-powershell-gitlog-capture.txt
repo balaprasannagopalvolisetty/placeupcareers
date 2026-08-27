@@ -1,0 +1,65 @@
+[33mcommit 8202cf453005b94e3f1c0b4e677890706419fe71[m
+Author: balaprasannagopalvolisetty <bv1459@rit.edu>
+Date:   Mon Aug 17 23:20:51 2026 -0500
+
+    July 2026 overhaul: retention, local runtime, ATS blend
+    
+    - Remove analytics page; applications page reduced to applied-only counts
+    
+    - Widen job visibility from 24h to the 60-day window (VISIBLE_RETENTION_DAYS)
+    
+    - Fix role-filter title-terms pushdown; gate one-click submit to Elite
+    
+    - Add job_retention, local_scheduler and taxonomy_evolution workers
+    
+    - Blend the SlyGoblin mistral ATS model into match scores
+    
+    - OpenClaw calls Ollama Cloud glm-5.2:cloud directly (concurrency 500)
+    
+    - Add cloud-free local runtime: compose.yaml + PowerShell start/stop/status scripts
+
+ .env.local.example                                 |  38 [32m+++[m
+ .gitignore                                         |   7 [32m+[m
+ MASTER_DOCUMENTATION.md                            | 115 [32m++++++++[m
+ ...n Architecture and ATS Integration Strategy.pdf | Bin [31m0[m -> [32m533951[m bytes
+ backend/app/api/analytics.py                       |  88 [32m+[m[31m-----[m
+ backend/app/api/apply.py                           |  27 [32m+[m[31m-[m
+ backend/app/api/jobs.py                            | 124 [32m++++++++[m[31m-[m
+ backend/app/api/user.py                            |  45 [32m+++[m[31m-[m
+ backend/app/db/firebase.py                         |  17 [32m+[m[31m-[m
+ backend/app/db/firestore_user_store.py             |   6 [32m+[m[31m-[m
+ backend/app/etl/jobs_scraper_6h.py                 |  74 [32m++++[m[31m-[m
+ backend/app/etl/local_seed.py                      |  44 [32m+++[m
+ backend/app/main.py                                |  28 [32m+[m[31m-[m
+ backend/app/models/user.py                         |   1 [32m+[m
+ backend/app/services/apply/orchestrator.py         |  51 [32m+++[m[31m-[m
+ backend/app/services/apply/question_answerer.py    | 130 [32m+++++++++[m
+ backend/app/workers/job_liveness_checker.py        |   4 [32m+[m[31m-[m
+ backend/app/workers/job_retention.py               | 113 [32m++++++++[m
+ backend/app/workers/local_scheduler.py             | 133 [32m+++++++++[m
+ backend/app/workers/taxonomy_evolution.py          | 146 [32m++++++++++[m
+ backend/ats_model_service/service.py               |  22 [32m+[m[31m-[m
+ backend/deploy/deploy_openclaw_tailor.ps1          |   9 [32m+[m[31m-[m
+ backend/openclaw_service/README.md                 |  10 [32m+[m
+ backend/openclaw_service/local/openclaw.json       |  28 [32m++[m
+ backend/openclaw_service/server.mjs                | 166 [32m+++++++++[m[31m---[m
+ backend/tests/conftest.py                          |  28 [32m++[m
+ backend/tests/test_apply_system.py                 |  27 [32m+[m[31m-[m
+ backend/tests/test_quality_fixes.py                |  11 [32m+[m[31m-[m
+ compose.yaml                                       | 287 [32m++++++++++++++++++++[m
+ frontend/nginx.local.conf                          |  51 [32m++++[m
+ .../src/app/components/dashboard/AnalyticsPage.tsx | 299 [31m---------------------[m
+ .../app/components/dashboard/ApplicationsPage.tsx  | 261 [32m++++[m[31m--------------[m
+ .../src/app/components/dashboard/JobDetailPage.tsx |   1 [32m+[m
+ frontend/src/app/components/dashboard/JobsPage.tsx |  27 [32m+[m[31m-[m
+ .../app/components/dashboard/OneClickApplyPage.tsx |  11 [32m+[m[31m-[m
+ .../components/dashboard/ReviewBeforeSubmit.tsx    |  31 [32m++[m[31m-[m
+ .../src/app/components/dashboard/SettingsPage.tsx  |   4 [32m+[m[31m-[m
+ frontend/src/app/lib/api.ts                        |  24 [32m+[m[31m-[m
+ frontend/src/app/pages/Dashboard.tsx               |  73 [32m+++[m[31m--[m
+ frontend/src/app/routes.ts                         |   5 [32m+[m[31m-[m
+ local_status.ps1                                   |  21 [32m++[m
+ run_local_job.ps1                                  |  14 [32m+[m
+ start_local.ps1                                    |  97 [32m+++++++[m
+ stop_local.ps1                                     |  17 [32m++[m
+ 44 files changed, 1953 insertions(+), 762 deletions(-)

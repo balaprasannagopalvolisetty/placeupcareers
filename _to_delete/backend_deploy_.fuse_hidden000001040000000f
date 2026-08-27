@@ -1,0 +1,30 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: placeup-api
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/cloudsql-instances: PROJECT_ID:us-east1:placeup-backend
+    spec:
+      serviceAccountName: placeup-api-sa@PROJECT_ID.iam.gserviceaccount.com
+      containers:
+        - image: us-east1-docker.pkg.dev/PROJECT_ID/placeup/backend:latest
+          command: ["uvicorn"]
+          args: ["app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+          env:
+            - name: APP_ENV
+              value: production
+            - name: DATABASE_BACKEND
+              value: postgres
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: DATABASE_URL
+                  key: latest
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: JWT_SECRET
+                  key: latest

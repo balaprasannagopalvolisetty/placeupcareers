@@ -1,0 +1,67 @@
+# PlaceUp Career Backend — Python Dependencies
+# FastAPI core
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-multipart>=0.0.17
+pydantic>=2.10.0
+pydantic-settings>=2.6.0
+
+# Job scraping
+python-jobspy>=1.1.70
+scrapegraphai>=2.1.1
+scrapling>=0.4.8
+# NOTE (CVE-2025-46656 / markdownify): python-jobspy hard-pins markdownify
+# <0.14.0, so the patched 0.14.1 CANNOT be installed without dropping our main
+# scraper. Reachable only inside python-jobspy's HTML->text conversion during a
+# scrape cycle. Accepted, contained risk: scraping runs in the isolated
+# background Cloud Run JOB (placeup-ats-worker), not the user-facing API, and
+# under a job timeout — so a malicious posting can at worst stall one scrape
+# cycle (auto-killed + retried), never the site. Remove this note and bump
+# markdownify to >=0.14.1 as soon as python-jobspy relaxes its pin.
+httpx>=0.28.0
+beautifulsoup4>=4.12.0
+lxml>=5.0.0          # Faster HTML/XML parsing for ATS feeds (Personio XML, etc.)
+openpyxl>=3.1.0      # Excel export (.xlsx) — used by job_exporter
+
+# AI / LLM (Removed per requirements to use local NLP only)
+# Resume parsing
+PyPDF2>=3.0.0
+python-docx>=1.1.0
+reportlab>=4.2.5
+
+# NLP / Matching
+scikit-learn>=1.5.0
+pandas>=2.2.0
+
+# Database
+firebase-admin>=6.6.0
+SQLAlchemy>=2.0.36
+alembic>=1.14.0
+psycopg[binary]>=3.2.3
+
+# Utilities
+python-dotenv>=1.0.0
+aiofiles>=24.1.0
+apscheduler>=3.10.0
+google-api-python-client>=2.150.0
+google-auth>=2.35.0
+# Cloud Storage for rendered tailored resumes/cover letters (apply subsystem).
+google-cloud-storage>=2.18.0
+# Cloud Tasks for per-ATS submission queues (APPLY_QUEUE_BACKEND=cloudtasks).
+google-cloud-tasks>=2.16.0
+
+# Auth — real JWT + password hashing (bcrypt called directly; passlib is
+# incompatible with bcrypt >= 4.x and trips spurious 72-byte errors)
+PyJWT>=2.9.0
+bcrypt>=4.0.0
+email-validator>=2.2.0
+
+# Stripe billing (Checkout sessions, billing portal, webhook signature verify)
+stripe>=11.0.0
+
+# Testing
+pytest>=8.0.0
+pytest-asyncio>=0.24.0
+httpx>=0.28.0
+redis>=5.0
+sentry-sdk[fastapi]>=2.0
