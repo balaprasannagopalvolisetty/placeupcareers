@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 RESUME_SCHEMA_VERSION = "placeup_resume_v4"
 MAX_PDF_PAGES = 8
-# We extract TEXT ONLY here — PyPDF2 never renders or executes the PDF — and the
+# We extract TEXT ONLY here — pypdf never renders or executes the PDF — and the
 # original file is NOT stored or re-served. So benign-but-common markers that
 # appear in ordinary resumes exported from Word, Canva, LaTeX, Google Docs, etc.
 # must NOT cause a rejection:
@@ -68,7 +68,7 @@ async def parse_resume_file(
 
 
 async def _parse_pdf(content: bytes) -> dict:
-    """Extract text from a PDF file using PyPDF2.
+    """Extract text from a PDF file using pypdf.
 
     Handles multi-page PDFs, removing headers/footers
     and normalizing whitespace.
@@ -85,7 +85,13 @@ async def _parse_pdf(content: bytes) -> dict:
     if any(marker in lower_probe for marker in PDF_ACTIVE_CONTENT_MARKERS):
         raise ValueError("PDF contains active or embedded content and cannot be accepted.")
     try:
-        from PyPDF2 import PdfReader
+        try:
+            from pypdf import PdfReader
+        except ImportError:  # pragma: no cover - only on a stale image
+            # PyPDF2 is EOL and carries an unpatched DoS (PYSEC-2026-1835).
+            # Kept purely so an old container that has not been rebuilt yet
+            # still parses resumes instead of 500-ing.
+            from PyPDF2 import PdfReader
 
         reader = PdfReader(io.BytesIO(content))
         if getattr(reader, "is_encrypted", False):
@@ -113,7 +119,7 @@ async def _parse_pdf(content: bytes) -> dict:
         }
 
     except ImportError:
-        logger.error("PyPDF2 not installed. Run: pip install PyPDF2")
+        logger.error("pypdf not installed. Run: pip install pypdf")
         raise
     except Exception as e:
         logger.error(f"PDF parsing error: {e}")

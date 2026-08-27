@@ -957,6 +957,150 @@ secret), `OLLAMA_API_KEY` (rotated). Optional: `SCRAPER_RETENTION_DAYS`
 (default 60), `SCRAPER_GAP_BACKFILL_ENABLED` (default true),
 `TAILOR_MAX_CONCURRENCY` (default 16 per instance; total = × max-instances).
 
+## August 24, 2026 — Dependency Audit and Version Policy
+
+No product behaviour changed in this pass. It closes the gap between what
+`requirements.txt` / `package.json` *said* and what was actually being
+installed, and removes every dependency advisory that upstream allows us to
+remove.
+
+### The underlying problem
+
+`backend/requirements.txt` declared only `>=` floors and no ceilings, and the
+floors had not moved since the file was written. Because pip always picks the
+newest version that satisfies a floor, every image build silently adopted the
+newest MAJOR of every dependency. The local venv had already drifted to
+pandas 2.3.3, scikit-learn 1.8, reportlab 5.0, stripe 15.1, bcrypt 5.0,
+redis 8.0, pytest 9.0 and firebase-admin 7.4 — none of it recorded anywhere.
+pandas 3.x is now published, so the next unpinned build would have taken it.
+
+The policy now written at the top of `requirements.txt`:
+
+* lower bounds are the versions the stack is known to run on;
+* upper bounds cap the next MAJOR;
+* a ceiling is raised deliberately, after running the suite — never deleted.
+
+### Security fixes (backend)
+
+Audited against the PyPI advisory database on 2026-08-24. 18 installed
+packages carried advisories; after this change, 1 does.
+
+Direct dependencies whose floor allowed a vulnerable build:
+
+| Package | Old floor | New floor | Issue |
+|---|---|---|---|
+| `python-multipart` | 0.0.17 | 0.0.31 | urlencoded body mis-parsing; negative `Content-Length` |
+| `PyJWT` | 2.9.0 | 2.13.0 | algorithm confusion when HMAC + asymmetric are both accepted |
+| `pydantic-settings` | 2.6.0 | 2.14.2 | `NestedSecretsSettingsSource` directory traversal |
+
+`PyPDF2` was replaced by `pypdf`. PyPDF2 is end-of-life — the name was
+retired in favour of `pypdf`, and its final release (3.0.1) carries an
+unpatched infinite-loop DoS in `__parse_content_stream` (PYSEC-2026-1835)
+that will never be fixed under the old name. `app/services/resume_parser.py`
+imports `pypdf` first and falls back to `PyPDF2` only so that a container
+image that has not been rebuilt yet keeps parsing resumes. The `PdfReader`
+API is identical; nothing else changed.
+
+A new **transitive security floors** block at the end of `requirements.txt`
+pins twelve packages PlaceUp never imports directly — `starlette`, `aiohttp`,
+`cryptography`, `urllib3`, `idna`, `h2`, `httplib2`, `msgpack`, `pyasn1`,
+`soupsieve`, `langchain`, `langsmith`. They arrive underneath FastAPI, httpx,
+google-auth, firebase-admin and scrapegraphai. pip has no override mechanism,
+so naming them directly is the only way to stop the resolver picking a version
+with a published advisory. The most serious were request smuggling on
+WebSocket upgrade (`aiohttp`) and Host-header spoofing of `request.url`
+(`starlette`). Each line carries the reason; delete a line once the parent
+package's own floor has caught up.
+
+`markdownify` remains the single unresolved advisory, exactly as documented
+before. Re-verified against python-jobspy 1.1.82: the hard pin is still
+`markdownify>=0.13.1,<0.14.0`, so the patched 0.14.1 cannot be installed
+without dropping the main scraper. The containment argument is unchanged —
+it is reachable only inside python-jobspy's HTML-to-text conversion, in the
+isolated background Cloud Run job, under a job timeout.
+
+### Security fixes (frontend)
+
+`npm audit` reported five HIGH advisories; it now reports zero.
+
+* `react-router` `^7.17.0` → `^7.18.2`. The declared range admitted five HIGH
+  advisories, including an open redirect via backslash in `<Link>` and
+  `useNavigate`, an XSS through `RSCErrorHandler`, and arbitrary constructor
+  injection in `deserializeErrors()` during SSR hydration. 7.18.2 is the
+  patched release on the 7.x line; **react-router 8.x is a separate migration
+  and was deliberately not taken.**
+* `brace-expansion`, `nanoid`, `postcss` and `tar` were transitive and fixed
+  by regenerating `package-lock.json`. The frontend image builds with
+  `npm ci`, so the lockfile is what production actually installs — it must be
+  committed alongside `package.json`.
+
+Thirty-five same-major upgrades were applied at the same time (the Radix UI
+set, `react-hook-form`, `sonner`, `tailwind-merge`, `tailwindcss` and
+`@tailwindcss/vite` 4.1.12 → 4.3.3, `eslint`, `input-otp`, `tw-animate-css`,
+`react-responsive-masonry`).
+
+### Deliberately NOT upgraded
+
+These are real migrations, not version bumps, and each needs its own pass:
+
+| Package | Current | Latest | Why it was left |
+|---|---|---|---|
+| `react` / `react-dom` | 18.3.1 | 19.2.8 | gates almost everything below it |
+| `@mui/material`, `@mui/icons-material` | 7.3.5 | 9.3.1 | two majors |
+| `recharts` | 2.15.2 | 3.10.1 | v3 migration guide; 2.x is deprecated upstream |
+| `react-router` | 7.18.2 | 8.3.0 | major |
+| `vite` + `@vitejs/plugin-react` | 6.4.3 / 4.7.0 | 8.2.2 / 6.1.0 | two majors |
+| `@sentry/react` | ^8.55.2 | 10.71.0 | two majors |
+| `react-day-picker` | 8.10.1 | 10.0.1 | two majors |
+| `react-resizable-panels` | 2.1.7 | 4.12.3 | two majors |
+| `date-fns`, `lucide-react`, `motion` | — | 4.x / 1.x / 13.x | major each |
+| `pandas` | 2.3.3 | 3.0.5 | copy-on-write and string-dtype changes |
+
+`recharts@2.x` prints a deprecation warning on install; that is expected until
+the v3 migration happens.
+
+### Known follow-ups
+
+* `frontend/package.json` still carries `pnpm.overrides.vite = 6.4.2`, but the
+  frontend Dockerfile uses `npm ci`. That override is dead configuration and
+  npm resolves vite to 6.4.3 regardless.
+* `app/models/job.py` uses a class-based `Config`, deprecated in Pydantic 2
+  and removed in 3. The `<3.0` ceiling holds it for now; migrate to
+  `ConfigDict` before raising it.
+* Several modules call `datetime.utcnow()`, deprecated in Python 3.12 and
+  scheduled for removal. `python:3.12-slim` is still the base image.
+
+### Verification performed
+
+* Backend resolved cleanly on python 3.12 (179 packages) and the full suite
+  ran: **172 passed, 1 failed**, the failure being a fixture file excluded
+  from the verification copy, not a regression.
+* Re-audit of the resolved set: 18 vulnerable packages → 1 (`markdownify`).
+* Frontend: `npm ci` + `npm run build` succeeded, 2892 modules transformed;
+  `npm audit` reports 0 vulnerabilities.
+* Local runtime unchanged and re-verified statically: `bash -n` and
+  `shellcheck -S warning` clean on `scripts/placeup.sh` and
+  `scripts/bootstrap-ubuntu.sh`; all 34 Makefile targets pass `make -n`;
+  `docker compose -f compose.yaml -f compose.linux.yaml config` validates for
+  core and for the `workers`, `ai` and `ats` profiles. A live boot still has
+  not been performed — no Docker daemon is reachable from the assistant
+  sandbox.
+
+### Deploy
+
+No migration and no config change. Rebuild and redeploy the images so the new
+pins take effect:
+
+```powershell
+backend\deploy\deploy_backend.ps1     -ProjectId steel-shine-492401-u6
+backend\deploy\deploy_app_server.ps1  -ProjectId steel-shine-492401-u6
+backend\deploy\deploy_country_scrapers.ps1 -ProjectId steel-shine-492401-u6
+cd frontend
+npm ci          # NOT npm install — the lockfile is the audited artefact
+npm run build
+.\deploy_frontend.ps1
+```
+
 ## Documentation Policy
 
 Keep documentation in this file. When architecture, deployment, scraper

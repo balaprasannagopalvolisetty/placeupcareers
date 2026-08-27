@@ -1,67 +1,137 @@
 # PlaceUp Career Backend — Python Dependencies
+#
+# Version policy (adopted 2026-08-24):
+#   * Lower bounds are the versions the stack is known to run on.
+#   * Upper bounds cap the next MAJOR release. There is no lockfile here, so
+#     without a ceiling every `docker build` silently adopts the newest major of
+#     every dependency. That is how pandas 3.x, reportlab 5.x and pytest 9.x
+#     arrived in this project unannounced.
+#   * Raise a ceiling deliberately, after running the test suite — never by
+#     deleting it.
+
 # FastAPI core
-fastapi>=0.115.0
-uvicorn[standard]>=0.32.0
-python-multipart>=0.0.17
-pydantic>=2.10.0
-pydantic-settings>=2.6.0
+fastapi>=0.136.1,<1.0
+uvicorn[standard]>=0.46.0,<1.0
+# SECURITY: <0.0.30 mis-parses urlencoded bodies (GHSA-5rvq-cxj2-64vf,
+# GHSA-6jv3-5f52-599m); <0.0.31 trusts a negative Content-Length
+# (GHSA-v9pg-7xvm-68hf). The old >=0.0.17 floor allowed all three.
+python-multipart>=0.0.31
+pydantic>=2.13.4,<3.0
+# SECURITY: NestedSecretsSettingsSource directory traversal, fixed in 2.14.2.
+pydantic-settings>=2.14.2,<3.0
 
 # Job scraping
-python-jobspy>=1.1.70
-scrapegraphai>=2.1.1
-scrapling>=0.4.8
+python-jobspy>=1.1.82
+scrapegraphai>=2.1.1,<3.0
+scrapling>=0.4.15,<1.0
 # NOTE (CVE-2025-46656 / markdownify): python-jobspy hard-pins markdownify
 # <0.14.0, so the patched 0.14.1 CANNOT be installed without dropping our main
-# scraper. Reachable only inside python-jobspy's HTML->text conversion during a
-# scrape cycle. Accepted, contained risk: scraping runs in the isolated
-# background Cloud Run JOB (placeup-ats-worker), not the user-facing API, and
-# under a job timeout — so a malicious posting can at worst stall one scrape
-# cycle (auto-killed + retried), never the site. Remove this note and bump
+# scraper. Re-verified 2026-08-24 against python-jobspy 1.1.82 — the pin is
+# still `markdownify>=0.13.1,<0.14.0`, so this remains unfixable upstream.
+# Reachable only inside python-jobspy's HTML->text conversion during a scrape
+# cycle. Accepted, contained risk: scraping runs in the isolated background
+# Cloud Run JOB (placeup-ats-worker), not the user-facing API, and under a job
+# timeout — so a malicious posting can at worst stall one scrape cycle
+# (auto-killed + retried), never the site. Remove this note and bump
 # markdownify to >=0.14.1 as soon as python-jobspy relaxes its pin.
-httpx>=0.28.0
-beautifulsoup4>=4.12.0
-lxml>=5.0.0          # Faster HTML/XML parsing for ATS feeds (Personio XML, etc.)
-openpyxl>=3.1.0      # Excel export (.xlsx) — used by job_exporter
+httpx>=0.28.1,<1.0
+beautifulsoup4>=4.14.3,<5.0
+lxml>=6.1.0,<7.0         # Faster HTML/XML parsing for ATS feeds (Personio XML, etc.)
+openpyxl>=3.1.5,<4.0     # Excel export (.xlsx) — used by job_exporter
 
 # AI / LLM (Removed per requirements to use local NLP only)
 # Resume parsing
-PyPDF2>=3.0.0
-python-docx>=1.1.0
-reportlab>=4.2.5
+# PyPDF2 is end-of-life: it was renamed to `pypdf` and its last release (3.0.1)
+# carries an unpatched infinite-loop DoS in __parse_content_stream
+# (PYSEC-2026-1835). pypdf is the maintained continuation with an identical
+# PdfReader API. app/services/resume_parser.py imports pypdf first and falls
+# back to PyPDF2 only if an old image is still in play.
+pypdf>=6.16.2,<7.0
+python-docx>=1.2.0,<2.0
+reportlab>=5.0.0,<6.0
 
 # NLP / Matching
-scikit-learn>=1.5.0
-pandas>=2.2.0
+scikit-learn>=1.8.0,<2.0
+# CEILING MATTERS: pandas 3.x is released and is a breaking change
+# (copy-on-write by default, string dtype changes). Nothing here has been
+# tested against it.
+pandas>=2.3.3,<3.0
 
 # Database
-firebase-admin>=6.6.0
-SQLAlchemy>=2.0.36
-alembic>=1.14.0
-psycopg[binary]>=3.2.3
+firebase-admin>=7.4.0,<8.0
+SQLAlchemy>=2.0.52,<3.0
+alembic>=1.18.4,<2.0
+psycopg[binary]>=3.3.4,<4.0
 
 # Utilities
-python-dotenv>=1.0.0
-aiofiles>=24.1.0
-apscheduler>=3.10.0
-google-api-python-client>=2.150.0
-google-auth>=2.35.0
+python-dotenv>=1.2.3,<2.0
+aiofiles>=25.1.0,<26.0
+apscheduler>=3.11.3,<4.0
+google-api-python-client>=2.196.0,<3.0
+google-auth>=2.56.3,<3.0
 # Cloud Storage for rendered tailored resumes/cover letters (apply subsystem).
-google-cloud-storage>=2.18.0
+google-cloud-storage>=3.10.1,<4.0
 # Cloud Tasks for per-ATS submission queues (APPLY_QUEUE_BACKEND=cloudtasks).
-google-cloud-tasks>=2.16.0
+google-cloud-tasks>=2.24.0,<3.0
 
 # Auth — real JWT + password hashing (bcrypt called directly; passlib is
 # incompatible with bcrypt >= 4.x and trips spurious 72-byte errors)
-PyJWT>=2.9.0
-bcrypt>=4.0.0
-email-validator>=2.2.0
+# SECURITY: PyJWT <2.13.0 has an algorithm-confusion path when a verifier
+# accepts both HMAC and asymmetric algorithms (GHSA-xgmm-8j9v-c9wx), plus three
+# further advisories in PyJWKClient. The old >=2.9.0 floor allowed all of them.
+PyJWT>=2.13.0,<3.0
+bcrypt>=5.0.0,<6.0
+email-validator>=2.3.0,<3.0
 
 # Stripe billing (Checkout sessions, billing portal, webhook signature verify)
-stripe>=11.0.0
+stripe>=15.1.0,<16.0
 
 # Testing
-pytest>=8.0.0
-pytest-asyncio>=0.24.0
-httpx>=0.28.0
-redis>=5.0
-sentry-sdk[fastapi]>=2.0
+pytest>=9.0.3,<10.0
+# pytest-asyncio 1.x defaults to strict mode — async tests need an explicit
+# @pytest.mark.asyncio marker. Kept below 2.0 so a future default change cannot
+# silently skip the async suite.
+pytest-asyncio>=1.3.0,<2.0
+redis>=8.0.1,<9.0
+sentry-sdk[fastapi]>=2.64.0,<3.0
+
+# ---------------------------------------------------------------------------
+# Transitive security floors
+#
+# These are NOT imported directly by PlaceUp. They arrive underneath FastAPI,
+# httpx, google-auth, firebase-admin and scrapegraphai. pip has no "override"
+# mechanism, so naming them here is the only way to stop a resolver from
+# choosing a version with a published advisory. Each line is a floor only —
+# delete a line once the parent package's own floor has caught up.
+# Audited 2026-08-24 against the PyPI advisory database.
+# ---------------------------------------------------------------------------
+# Host-header spoofing of request.url, HTTPEndpoint method confusion, and
+# urlencoded form limits not being enforced.
+starlette>=1.3.1
+# Request smuggling on WebSocket upgrade, out-of-bounds read in the C parser,
+# CookieJar.load() code execution, cross-origin cookie and auth leakage.
+aiohttp>=3.14.3
+# Statically linked OpenSSL fix, name-constraint bypass on wildcard SANs, and a
+# PKCS#7 decryption oracle.
+cryptography>=50.0.0
+# Cross-origin redirect handling and decompression of the full body when only a
+# range was requested.
+urllib3>=2.7.0
+# Quadratic-time IDNA decoding (incomplete fix of CVE-2024-3651).
+idna>=3.15
+# Duplicate Host headers forwarded to the application (request smuggling).
+h2>=4.4.1
+# Unbounded gzip/deflate decompression of response bodies.
+httplib2>=0.32.0
+# Out-of-bounds read when an Unpacker is reused after a caught error.
+msgpack>=1.2.1
+# Quadratic-time OID decoding and unbounded long-form tag parsing.
+pyasn1>=0.6.4
+# Catastrophic regex backtracking and unbounded allocation in the CSS selector
+# parser used by BeautifulSoup.
+soupsieve>=2.8.4
+# Path-confinement escapes in LangChain filesystem/glob components, and an
+# arbitrary file read in the LangSmith tracing middleware. Both reach us via
+# scrapegraphai.
+langchain>=1.3.9
+langsmith>=0.8.18

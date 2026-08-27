@@ -18,13 +18,20 @@ application submission — all runnable end to end on a single Ubuntu workstatio
 
 ## Quick start
 
-Three commands from a clean Ubuntu 22.04 / 24.04 machine to a running application:
+From a clean Ubuntu 22.04 / 24.04 machine to a running application:
 
 ```bash
-git clone <your-remote> PlaceUp && cd PlaceUp
-make doctor     # optional: confirms Docker, RAM, disk and free ports
-make up         # <-- the only command you need
+sudo apt-get update && sudo apt-get install -y git          # if git is missing
+git clone https://github.com/<you>/<repo>.git PlaceUp && cd PlaceUp
+
+bash scripts/bootstrap-ubuntu.sh    # one time: Docker Engine, Compose v2, make
+newgrp docker                       # one time: activate the docker group
+
+make up                             # <-- the only command you need, every time
 ```
+
+On a machine that already has Docker and Compose v2, the bootstrap and `newgrp`
+lines are unnecessary — `make up` is the whole thing.
 
 `make up` does all of this, in order, and refuses to report success until every
 step has actually passed:
@@ -112,8 +119,23 @@ curl --version | head -1
 
 ### Installing Docker on Ubuntu
 
-Use Docker's own apt repository. The `docker.io` package in Ubuntu's default
-archive ships an old engine and, on some releases, no Compose v2 plugin.
+**The scripted way.** `scripts/bootstrap-ubuntu.sh` does everything in this
+section for you and is safe to re-run — it checks each step and skips whatever
+is already correct:
+
+```bash
+bash scripts/bootstrap-ubuntu.sh
+newgrp docker        # activate the group in this shell
+make doctor          # confirm
+```
+
+It installs Docker Engine, the Compose v2 plugin, `make`, `git` and `curl` —
+and nothing else. It detects Ubuntu, Debian and their derivatives, handles WSL 2
+without systemd, and refuses to guess on anything it does not recognise.
+
+**The manual way,** if you would rather see every command. Use Docker's own apt
+repository: the `docker.io` package in Ubuntu's default archive ships an old
+engine and, on some releases, no Compose v2 plugin.
 
 ```bash
 # 1. Remove any conflicting distro packages
@@ -662,7 +684,8 @@ offline.
 |---|---|---|
 | `permission denied while trying to connect to the Docker daemon socket` | Your user is not in the `docker` group | `sudo usermod -aG docker "$USER" && newgrp docker` |
 | `Cannot connect to the Docker daemon` | Daemon not running | `sudo systemctl enable --now docker` |
-| `docker: 'compose' is not a docker command` | Compose v2 plugin missing | `sudo apt-get install -y docker-compose-plugin` |
+| `docker: 'compose' is not a docker command` | Compose v2 plugin missing | `sudo apt-get install -y docker-compose-plugin`, or re-run `bash scripts/bootstrap-ubuntu.sh` |
+| `make: command not found` on a fresh box | Host was never bootstrapped | `sudo apt-get install -y make`, or `bash scripts/bootstrap-ubuntu.sh` |
 | `make doctor` reports **port 3000 in use** | Another dev server has it | `sudo ss -ltnp 'sport = :3000'`, stop that process |
 | `make doctor` reports **port 5432 in use** | A host PostgreSQL is running | `sudo systemctl stop postgresql` (PlaceUp's DB is in a container) |
 | Build fails on `playwright install` | Transient network, or too little disk | `make clean-images`, confirm ≥15 GiB free, re-run `make up` |
@@ -756,7 +779,9 @@ identically locally and in production.
 ```
 .
 ├── Makefile                    the one-command interface — start here
-├── scripts/placeup.sh          everything `make` calls: preflight, secrets,
+├── scripts/
+│   ├── bootstrap-ubuntu.sh     one-time host setup: Docker, Compose, make
+│   └── placeup.sh              everything `make` calls: preflight, secrets,
 │                               health gating, smoke suite, diagnostics
 ├── compose.yaml                service definitions (shared with Windows)
 ├── compose.linux.yaml          Linux overlay: log rotation, init, shm, PG tuning
