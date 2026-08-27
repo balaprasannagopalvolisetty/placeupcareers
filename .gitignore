@@ -108,3 +108,9 @@ backend/deploy/*.local.ps1
 
 # Local scratch artifacts (tailoring test PDFs, throwaway output).
 tmp/
+
+# agent tooling
+_to_delete/
+tools/market-intel/state/
+tools/market-intel/.venv/
+*.db

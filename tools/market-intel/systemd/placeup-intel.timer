@@ -1,0 +1,14 @@
+[Unit]
+Description=Run PlaceUp market intelligence on a schedule
+
+[Timer]
+# Fires every 30 minutes. A run with nothing due exits in milliseconds and spends
+# zero tokens, so a frequent timer is cheap and makes resume-after-limit prompt.
+OnBootSec=5min
+OnUnitActiveSec=30min
+RandomizedDelaySec=5min
+Persistent=true
+Unit=placeup-intel.service
+
+[Install]
+WantedBy=timers.target

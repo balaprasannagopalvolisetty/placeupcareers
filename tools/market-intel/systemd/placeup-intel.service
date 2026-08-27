@@ -1,0 +1,17 @@
+[Unit]
+Description=PlaceUp market intelligence (one pass)
+Documentation=file:%h/placeup-intel/README.md
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/placeup-intel
+Environment=PLACEUP_REPO=%h/PlaceUp
+Environment=INTEL_STATE=%h/.local/state/placeup-intel
+ExecStart=%h/placeup-intel/.venv/bin/python -m intel.run auto
+# 75 = soft failure (usage limit). The timer handles the retry; the run itself
+# already wrote the resume time, so restarting sooner costs nothing.
+SuccessExitStatus=75
+StandardOutput=append:%h/.local/state/placeup-intel/intel.log
+StandardError=append:%h/.local/state/placeup-intel/intel.log
+Nice=10

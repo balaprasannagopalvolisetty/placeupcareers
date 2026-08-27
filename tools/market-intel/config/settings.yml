@@ -1,0 +1,33 @@
+# Token discipline. These are hard caps, not suggestions.
+
+budget:
+  # Approximate output tokens the loop may spend per rolling 24h.
+  daily_output_tokens: 40000
+  # Per-run ceiling. A run that would exceed it stops early and queues the rest.
+  per_run_output_tokens: 8000
+  # Longest extracted text sent to a model, per document.
+  max_chars_per_doc: 6000
+  # Max documents synthesised in one call.
+  max_docs_per_call: 6
+
+models:
+  # Cheap model for extraction and classification - the bulk of the volume.
+  extract: haiku
+  # Mid model for weekly comparative analysis.
+  analyze: sonnet
+  # Only for the monthly strategy pass.
+  strategy: sonnet
+
+cadence:
+  watch_hours: 24      # fast-tier fetch + change detection
+  analyze_days: 7      # comparative analysis of what changed
+  strategy_days: 30    # positioning and marketing plan refresh
+
+runtime:
+  # Where reports land. Relative to the repo root.
+  output_dir: company/intel
+  # Retry backoff when Claude reports a usage limit and gives no reset time.
+  default_backoff_minutes: 90
+  # The timer fires often; a run with nothing due exits immediately at zero cost.
+  http_timeout_seconds: 20
+  user_agent: "PlaceUpIntel/1.0 (+https://placeupcareer.com; research)"

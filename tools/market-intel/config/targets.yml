@@ -1,0 +1,66 @@
+# What the intelligence loop watches. Edit this file; nothing else needs changing.
+#
+# tier: how often a source is checked
+#   fast   - every watch run (daily)   : pricing, homepage, changelog
+#   slow   - weekly                     : docs, blog indexes, review sites
+#   rare   - monthly                    : market/statistical sources
+
+product:
+  name: PlaceUp Career
+  url: https://placeupcareer.com
+  one_liner: "Every sponsored job, straight from the employer's own ATS - found, scored, tailored and applied to for you."
+  wedge: "visa-sponsorship focus + multi-country ATS coverage"
+  positioning_targets: [Jobright, Simplify, Teal, Careerflow]
+
+competitors:
+  - name: Jobright
+    tier: fast
+    urls:
+      - https://jobright.ai/
+      - https://jobright.ai/pricing
+  - name: Simplify
+    tier: fast
+    urls:
+      - https://simplify.jobs/
+      - https://simplify.jobs/pricing
+  - name: Teal
+    tier: fast
+    urls:
+      - https://www.tealhq.com/
+      - https://www.tealhq.com/pricing
+  - name: Careerflow
+    tier: fast
+    urls:
+      - https://careerflow.ai/
+      - https://careerflow.ai/pricing
+  - name: Interstride
+    tier: slow
+    urls: ["https://www.interstride.com/"]
+  - name: MyVisaJobs
+    tier: slow
+    urls: ["https://www.myvisajobs.com/"]
+
+# Adjacent sources: not competitors, but where the audience talks and where
+# demand signal shows up.
+signals:
+  - name: reddit-h1b
+    tier: slow
+    urls: ["https://www.reddit.com/r/h1b/top/.json?t=week&limit=25"]
+    kind: json
+  - name: reddit-f1visa
+    tier: slow
+    urls: ["https://www.reddit.com/r/f1visa/top/.json?t=week&limit=25"]
+    kind: json
+  - name: reddit-intlstudents
+    tier: slow
+    urls: ["https://www.reddit.com/r/internationalstudents/top/.json?t=week&limit=25"]
+    kind: json
+
+# Search queries run on the rare tier to catch entrants we are not tracking.
+discovery:
+  tier: rare
+  queries:
+    - "visa sponsorship job search tool"
+    - "H-1B job board AI"
+    - "international student job platform"
+    - "AI resume tailoring job application tool"
